@@ -3981,8 +3981,8 @@ function BackofficeLogin({ onLogin, onBack }) {
 
 function BackofficeDashboard({ onBack }) {
   const [tab, setTab] = useState("dashboard");
-  const [boModel, setBoModel] = useState(MODEL_CONFIG.currentModel);
   const [boConfirm, setBoConfirm] = useState(false);
+  const [, forceUpdate] = useState(0);
   const d = BO_DATA;
 
   const KPICard = ({ icon, label, value, sub, color=C.violet, onClick }) => (
