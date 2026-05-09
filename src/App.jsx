@@ -603,19 +603,20 @@ function SplashScreen({ onNext, onBackoffice }) {
           ))}
         </div>
 
-        {/* ── Offre de lancement ── */}
-        <div style={{
-          background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
-          border:"1px solid rgba(16,217,143,0.35)",
-          borderRadius:r, padding:"12px 16px", marginBottom:20,
-          display:"flex", gap:12, alignItems:"center",
-        }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
-          <div>
-            <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Commission réduite · Accès illimité · Profitez-en avant la fin de la période</div>
+        {isLaunchPhase() && (
+          <div style={{
+            background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
+            border:"1px solid rgba(16,217,143,0.35)",
+            borderRadius:r, padding:"12px 16px", marginBottom:20,
+            display:"flex", gap:12, alignItems:"center",
+          }}>
+            <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
+            <div>
+              <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement — 6 mois</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Commission réduite · Accès illimité · Profitez-en avant la fin de la période</div>
+            </div>
           </div>
-        </div>
+        )}
 
         <Btn full onClick={onNext} style={{ fontSize:16, padding:"17px", borderRadius:r+4, letterSpacing:0.3 }}>
           Commencer →
@@ -681,19 +682,20 @@ function RoleScreen({ onSelect }) {
         ))}
       </div>
 
-      {/* ── Offre de lancement ── */}
-      <div style={{
-        background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
-        border:"1px solid rgba(16,217,143,0.30)",
-        borderRadius:r, padding:"12px 16px", marginTop:24,
-        display:"flex", gap:10, alignItems:"center",
-      }}>
-        <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
-        <div>
-          <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-          <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>Clients : tarifs préférentiels · Prestataires : accès gratuit et 0% de commission</div>
+      {isLaunchPhase() && (
+        <div style={{
+          background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
+          border:"1px solid rgba(16,217,143,0.30)",
+          borderRadius:r, padding:"12px 16px", marginTop:24,
+          display:"flex", gap:10, alignItems:"center",
+        }}>
+          <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
+          <div>
+            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
+            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>Clients : tarifs préférentiels · Prestataires : accès gratuit et 0% de commission</div>
+          </div>
         </div>
-      </div>
+      )}
 
       <p style={{ color:C.textMuted, fontSize:11, textAlign:"center", marginTop:16 }}>
         En continuant, vous acceptez nos <span style={{ color:C.violet, cursor:"pointer" }}>CGU</span>
@@ -754,23 +756,24 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
         </div>
       </div>
 
-      {/* ── Offre de lancement ── */}
-      <div style={{ padding:"0 24px 8px" }}>
-        <div style={{
-          background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
-          border:"1px solid rgba(16,217,143,0.30)",
-          borderRadius:r, padding:"11px 14px",
-          display:"flex", gap:10, alignItems:"center",
-        }}>
-          <span style={{ fontSize:16, flexShrink:0 }}>🎉</span>
-          <div style={{ flex:1 }}>
-            <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement — 6 mois offerts</span>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-              {role==="client" ? "Commissions réduites pendant toute la période de lancement" : "Accès illimité gratuit · 0% de commission sur vos missions"}
+      {isLaunchPhase() && (
+        <div style={{ padding:"0 24px 8px" }}>
+          <div style={{
+            background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
+            border:"1px solid rgba(16,217,143,0.30)",
+            borderRadius:r, padding:"11px 14px",
+            display:"flex", gap:10, alignItems:"center",
+          }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>🎉</span>
+            <div style={{ flex:1 }}>
+              <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement — 6 mois offerts</span>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
+                {role==="client" ? "Commissions réduites pendant toute la période de lancement" : "Accès illimité gratuit · 0% de commission sur vos missions"}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Form */}
       <div style={{ padding:"0 24px 40px", flex:1 }}>
@@ -936,8 +939,7 @@ function HomeScreen({ onNavigate }) {
         </div>
       </div>
 
-      {/* ── Offre lancement ── */}
-      <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>
+      {isLaunchPhase() && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
 
       {/* ── Wallet hero ── */}
       <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
@@ -1792,8 +1794,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
             {isUrgent && <Badge color={C.accent} small>🚨 Urgence</Badge>}
           </div>
 
-          {/* Offre lancement */}
-          <LaunchBadge context="booking" />
+          {isLaunchPhase() && <LaunchBadge context="booking" />}
 
           {/* Bandeau urgence */}
           {isUrgent && (
@@ -3979,7 +3980,7 @@ function BackofficeLogin({ onLogin, onBack }) {
   );
 }
 
-function BackofficeDashboard({ onBack }) {
+function BackofficeDashboard({ onBack, onModelChange }) {
   const [tab, setTab] = useState("dashboard");
   const [boConfirm, setBoConfirm] = useState(false);
   const [, forceUpdate] = useState(0);
@@ -4042,7 +4043,7 @@ function BackofficeDashboard({ onBack }) {
                   : "Retour à la commission 20% intégrée. Abonnements et frais MER désactivés."}
               </div>
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>{ MODEL_CONFIG.currentModel=isLaunchPhase()?"hybrid":"launch"; setBoConfirm(false); forceUpdate(n=>n+1); }} style={{ flex:1, padding:"10px", border:"none", borderRadius:r, background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ Confirmer</button>
+                <button onClick={()=>{ const m=isLaunchPhase()?"hybrid":"launch"; MODEL_CONFIG.currentModel=m; setBoConfirm(false); forceUpdate(n=>n+1); onModelChange?.(m); }} style={{ flex:1, padding:"10px", border:"none", borderRadius:r, background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ Confirmer</button>
                 <button onClick={()=>setBoConfirm(false)} style={{ flex:1, padding:"10px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:r, background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
               </div>
             </div>
@@ -4305,21 +4306,22 @@ function HowItWorksScreen({ role, onNext, onBack }) {
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
-        {/* ── Offre de lancement ── */}
-        <div style={{
-          background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
-          border:"1px solid rgba(16,217,143,0.35)",
-          borderRadius:r, padding:"12px 14px", marginBottom:20,
-          display:"flex", gap:10, alignItems:"center",
-        }}>
-          <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
-          <div>
-            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-            <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-              {role==="prestataire" ? "Accès gratuit · 0% de commission sur toutes vos missions pendant 6 mois" : "Tarifs préférentiels pendant toute la période de lancement JOBER"}
+        {isLaunchPhase() && (
+          <div style={{
+            background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
+            border:"1px solid rgba(16,217,143,0.35)",
+            borderRadius:r, padding:"12px 14px", marginBottom:20,
+            display:"flex", gap:10, alignItems:"center",
+          }}>
+            <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
+            <div>
+              <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
+              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
+                {role==="prestataire" ? "Accès gratuit · 0% de commission sur toutes vos missions pendant 6 mois" : "Tarifs préférentiels pendant toute la période de lancement JOBER"}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Progress dots */}
         <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:36 }}>
@@ -5631,6 +5633,7 @@ function AbonnementPrestaScreen({ onBack }) {
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("splash");
+  const [model,setModel]=useState(MODEL_CONFIG.currentModel);
   const [role,setRole]=useState(null);
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
@@ -5718,7 +5721,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onModelChange={m=>{ MODEL_CONFIG.currentModel=m; setModel(m); }} />}
 
       {screen==="dashboard" && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:90 }}>
