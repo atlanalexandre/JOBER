@@ -1294,7 +1294,20 @@ function SectorDetailScreen({ sector, onNavigate }) {
           {/* Bouton urgence AVANT le choix du métier */}
           <UrgentToggle showBeforeJob={true} />
 
-          <h4 style={{ margin:"0 0 12px", color:C.text, fontWeight:800 }}>Choisissez un métier</h4>
+          {/* Bouton publier une mission */}
+          <div onClick={()=>onNavigate("mission_request", s)} style={{ background:`linear-gradient(135deg,${C.violet}22,${C.indigo}15)`, border:`2px solid ${C.violet}55`, borderRadius:r+4, padding:"16px 18px", marginBottom:18, cursor:"pointer", display:"flex", alignItems:"center", gap:14, transition:"all 0.2s" }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.violet}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.violet}55`}
+          >
+            <div style={{ width:44, height:44, borderRadius:12, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>📢</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Publier une mission</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez à tous les prestataires disponibles · Choisissez parmi ceux qui acceptent</div>
+            </div>
+            <span style={{ color:C.violet, fontSize:20, fontWeight:300 }}>›</span>
+          </div>
+
+          <h4 style={{ margin:"0 0 12px", color:C.text, fontWeight:800 }}>Ou choisissez directement un prestataire</h4>
 
           {allServices.map((svc,i) => (
             <div key={i} onClick={()=>svc.availCount>0 && setSelectedJob(svc.name)} style={{
@@ -5882,6 +5895,223 @@ function AbonnementPrestaScreen({ onBack }) {
     </div>
   );
 }
+// ── MISSION REQUEST SCREEN ───────────────────────────────────────
+function MissionRequestScreen({ sector, onSubmit, onBack }) {
+  const s = sector || {};
+  const jobs = METIERS[s.id] || [];
+  const [metier, setMetier]       = useState("");
+  const [date, setDate]           = useState("");
+  const [hours, setHours]         = useState(8);
+  const [description, setDesc]    = useState("");
+  const [adresse, setAdresse]     = useState("");
+  const [ville, setVille]         = useState("");
+  const isValid = date && adresse && ville;
+  const matchCount = PROVIDERS.filter(p => p.sector===s.id && (!metier || p.jobTitle===metier) && p.available).length;
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
+      <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <div style={{ fontSize:32, marginBottom:6 }}>{s.icon||"📢"}</div>
+        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Publier une mission</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{s.label} · {matchCount} prestataire{matchCount>1?"s":""} disponible{matchCount>1?"s":""}</p>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>📢</span>
+          <div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Diffusion à tous les prestataires disponibles</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2, lineHeight:1.5 }}>Votre demande est envoyée à tous les prestataires du secteur. Vous choisissez parmi ceux qui acceptent.</div>
+          </div>
+        </div>
+
+        {jobs.length > 0 && (
+          <Select label="Métier recherché" options={["Tous les métiers du secteur", ...jobs]} value={metier||"Tous les métiers du secteur"} onChange={e=>setMetier(e.target.value==="Tous les métiers du secteur"?"":e.target.value)} />
+        )}
+
+        <Input label="Date de la mission *" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Durée estimée : <strong style={{ color:C.text }}>{hours}h</strong></label>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {[4,6,8,10,12].map(h=>(
+              <button key={h} onClick={()=>setHours(h)} style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:hours===h?C.violet:C.grayLight, color:hours===h?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{h}h</button>
+            ))}
+          </div>
+        </div>
+
+        <Input label="Adresse de la mission *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} />
+        <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
+
+        <div style={{ marginBottom:20 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Description de la mission <span style={{ fontWeight:400 }}>(optionnel)</span></label>
+          <textarea placeholder="Tâches attendues, matériel fourni, accès, consignes…" value={description} onChange={e=>setDesc(e.target.value)}
+            style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text, background:"#0D1B3E" }} />
+        </div>
+
+        <Btn full disabled={!isValid} onClick={()=>onSubmit({ sector:s, metier, date, hours, description, adresse, ville })} style={{ fontSize:16, padding:"17px" }}>
+          📢 Envoyer aux prestataires →
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── MISSION BROADCAST SCREEN ─────────────────────────────────────
+function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
+  const m = mission || {};
+  const matching = PROVIDERS.filter(p=>p.sector===m.sector?.id && (!m.metier||p.jobTitle===m.metier) && p.available);
+  const [responses, setResponses] = useState([]);
+  const [tick, setTick]           = useState(0);
+
+  // Spinner CSS
+  useEffect(()=>{
+    const style = document.getElementById("jober-spin-style");
+    if(!style){
+      const s=document.createElement("style");
+      s.id="jober-spin-style";
+      s.textContent="@keyframes joberSpin{to{transform:rotate(360deg)}}";
+      document.head.appendChild(s);
+    }
+  },[]);
+
+  // Simulate prestataires responding one by one
+  useEffect(()=>{
+    if(!matching.length) return;
+    const timers = matching.map((p,i)=>{
+      const delay = 2500 + i*1800 + Math.random()*1000;
+      const accepted = Math.random() < 0.72;
+      return setTimeout(()=>setResponses(prev=>[...prev,{provider:p, accepted}]), delay);
+    });
+    return ()=>timers.forEach(clearTimeout);
+  },[]);
+
+  const accepted  = responses.filter(r=>r.accepted);
+  const declined  = responses.filter(r=>!r.accepted);
+  const waiting   = matching.length - responses.length;
+  const tarifLabel = p => formatE(prixClient(p.tarifNet, p.sector));
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
+      <style>{`@keyframes joberSpin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Header */}
+      <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 20px", borderBottom:`1px solid ${C.border}` }}>
+        <button onClick={onCancel} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Annuler la demande</button>
+        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>📢 Demande diffusée</h2>
+        <p style={{ color:C.textSub, fontSize:12, margin:0 }}>
+          {m.sector?.label}{m.metier?" · "+m.metier:""} · {m.date} · {m.hours}h · {m.ville}
+        </p>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        {/* Compteurs */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginBottom:18 }}>
+          {[
+            { label:"Notifiés",   value:matching.length, color:C.violet   },
+            { label:"Accepté",    value:accepted.length, color:C.success  },
+            { label:"Décliné",    value:declined.length, color:C.accent   },
+            { label:"En attente", value:waiting,         color:C.textSub  },
+          ].map(s=>(
+            <div key={s.label} style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 8px", textAlign:"center", border:`1px solid ${s.color}33` }}>
+              <div style={{ fontWeight:800, color:s.color, fontSize:20 }}>{s.value}</div>
+              <div style={{ color:C.textSub, fontSize:9, marginTop:2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Indicateur attente */}
+        {waiting > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:16, display:"flex", gap:12, alignItems:"center", border:`1px solid ${C.border}` }}>
+            <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.violet}`, borderTopColor:"transparent", animation:"joberSpin 0.9s linear infinite", flexShrink:0 }} />
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>En attente de {waiting} prestataire{waiting>1?"s":""}</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les réponses arrivent en temps réel…</div>
+            </div>
+          </div>
+        )}
+
+        {/* Liste des acceptants */}
+        {accepted.length > 0 && (
+          <>
+            <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>
+              ✅ {accepted.length} prestataire{accepted.length>1?"s":""} disponible{accepted.length>1?"s":""}
+              {waiting===0 && <span style={{ fontWeight:500, color:C.textSub, fontSize:12 }}> — choisissez maintenant</span>}
+            </div>
+            {accepted.map(({provider:p})=>(
+              <div key={p.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:10, border:`2px solid ${C.success}55`, boxShadow:"0 4px 16px rgba(0,0,0,0.4)" }}>
+                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
+                  <div style={{ width:48, height:48, borderRadius:14, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{p.avatar}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{p.name}</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>{p.jobTitle}</div>
+                    <div style={{ display:"flex", gap:8, marginTop:4, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>★ {p.rating}</span>
+                      <span style={{ color:C.textMuted, fontSize:11 }}>·</span>
+                      <span style={{ fontSize:12, color:C.textSub }}>{p.experience}</span>
+                      <span style={{ color:C.textMuted, fontSize:11 }}>·</span>
+                      <span style={{ fontSize:12, color:C.textSub }}>{p.distance}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight:800, color:C.success, fontSize:16 }}>{tarifLabel(p)}</div>
+                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {formatE(prixClient(p.tarifNet,p.sector)*m.hours).replace("/h","")}</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <Btn full variant="success" onClick={()=>onChoose(p)} style={{ padding:"12px", fontSize:14 }}>
+                    Choisir {p.name.split(" ")[0]} →
+                  </Btn>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Déclinés */}
+        {declined.length > 0 && (
+          <div style={{ marginTop:8, marginBottom:12 }}>
+            <div style={{ fontWeight:600, color:C.textSub, fontSize:12, marginBottom:8 }}>
+              {declined.length} prestataire{declined.length>1?"s":""} indisponible{declined.length>1?"s":""}
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {declined.map(({provider:p})=>(
+                <div key={p.id} style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"7px 12px", display:"flex", gap:8, alignItems:"center", opacity:0.45 }}>
+                  <span style={{ fontSize:16 }}>{p.avatar}</span>
+                  <span style={{ fontSize:12, color:C.textSub }}>{p.name.split(" ")[0]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* État vide initial */}
+        {responses.length===0 && (
+          <div style={{ textAlign:"center", padding:"48px 20px" }}>
+            <div style={{ fontSize:52, marginBottom:16 }}>📱</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Notifications envoyées</div>
+            <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7 }}>
+              {matching.length} prestataire{matching.length>1?"s":""} consulte{matching.length===1?"":"nt"} votre demande…<br/>
+              Les réponses apparaissent ici en temps réel.
+            </div>
+          </div>
+        )}
+
+        {/* Plus personne en attente, aucun acceptant */}
+        {waiting===0 && accepted.length===0 && (
+          <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}30`, borderRadius:r, padding:"14px 16px", marginTop:8, textAlign:"center" }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>😔</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Aucun prestataire disponible</div>
+            <div style={{ color:C.textSub, fontSize:12 }}>Essayez en mode urgence ou changez de date.</div>
+            <Btn onClick={onCancel} style={{ marginTop:14 }}>Modifier la demande</Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("splash");
@@ -5896,6 +6126,7 @@ export default function App() {
   const [legalType,setLegalType]=useState("cgu");
   const [payslipData,setPayslipData]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
+  const [pendingMission,setPendingMission]=useState(null);
 
   const navigate=(to,data)=>{
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
@@ -5904,6 +6135,8 @@ export default function App() {
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
+    if(to==="mission_request") setSelectedSector(data);
+    if(to==="mission_broadcast") setPendingMission(data);
     setScreen(to);
   };
 
@@ -5941,6 +6174,8 @@ export default function App() {
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} />}
+      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
+      {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
