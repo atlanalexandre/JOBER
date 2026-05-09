@@ -2718,9 +2718,16 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [showGuide,setShowGuide]=useState(false);
   const [choixAE,setChoixAE]=useState(null);
   const [abonnement,setAbonnement]=useState("free");
+  const [justAdded,setJustAdded]=useState(false);
 
   const toggleDispo=(jour,plage)=>setDispos(prev=>{const curr=prev[jour]||[];const next=curr.includes(plage)?curr.filter(p=>p!==plage):[...curr,plage];return{...prev,[jour]:next};});
-  const addMetier=()=>{if(!newMetier.sector||!newMetier.metier)return;setMetiers(prev=>[...prev,{...newMetier,id:Date.now()}]);setNewMetier({sector:"",metier:"",niveau:"Confirmé",certifs:""});};
+  const addMetier=()=>{
+    if(!newMetier.sector||!newMetier.metier)return;
+    setMetiers(prev=>[...prev,{...newMetier,id:Date.now()}]);
+    setNewMetier({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
+    setJustAdded(true);
+    setTimeout(()=>setJustAdded(false),1500);
+  };
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
@@ -2731,7 +2738,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
     if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;
     if(step===3)return ae.siret&&ae.siren&&ae.activite;
     if(step===4)return docsOk;
-    if(step===5)return metiers.length>0;
+    if(step===5)return true;
     if(!isLaunchPhase()&&step===6)return true;
     if(step===dispoStep)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);
     return true;
@@ -2857,28 +2864,43 @@ function PrestaOnboarding({ onComplete, onBack }) {
           ))}
         </>}
         {step===5 && <>
-          {metiers.length>0 && <div style={{ marginBottom:18 }}>
-            <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>Vos métiers ({metiers.length})</p>
-            {metiers.map((m,i)=>(
-              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:r, padding:"12px 14px", marginBottom:8, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.metier}</div>
-                  <div style={{ color:C.textSub, fontSize:11 }}>{SECTORS.find(s=>s.id===m.sector)?.label} · {m.niveau}</div>
-                  {m.certifs&&<div style={{ color:C.violet, fontSize:11, marginTop:2 }}>🎓 {m.certifs}</div>}
-                  {m.tarifNet && (
-                    <div style={{ display:"flex", gap:8, marginTop:4, alignItems:"center" }}>
-                      <span style={{ fontSize:12, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet)}</span>
-                      <span style={{ fontSize:10, color:C.textSub }}>→ Client : {formatE(prixClient(m.tarifNet, m.sector))}</span>
-                    </div>
-                  )}
-                </div>
-                <button onClick={()=>setMetiers(prev=>prev.filter((_,j)=>j!==i))} style={{ background:"none", border:"none", color:C.accent, cursor:"pointer", fontSize:18 }}>×</button>
+          {/* Liste des métiers ajoutés */}
+          {metiers.length>0 && (
+            <div style={{ marginBottom:18 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:0 }}>Vos métiers ({metiers.length})</p>
+                <span style={{ background:`${C.success}20`, color:C.success, fontSize:11, fontWeight:700, borderRadius:8, padding:"3px 10px" }}>✓ {metiers.length} ajouté{metiers.length>1?"s":""}</span>
               </div>
-            ))}
-          </div>}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"0 0 4px" }}>+ Ajouter un métier</p>
-            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Vous pouvez ajouter plusieurs métiers et plusieurs secteurs — chacun avec son propre taux horaire</p>
+              {metiers.map((m,i)=>(
+                <div key={m.id} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px 14px", marginBottom:8, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:38, height:38, borderRadius:10, background:`${C.violet}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                    {SECTORS.find(s=>s.id===m.sector)?.icon||"💼"}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.metier}</div>
+                    <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{SECTORS.find(s=>s.id===m.sector)?.label} · {m.niveau}</div>
+                    {m.certifs&&<div style={{ color:C.violet, fontSize:11, marginTop:2 }}>🎓 {m.certifs}</div>}
+                    <div style={{ display:"flex", gap:12, marginTop:5, alignItems:"center" }}>
+                      <span style={{ fontSize:13, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet||12)}</span>
+                      <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet||12, m.sector))}</span>
+                    </div>
+                  </div>
+                  <button onClick={()=>setMetiers(prev=>prev.filter((_,j)=>j!==i))} style={{ background:"rgba(242,94,94,0.1)", border:"none", borderRadius:8, width:32, height:32, color:C.accent, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulaire ajout métier */}
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`1px dashed ${C.border}` }}>
+            <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"0 0 2px" }}>
+              {metiers.length===0 ? "+ Ajouter un métier" : "+ Ajouter un autre métier"}
+            </p>
+            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 14px" }}>
+              {metiers.length===0
+                ? "Optionnel — vous pourrez compléter après validation"
+                : "Chaque métier peut avoir son propre taux horaire"}
+            </p>
             <Select label="Secteur" options={SECTORS.map(s=>s.label)} value={SECTORS.find(s=>s.id===newMetier.sector)?.label||""} onChange={e=>{const s=SECTORS.find(x=>x.label===e.target.value);setNewMetier({...newMetier,sector:s?.id||"",metier:""}); }} />
             {newMetier.sector && <Select label="Métier" options={METIERS[newMetier.sector]||[]} value={newMetier.metier} onChange={e=>{
               const tarif = METIERS_TARIFS[newMetier.sector]?.[e.target.value];
@@ -2954,8 +2976,16 @@ function PrestaOnboarding({ onComplete, onBack }) {
               );
             })()}
             <Select label="Niveau" options={["Débutant","Confirmé","Expert"]} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />
-            <Input label="Certifications (optionnel)" placeholder="Ex : CACES 1, HACCP, SST…" value={newMetier.certifs} onChange={e=>setNewMetier({...newMetier,certifs:e.target.value})} hint="Laissez vide si aucune certification particulière" />
-            <Btn full onClick={addMetier} disabled={!newMetier.sector||!newMetier.metier} style={{ padding:"12px" }}>+ Ajouter</Btn>
+            <Input label="Certifications (optionnel)" placeholder="Ex : CACES 1, HACCP, SST…" value={newMetier.certifs} onChange={e=>setNewMetier({...newMetier,certifs:e.target.value})} hint="Laissez vide si aucune certification" />
+            <Btn
+              full
+              onClick={addMetier}
+              disabled={!newMetier.sector||!newMetier.metier}
+              variant={justAdded?"success":"primary"}
+              style={{ padding:"13px", fontSize:15 }}
+            >
+              {justAdded ? "✓ Métier ajouté !" : `${metiers.length===0?"+ Ajouter ce métier":"+ Ajouter un autre métier"}`}
+            </Btn>
           </div>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"0 0 12px" }}>🌍 Langues parlées</p>
