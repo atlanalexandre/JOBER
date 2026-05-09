@@ -5143,9 +5143,17 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
   const { isMobile } = useResponsive();
 
+  const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
+    <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
+      <span style={{ fontSize:13 }}>⚡</span>
+      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>MODE HYBRIDE ACTIF — Abonnements activés · 0% commission</span>
+    </div>
+  );
+
   if (isMobile) {
     return (
       <div style={{ maxWidth:430, margin:"0 auto", height:"100vh", display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden", boxShadow:"0 0 80px rgba(0,0,0,0.8)" }}>
+        {hybridBanner}
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {children}
         </div>
@@ -5164,6 +5172,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
         <DesktopSidebar screen={screen} role={role} onNavigate={onNavigate} onlineStatus={onlineStatus} onToggleOnline={onToggleOnline} />
       )}
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column" }}>
+        {hybridBanner}
         {/* Desktop content wrapper */}
         <div style={{
           maxWidth: showSidebar ? 900 : 480,
