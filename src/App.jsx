@@ -2710,7 +2710,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [ae,setAe]=useState({siret:"",siren:"",activite:"",dateCreation:"",codeAPE:"",regime:"micro-entreprise"});
   const [docs,setDocs]=useState({});
   const [metiers,setMetiers]=useState([]);
-  const [newMetier,setNewMetier]=useState({sector:"",metier:"",niveau:"Confirmé",certifs:""});
+  const [newMetier,setNewMetier]=useState({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
   const [langues,setLangues]=useState(["Français"]);
   const [bio,setBio]=useState("");
   const [dispos,setDispos]=useState({});
@@ -2737,7 +2737,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
     if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;
     if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;
     if(step===3)return ae.siret&&ae.siren&&ae.activite;
-    if(step===4)return docsOk;
+    if(step===4)return true;
     if(step===5)return true;
     if(!isLaunchPhase()&&step===6)return true;
     if(step===dispoStep)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);
