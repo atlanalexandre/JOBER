@@ -5172,12 +5172,51 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
 function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
   const { isMobile } = useResponsive();
+  const [adminHover, setAdminHover] = useState(false);
 
   const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
     <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
       <span style={{ fontSize:13 }}>⚡</span>
       <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>MODE HYBRIDE ACTIF — Abonnements activés · 0% commission</span>
     </div>
+  );
+
+  const showAdminBtn = !["bo_login","bo_dashboard"].includes(screen);
+  const hasBottomNav = showClientNav || showPrestaNav;
+  const adminBtn = showAdminBtn && (
+    <button
+      onClick={() => onNavigate("bo_login")}
+      onMouseEnter={() => setAdminHover(true)}
+      onMouseLeave={() => setAdminHover(false)}
+      title="Administration"
+      style={{
+        position: "absolute",
+        bottom: hasBottomNav ? 74 : 14,
+        right: 14,
+        zIndex: 1000,
+        width: adminHover ? "auto" : 34,
+        height: 34,
+        borderRadius: 17,
+        background: adminHover ? "rgba(79,70,229,0.85)" : "rgba(255,255,255,0.07)",
+        border: `1px solid ${adminHover ? "rgba(79,70,229,0.6)" : "rgba(255,255,255,0.12)"}`,
+        color: adminHover ? "#fff" : "rgba(255,255,255,0.4)",
+        fontSize: 15,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        padding: adminHover ? "0 14px" : "0",
+        backdropFilter: "blur(10px)",
+        transition: "all 0.2s",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        boxShadow: adminHover ? "0 4px 16px rgba(79,70,229,0.4)" : "none",
+      }}
+    >
+      <span>⚙️</span>
+      {adminHover && <span style={{ fontSize: 12, fontWeight: 600 }}>Admin</span>}
+    </button>
   );
 
   if (isMobile) {
@@ -5189,6 +5228,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
+        {adminBtn}
       </div>
     );
   }
@@ -5197,7 +5237,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
   const showSidebar = role && !["splash","role","how_client","how_presta","client_onboarding","client_auth","presta_onboarding","presta_pending","bo_login","bo_dashboard"].includes(screen);
 
   return (
-    <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif" }}>
+    <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
       {showSidebar && (
         <DesktopSidebar screen={screen} role={role} onNavigate={onNavigate} onlineStatus={onlineStatus} onToggleOnline={onToggleOnline} />
       )}
@@ -5214,6 +5254,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
           {children}
         </div>
       </div>
+      {!showSidebar && adminBtn}
     </div>
   );
 }
