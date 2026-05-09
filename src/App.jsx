@@ -73,7 +73,14 @@ const shadow = {
 };
 
 // ── Modèle dual M1 ↔ Hybride ─────────────────────────────────────
-const MODEL_CONFIG = { currentModel:"launch" }; // "launch" | "hybrid"
+const MODEL_CONFIG = {
+  get currentModel() {
+    try { return localStorage.getItem("jober_model") || "launch"; } catch { return "launch"; }
+  },
+  set currentModel(v) {
+    try { localStorage.setItem("jober_model", v); } catch {}
+  },
+};
 const isLaunchPhase = () => MODEL_CONFIG.currentModel === "launch";
 
 const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, btp:0.15, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
@@ -4032,6 +4039,7 @@ function BackofficeLogin({ onLogin, onBack }) {
 function BackofficeDashboard({ onBack, onModelChange }) {
   const [tab, setTab] = useState("dashboard");
   const [boConfirm, setBoConfirm] = useState(false);
+  const [toggled, setToggled] = useState(false);
   const [, forceUpdate] = useState(0);
   const d = BO_DATA;
 
@@ -4063,6 +4071,18 @@ function BackofficeDashboard({ onBack, onModelChange }) {
         </div>
       </div>
 
+      {toggled && (
+        <div style={{ margin:"12px 18px 0", background: isLaunchPhase()?"rgba(217,119,6,0.20)":"rgba(124,111,224,0.20)", border:`1px solid ${isLaunchPhase()?"rgba(217,119,6,0.5)":"rgba(124,111,224,0.5)"}`, borderRadius:r, padding:"12px 16px", display:"flex", gap:10, alignItems:"center" }}>
+          <span style={{ fontSize:20 }}>{isLaunchPhase()?"🚀":"⚡"}</span>
+          <div>
+            <div style={{ fontWeight:700, color:C.white, fontSize:13 }}>Modèle {isLaunchPhase()?"Lancement (M1)":"Hybride"} actif</div>
+            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, marginTop:2 }}>
+              {isLaunchPhase()?"Commission 20% — prestataires gratuits":"Abonnements activés — 0% commission — étape inscription ajoutée"}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toggle modèle M1 ↔ Hybride ── */}
       <div style={{ padding:"14px 18px", background:"rgba(255,255,255,0.02)", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
         <div style={{ background:"rgba(255,255,255,0.05)", border:`1px solid rgba(255,255,255,0.10)`, borderRadius:r+2, padding:"14px" }}>
@@ -4092,7 +4112,7 @@ function BackofficeDashboard({ onBack, onModelChange }) {
                   : "Retour à la commission 20% intégrée. Abonnements et frais MER désactivés."}
               </div>
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>{ const m=isLaunchPhase()?"hybrid":"launch"; MODEL_CONFIG.currentModel=m; setBoConfirm(false); forceUpdate(n=>n+1); onModelChange?.(m); }} style={{ flex:1, padding:"10px", border:"none", borderRadius:r, background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ Confirmer</button>
+                <button onClick={()=>{ const m=isLaunchPhase()?"hybrid":"launch"; MODEL_CONFIG.currentModel=m; setBoConfirm(false); setToggled(true); forceUpdate(n=>n+1); onModelChange?.(m); setTimeout(()=>setToggled(false),4000); }} style={{ flex:1, padding:"10px", border:"none", borderRadius:r, background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ Confirmer</button>
                 <button onClick={()=>setBoConfirm(false)} style={{ flex:1, padding:"10px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:r, background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
               </div>
             </div>
@@ -5682,7 +5702,7 @@ function AbonnementPrestaScreen({ onBack }) {
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("splash");
-  const [model,setModel]=useState(MODEL_CONFIG.currentModel);
+  const [model,setModel]=useState(()=>MODEL_CONFIG.currentModel);
   const [role,setRole]=useState(null);
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
