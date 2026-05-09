@@ -5660,6 +5660,7 @@ function DocUploadScreen({ onBack }) {
 const LAUNCH_MONTHS = 6;
 
 function LaunchBadge({ context="home" }) {
+  if(!isLaunchPhase()) return null;
   const msgs = {
     home:    { icon:"🎉", title:"Offre de lancement — 6 mois", sub:"Tarifs préférentiels · Profitez-en avant la fin de la période" },
     presta:  { icon:"🚀", title:"Phase de lancement — 6 mois offerts", sub:"Accès illimité gratuit · 0% de commission sur vos missions" },
