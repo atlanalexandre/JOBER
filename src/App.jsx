@@ -2697,7 +2697,7 @@ function ReferralScreen({ onBack }) {
 // ── PRESTATAIRE ONBOARDING ────────────────────────────────────────
 function PrestaOnboarding({ onComplete, onBack }) {
   const [step,setStep]=useState(1);
-  const TOTAL=7;
+  const TOTAL=isLaunchPhase()?7:8;
   const [infos,setInfos]=useState({prenom:"",nom:"",email:"",tel:"",password:"",dateNaissance:"",lieuNaissance:"",nationalite:"France"});
   const [adresse,setAdresse]=useState({rue:"",ville:"",cp:"",pays:"France",rayon:"20"});
   const [ae,setAe]=useState({siret:"",siren:"",activite:"",dateCreation:"",codeAPE:"",regime:"micro-entreprise"});
@@ -2710,17 +2710,35 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [prefs,setPrefs]=useState({contrat:"Journée complète",tarifMin:"12",vehicule:false,permis:false,mobilite:"20"});
   const [showGuide,setShowGuide]=useState(false);
   const [choixAE,setChoixAE]=useState(null);
+  const [abonnement,setAbonnement]=useState("free");
 
   const toggleDispo=(jour,plage)=>setDispos(prev=>{const curr=prev[jour]||[];const next=curr.includes(plage)?curr.filter(p=>p!==plage):[...curr,plage];return{...prev,[jour]:next};});
   const addMetier=()=>{if(!newMetier.sector||!newMetier.metier)return;setMetiers(prev=>[...prev,{...newMetier,id:Date.now()}]);setNewMetier({sector:"",metier:"",niveau:"Confirmé",certifs:""});};
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
-  const stepValid=()=>{if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;if(step===3)return ae.siret&&ae.siren&&ae.activite;if(step===4)return docsOk;if(step===5)return metiers.length>0;if(step===6)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);return true;};
+  const dispoStep=isLaunchPhase()?6:7;
+  const recapStep=isLaunchPhase()?7:8;
+  const stepValid=()=>{
+    if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;
+    if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;
+    if(step===3)return ae.siret&&ae.siren&&ae.activite;
+    if(step===4)return docsOk;
+    if(step===5)return metiers.length>0;
+    if(!isLaunchPhase()&&step===6)return true;
+    if(step===dispoStep)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);
+    return true;
+  };
+  const TITLES=isLaunchPhase()
+    ?["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Récapitulatif"]
+    :["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Abonnement","Disponibilités","Récapitulatif"];
+  const SUBS=isLaunchPhase()
+    ?["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Vérifiez avant envoi"]
+    :["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Choisissez votre plan","Vos créneaux","Vérifiez avant envoi"];
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
-      <StepHeader step={step} total={TOTAL} title={["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Récapitulatif"][step-1]} subtitle={["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Vérifiez avant envoi"][step-1]} onBack={step===1?onBack:()=>setStep(s=>s-1)} />
+      <StepHeader step={step} total={TOTAL} title={TITLES[step-1]} subtitle={SUBS[step-1]} onBack={step===1?onBack:()=>setStep(s=>s-1)} />
       <div style={{ padding:"22px 18px" }}>
         {step===1 && <>
           <div style={{ display:"flex", gap:10 }}><div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" value={infos.prenom} onChange={e=>setInfos({...infos,prenom:e.target.value})} /></div><div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" value={infos.nom} onChange={e=>setInfos({...infos,nom:e.target.value})} /></div></div>
@@ -2943,7 +2961,37 @@ function PrestaOnboarding({ onComplete, onBack }) {
             <textarea placeholder="Décrivez votre parcours…" value={bio} onChange={e=>setBio(e.target.value)} style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text }} />
           </div>
         </>}
-        {step===6 && <>
+        {!isLaunchPhase() && step===6 && <>
+          <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan JOBER</div>
+            <div style={{ color:C.textSub, fontSize:12 }}>0% de commission sur toutes vos missions. Changez de plan à tout moment.</div>
+          </div>
+          {ABONNEMENTS_PRESTA.map(plan=>{
+            const active=abonnement===plan.id;
+            return (
+              <div key={plan.id} onClick={()=>setAbonnement(plan.id)} style={{ background:active?plan.color+"15":"#0D1B3E", border:`2px solid ${active?plan.color:C.border}`, borderRadius:r+4, padding:"14px", marginBottom:10, cursor:"pointer", position:"relative" }}>
+                {plan.popular&&<div style={{ position:"absolute", top:10, right:10, background:plan.color, borderRadius:6, padding:"2px 8px", color:"#fff", fontSize:10, fontWeight:700 }}>Populaire</div>}
+                <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
+                  <div style={{ width:40, height:40, borderRadius:11, background:plan.color+"20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{plan.icon}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{plan.label}</div>
+                    <div style={{ fontWeight:800, color:plan.color, fontSize:17 }}>{plan.price===0?"Gratuit":plan.price+" €/mois"}</div>
+                  </div>
+                  <div style={{ width:22, height:22, borderRadius:"50%", border:`2px solid ${active?plan.color:C.border}`, background:active?plan.color:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {active&&<div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }}/>}
+                  </div>
+                </div>
+                {plan.features.map((f,i)=>(
+                  <div key={i} style={{ display:"flex", gap:8, padding:"2px 0" }}>
+                    <span style={{ color:plan.color, fontSize:12 }}>✓</span>
+                    <span style={{ color:C.textSub, fontSize:12 }}>{f}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </>}
+        {step===dispoStep && <>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <p style={{ fontWeight:800, color:C.text, fontSize:14, margin:"0 0 4px" }}>📅 Disponibilités hebdomadaires</p>
             <p style={{ color:C.textSub, fontSize:12, margin:"0 0 16px" }}>Modifiables à tout moment depuis votre profil</p>
@@ -2981,7 +3029,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             </div>
           </div>
         </>}
-        {step===7 && <>
+        {step===recapStep && <>
           <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px 16px", marginBottom:18, display:"flex", gap:12, alignItems:"center" }}>
             <span style={{ fontSize:28 }}>🎉</span>
             <div><div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Profil complet !</div><div style={{ color:C.textSub, fontSize:12 }}>Vérifiez avant envoi</div></div>
@@ -2993,6 +3041,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${DOCS_REQUIS.length} chargés`]},
             {title:"💼 Métiers & taux nets",items:metiers.map(m=>m.tarifNet?`${m.metier} — ${formatE(m.tarifNet)} net`:m.metier)},
             {title:"📅 Disponibilités",items:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j} : ${(dispos[j]||[]).map(p=>p.split(" ")[0]).join(", ")}`)},
+            ...(!isLaunchPhase()?[{title:"⚡ Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}]:[]),
           ].map(section=>(
             <div key={section.title} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:8 }}>{section.title}</div>
@@ -3009,7 +3058,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
           <Btn full variant="success" onClick={onComplete} style={{ fontSize:16, padding:"18px" }}>✅ Envoyer mon dossier</Btn>
         </>}
-        {step<7 && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
+        {step<TOTAL && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
       </div>
     </div>
   );
@@ -3038,7 +3087,7 @@ function PrestaDashboard({ onNavigate }) {
         </div>
       </div>
       <div style={{ padding:"18px 18px 0" }}>
-        <LaunchBadge context="presta" />
+        {isLaunchPhase() && <LaunchBadge context="presta" />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18 }}>
           {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
