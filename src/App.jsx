@@ -2731,7 +2731,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
-  const dispoStep=isLaunchPhase()?6:7;
+  const dispoStep=6;
   const recapStep=isLaunchPhase()?7:8;
   const stepValid=()=>{
     if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;
@@ -2739,16 +2739,16 @@ function PrestaOnboarding({ onComplete, onBack }) {
     if(step===3)return ae.siret&&ae.siren&&ae.activite;
     if(step===4)return true;
     if(step===5)return true;
-    if(!isLaunchPhase()&&step===6)return true;
     if(step===dispoStep)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);
+    if(!isLaunchPhase()&&step===7)return true;
     return true;
   };
   const TITLES=isLaunchPhase()
     ?["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Récapitulatif"]
-    :["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Abonnement","Disponibilités","Récapitulatif"];
+    :["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Abonnement","Récapitulatif"];
   const SUBS=isLaunchPhase()
     ?["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Vérifiez avant envoi"]
-    :["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Choisissez votre plan","Vos créneaux","Vérifiez avant envoi"];
+    :["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Choisissez votre plan","Vérifiez avant envoi"];
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
@@ -2998,7 +2998,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             <textarea placeholder="Décrivez votre parcours…" value={bio} onChange={e=>setBio(e.target.value)} style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text }} />
           </div>
         </>}
-        {!isLaunchPhase() && step===6 && <>
+        {!isLaunchPhase() && step===7 && <>
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan JOBER</div>
             <div style={{ color:C.textSub, fontSize:12 }}>0% de commission sur toutes vos missions. Changez de plan à tout moment.</div>
