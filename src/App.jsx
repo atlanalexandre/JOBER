@@ -4422,6 +4422,51 @@ function HowItWorksScreen({ role, onNext, onBack }) {
           </div>
         )}
 
+        {!isLaunchPhase() && role==="prestataire" && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ background:`linear-gradient(135deg,${C.violet}18,${C.indigo}10)`, border:`1px solid ${C.violet}40`, borderRadius:r+4, padding:"14px 16px", marginBottom:10 }}>
+              <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
+                <span style={{ fontSize:16 }}>⚡</span>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>Abonnements JOBER</div>
+              </div>
+              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:12 }}>
+                0% de commission sur toutes vos missions. Choisissez le plan adapté à votre activité.
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                {ABONNEMENTS_PRESTA.map(plan => (
+                  <div key={plan.id} style={{ flex:1, background:"#0D1B3E", borderRadius:12, padding:"10px 8px", textAlign:"center", border:`1px solid ${plan.color}33` }}>
+                    <div style={{ fontSize:18, marginBottom:4 }}>{plan.icon}</div>
+                    <div style={{ fontWeight:700, color:plan.color, fontSize:12 }}>{plan.label}</div>
+                    <div style={{ color:C.text, fontSize:13, fontWeight:800, marginTop:2 }}>
+                      {plan.price===0 ? "Gratuit" : `${plan.price}€`}
+                    </div>
+                    {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
+                    <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
+                      {plan.missions===999 ? "Illimité" : `${plan.missions} missions`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"10px 14px", display:"flex", gap:8, alignItems:"center" }}>
+              <span style={{ fontSize:14 }}>✅</span>
+              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>Votre plan sera sélectionné lors de l'inscription. Changez-le à tout moment depuis votre profil.</div>
+            </div>
+          </div>
+        )}
+
+        {!isLaunchPhase() && role==="client" && (
+          <div style={{ background:`linear-gradient(135deg,${C.violet}12,${C.indigo}08)`, border:`1px solid ${C.violet}35`, borderRadius:r+4, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"flex-start" }}>
+            <span style={{ fontSize:20, flexShrink:0 }}>💡</span>
+            <div>
+              <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:4 }}>Tarification transparente</div>
+              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
+                Les prestataires JOBER sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la mission.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Progress dots */}
         <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:36 }}>
           {steps.map((_,i) => (
