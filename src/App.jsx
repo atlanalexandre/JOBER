@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-const { useState, useEffect, useRef } = React;
-
 // ── Responsive hook ───────────────────────────────────────────────
 const useResponsive = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
