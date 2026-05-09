@@ -3936,6 +3936,7 @@ const BO_DATA = {
   users:        { clients:142, prestataires:89, total:231, newThisWeek:14 },
   missions:     { total:387, enCours:23, terminees:341, annulees:23, tauxCompletion:88 },
   finance:      { caTotal:48320, commissionJober:8920, escrowEnAttente:3240, litiges:3 },
+  abonnements:  { free:54, premium:28, elite:7, newThisWeek:6, churnThisMonth:2 },
   noteMoyenne:  4.7,
   tauxReponse:  94,
   sectors: [
@@ -4176,8 +4177,64 @@ function BackofficeDashboard({ onBack, onModelChange }) {
             <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`+${d.users.newThisWeek} cette semaine`} color={C.violet} />
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
             <KPICard icon="💶" label="CA total (€)" value={`${(d.finance.caTotal/1000).toFixed(0)}k`} sub="Depuis le lancement" color={C.accentGold} />
-            <KPICard icon="⚡" label="Commission JOBER" value={`${(d.finance.commissionJober/1000).toFixed(1)}k €`} color={C.accent} />
+            {isLaunchPhase()
+              ? <KPICard icon="⚡" label="Commission JOBER" value={`${(d.finance.commissionJober/1000).toFixed(1)}k €`} color={C.accent} />
+              : <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
+            }
           </div>
+
+          {/* Bloc abonnements — hybride uniquement */}
+          {!isLaunchPhase() && (
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>⚡ Abonnements prestataires</div>
+                <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                  <span style={{ fontSize:11, color:C.success, fontWeight:700 }}>+{d.abonnements.newThisWeek} cette sem.</span>
+                  <span style={{ fontSize:11, color:C.accent, fontWeight:600 }}>-{d.abonnements.churnThisMonth} churn</span>
+                </div>
+              </div>
+              {/* Plans */}
+              <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+                {[
+                  { plan: ABONNEMENTS_PRESTA[0], count: d.abonnements.free    },
+                  { plan: ABONNEMENTS_PRESTA[1], count: d.abonnements.premium },
+                  { plan: ABONNEMENTS_PRESTA[2], count: d.abonnements.elite   },
+                ].map(({ plan, count }) => {
+                  const total = d.abonnements.free + d.abonnements.premium + d.abonnements.elite;
+                  const pct = Math.round((count / total) * 100);
+                  return (
+                    <div key={plan.id} style={{ flex:1, background:`${plan.color}12`, border:`1px solid ${plan.color}33`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>{plan.icon}</div>
+                      <div style={{ fontWeight:800, color:plan.color, fontSize:22 }}>{count}</div>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:11, marginTop:2 }}>{plan.label}</div>
+                      <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>
+                        {plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}
+                      </div>
+                      <div style={{ marginTop:6, height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${pct}%`, background:plan.color, borderRadius:2 }} />
+                      </div>
+                      <div style={{ color:C.textSub, fontSize:10, marginTop:3 }}>{pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* MRR total */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(124,111,224,0.10)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 14px" }}>
+                <div>
+                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>MRR total</div>
+                  <div style={{ fontSize:20, fontWeight:800, color:"#7C6FE0" }}>
+                    {(d.abonnements.premium*29 + d.abonnements.elite*59).toLocaleString()} €/mois
+                  </div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>Abonnés payants</div>
+                  <div style={{ fontSize:20, fontWeight:800, color:C.text }}>
+                    {d.abonnements.premium + d.abonnements.elite}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Missions par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
