@@ -734,8 +734,19 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     setLoading(true); setError("");
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    if (err) { setLoading(false); setError(err.message); return; }
+
+    // Vérifier le vrai rôle du compte en base
+    const { data:{ user } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
     setLoading(false);
-    if (err) { setError(err.message); return; }
+
+    if (profile?.role && profile.role !== role) {
+      // Mauvais espace — on redirige vers le bon
+      setError(`Ce compte est un compte ${profile.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
+      await supabase.auth.signOut();
+      return;
+    }
     onLogin();
   };
 
@@ -747,7 +758,16 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       email, password,
       options: { data: { role } },
     });
-    if (err) { setLoading(false); setError(err.message); return; }
+    if (err) {
+      setLoading(false);
+      // Email déjà utilisé → message clair
+      if (err.message.includes("already") || err.message.includes("registered")) {
+        setError("Un compte existe déjà avec cet email. Connectez-vous à la place.");
+      } else {
+        setError(err.message);
+      }
+      return;
+    }
     // Fallback : créer le profil si le trigger ne l'a pas fait
     if (data?.user) {
       await supabase.from("profiles").upsert({
@@ -6687,8 +6707,8 @@ export default function App() {
     setScreen(to);
   };
 
-  const clientScreens=["home","catalogue","search_filters","dashboard"];
-  const prestaScreens=["p_home","p_missions","p_dashboard","calendar"];
+  const clientScreens=["home","catalogue","search_filters","dashboard","settings","contact_support"];
+  const prestaScreens=["p_home","p_missions","p_dashboard","calendar","settings","contact_support"];
   const showClientNav=role==="client"&&clientScreens.includes(screen);
   const showPrestaNav=role==="prestataire"&&prestaScreens.includes(screen);
 
