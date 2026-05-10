@@ -736,14 +736,22 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) { setLoading(false); setError(err.message); return; }
 
-    // Vérifier le vrai rôle du compte en base
     const { data:{ user } } = await supabase.auth.getUser();
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
     setLoading(false);
 
     if (profile?.role && profile.role !== role) {
-      // Mauvais espace — on redirige vers le bon
       setError(`Ce compte est un compte ${profile.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
+      await supabase.auth.signOut();
+      return;
+    }
+    if (!profile?.status || profile.status === "pending") {
+      setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
+      await supabase.auth.signOut();
+      return;
+    }
+    if (profile?.status === "rejected") {
+      setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
       await supabase.auth.signOut();
       return;
     }
@@ -768,10 +776,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       }
       return;
     }
-    // Fallback : créer le profil si le trigger ne l'a pas fait
     if (data?.user) {
       await supabase.from("profiles").upsert({
-        id: data.user.id, role, prenom: "", nom: "",
+        id: data.user.id, role, prenom: "", nom: "", status: "pending",
       });
     }
     setLoading(false);
@@ -1066,6 +1073,28 @@ function ContactSupportScreen({ onBack }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
+function PendingApprovalScreen({ onLogout }) {
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
+      <div style={{ width:80, height:80, borderRadius:24, background:"rgba(124,111,224,0.15)", border:"2px solid rgba(124,111,224,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24 }}>⏳</div>
+      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 12px" }}>Compte en attente</h2>
+      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:320, margin:"0 0 32px" }}>
+        Votre compte a bien été créé. Notre équipe va vérifier vos informations et activer votre accès sous 24h.
+        <br/><br/>
+        Vous recevrez une notification par email dès que votre compte sera validé.
+      </p>
+      <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"16px 20px", marginBottom:32, width:"100%", maxWidth:320 }}>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>Statut du compte</div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#FCD34D" }}>⏳ En attente de validation</div>
+      </div>
+      <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        Se déconnecter
+      </button>
     </div>
   );
 }
@@ -4561,6 +4590,89 @@ function BackofficeLogin({ onLogin, onBack }) {
   );
 }
 
+function BOComptes() {
+  const [profiles, setProfiles]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [filter, setFilter]       = useState("pending");
+  const [actioning, setActioning] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list" }) });
+      const data = await res.json();
+      setProfiles(Array.isArray(data) ? data : []);
+    } catch(e) { setProfiles([]); }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ load(); },[]);
+
+  const handleAction = async (profileId, action) => {
+    setActioning(profileId+action);
+    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId }) });
+    setActioning(null);
+    load();
+  };
+
+  const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
+  const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
+  const filtered = profiles.filter(p => filter==="all" || p.status===filter);
+
+  return (
+    <div style={{ padding:"16px 18px" }}>
+      <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Validation des comptes</h3>
+
+      {/* Filtres */}
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        {[["pending","⏳ En attente"],["approved","✅ Approuvés"],["rejected","❌ Refusés"],["all","Tous"]].map(([val,label])=>(
+          <button key={val} onClick={()=>setFilter(val)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${filter===val?C.violet:"rgba(255,255,255,0.15)"}`, background:filter===val?`${C.violet}33`:"transparent", color:filter===val?C.violet:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:filter===val?700:400, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0", fontSize:13 }}>Aucun compte dans cette catégorie</div>
+      ) : filtered.map(p => (
+        <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+            <div>
+              <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>
+                {p.prenom||p.nom ? `${p.prenom} ${p.nom}`.trim() : "Nom non renseigné"}
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>
+                {p.role==="prestataire"?"👷 Prestataire":"🏢 Client"} · {new Date(p.created_at).toLocaleDateString("fr-FR")}
+              </div>
+            </div>
+            <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
+              {statusLabel[p.status]||p.status}
+            </div>
+          </div>
+          {p.status==="pending" && (
+            <div style={{ display:"flex", gap:8 }}>
+              <button
+                onClick={()=>handleAction(p.id,"approve")}
+                disabled={!!actioning}
+                style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
+              >
+                {actioning===p.id+"approve" ? "…" : "✅ Approuver"}
+              </button>
+              <button
+                onClick={()=>handleAction(p.id,"reject")}
+                disabled={!!actioning}
+                style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"rgba(242,94,94,0.12)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
+              >
+                {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BackofficeDashboard({ onBack, onModelChange }) {
   const [tab, setTab] = useState("dashboard");
   const [boConfirm, setBoConfirm] = useState(false);
@@ -4647,13 +4759,16 @@ function BackofficeDashboard({ onBack, onModelChange }) {
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:0, overflowX:"auto", padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
+        {[{id:"comptes",l:"✅ Comptes"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"9px 14px", border:"none", borderBottom:`3px solid ${tab===t.id?C.violet:"transparent"}`, background:"transparent", color:tab===t.id?C.violet:C.gray, fontWeight:tab===t.id?800:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.2s" }}>{t.l}</button>
         ))}
       </div>
       <div style={{ height:1, background:"#162547", margin:"0 18px" }} />
 
       <div style={{ padding:"18px 18px" }}>
+
+        {/* ── COMPTES ── */}
+        {tab==="comptes" && <BOComptes />}
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
@@ -6731,8 +6846,14 @@ export default function App() {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
       setSupaUser(session.user);
-      const { data:profile } = await supabase.from("profiles").select("role").eq("id",session.user.id).single();
-      if(profile?.role){ setRole(profile.role); setScreen(profile.role==="prestataire"?"p_home":"home"); return; }
+      const { data:profile } = await supabase.from("profiles").select("role,status").eq("id",session.user.id).single();
+      if(profile?.role){
+        setRole(profile.role);
+        if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
+        if(profile.status === "rejected"){ setScreen("role"); return; }
+        setScreen(profile.role==="prestataire"?"p_home":"home");
+        return;
+      }
     }
     setScreen("role");
   };
@@ -6761,6 +6882,7 @@ export default function App() {
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
+      {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
@@ -6769,11 +6891,11 @@ export default function App() {
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
           onLogin={()=>setScreen("home")}
-          onRegister={()=>setScreen("how_client")}
+          onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
           onLogin={()=>setScreen("p_home")}
-          onRegister={()=>setScreen("how_presta")}
+          onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
       {/* Comment ca marche — uniquement pour les nouveaux inscrits */}
