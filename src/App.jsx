@@ -5789,7 +5789,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 }
 
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
-function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
+function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
   const { isMobile } = useResponsive();
   const [adminHover, setAdminHover] = useState(false);
 
@@ -5840,8 +5840,8 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
     </button>
   );
 
-  // Settings button — top-right, visible whenever user is logged in
-  const showSettingsBtn = role && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","settings","contact_support","reset_password"].includes(screen);
+  // Settings button — top-right, visible only when actually authenticated
+  const showSettingsBtn = isLoggedIn && !["bo_login","bo_dashboard","settings","contact_support","reset_password"].includes(screen);
   const settingsBtn = showSettingsBtn && (
     <button
       onClick={() => onNavigate("settings")}
@@ -5889,7 +5889,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
   }
 
   // Desktop layout
-  const showSidebar = role && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","reset_password"].includes(screen);
+  const showSidebar = isLoggedIn && !["bo_login","bo_dashboard","reset_password"].includes(screen);
 
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
@@ -6772,7 +6772,7 @@ export default function App() {
 
   return (
     <ResponsiveLayout
-      screen={screen} role={role} onNavigate={navigate}
+      screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
     >
