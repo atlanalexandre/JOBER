@@ -2234,13 +2234,14 @@ function MissionPendingScreen({ provider, amount, hours, onAccepted, onCancelled
   // Compte à rebours 1h
   useEffect(() => {
     if (phase !== "waiting") return;
-    if (secsLeft <= 0) {
-      setPhase("timeout");
-      return;
-    }
-    const t = setInterval(() => setSecsLeft(s => s - 1), 1000);
+    const t = setInterval(() => {
+      setSecsLeft(s => {
+        if (s <= 1) { setPhase("timeout"); clearInterval(t); return 0; }
+        return s - 1;
+      });
+    }, 1000);
     return () => clearInterval(t);
-  }, [phase, secsLeft]);
+  }, [phase]);
 
   // Appliquer la décision du prestataire dès qu'elle arrive
   useEffect(() => {
@@ -2654,13 +2655,16 @@ function ChatScreen({ provider, onBack }) {
     { from:"presta", text:"Bien sûr, je serai là à 8h00. J’ai tout le matériel nécessaire.", time:"09:18" },
   ]);
   const endRef=useRef(null);
+  const replyTimerRef=useRef(null);
   useEffect(()=>endRef.current?.scrollIntoView({behavior:"smooth"}),[msgs]);
+  useEffect(()=>()=>clearTimeout(replyTimerRef.current),[]);
 
   const send=()=>{
     if(!msg.trim()) return;
     setMsgs(m=>[...m,{from:"client",text:msg,time:new Date().toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"})}]);
     setMsg("");
-    setTimeout(()=>setMsgs(m=>[...m,{from:"presta",text:"Compris, je prends note !",time:new Date().toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"})}]),1200);
+    clearTimeout(replyTimerRef.current);
+    replyTimerRef.current=setTimeout(()=>setMsgs(m=>[...m,{from:"presta",text:"Compris, je prends note !",time:new Date().toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"})}]),1200);
   };
 
   return (
@@ -2817,14 +2821,18 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState("");
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=isLaunchPhase()?7:8;
 
   const handleSubmitDossier=async()=>{
     setSubmitting(true);
+    setSubmitError("");
     try {
-      const { data:{ user } } = await supabase.auth.getUser();
+      const { data, error:authErr } = await supabase.auth.getUser();
+      if(authErr || !data?.user) throw new Error("Session expirée, reconnectez-vous");
+      const user = data.user;
       if(user){
         await supabase.from("profiles").update({ prenom:infos.prenom, nom:infos.nom, tel:infos.tel }).eq("id",user.id);
         await supabase.from("prestataires").upsert({
@@ -2845,7 +2853,12 @@ function PrestaOnboarding({ onComplete, onBack }) {
           await supabase.from("abonnements").upsert({ prestataire_id:user.id, plan:abonnement });
         }
       }
-    } catch(e){ console.error("Supabase submit error",e); }
+    } catch(e){
+      console.error("Supabase submit error",e);
+      setSubmitError("Une erreur est survenue lors de l'envoi. Réessayez.");
+      setSubmitting(false);
+      return;
+    }
     setSubmitting(false);
     onComplete();
   };
@@ -2962,7 +2975,8 @@ function PrestaOnboarding({ onComplete, onBack }) {
           {DOCS_REQUIS.filter(d=>d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
-              const { data:{ user } } = await supabase.auth.getUser();
+              const { data:_ud } = await supabase.auth.getUser();
+              const user = _ud?.user;
               const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
               const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
               if(!error){
@@ -2975,7 +2989,8 @@ function PrestaOnboarding({ onComplete, onBack }) {
           {DOCS_REQUIS.filter(d=>!d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
-              const { data:{ user } } = await supabase.auth.getUser();
+              const { data:_ud } = await supabase.auth.getUser();
+              const user = _ud?.user;
               const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
               const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
               if(!error){
@@ -3215,6 +3230,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             </label>
           </div>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
+          {submitError && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{submitError}</div>}
           <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
         </>}
         {step<TOTAL && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
@@ -3450,12 +3466,14 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
   const total = (typeof amount === 'object' ? amount?.amount : amount) || 124;
   const providers = teamMode ? teamProviders : [provider || PROVIDERS[0]];
 
-  const handlePay = () => {
-    setProcessing(true);
+  useEffect(() => {
+    if (!processing) return;
     const t1 = setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
     const t2 = setTimeout(() => onSuccess && onSuccess(), 3800);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  };
+  }, [processing]);
+
+  const handlePay = () => setProcessing(true);
 
   const formatCard = (v) => v.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim();
   const formatExp  = (v) => { const d=v.replace(/\D/g,"").slice(0,4); return d.length>2?d.slice(0,2)+"/"+d.slice(2):d; };
@@ -4803,7 +4821,9 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
   const prestaNet = (p.tarifNet * missionHours).toFixed(2);
 
   useEffect(()=>{
-    if(bothSigned) setTimeout(()=>{ setFinalised(true); onSign && onSign(); }, 1800);
+    if(!bothSigned) return;
+    const t = setTimeout(()=>{ setFinalised(true); onSign && onSign(); }, 1800);
+    return ()=>clearTimeout(t);
   },[bothSigned]);
 
   if(finalised) return (
@@ -5667,11 +5687,12 @@ function NotificationsScreen({ onBack, onNavigate }) {
   useEffect(()=>{
     let channel;
     (async()=>{
-      const { data:{ user } } = await supabase.auth.getUser();
-      if(!user){ setLoading(false); return; }
+      const { data:authData, error:authErr } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if(authErr || !user){ setLoading(false); return; }
 
-      const { data } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at",{ascending:false}).limit(50);
-      setNotifs(data||[]);
+      const { data:notifData } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at",{ascending:false}).limit(50);
+      setNotifs(notifData||[]);
       setLoading(false);
 
       channel = supabase.channel("notifs_"+user.id)
@@ -5685,7 +5706,8 @@ function NotificationsScreen({ onBack, onNavigate }) {
   const unread = notifs.filter(n=>!n.read).length;
 
   const markAllRead = async () => {
-    const { data:{ user } } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
     if(user) await supabase.from("notifications").update({read:true}).eq("user_id",user.id).eq("read",false);
     setNotifs(ns=>ns.map(n=>({...n,read:true})));
   };
@@ -6065,7 +6087,8 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
     setSending(true);
     const mission = { sector:s, metier, date, hours, description, adresse, ville };
     try {
-      const { data:{ user } } = await supabase.auth.getUser();
+      const { data:_ud2 } = await supabase.auth.getUser();
+      const user = _ud2?.user;
       if(user){
         const { data } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
