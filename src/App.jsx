@@ -2755,6 +2755,36 @@ function ReferralScreen({ onBack }) {
   );
 }
 
+// ── DOC UPLOAD CARD ───────────────────────────────────────────────
+function DocUploadCard({ doc, value, onChange, required }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef(null);
+  const loaded = !!value;
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    await onChange(file);
+    setUploading(false);
+  };
+
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`2px solid ${loaded?C.success:C.grayLight}`, display:"flex", gap:11, alignItems:"flex-start" }}>
+      <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display:"none" }} onChange={handleFile} />
+      <div style={{ width:40, height:40, borderRadius:11, background:loaded?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doc.info}</div>
+        <button onClick={()=>inputRef.current?.click()} disabled={uploading} style={{ marginTop:6, background:"none", border:"none", color:loaded?C.success:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", padding:0, fontFamily:"inherit" }}>
+          {uploading ? "Envoi…" : loaded ? "✓ Chargé — Remplacer" : "+ Charger le fichier"}
+        </button>
+      </div>
+      <Badge color={required?C.accent:C.gray} small>{required?"Obligatoire":"Optionnel"}</Badge>
+    </div>
+  );
+}
+
 // ── PRESTATAIRE ONBOARDING ────────────────────────────────────────
 function PrestaOnboarding({ onComplete, onBack }) {
   const [step,setStep]=useState(1);
@@ -2923,30 +2953,36 @@ function PrestaOnboarding({ onComplete, onBack }) {
         {step===4 && <>
           <div style={{ background:docsOk?`${C.success}15`:`${C.accent}15`, border:`1px solid ${docsOk?C.success:C.accent}44`, borderRadius:r, padding:"13px 16px", marginBottom:18, display:"flex", gap:10 }}>
             <span style={{ fontSize:20 }}>{docsOk?"✅":"⚠️"}</span>
-            <div><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{docsOk?"Tous les documents obligatoires chargés !":"Documents manquants"}</div><div style={{ color:C.textSub, fontSize:11 }}>Cliquez pour simuler le chargement</div></div>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{docsOk?"Tous les documents obligatoires chargés !":"Documents manquants"}</div>
+              <div style={{ color:C.textSub, fontSize:11 }}>Formats acceptés : PDF, JPG, PNG</div>
+            </div>
           </div>
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>Documents obligatoires</p>
           {DOCS_REQUIS.filter(d=>d.required).map(doc=>(
-            <div key={doc.id} onClick={()=>toggleDoc(doc.id)} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`2px solid ${docs[doc.id]?C.success:C.grayLight}`, cursor:"pointer", display:"flex", gap:11, alignItems:"flex-start" }}>
-              <div style={{ width:40, height:40, borderRadius:11, background:docs[doc.id]?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doc.info}</div>
-                <div style={{ marginTop:6, color:docs[doc.id]?C.success:C.violet, fontSize:12, fontWeight:700 }}>{docs[doc.id]?"✓ Chargé":"+ Charger"}</div>
-              </div>
-              <Badge color={C.accent} small>Obligatoire</Badge>
-            </div>
+            <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
+              if(!file) return;
+              const { data:{ user } } = await supabase.auth.getUser();
+              const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
+              const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+              if(!error){
+                setDocs(prev=>({...prev,[doc.id]:path}));
+                if(user) await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              }
+            }} required />
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>Documents optionnels</p>
           {DOCS_REQUIS.filter(d=>!d.required).map(doc=>(
-            <div key={doc.id} onClick={()=>toggleDoc(doc.id)} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`2px solid ${docs[doc.id]?C.success:C.grayLight}`, cursor:"pointer", display:"flex", gap:11, alignItems:"flex-start" }}>
-              <div style={{ width:40, height:40, borderRadius:11, background:docs[doc.id]?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
-                <div style={{ color:docs[doc.id]?C.success:C.violet, fontSize:12, fontWeight:700, marginTop:4 }}>{docs[doc.id]?"✓ Chargé":"+ Charger"}</div>
-              </div>
-              <Badge color={C.gray} small>Optionnel</Badge>
-            </div>
+            <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
+              if(!file) return;
+              const { data:{ user } } = await supabase.auth.getUser();
+              const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
+              const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+              if(!error){
+                setDocs(prev=>({...prev,[doc.id]:path}));
+                if(user) await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              }
+            }} required={false} />
           ))}
         </>}
         {step===5 && <>
@@ -5613,20 +5649,51 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
 }
 
 // ── NOTIFICATIONS VIVANTES ───────────────────────────────────────
+const NOTIF_ICONS = { payment:"💶", mission:"📋", urgent:"🚨", cashback:"💰", rating:"⭐", reminder:"⏰", contract:"✍️", system:"🔔" };
+const NOTIF_COLORS = { payment:C.success, mission:C.violet, urgent:C.accent, cashback:C.accentGold, rating:C.accentGold, reminder:C.textSub, contract:C.violet, system:C.textMuted };
+
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if(diff < 60) return "À l’instant";
+  if(diff < 3600) return `Il y a ${Math.floor(diff/60)} min`;
+  if(diff < 86400) return `Il y a ${Math.floor(diff/3600)}h`;
+  return `Il y a ${Math.floor(diff/86400)}j`;
+}
+
 function NotificationsScreen({ onBack, onNavigate }) {
-  const [notifs, setNotifs] = useState([
-    { id:1,  read:false, type:"payment",  icon:"💶", title:"Paiement reçu",             body:"112,00 € virés sur votre compte — Mission Cariste CACES 1",      time:"Il y a 2 min",  color:C.success  },
-    { id:2,  read:false, type:"mission",  icon:"📋", title:"Nouvelle mission proposée", body:"Préparateur de commandes · 8h · Entrepôt XYZ · 14,00 €/h",      time:"Il y a 15 min", color:C.violet   },
-    { id:3,  read:false, type:"urgent",   icon:"🚨", title:"Mission urgente !",          body:"Agent de propreté demandé dans l’heure — Paris 75001",           time:"Il y a 28 min", color:C.accent   },
-    { id:4,  read:true,  type:"cashback", icon:"💰", title:"Cashback crédité",           body:"+6,60 € ajoutés à votre wallet · Solde : 42,50 €",              time:"Il y a 1h",     color:C.accentGold},
-    { id:5,  read:true,  type:"rating",   icon:"⭐", title:"Nouvel avis reçu",           body:"Thomas Saumur vous a laissé 5 étoiles · Mission parfaite !",    time:"Il y a 2h",     color:C.accentGold},
-    { id:6,  read:true,  type:"reminder", icon:"⏰", title:"Rappel mission demain",      body:"Chef de rang · 9h00 · Hôtel Lumière · Paris 8ème",              time:"Il y a 3h",     color:C.textSub  },
-    { id:7,  read:true,  type:"contract", icon:"✍️", title:"Contrat signé",              body:"Le contrat CTR-2025-48291 a été signé par les deux parties",     time:"Il y a 5h",     color:C.violet   },
-    { id:8,  read:true,  type:"system",   icon:"🔔", title:"Bienvenue sur JOBER",        body:"Votre compte est validé. Commencez à recevoir des missions !",   time:"Hier",          color:C.textMuted},
-  ]);
+  const [notifs, setNotifs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    let channel;
+    (async()=>{
+      const { data:{ user } } = await supabase.auth.getUser();
+      if(!user){ setLoading(false); return; }
+
+      const { data } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at",{ascending:false}).limit(50);
+      setNotifs(data||[]);
+      setLoading(false);
+
+      channel = supabase.channel("notifs_"+user.id)
+        .on("postgres_changes",{ event:"INSERT", schema:"public", table:"notifications", filter:`user_id=eq.${user.id}` },
+          payload => setNotifs(prev=>[payload.new, ...prev])
+        ).subscribe();
+    })();
+    return ()=>{ if(channel) supabase.removeChannel(channel); };
+  },[]);
 
   const unread = notifs.filter(n=>!n.read).length;
-  const markAllRead = () => setNotifs(ns => ns.map(n=>({...n,read:true})));
+
+  const markAllRead = async () => {
+    const { data:{ user } } = await supabase.auth.getUser();
+    if(user) await supabase.from("notifications").update({read:true}).eq("user_id",user.id).eq("read",false);
+    setNotifs(ns=>ns.map(n=>({...n,read:true})));
+  };
+
+  const markOneRead = async (id) => {
+    await supabase.from("notifications").update({read:true}).eq("id",id);
+    setNotifs(ns=>ns.map(n=>n.id===id?{...n,read:true}:n));
+  };
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
@@ -5646,23 +5713,34 @@ function NotificationsScreen({ onBack, onNavigate }) {
       </div>
 
       <div style={{ padding:"16px 18px" }}>
-        {notifs.map((n,i) => (
-          <div key={n.id} onClick={()=>setNotifs(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x))} style={{
-            background: n.read ? "#0D1B3E" : `${n.color}12`,
-            border: `1px solid ${n.read ? C.border : n.color+"35"}`,
-            borderRadius:r, padding:"14px 15px", marginBottom:8,
-            cursor:"pointer", display:"flex", gap:12, alignItems:"flex-start",
-            transition:"all 0.2s", position:"relative",
-          }}>
-            {!n.read && <div style={{ position:"absolute", top:14, right:14, width:8, height:8, borderRadius:"50%", background:n.color, boxShadow:`0 0 6px ${n.color}` }} />}
-            <div style={{ width:40, height:40, borderRadius:12, background:`${n.color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{n.icon}</div>
-            <div style={{ flex:1, paddingRight:16 }}>
-              <div style={{ fontWeight: n.read?600:700, color:C.text, fontSize:13, marginBottom:3 }}>{n.title}</div>
-              <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{n.body}</div>
-              <div style={{ color:C.textMuted, fontSize:10, marginTop:5, letterSpacing:0.3 }}>{n.time}</div>
-            </div>
+        {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
+        {!loading && notifs.length===0 && (
+          <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>🔔</div>
+            <div>Aucune notification pour l'instant</div>
           </div>
-        ))}
+        )}
+        {notifs.map(n => {
+          const color = NOTIF_COLORS[n.type] || C.textMuted;
+          const icon  = NOTIF_ICONS[n.type]  || "🔔";
+          return (
+            <div key={n.id} onClick={()=>markOneRead(n.id)} style={{
+              background: n.read ? "#0D1B3E" : `${color}12`,
+              border: `1px solid ${n.read ? C.border : color+"35"}`,
+              borderRadius:r, padding:"14px 15px", marginBottom:8,
+              cursor:"pointer", display:"flex", gap:12, alignItems:"flex-start",
+              transition:"all 0.2s", position:"relative",
+            }}>
+              {!n.read && <div style={{ position:"absolute", top:14, right:14, width:8, height:8, borderRadius:"50%", background:color, boxShadow:`0 0 6px ${color}` }} />}
+              <div style={{ width:40, height:40, borderRadius:12, background:`${color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{icon}</div>
+              <div style={{ flex:1, paddingRight:16 }}>
+                <div style={{ fontWeight:n.read?600:700, color:C.text, fontSize:13, marginBottom:3 }}>{n.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{n.body}</div>
+                <div style={{ color:C.textMuted, fontSize:10, marginTop:5 }}>{timeAgo(n.created_at)}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
