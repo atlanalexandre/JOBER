@@ -740,8 +740,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
     setLoading(false);
 
-    if (profile?.role && profile.role !== role) {
-      setError(`Ce compte est un compte ${profile.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
+    if (!profile?.role || profile.role !== role) {
+      setError(`Ce compte est un compte ${profile?.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
       await supabase.auth.signOut();
       return;
     }
@@ -3677,13 +3677,13 @@ function PrestaDashboard({ onNavigate }) {
         {tab==="profil" && <>
           {[
             {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
-            {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>alert("👤 Informations personnelles\n\nNom : Alexandre Ali BA\nEmail : alexandre@email.fr\nTél : +33 6 XX XX XX XX\nDate de naissance : 01/01/1990\n\n(Modification disponible dans la version finale)")},
-            {icon:"📍",label:"Adresse & zone",sub:"Domicile, rayon d’intervention", action:()=>alert("📍 Adresse & Zone\n\n12 rue de la Paix, 75001 Paris\nRayon d’intervention : 20 km\n\n(Modification disponible dans la version finale)")},
-            {icon:"💼",label:"Mes métiers",sub:"3 métiers enregistrés", action:()=>alert("💼 Mes métiers\n\n1. Cariste CACES 1 — Confirmé — 14,00 €/h net\n2. Préparateur de commandes — Expert — 12,00 €/h net\n3. Agent de quai — Confirmé — 12,50 €/h net\n\n(Modification disponible dans la version finale)")},
-            {icon:"📅",label:"Disponibilités",sub:"Lundi-Vendredi, matin & après-midi", action:()=>alert("📅 Disponibilités\n\nLundi : Matin + Après-midi\nMardi : Matin + Après-midi\nMercredi : Matin\nJeudi : Matin + Après-midi\nVendredi : Matin + Après-midi\nSamedi : Non disponible\nDimanche : Non disponible\n\n(Modification disponible dans la version finale)")},
-            {icon:"⚙️",label:"Préférences de mission",sub:"Contrat, tarif min, mobilité", action:()=>alert("⚙️ Préférences\n\nType de contrat : Mission ponctuelle\nTarif minimum : 12 €/h net\nRayon max : 20 km\nVéhiculé : Oui 🚗\nPermis B : Oui 📋\n\n(Modification disponible dans la version finale)")},
+            {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
+            {icon:"📍",label:"Adresse & zone",sub:"Domicile, rayon d’intervention", action:()=>onNavigate("settings")},
+            {icon:"💼",label:"Mes métiers",sub:"3 métiers enregistrés", action:()=>onNavigate("settings")},
+            {icon:"📅",label:"Disponibilités",sub:"Lundi-Vendredi, matin & après-midi", action:()=>onNavigate("settings")},
+            {icon:"⚙️",label:"Préférences de mission",sub:"Contrat, tarif min, mobilité", action:()=>onNavigate("settings")},
             {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"Accès gratuit · 6 mois restants":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
-            {icon:"🔔",label:"Notifications",sub:"3 nouvelles alertes", action:()=>alert("🔔 Notifications\n\n• Nouvelle mission proposée : Cariste CACES 1\n• Votre paiement de 112€ a été libéré\n• Rappel : mission demain à 08h00")},
+            {icon:"🔔",label:"Notifications",sub:"3 nouvelles alertes", action:()=>onNavigate("notifications")},
           ].map((item,i)=>(
             <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
               onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
@@ -6894,11 +6894,11 @@ export default function App() {
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
-          onLogin={()=>setScreen("home")}
+          onLogin={()=>{ setRole("client"); setScreen("home"); }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={()=>setScreen("p_home")}
+          onLogin={()=>{ setRole("prestataire"); setScreen("p_home"); }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
