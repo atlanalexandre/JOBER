@@ -865,6 +865,14 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </p>
             </div>
 
+            <Input label="Adresse email" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+            <div style={{ position:"relative" }}>
+              <Input label="Mot de passe" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+              <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>
+                {showPass?"Cacher":"Voir"}
+              </button>
+            </div>
+
             {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
             <Btn full onClick={handleRegister} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:14 }}>
               {loading ? "Création…" : "Créer mon compte →"}
