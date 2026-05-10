@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from:    "support@jober-delta.vercel.app",
+        from:    "JOBER Support <onboarding@resend.dev>",
         to:      [OWNER_EMAIL],
         reply_to: userEmail || undefined,
         subject: `[JOBER Support] ${subject}`,
