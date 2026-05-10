@@ -740,12 +740,18 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     if (password.length < 6) { setError("Mot de passe minimum 6 caractères"); return; }
     setLoading(true); setError("");
-    const { error: err } = await supabase.auth.signUp({
+    const { data, error: err } = await supabase.auth.signUp({
       email, password,
       options: { data: { role } },
     });
+    if (err) { setLoading(false); setError(err.message); return; }
+    // Fallback : créer le profil si le trigger ne l'a pas fait
+    if (data?.user) {
+      await supabase.from("profiles").upsert({
+        id: data.user.id, role, prenom: "", nom: "",
+      });
+    }
     setLoading(false);
-    if (err) { setError(err.message); return; }
     onRegister();
   };
 
