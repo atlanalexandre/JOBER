@@ -5889,7 +5889,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
   }
 
   // Desktop layout
-  const showSidebar = role && !["splash","role","how_client","how_presta","client_onboarding","client_auth","presta_onboarding","presta_pending","bo_login","bo_dashboard"].includes(screen);
+  const showSidebar = role && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","reset_password"].includes(screen);
 
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
