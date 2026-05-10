@@ -5769,13 +5769,6 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
             </div>
           </div>
         )}
-        <div onClick={()=>onNavigate("settings")} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:10, cursor:"pointer", background:screen==="settings"?`${accentColor}22`:"rgba(255,255,255,0.05)", border:`1px solid ${screen==="settings"?accentColor+"44":"rgba(255,255,255,0.1)"}`, marginBottom:6, transition:"all 0.2s" }}
-          onMouseEnter={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.09)"; }}
-          onMouseLeave={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
-        >
-          <span style={{ fontSize:15 }}>⚙️</span>
-          <span style={{ fontSize:12, color:screen==="settings"?C.white:"rgba(255,255,255,0.7)", fontWeight:screen==="settings"?700:500 }}>Réglages</span>
-        </div>
         <div onClick={()=>onNavigate("bo_login")} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", opacity:0.3, marginBottom:4 }}
           onMouseEnter={e=>e.currentTarget.style.opacity="0.7"}
           onMouseLeave={e=>e.currentTarget.style.opacity="0.3"}
@@ -5809,6 +5802,8 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
 
   const showAdminBtn = !["bo_login","bo_dashboard"].includes(screen);
   const hasBottomNav = showClientNav || showPrestaNav;
+
+  // Admin button — bottom-left
   const adminBtn = showAdminBtn && (
     <button
       onClick={() => onNavigate("bo_login")}
@@ -5818,7 +5813,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
       style={{
         position: "absolute",
         bottom: hasBottomNav ? 74 : 14,
-        right: 14,
+        left: 14,
         zIndex: 1000,
         width: adminHover ? "auto" : 34,
         height: 34,
@@ -5840,8 +5835,41 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
         boxShadow: adminHover ? "0 4px 16px rgba(79,70,229,0.4)" : "none",
       }}
     >
-      <span>⚙️</span>
+      <span>🔧</span>
       {adminHover && <span style={{ fontSize: 12, fontWeight: 600 }}>Admin</span>}
+    </button>
+  );
+
+  // Settings button — top-right, visible whenever user is logged in
+  const showSettingsBtn = role && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","settings","contact_support","reset_password"].includes(screen);
+  const settingsBtn = showSettingsBtn && (
+    <button
+      onClick={() => onNavigate("settings")}
+      title="Réglages"
+      style={{
+        position: "absolute",
+        top: 14,
+        right: 14,
+        zIndex: 1000,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        background: "rgba(124,111,224,0.18)",
+        border: "1px solid rgba(124,111,224,0.35)",
+        color: "#fff",
+        fontSize: 17,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 2px 12px rgba(124,111,224,0.25)",
+        transition: "all 0.2s",
+      }}
+      onMouseEnter={e=>{ e.currentTarget.style.background="rgba(124,111,224,0.35)"; e.currentTarget.style.transform="scale(1.1)"; }}
+      onMouseLeave={e=>{ e.currentTarget.style.background="rgba(124,111,224,0.18)"; e.currentTarget.style.transform="scale(1)"; }}
+    >
+      ⚙️
     </button>
   );
 
@@ -5854,6 +5882,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
+        {settingsBtn}
         {adminBtn}
       </div>
     );
@@ -5880,6 +5909,7 @@ function ResponsiveLayout({ children, screen, role, onNavigate, showClientNav, s
           {children}
         </div>
       </div>
+      {settingsBtn}
       {!showSidebar && adminBtn}
     </div>
   );
