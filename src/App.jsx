@@ -6858,7 +6858,11 @@ export default function App() {
     setScreen("role");
   };
 
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload"];
+  const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
   const navigate=(to,data)=>{
+    if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
+    if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
@@ -7042,7 +7046,7 @@ export default function App() {
         </div>
       )}
 
-      {(screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
+      {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
           <PrestaDashboard onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
