@@ -5698,6 +5698,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"notifications",  icon:"🔔", label:"Notifications"   },
     { id:"referral",       icon:"🎁", label:"Parrainage"      },
     { id:"dashboard",      icon:"👤", label:"Mon compte"      },
+    { id:"settings",       icon:"⚙️", label:"Réglages"        },
   ];
   const prestaNav = [
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
@@ -5705,6 +5706,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"calendar",   icon:"📅", label:"Planning"     },
     { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
+    { id:"settings",   icon:"⚙️", label:"Réglages"     },
   ];
   const nav = role === "prestataire" ? prestaNav : clientNav;
   const accentColor = role === "prestataire" ? C.accent : C.violet;
@@ -5840,38 +5842,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
     </button>
   );
 
-  // Settings button — top-right, visible only when actually authenticated
-  const showSettingsBtn = isLoggedIn && !["bo_login","bo_dashboard","settings","contact_support","reset_password"].includes(screen);
-  const settingsBtn = showSettingsBtn && (
-    <button
-      onClick={() => onNavigate("settings")}
-      title="Réglages"
-      style={{
-        position: "absolute",
-        top: 14,
-        right: 14,
-        zIndex: 1000,
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        background: "rgba(124,111,224,0.18)",
-        border: "1px solid rgba(124,111,224,0.35)",
-        color: "#fff",
-        fontSize: 17,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backdropFilter: "blur(10px)",
-        boxShadow: "0 2px 12px rgba(124,111,224,0.25)",
-        transition: "all 0.2s",
-      }}
-      onMouseEnter={e=>{ e.currentTarget.style.background="rgba(124,111,224,0.35)"; e.currentTarget.style.transform="scale(1.1)"; }}
-      onMouseLeave={e=>{ e.currentTarget.style.background="rgba(124,111,224,0.18)"; e.currentTarget.style.transform="scale(1)"; }}
-    >
-      ⚙️
-    </button>
-  );
 
   if (isMobile) {
     return (
@@ -5882,7 +5852,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
-        {settingsBtn}
         {adminBtn}
       </div>
     );
@@ -5909,7 +5878,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
           {children}
         </div>
       </div>
-      {settingsBtn}
       {!showSidebar && adminBtn}
     </div>
   );
