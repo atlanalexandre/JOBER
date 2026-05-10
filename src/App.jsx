@@ -5698,7 +5698,6 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"notifications",  icon:"🔔", label:"Notifications"   },
     { id:"referral",       icon:"🎁", label:"Parrainage"      },
     { id:"dashboard",      icon:"👤", label:"Mon compte"      },
-    { id:"settings",       icon:"⚙️", label:"Réglages"        },
   ];
   const prestaNav = [
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
@@ -5706,7 +5705,6 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"calendar",   icon:"📅", label:"Planning"     },
     { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
-    { id:"settings",   icon:"⚙️", label:"Réglages"     },
   ];
   const nav = role === "prestataire" ? prestaNav : clientNav;
   const accentColor = role === "prestataire" ? C.accent : C.violet;
@@ -5771,6 +5769,18 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
             </div>
           </div>
         )}
+        <div onClick={()=>onNavigate("settings")}
+          style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, cursor:"pointer", marginBottom:6,
+            background: screen==="settings" ? `${accentColor}22` : "rgba(255,255,255,0.05)",
+            border: `1px solid ${screen==="settings" ? accentColor+"55" : "rgba(255,255,255,0.1)"}`,
+            transition:"all 0.18s" }}
+          onMouseEnter={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.1)"; }}
+          onMouseLeave={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
+        >
+          <span style={{ fontSize:16 }}>⚙️</span>
+          <span style={{ fontSize:13, fontWeight: screen==="settings"?700:500, color: screen==="settings"?C.white:"rgba(255,255,255,0.75)" }}>Réglages</span>
+          {screen==="settings" && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
+        </div>
         <div onClick={()=>onNavigate("bo_login")} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", opacity:0.3, marginBottom:4 }}
           onMouseEnter={e=>e.currentTarget.style.opacity="0.7"}
           onMouseLeave={e=>e.currentTarget.style.opacity="0.3"}
@@ -5858,7 +5868,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   }
 
   // Desktop layout
-  const showSidebar = isLoggedIn && !["bo_login","bo_dashboard","reset_password"].includes(screen);
+  const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","reset_password"].includes(screen);
 
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
