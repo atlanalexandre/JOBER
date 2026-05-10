@@ -5675,6 +5675,19 @@ function OnlineStatusWidget({ online, onToggle }) {
 
 // ── DESKTOP SIDEBAR ───────────────────────────────────────────────
 function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline }) {
+  const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({ data })=>{
+      const user = data?.user;
+      if(!user) return;
+      setUserEmail(user.email||"");
+      supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
+        .then(({ data:p })=>{ if(p) setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); });
+    });
+  },[]);
+
   const clientNav = [
     { id:"home",           icon:"🏠", label:"Accueil"         },
     { id:"catalogue",      icon:"🗂️", label:"Secteurs"        },
@@ -5685,12 +5698,15 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     { id:"notifications",  icon:"🔔", label:"Notifications"   },
     { id:"referral",       icon:"🎁", label:"Parrainage"      },
     { id:"dashboard",      icon:"👤", label:"Mon compte"      },
+    { id:"settings",       icon:"⚙️", label:"Réglages"        },
   ];
   const prestaNav = [
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
     { id:"p_missions", icon:"📋", label:"Missions"     },
     { id:"calendar",   icon:"📅", label:"Planning"     },
+    { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
+    { id:"settings",   icon:"⚙️", label:"Réglages"     },
   ];
   const nav = role === "prestataire" ? prestaNav : clientNav;
   const accentColor = role === "prestataire" ? C.accent : C.violet;
@@ -5712,8 +5728,8 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
-            <div>
-              <div style={{ color:C.white, fontSize:12, fontWeight:700 }}>{role==="prestataire"?"Alexandre Ali BA":"Jean Dupont"}</div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ color:C.white, fontSize:12, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{userName||userEmail||"Mon compte"}</div>
               <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{role==="prestataire"?"Prestataire":"Client"}</div>
             </div>
           </div>
@@ -5755,12 +5771,19 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
             </div>
           </div>
         )}
-        <div onClick={()=>onNavigate("bo_login")} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", opacity:0.3 }}
+        <div onClick={()=>onNavigate("bo_login")} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", opacity:0.3, marginBottom:4 }}
           onMouseEnter={e=>e.currentTarget.style.opacity="0.7"}
           onMouseLeave={e=>e.currentTarget.style.opacity="0.3"}
         >
-          <span style={{ fontSize:14 }}>⚙️</span>
+          <span style={{ fontSize:14 }}>🔧</span>
           <span style={{ fontSize:11, color:"rgba(255,255,255,0.6)" }}>Administration</span>
+        </div>
+        <div onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)" }}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(242,94,94,0.18)"}
+          onMouseLeave={e=>e.currentTarget.style.background="rgba(242,94,94,0.08)"}
+        >
+          <span style={{ fontSize:14 }}>🚪</span>
+          <span style={{ fontSize:11, color:"#F25E5E", fontWeight:600 }}>Se déconnecter</span>
         </div>
       </div>
     </div>
