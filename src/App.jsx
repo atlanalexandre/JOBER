@@ -6705,21 +6705,27 @@ export default function App() {
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
 
-  // Restaurer la session Supabase au démarrage
+  // Écouter les changements de session (déconnexion, reset password)
+  // Ne pas auto-naviguer au démarrage : l'utilisateur passe toujours par le splash
   useEffect(()=>{
-    supabase.auth.getSession().then(async ({ data:{ session } })=>{
-      if(!session) return;
-      setSupaUser(session.user);
-      const { data:profile } = await supabase.from("profiles").select("role").eq("id",session.user.id).single();
-      if(profile?.role){ setRole(profile.role); setScreen(profile.role==="prestataire"?"p_home":"home"); }
-    });
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
       setSupaUser(session?.user||null);
       if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
-      if(!session) { setRole(null); setScreen("role"); }
+      if(event==="SIGNED_OUT") { setRole(null); setScreen("role"); }
     });
     return ()=>subscription.unsubscribe();
   },[]);
+
+  // Appelé quand l'utilisateur clique "Commencer" sur le splash
+  const handleSplashNext = async () => {
+    const { data:{ session } } = await supabase.auth.getSession();
+    if(session){
+      setSupaUser(session.user);
+      const { data:profile } = await supabase.from("profiles").select("role").eq("id",session.user.id).single();
+      if(profile?.role){ setRole(profile.role); setScreen(profile.role==="prestataire"?"p_home":"home"); return; }
+    }
+    setScreen("role");
+  };
 
   const navigate=(to,data)=>{
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
@@ -6747,7 +6753,7 @@ export default function App() {
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
-      {screen==="splash"            && <SplashScreen onNext={()=>setScreen("role")} onBackoffice={()=>setScreen("bo_login")} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
       {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
