@@ -1253,23 +1253,75 @@ function CatalogueScreen({ onNavigate }) {
   );
 }
 
+// ── HOOK : vrais prestataires depuis Supabase ─────────────────────
+function useProviders() {
+  const [providers, setProviders] = useState(PROVIDERS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      const { data, error } = await supabase
+        .from("prestataires")
+        .select(`id, available, bio, note_moy, nb_missions, ville, profiles(prenom, nom, avatar_url), metiers(sector, job_title, tarif_net, niveau, certifs)`);
+
+      if(error || !data?.length){ setLoading(false); return; }
+
+      const AVATAR_POOL = ["👷","👩‍🔧","🧑‍🍳","👩‍⚕️","🧑‍🏫","👮","🧹","🏗️"];
+      const normalized = data
+        .filter(p => (p.metiers||[]).length > 0)
+        .map((p, i) => {
+          const metier = p.metiers[0];
+          return {
+            id: p.id,
+            name: `${p.profiles?.prenom||""} ${p.profiles?.nom||""}`.trim() || "Prestataire",
+            jobTitle: metier.job_title,
+            tarifNet: metier.tarif_net || 12,
+            rateNum:  metier.tarif_net || 12,
+            avatar:   AVATAR_POOL[i % AVATAR_POOL.length],
+            color:    "#7C6FE0",
+            rating:   p.note_moy  || 4.8,
+            reviews:  p.nb_missions || 0,
+            skills:   (p.metiers||[]).map(m=>m.job_title),
+            experience: "Nouveau",
+            available: p.available,
+            sector:   metier.sector,
+            bio:      p.bio || "",
+            distance: "À proximité",
+            responseTime: "~5 min",
+            missions: p.nb_missions || 0,
+            role:     metier.job_title,
+            ville:    p.ville || "",
+            isReal:   true,
+          };
+        });
+
+      // Vrais prestataires en premier, puis les fictifs en fallback
+      setProviders([...normalized, ...PROVIDERS]);
+      setLoading(false);
+    })();
+  },[]);
+
+  return { providers, loading };
+}
+
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
 function SectorDetailScreen({ sector, onNavigate }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
-  const SURCHARGE = 2; // +2€ HT/h en mode urgence
+  const SURCHARGE = 2;
+  const { providers } = useProviders();
 
   const allServices = (METIERS[s.id]||[]).map(name => {
-    const count = PROVIDERS.filter(p=>p.sector===s.id && p.jobTitle===name).length;
-    const availCount = PROVIDERS.filter(p=>p.sector===s.id && p.jobTitle===name && p.available).length;
+    const count = providers.filter(p=>p.sector===s.id && p.jobTitle===name).length;
+    const availCount = providers.filter(p=>p.sector===s.id && p.jobTitle===name && p.available).length;
     const tarif = METIERS_TARIFS[s.id]?.[name];
     const base = tarif ? prixClient(tarif.default, s.id) : 12;
     const price = urgentMode ? base + SURCHARGE : base;
     return { name, rate:`${price.toFixed(2).replace(".",",")} € HT/h`, count, availCount, base, price };
   });
 
-  const filteredProviders = PROVIDERS.filter(p =>
+  const filteredProviders = providers.filter(p =>
     p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob)
   );
 
@@ -1324,7 +1376,7 @@ function SectorDetailScreen({ sector, onNavigate }) {
         <div style={{ fontSize:40, marginBottom:8 }}>{s.icon}</div>
         <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>{s.label}</h2>
         <p style={{ color:"rgba(255,255,255,0.75)", fontSize:14, margin:0 }}>
-          {PROVIDERS.filter(p=>p.sector===s.id).length} prestataires · {PROVIDERS.filter(p=>p.sector===s.id&&p.available).length} disponibles · <strong>Prix HT</strong>
+          {providers.filter(p=>p.sector===s.id).length} prestataires · {providers.filter(p=>p.sector===s.id&&p.available).length} disponibles · <strong>Prix HT</strong>
         </p>
       </div>
 
@@ -1526,8 +1578,9 @@ function SearchFiltersScreen({ onNavigate }) {
   const [dispoNow,setDispoNow]=useState(false);
   const [showFilters,setShowFilters]=useState(false);
   const [favs,setFavs]=useState([]);
+  const { providers, loading } = useProviders();
 
-  const filtered = PROVIDERS.filter(p=>{
+  const filtered = providers.filter(p=>{
     if(search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.role.toLowerCase().includes(search.toLowerCase()) && !p.jobTitle?.toLowerCase().includes(search.toLowerCase())) return false;
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
@@ -6081,7 +6134,8 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [ville, setVille]         = useState("");
   const [sending, setSending]     = useState(false);
   const isValid = date && adresse && ville;
-  const matchCount = PROVIDERS.filter(p => p.sector===s.id && (!metier || p.jobTitle===metier) && p.available).length;
+  const { providers:allProviders } = useProviders();
+  const matchCount = allProviders.filter(p => p.sector===s.id && (!metier || p.jobTitle===metier) && p.available).length;
 
   const handleSend = async () => {
     setSending(true);
@@ -6154,7 +6208,8 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
 // ── MISSION BROADCAST SCREEN ─────────────────────────────────────
 function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
   const m = mission || {};
-  const matching = PROVIDERS.filter(p=>p.sector===m.sector?.id && (!m.metier||p.jobTitle===m.metier) && p.available);
+  const { providers } = useProviders();
+  const matching = providers.filter(p=>p.sector===m.sector?.id && (!m.metier||p.jobTitle===m.metier) && p.available);
   const [responses, setResponses] = useState([]);
   const [tick, setTick]           = useState(0);
 
