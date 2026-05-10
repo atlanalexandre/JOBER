@@ -945,6 +945,201 @@ function ClientAuthScreen({ onLogin, onBack }) {
   return <AuthScreen role="client" onLogin={onLogin} onRegister={onLogin} onBack={onBack} />;
 }
 
+// ── CONTACT SUPPORT ───────────────────────────────────────────────
+function ContactSupportScreen({ onBack }) {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState("");
+
+  const SUBJECTS = [
+    "Problème de connexion",
+    "Bug dans l'application",
+    "Question sur mon compte",
+    "Problème de paiement",
+    "Signaler un utilisateur",
+    "Autre",
+  ];
+
+  const handleSend = async () => {
+    if (!subject) { setError("Choisissez un sujet"); return; }
+    if (!message.trim() || message.length < 20) { setError("Message trop court (20 caractères minimum)"); return; }
+    setLoading(true); setError("");
+
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+
+    try {
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject,
+          message,
+          userEmail: user?.email || "",
+          userName:  user?.user_metadata?.prenom || user?.email || "Inconnu",
+          userId:    user?.id || "",
+        }),
+      });
+      if (!res.ok) throw new Error("Erreur serveur");
+      setSent(true);
+    } catch {
+      setError("Envoi échoué. Réessayez dans quelques instants.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg, paddingBottom:80 }}>
+      <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14, fontFamily:"inherit" }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:0, fontFamily:font.display }}>🎧 Contacter le support</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Notre équipe répond sous 24h ouvrées</p>
+      </div>
+
+      <div style={{ padding:"24px 18px" }}>
+        {sent ? (
+          <div style={{ textAlign:"center", paddingTop:40 }}>
+            <div style={{ fontSize:52, marginBottom:16 }}>✅</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:20, marginBottom:8 }}>Message envoyé !</div>
+            <div style={{ color:C.textSub, fontSize:14, lineHeight:1.6, marginBottom:24 }}>
+              Notre équipe va traiter votre demande et vous répondre par email sous 24h ouvrées.
+            </div>
+            <Btn onClick={onBack} style={{ background:C.violet }}>← Retour aux réglages</Btn>
+          </div>
+        ) : (
+          <>
+            <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10 }}>
+              <span style={{ fontSize:18 }}>💬</span>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>
+                Décrivez votre problème en détail. Votre email de compte sera joint automatiquement pour qu'on puisse vous répondre.
+              </p>
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Sujet *</label>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {SUBJECTS.map(s=>(
+                  <button key={s} onClick={()=>setSubject(s)} style={{ padding:"9px 14px", borderRadius:20, border:`2px solid ${subject===s?C.violet:C.border}`, background:subject===s?`${C.violet}20`:"transparent", color:subject===s?C.violet:C.textSub, fontWeight:subject===s?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Votre message *</label>
+              <textarea
+                value={message} onChange={e=>setMessage(e.target.value)}
+                placeholder="Décrivez votre problème ou question en détail : ce qui s'est passé, quand, sur quel écran…"
+                style={{ width:"100%", padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:140, boxSizing:"border-box", outline:"none", color:C.text, background:"#0D1B3E", lineHeight:1.6 }}
+              />
+              <div style={{ textAlign:"right", color:C.textMuted, fontSize:11, marginTop:4 }}>{message.length} caractères</div>
+            </div>
+
+            {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+
+            <Btn full onClick={handleSend} disabled={loading} style={{ fontSize:15, padding:"16px", background:C.violet, boxShadow:`0 8px 24px ${C.violet}44` }}>
+              {loading ? "Envoi en cours…" : "📤 Envoyer ma demande"}
+            </Btn>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── RÉGLAGES ──────────────────────────────────────────────────────
+function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
+  const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName]   = useState("");
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({ data })=>{
+      const user = data?.user;
+      if(!user) return;
+      setUserEmail(user.email||"");
+      supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
+        .then(({ data:p })=>{ if(p) setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); });
+    });
+  },[]);
+
+  const sections = [
+    {
+      title:"Mon compte",
+      items:[
+        { icon:"👤", label:"Nom", value:userName||"—" },
+        { icon:"✉️", label:"Email", value:userEmail||"—" },
+        { icon:"🔑", label:"Changer le mot de passe", action:()=>onNavigate("reset_password"), chevron:true },
+      ]
+    },
+    {
+      title:"Application",
+      items:[
+        { icon:"🔔", label:"Notifications", value:"Activées" },
+        { icon:"🌍", label:"Langue", value:"Français" },
+        { icon:"📄", label:"CGU & Politique de confidentialité", action:()=>onNavigate("legal","cgu"), chevron:true },
+      ]
+    },
+    {
+      title:"Aide",
+      items:[
+        { icon:"🎧", label:"Contacter le support", action:()=>onNavigate("contact_support"), chevron:true, highlight:true },
+        { icon:"📖", label:"FAQ", action:()=>{}, chevron:true },
+      ]
+    },
+  ];
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
+      <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14, fontFamily:"inherit" }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:0, fontFamily:font.display }}>⚙️ Réglages</h2>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        {/* Avatar */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:20, border:`1px solid ${C.border}` }}>
+          <div style={{ width:52, height:52, borderRadius:"50%", background:`${C.violet}30`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>
+            {role==="prestataire"?"👷":"🏢"}
+          </div>
+          <div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:16 }}>{userName||"Mon compte"}</div>
+            <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{userEmail}</div>
+            <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:4 }}>{role==="prestataire"?"Prestataire":"Client"} JOBER</div>
+          </div>
+        </div>
+
+        {sections.map(section=>(
+          <div key={section.title} style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:8, paddingLeft:4 }}>{section.title}</div>
+            <div style={{ background:"#0D1B3E", borderRadius:r, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+              {section.items.map((item, i)=>(
+                <div key={item.label} onClick={item.action} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderBottom:i<section.items.length-1?`1px solid ${C.border}`:"none", cursor:item.action?"pointer":"default", background:item.highlight?`${C.violet}08`:"transparent" }}>
+                  <div style={{ width:32, height:32, borderRadius:10, background:item.highlight?`${C.violet}20`:`${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{item.icon}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:600, color:item.highlight?C.violet:C.text, fontSize:14 }}>{item.label}</div>
+                    {item.value && <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>{item.value}</div>}
+                  </div>
+                  {item.chevron && <span style={{ color:C.textMuted, fontSize:16 }}>›</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Déconnexion */}
+        <button onClick={onLogout} style={{ width:"100%", padding:"15px", borderRadius:r, border:`1px solid #F25E5E44`, background:"#F25E5E12", color:"#F25E5E", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginTop:8 }}>
+          🚪 Se déconnecter
+        </button>
+
+        <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>JOBER v1.0 · Tous droits réservés</p>
+      </div>
+    </div>
+  );
+}
+
 // ── RESET PASSWORD ────────────────────────────────────────────────
 function ResetPasswordScreen({ onDone }) {
   const [password, setPassword] = useState("");
@@ -3500,6 +3695,7 @@ function ClientNav({ active, onNavigate }) {
     {id:"catalogue",     icon:"🗂️", label:"Secteurs"},
     {id:"search_filters",icon:"🔍", label:"Chercher"},
     {id:"dashboard",     icon:"👤", label:"Compte"  },
+    {id:"settings",      icon:"⚙️", label:"Réglages"},
   ];
   return (
     <div style={{
@@ -3531,6 +3727,7 @@ function PrestaNav({ active, onNavigate }) {
     {id:"p_missions", icon:"📋", label:"Missions"},
     {id:"calendar",   icon:"📅", label:"Planning"},
     {id:"p_dashboard",icon:"👤", label:"Profil"  },
+    {id:"settings",   icon:"⚙️", label:"Réglages"},
   ];
   return (
     <div style={{
@@ -6502,6 +6699,8 @@ export default function App() {
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
+      {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
+      {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="splash"            && <SplashScreen onNext={()=>setScreen("role")} onBackoffice={()=>setScreen("bo_login")} />}
       {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
 
