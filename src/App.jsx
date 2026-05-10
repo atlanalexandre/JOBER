@@ -7026,7 +7026,7 @@ export default function App() {
             {/* Version / Sign out */}
             <div style={{ marginTop:20, textAlign:"center" }}>
               <div style={{ color:C.textMuted, fontSize:11, marginBottom:8 }}>JOBER v1.0 — Île-de-France</div>
-              <button onClick={()=>{ if(window.confirm("Se déconnecter ?")) { window.location.reload(); }}} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:r, padding:"10px 28px", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={async()=>{ if(window.confirm("Se déconnecter ?")) { await supabase.auth.signOut(); setRole(null); setScreen("role"); }}} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:r, padding:"10px 28px", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Se déconnecter
               </button>
             </div>
