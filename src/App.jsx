@@ -721,6 +721,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
@@ -826,10 +829,44 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </button>
             </div>
             <div style={{ textAlign:"right", marginTop:-8, marginBottom:20 }}>
-              <button style={{ background:"none", border:"none", color:accentColor, fontSize:13, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>
+              <button onClick={()=>{ setForgotMode(true); setError(""); }} style={{ background:"none", border:"none", color:accentColor, fontSize:13, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>
                 Mot de passe oublié ?
               </button>
             </div>
+
+            {forgotMode && (
+              <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"16px", marginBottom:16 }}>
+                {forgotSent ? (
+                  <div style={{ textAlign:"center" }}>
+                    <div style={{ fontSize:28, marginBottom:8 }}>📧</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Email envoyé !</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>Vérifiez votre boîte mail et cliquez sur le lien pour réinitialiser votre mot de passe.</div>
+                    <button onClick={()=>{ setForgotMode(false); setForgotSent(false); }} style={{ marginTop:12, background:"none", border:"none", color:accentColor, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>← Retour à la connexion</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Réinitialiser le mot de passe</div>
+                    <Input label="Votre email" type="email" placeholder="votre@email.fr" icon="✉️" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} />
+                    {error && <div style={{ color:"#F25E5E", fontSize:12, marginBottom:8 }}>{error}</div>}
+                    <div style={{ display:"flex", gap:8 }}>
+                      <Btn onClick={()=>setForgotMode(false)} style={{ flex:1, fontSize:13, padding:"11px", background:"transparent", border:`1px solid ${C.border}` }}>Annuler</Btn>
+                      <Btn onClick={async()=>{
+                        if(!forgotEmail){ setError("Email requis"); return; }
+                        setLoading(true); setError("");
+                        const { error:err } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+                          redirectTo: window.location.origin,
+                        });
+                        setLoading(false);
+                        if(err){ setError(err.message); return; }
+                        setForgotSent(true);
+                      }} disabled={loading} style={{ flex:1, fontSize:13, padding:"11px", background:accentColor }}>
+                        {loading ? "Envoi…" : "Envoyer →"}
+                      </Btn>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
             <Btn full onClick={handleLogin} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:20 }}>
@@ -906,6 +943,52 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
 // Ancien ClientAuthScreen — remplacé par AuthScreen
 function ClientAuthScreen({ onLogin, onBack }) {
   return <AuthScreen role="client" onLogin={onLogin} onRegister={onLogin} onBack={onBack} />;
+}
+
+// ── RESET PASSWORD ────────────────────────────────────────────────
+function ResetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [done, setDone]         = useState(false);
+
+  const handleReset = async () => {
+    if(!password || password.length < 6){ setError("Minimum 6 caractères"); return; }
+    if(password !== confirm){ setError("Les mots de passe ne correspondent pas"); return; }
+    setLoading(true); setError("");
+    const { error:err } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if(err){ setError(err.message); return; }
+    setDone(true);
+    setTimeout(()=>onDone(), 2000);
+  };
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
+      {done ? (
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>✅</div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:20, marginBottom:8 }}>Mot de passe mis à jour !</div>
+          <div style={{ color:C.textSub, fontSize:14 }}>Redirection en cours…</div>
+        </div>
+      ) : (
+        <div style={{ width:"100%", maxWidth:380 }}>
+          <div style={{ textAlign:"center", marginBottom:32 }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>🔑</div>
+            <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Nouveau mot de passe</h2>
+            <p style={{ color:C.textSub, fontSize:14, margin:0 }}>Choisissez un mot de passe sécurisé</p>
+          </div>
+          <Input label="Nouveau mot de passe" type="password" placeholder="••••••••" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+          <Input label="Confirmer le mot de passe" type="password" placeholder="••••••••" icon="🔒" value={confirm} onChange={e=>setConfirm(e.target.value)} />
+          {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+          <Btn full onClick={handleReset} disabled={loading} style={{ fontSize:15, padding:"16px", background:C.violet, boxShadow:`0 8px 24px ${C.violet}44` }}>
+            {loading ? "Mise à jour…" : "Confirmer →"}
+          </Btn>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── HOME ─────────────────────────────────────────────────────────
@@ -6387,8 +6470,9 @@ export default function App() {
       const { data:profile } = await supabase.from("profiles").select("role").eq("id",session.user.id).single();
       if(profile?.role){ setRole(profile.role); setScreen(profile.role==="prestataire"?"p_home":"home"); }
     });
-    const { data:{ subscription } } = supabase.auth.onAuthStateChange((_event,session)=>{
+    const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
       setSupaUser(session?.user||null);
+      if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
       if(!session) { setRole(null); setScreen("role"); }
     });
     return ()=>subscription.unsubscribe();
@@ -6417,6 +6501,7 @@ export default function App() {
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
     >
+      {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
       {screen==="splash"            && <SplashScreen onNext={()=>setScreen("role")} onBackoffice={()=>setScreen("bo_login")} />}
       {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
 
