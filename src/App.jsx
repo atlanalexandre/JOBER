@@ -5983,7 +5983,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   }
 
   // Desktop layout
-  const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","reset_password"].includes(screen);
+  const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","bo_login","bo_dashboard","reset_password"].includes(screen);
 
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
