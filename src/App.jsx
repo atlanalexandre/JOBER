@@ -527,7 +527,7 @@ const Divider = () => <div style={{ height:1, background:C.border, margin:"16px 
 
 function SplashScreen({ onNext, onBackoffice }) {
   const [v,setV]=useState(false);
-  useEffect(()=>{ setTimeout(()=>setV(true),100); },[]);
+  useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   return (
     <div style={{
       minHeight:"100%",
@@ -2477,8 +2477,8 @@ function ValidationScreen({ provider, role, onNavigate }) {
   const totalNetPresta   = (p.tarifNet * hoursActual).toFixed(0);   // ce que le prestataire encaisse
 
   useEffect(()=>{
-    if(bothValidated && !paid) { setTimeout(()=>setPaid(true), 1500); }
-  },[bothValidated]);
+    if(bothValidated && !paid) { const t=setTimeout(()=>setPaid(true), 1500); return ()=>clearTimeout(t); }
+  },[bothValidated, paid]);
 
   if(paid) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1e8449)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
@@ -2734,12 +2734,14 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [justAdded,setJustAdded]=useState(false);
 
   const toggleDispo=(jour,plage)=>setDispos(prev=>{const curr=prev[jour]||[];const next=curr.includes(plage)?curr.filter(p=>p!==plage):[...curr,plage];return{...prev,[jour]:next};});
+  const justAddedRef = useRef(null);
   const addMetier=()=>{
     if(!newMetier.sector||!newMetier.metier)return;
     setMetiers(prev=>[...prev,{...newMetier,id:Date.now()}]);
     setNewMetier({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
     setJustAdded(true);
-    setTimeout(()=>setJustAdded(false),1500);
+    clearTimeout(justAddedRef.current);
+    justAddedRef.current=setTimeout(()=>setJustAdded(false),1500);
   };
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
@@ -2895,7 +2897,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
                     {m.certifs&&<div style={{ color:C.violet, fontSize:11, marginTop:2 }}>🎓 {m.certifs}</div>}
                     <div style={{ display:"flex", gap:12, marginTop:5, alignItems:"center" }}>
                       <span style={{ fontSize:13, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet||12)}</span>
-                      <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet||12, m.sector))}</span>
+                      <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet||12, m.sector||"divers"))}</span>
                     </div>
                   </div>
                   <button onClick={()=>setMetiers(prev=>prev.filter((_,j)=>j!==i))} style={{ background:"rgba(242,94,94,0.1)", border:"none", borderRadius:8, width:32, height:32, color:C.accent, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>×</button>
@@ -2922,7 +2924,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             {newMetier.sector && newMetier.metier && (() => {
               const t    = METIERS_TARIFS[newMetier.sector]?.[newMetier.metier];
               const net  = newMetier.tarifNet || t?.default || t?.min || 12;
-              const clientPrice = prixClient(net, newMetier.sector);
+              const clientPrice = prixClient(net, newMetier.sector||"divers");
               const belowMarket = t && net < t.min;
               const aboveMarket = t && net > t.max;
               return (
@@ -3343,8 +3345,9 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
 
   const handlePay = () => {
     setProcessing(true);
-    setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
-    setTimeout(() => onSuccess && onSuccess(), 3800);
+    const t1 = setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
+    const t2 = setTimeout(() => onSuccess && onSuccess(), 3800);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   };
 
   const formatCard = (v) => v.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim();
@@ -5979,13 +5982,14 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
   // Simulate prestataires responding one by one
   useEffect(()=>{
     if(!matching.length) return;
+    setResponses([]);
     const timers = matching.map((p,i)=>{
       const delay = 2500 + i*1800 + Math.random()*1000;
       const accepted = Math.random() < 0.72;
       return setTimeout(()=>setResponses(prev=>[...prev,{provider:p, accepted}]), delay);
     });
     return ()=>timers.forEach(clearTimeout);
-  },[]);
+  },[m.sector?.id, m.metier]);
 
   const accepted  = responses.filter(r=>r.accepted);
   const declined  = responses.filter(r=>!r.accepted);
@@ -6127,11 +6131,12 @@ export default function App() {
   const [payslipData,setPayslipData]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
   const [pendingMission,setPendingMission]=useState(null);
+  const [bookingSource,setBookingSource]=useState("profile");
 
   const navigate=(to,data)=>{
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
     if(to==="sector_detail") setSelectedSector(data);
-    if(to==="booking") setSelectedProvider(data);
+    if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
@@ -6175,11 +6180,11 @@ export default function App() {
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
-      {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setScreen("booking"); }} />}
+      {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>setScreen("profile")} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} onSuccess={()=>{ setPendingProvider(selectedProvider); setScreen("mission_pending"); }} onBack={()=>setScreen("booking")} />}
       {screen==="mission_pending"   && <MissionPendingScreen
         provider={pendingProvider||selectedProvider}
