@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "./lib/supabase.js";
 
 // ── Responsive hook ───────────────────────────────────────────────
 const useResponsive = () => {
@@ -718,11 +719,35 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
   const emoji = isClient ? "🏢" : "👷";
   const roleLabel = isClient ? "Client" : "Prestataire";
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError("Email et mot de passe requis"); return; }
+    setLoading(true); setError("");
+    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    onLogin();
+  };
+
+  const handleRegister = async () => {
+    if (!email || !password) { setError("Email et mot de passe requis"); return; }
+    if (password.length < 6) { setError("Mot de passe minimum 6 caractères"); return; }
+    setLoading(true); setError("");
+    const { error: err } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { role } },
+    });
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    onRegister();
+  };
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column", position:"relative", overflow:"hidden" }}>
@@ -800,8 +825,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </button>
             </div>
 
-            <Btn full onClick={onLogin} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:20 }}>
-              Se connecter →
+            {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+            <Btn full onClick={handleLogin} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:20 }}>
+              {loading ? "Connexion…" : "Se connecter →"}
             </Btn>
 
             {/* Social login */}
@@ -839,8 +865,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </p>
             </div>
 
-            <Btn full onClick={onRegister} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:14 }}>
-              Créer mon compte →
+            {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+            <Btn full onClick={handleRegister} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:14 }}>
+              {loading ? "Création…" : "Créer mon compte →"}
             </Btn>
 
             <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
@@ -2745,9 +2772,39 @@ function PrestaOnboarding({ onComplete, onBack }) {
   };
   const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
+  const [submitting,setSubmitting]=useState(false);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=isLaunchPhase()?7:8;
+
+  const handleSubmitDossier=async()=>{
+    setSubmitting(true);
+    try {
+      const { data:{ user } } = await supabase.auth.getUser();
+      if(user){
+        await supabase.from("profiles").update({ prenom:infos.prenom, nom:infos.nom, tel:infos.tel }).eq("id",user.id);
+        await supabase.from("prestataires").upsert({
+          id:user.id, siret:ae.siret, siren:ae.siren, activite:ae.activite,
+          rue:adresse.rue, ville:adresse.ville, cp:adresse.cp,
+          zone_km:parseInt(adresse.rayon)||20, bio, available:true,
+        });
+        if(metiers.length>0){
+          await supabase.from("metiers").insert(metiers.map(m=>({
+            prestataire_id:user.id, sector:m.sector, job_title:m.metier,
+            niveau:m.niveau, tarif_net:m.tarifNet, certifs:m.certifs,
+          })));
+        }
+        const dispoRows=[];
+        Object.entries(dispos).forEach(([jour,creneaux])=>(creneaux||[]).forEach(c=>dispoRows.push({ prestataire_id:user.id, jour, creneau:c })));
+        if(dispoRows.length>0) await supabase.from("disponibilites").insert(dispoRows);
+        if(!isLaunchPhase()){
+          await supabase.from("abonnements").upsert({ prestataire_id:user.id, plan:abonnement });
+        }
+      }
+    } catch(e){ console.error("Supabase submit error",e); }
+    setSubmitting(false);
+    onComplete();
+  };
   const stepValid=()=>{
     if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;
     if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;
@@ -3108,7 +3165,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             </label>
           </div>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
-          <Btn full variant="success" onClick={onComplete} style={{ fontSize:16, padding:"18px" }}>✅ Envoyer mon dossier</Btn>
+          <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
         </>}
         {step<TOTAL && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
       </div>
@@ -5908,8 +5965,26 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
   const [ville, setVille]         = useState("");
+  const [sending, setSending]     = useState(false);
   const isValid = date && adresse && ville;
   const matchCount = PROVIDERS.filter(p => p.sector===s.id && (!metier || p.jobTitle===metier) && p.available).length;
+
+  const handleSend = async () => {
+    setSending(true);
+    const mission = { sector:s, metier, date, hours, description, adresse, ville };
+    try {
+      const { data:{ user } } = await supabase.auth.getUser();
+      if(user){
+        const { data } = await supabase.from("missions").insert({
+          client_id: user.id, sector: s.id, metier, date, hours,
+          ville, description, status: "broadcast",
+        }).select().single();
+        if(data) mission.id = data.id;
+      }
+    } catch(e){ console.error("mission insert error", e); }
+    setSending(false);
+    onSubmit(mission);
+  };
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
@@ -5953,8 +6028,8 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
             style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text, background:"#0D1B3E" }} />
         </div>
 
-        <Btn full disabled={!isValid} onClick={()=>onSubmit({ sector:s, metier, date, hours, description, adresse, ville })} style={{ fontSize:16, padding:"17px" }}>
-          📢 Envoyer aux prestataires →
+        <Btn full disabled={!isValid||sending} onClick={handleSend} style={{ fontSize:16, padding:"17px" }}>
+          {sending ? "Envoi…" : "📢 Envoyer aux prestataires →"}
         </Btn>
       </div>
     </div>
@@ -6121,6 +6196,7 @@ export default function App() {
   const [screen,setScreen]=useState("splash");
   const [model,setModel]=useState(()=>MODEL_CONFIG.currentModel);
   const [role,setRole]=useState(null);
+  const [supaUser,setSupaUser]=useState(null);
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
@@ -6132,6 +6208,21 @@ export default function App() {
   const [onlineStatus,setOnlineStatus]=useState(true);
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
+
+  // Restaurer la session Supabase au démarrage
+  useEffect(()=>{
+    supabase.auth.getSession().then(async ({ data:{ session } })=>{
+      if(!session) return;
+      setSupaUser(session.user);
+      const { data:profile } = await supabase.from("profiles").select("role").eq("id",session.user.id).single();
+      if(profile?.role){ setRole(profile.role); setScreen(profile.role==="prestataire"?"p_home":"home"); }
+    });
+    const { data:{ subscription } } = supabase.auth.onAuthStateChange((_event,session)=>{
+      setSupaUser(session?.user||null);
+      if(!session) { setRole(null); setScreen("role"); }
+    });
+    return ()=>subscription.unsubscribe();
+  },[]);
 
   const navigate=(to,data)=>{
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
