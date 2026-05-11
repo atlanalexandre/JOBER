@@ -5939,7 +5939,6 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
 function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
   const { isMobile } = useResponsive();
-  const [adminHover, setAdminHover] = useState(false);
 
   const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
     <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
@@ -5949,7 +5948,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   );
 
   const showAdminBtn = !["bo_login","bo_dashboard"].includes(screen);
-  const hasBottomNav = showClientNav || showPrestaNav;
 
   // Admin button — top-right, all screens
   const adminBtn = showAdminBtn && (
