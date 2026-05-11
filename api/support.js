@@ -1,5 +1,3 @@
-import { sendEmail } from "./send-email.js";
-
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -8,6 +6,11 @@ export default async function handler(req, res) {
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const RESEND_API_KEY   = process.env.RESEND_API_KEY;
+  const ADMIN_EMAIL      = process.env.ADMIN_EMAIL;
+  const RESEND_FROM      = process.env.RESEND_FROM || "onboarding@resend.dev";
+
+  console.log("support.js — ADMIN_EMAIL:", ADMIN_EMAIL ? "set" : "missing", "| RESEND_API_KEY:", RESEND_API_KEY ? "set" : "missing");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
@@ -30,14 +33,27 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Impossible d'enregistrer le ticket" });
     }
 
-    // Notify admin by email (non-blocking, won't fail the request)
-    const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-    if (ADMIN_EMAIL) {
-      sendEmail({
-        to: ADMIN_EMAIL,
-        subject: `[JOBER Support] ${subject}`,
-        text: `Nouveau ticket support\n\nDe : ${userName||"Inconnu"} (${userEmail||"email inconnu"})\nSujet : ${subject}\n\nMessage :\n${message}`,
-      });
+    // Notify admin by email via Resend
+    if (RESEND_API_KEY && ADMIN_EMAIL) {
+      try {
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [ADMIN_EMAIL],
+            subject: `[JOBER Support] ${subject}`,
+            text: `Nouveau ticket support\n\nDe : ${userName||"Inconnu"} (${userEmail||"email inconnu"})\nSujet : ${subject}\n\nMessage :\n${message}`,
+          }),
+        });
+        const emailData = await emailRes.json();
+        console.log("Resend response:", JSON.stringify(emailData));
+      } catch (emailErr) {
+        console.error("Resend error:", emailErr);
+      }
     }
 
     return res.status(200).json({ success: true });

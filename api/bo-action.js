@@ -1,4 +1,18 @@
-import { sendEmail } from "./send-email.js";
+async function sendEmail({ to, subject, text }) {
+  const key  = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM || "onboarding@resend.dev";
+  if (!key) return;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject, text }),
+    });
+    console.log("Resend bo-action:", await r.text());
+  } catch (e) {
+    console.error("sendEmail error:", e);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -58,13 +72,13 @@ export default async function handler(req, res) {
       const userEmail = userData.email;
       if (userEmail) {
         if (status === "approved") {
-          sendEmail({
+          await sendEmail({
             to: userEmail,
             subject: "Votre compte JOBER est activé !",
             text: `Bonjour,\n\nVotre compte JOBER a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://jober-delta.vercel.app\n\nBienvenue sur JOBER !\nL'équipe JOBER`,
           });
         } else {
-          sendEmail({
+          await sendEmail({
             to: userEmail,
             subject: "Votre demande de compte JOBER",
             text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe JOBER`,
