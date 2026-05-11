@@ -37,6 +37,22 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "delete") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      // Supprimer le profil
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      // Supprimer le compte auth Supabase
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!r.ok) return res.status(500).json({ error: "Erreur suppression compte auth" });
+      return res.status(200).json({ success: true });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
