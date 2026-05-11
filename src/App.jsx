@@ -553,14 +553,6 @@ function SplashScreen({ onNext, onBackoffice }) {
           }}>⚡</div>
           <span style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display, letterSpacing:-0.3 }}>JOBER</span>
         </div>
-        <button onClick={onBackoffice} style={{
-          background:"rgba(255,255,255,0.04)",
-          border:`1px solid ${C.border}`,
-          borderRadius:10, padding:"6px 12px",
-          color:C.textMuted, cursor:"pointer",
-          fontSize:10, fontFamily:"inherit",
-          fontWeight:600, letterSpacing:1, textTransform:"uppercase",
-        }}>Admin</button>
       </div>
 
       {/* Hero content */}
@@ -724,6 +716,11 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [typeCompte, setTypeCompte] = useState("particulier");
+  const [societeNom, setSocieteNom] = useState("");
+  const [kbisNum, setKbisNum] = useState("");
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
@@ -761,14 +758,18 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const handleRegister = async () => {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     if (password.length < 6) { setError("Mot de passe minimum 6 caractères"); return; }
+    if (!prenom.trim() || !nom.trim()) { setError("Prénom et nom obligatoires"); return; }
+    if (isClient && typeCompte === "professionnel") {
+      if (!societeNom.trim()) { setError("Nom de société obligatoire"); return; }
+      if (!kbisNum.trim()) { setError("Numéro KBIS obligatoire"); return; }
+    }
     setLoading(true); setError("");
     const { data, error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { role } },
+      options: { data: { role, prenom, nom, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null } },
     });
     if (err) {
       setLoading(false);
-      // Email déjà utilisé → message clair
       if (err.message.includes("already") || err.message.includes("registered")) {
         setError("Un compte existe déjà avec cet email. Connectez-vous à la place.");
       } else {
@@ -778,8 +779,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     }
     if (data?.user) {
       await supabase.from("profiles").upsert({
-        id: data.user.id, role, prenom: "", nom: "", status: "pending",
+        id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
+      await supabase.auth.signOut();
     }
     setLoading(false);
     onRegister();
@@ -935,9 +937,35 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </p>
             </div>
 
-            <Input label="Adresse email" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+            {/* Prénom / Nom */}
+            <div style={{ display:"flex", gap:10 }}>
+              <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
+              <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
+            </div>
+
+            {/* Type de compte — client seulement */}
+            {isClient && (
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Type de compte *</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[{id:"particulier",label:"👤 Particulier"},{id:"professionnel",label:"🏢 Professionnel"}].map(t=>(
+                    <button key={t.id} onClick={()=>setTypeCompte(t.id)} style={{ flex:1, padding:"11px", borderRadius:r, border:`2px solid ${typeCompte===t.id?accentColor:C.border}`, background:typeCompte===t.id?`${accentColor}20`:"transparent", color:typeCompte===t.id?accentColor:C.textSub, fontWeight:typeCompte===t.id?700:500, fontSize:13, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Champs professionnel */}
+            {isClient && typeCompte === "professionnel" && (
+              <>
+                <Input label="Nom de société *" placeholder="ACME SARL" icon="🏢" value={societeNom} onChange={e=>setSocieteNom(e.target.value)} />
+                <Input label="N° KBIS / SIRET *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} />
+              </>
+            )}
+
+            <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
-              <Input label="Mot de passe" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+              <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
               <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>
                 {showPass?"Cacher":"Voir"}
               </button>
@@ -5896,13 +5924,6 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
           <span style={{ fontSize:13, fontWeight: screen==="settings"?700:500, color: screen==="settings"?C.white:"rgba(255,255,255,0.75)" }}>Réglages</span>
           {screen==="settings" && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
         </div>
-        <div onClick={()=>onNavigate("bo_login")} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", opacity:0.3, marginBottom:4 }}
-          onMouseEnter={e=>e.currentTarget.style.opacity="0.7"}
-          onMouseLeave={e=>e.currentTarget.style.opacity="0.3"}
-        >
-          <span style={{ fontSize:14 }}>🔧</span>
-          <span style={{ fontSize:11, color:"rgba(255,255,255,0.6)" }}>Administration</span>
-        </div>
         <div onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)" }}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(242,94,94,0.18)"}
           onMouseLeave={e=>e.currentTarget.style.background="rgba(242,94,94,0.08)"}
@@ -5930,40 +5951,31 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   const showAdminBtn = !["bo_login","bo_dashboard"].includes(screen);
   const hasBottomNav = showClientNav || showPrestaNav;
 
-  // Admin button — bottom-left
+  // Admin button — top-right, all screens
   const adminBtn = showAdminBtn && (
     <button
       onClick={() => onNavigate("bo_login")}
-      onMouseEnter={() => setAdminHover(true)}
-      onMouseLeave={() => setAdminHover(false)}
       title="Administration"
       style={{
         position: "absolute",
-        bottom: hasBottomNav ? 74 : 14,
-        left: 14,
+        top: 14,
+        right: 14,
         zIndex: 1000,
-        width: adminHover ? "auto" : 34,
+        width: 34,
         height: 34,
-        borderRadius: 17,
-        background: adminHover ? "rgba(79,70,229,0.85)" : "rgba(255,255,255,0.07)",
-        border: `1px solid ${adminHover ? "rgba(79,70,229,0.6)" : "rgba(255,255,255,0.12)"}`,
-        color: adminHover ? "#fff" : "rgba(255,255,255,0.4)",
-        fontSize: 15,
+        borderRadius: 10,
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        color: "rgba(255,255,255,0.45)",
+        fontSize: 16,
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: 6,
-        padding: adminHover ? "0 14px" : "0",
         backdropFilter: "blur(10px)",
-        transition: "all 0.2s",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        boxShadow: adminHover ? "0 4px 16px rgba(79,70,229,0.4)" : "none",
       }}
     >
-      <span>🔧</span>
-      {adminHover && <span style={{ fontSize: 12, fontWeight: 600 }}>Admin</span>}
+      ⚙️
     </button>
   );
 
@@ -5978,6 +5990,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
         {adminBtn}
+
       </div>
     );
   }
@@ -6003,7 +6016,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
           {children}
         </div>
       </div>
-      {!showSidebar && adminBtn}
+      {adminBtn}
     </div>
   );
 }
