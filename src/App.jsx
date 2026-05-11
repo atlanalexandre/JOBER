@@ -6130,7 +6130,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   }
 
   // Desktop layout
-  const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","bo_login","bo_dashboard","reset_password"].includes(screen);
+  const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","bo_login","bo_dashboard","reset_password"].includes(screen);
 
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
@@ -6986,7 +6986,9 @@ export default function App() {
       if(event==="SIGNED_OUT") {
         localStorage.removeItem("jober_stay_logged_in");
         sessionStorage.removeItem("jober_session_active");
-        setRole(null); setScreen("role");
+        setRole(null);
+        const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
+        setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }
     });
     return ()=>subscription.unsubscribe();
