@@ -17,12 +17,25 @@ export default async function handler(req, res) {
 
   try {
     if (action === "list") {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,created_at&order=created_at.desc`,
-        { headers }
-      );
-      const data = await r.json();
-      return res.status(200).json(Array.isArray(data) ? data : []);
+      const [profilesRes, authRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+      ]);
+      const profiles = await profilesRes.json();
+      const authData = await authRes.json();
+      const authUsers = authData.users || [];
+      const merged = (Array.isArray(profiles) ? profiles : []).map(p => {
+        const u = authUsers.find(u => u.id === p.id) || {};
+        return {
+          ...p,
+          email:       u.email || "",
+          rib:         u.user_metadata?.rib || "",
+          kbis:        u.user_metadata?.kbis || "",
+          societe_nom: u.user_metadata?.societe_nom || "",
+          type_compte: u.user_metadata?.type_compte || "",
+        };
+      });
+      return res.status(200).json(merged);
     }
 
     if (action === "approve" || action === "reject") {
@@ -39,17 +52,31 @@ export default async function handler(req, res) {
 
     if (action === "delete") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
-      // Supprimer le profil
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
-      // Supprimer le compte auth Supabase
       const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
         method: "DELETE",
         headers,
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur suppression compte auth" });
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "list_tickets") {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc`, { headers });
+      const data = await r.json();
+      return res.status(200).json(Array.isArray(data) ? data : []);
+    }
+
+    if (action === "close_ticket") {
+      if (!profileId) return res.status(400).json({ error: "ticketId requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "closed" }),
+      });
       return res.status(200).json({ success: true });
     }
 
