@@ -1,3 +1,5 @@
+import { sendEmail } from "./send-email.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -33,6 +35,7 @@ export default async function handler(req, res) {
           kbis:        u.user_metadata?.kbis || "",
           societe_nom: u.user_metadata?.societe_nom || "",
           type_compte: u.user_metadata?.type_compte || "",
+          telephone:   u.user_metadata?.telephone || "",
         };
       });
       return res.status(200).json(merged);
@@ -41,12 +44,34 @@ export default async function handler(req, res) {
     if (action === "approve" || action === "reject") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const status = action === "approve" ? "approved" : "rejected";
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status }),
-      });
-      if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+      const [patchRes, userRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ status }),
+        }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
+      ]);
+      if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+      if (userEmail) {
+        if (status === "approved") {
+          sendEmail({
+            to: userEmail,
+            subject: "Votre compte JOBER est activé !",
+            text: `Bonjour,\n\nVotre compte JOBER a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://jober-delta.vercel.app\n\nBienvenue sur JOBER !\nL'équipe JOBER`,
+          });
+        } else {
+          sendEmail({
+            to: userEmail,
+            subject: "Votre demande de compte JOBER",
+            text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe JOBER`,
+          });
+        }
+      }
+
       return res.status(200).json({ success: true });
     }
 

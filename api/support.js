@@ -1,3 +1,5 @@
+import { sendEmail } from "./send-email.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -26,6 +28,16 @@ export default async function handler(req, res) {
     if (!r.ok) {
       console.error("Supabase support error:", await r.text());
       return res.status(500).json({ error: "Impossible d'enregistrer le ticket" });
+    }
+
+    // Notify admin by email (non-blocking, won't fail the request)
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+    if (ADMIN_EMAIL) {
+      sendEmail({
+        to: ADMIN_EMAIL,
+        subject: `[JOBER Support] ${subject}`,
+        text: `Nouveau ticket support\n\nDe : ${userName||"Inconnu"} (${userEmail||"email inconnu"})\nSujet : ${subject}\n\nMessage :\n${message}`,
+      });
     }
 
     return res.status(200).json({ success: true });
