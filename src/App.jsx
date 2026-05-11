@@ -1282,6 +1282,7 @@ function ResetPasswordScreen({ onDone }) {
 // Refonte hi-fi v12 — Playfair Display + DM Sans, palette navy/violet
 function HomeScreen({ onNavigate }) {
   const [urgentMode, setUrgentMode] = useState(false);
+  const [userName, setUserName] = useState("");
   const { isDesktop } = useResponsive();
   const tier = getCashbackTier(INITIAL_WALLET.missionsThisMonth);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -1289,6 +1290,15 @@ function HomeScreen({ onNavigate }) {
   const tierProgress = nextTier
     ? Math.min(100, Math.max(8, (INITIAL_WALLET.missionsThisMonth / nextTier.min) * 100))
     : 100;
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({ data })=>{
+      const user = data?.user;
+      if (!user) return;
+      supabase.from("profiles").select("prenom").eq("id", user.id).single()
+        .then(({ data: p }) => { if (p?.prenom) setUserName(p.prenom); });
+    });
+  }, []);
 
   const violetLite = "#A29BFE";
 
@@ -1315,7 +1325,7 @@ function HomeScreen({ onNavigate }) {
           }}>J</div>
           <div>
             <div style={{ fontSize:11, color:C.textMuted, letterSpacing:0.4, lineHeight:1.2 }}>Bonjour 👋</div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>Camille L.</div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{userName || "Mon espace"}</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:8 }}>
