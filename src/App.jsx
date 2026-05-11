@@ -721,6 +721,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [typeCompte, setTypeCompte] = useState("particulier");
   const [societeNom, setSocieteNom] = useState("");
   const [kbisNum, setKbisNum] = useState("");
+  const [rib, setRib] = useState("");
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
@@ -763,10 +764,12 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       if (!societeNom.trim()) { setError("Nom de société obligatoire"); return; }
       if (!kbisNum.trim()) { setError("Numéro KBIS obligatoire"); return; }
     }
+    const ribClean = rib.replace(/\s/g,"");
+    if (!ribClean || ribClean.length < 14) { setError("IBAN / RIB obligatoire (ex: FR76 3000 4028...)"); return; }
     setLoading(true); setError("");
     const { data, error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { role, prenom, nom, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null } },
+      options: { data: { role, prenom, nom, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean } },
     });
     if (err) {
       setLoading(false);
@@ -962,6 +965,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
                 <Input label="N° KBIS / SIRET *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} />
               </>
             )}
+
+            <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
 
             <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
