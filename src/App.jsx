@@ -4677,8 +4677,8 @@ function BOComptes() {
               {statusLabel[p.status]||p.status}
             </div>
           </div>
-          {p.status==="pending" && (
-            <div style={{ display:"flex", gap:8 }}>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {p.status==="pending" && <>
               <button
                 onClick={()=>handleAction(p.id,"approve")}
                 disabled={!!actioning}
@@ -4693,8 +4693,15 @@ function BOComptes() {
               >
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
-            </div>
-          )}
+            </>}
+            <button
+              onClick={()=>{ if(window.confirm(`Supprimer définitivement le compte de ${p.prenom||""} ${p.nom||""}`.trim()+"?")) handleAction(p.id,"delete"); }}
+              disabled={!!actioning}
+              style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
+            >
+              {actioning===p.id+"delete" ? "…" : "🗑️"}
+            </button>
+          </div>
         </div>
       ))}
     </div>
