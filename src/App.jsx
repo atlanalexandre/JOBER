@@ -722,6 +722,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [societeNom, setSocieteNom] = useState("");
   const [kbisNum, setKbisNum] = useState("");
   const [rib, setRib] = useState("");
+  const [telephone, setTelephone] = useState("");
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
@@ -760,6 +761,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     if (password.length < 6) { setError("Mot de passe minimum 6 caractères"); return; }
     if (!prenom.trim() || !nom.trim()) { setError("Prénom et nom obligatoires"); return; }
+    const telClean = telephone.replace(/[\s.\-]/g,"");
+    if (!telClean || telClean.length < 10) { setError("Numéro de téléphone obligatoire"); return; }
     if (isClient && typeCompte === "professionnel") {
       if (!societeNom.trim()) { setError("Nom de société obligatoire"); return; }
       if (!kbisNum.trim()) { setError("Numéro KBIS obligatoire"); return; }
@@ -769,7 +772,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     setLoading(true); setError("");
     const { data, error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { role, prenom, nom, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean } },
+      options: { data: { role, prenom, nom, telephone: telClean, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean } },
     });
     if (err) {
       setLoading(false);
@@ -945,6 +948,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
               <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
             </div>
+
+            <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
 
             {/* Type de compte — client seulement */}
             {isClient && (
@@ -4711,11 +4716,12 @@ function BOComptes() {
           {/* Détails étendus */}
           {expanded===p.id && (
             <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"12px", marginBottom:10, fontSize:12 }}>
+              {p.telephone && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📱 Tél : </span><span style={{ color:C.white }}>{p.telephone}</span></div>}
               {p.rib && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏦 IBAN : </span><span style={{ color:C.white, fontWeight:600, fontFamily:"monospace" }}>{p.rib}</span></div>}
               {p.type_compte && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>👤 Type : </span><span style={{ color:C.white }}>{p.type_compte==="professionnel"?"Professionnel":"Particulier"}</span></div>}
               {p.societe_nom && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏢 Société : </span><span style={{ color:C.white }}>{p.societe_nom}</span></div>}
               {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
-              {!p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
+              {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
             </div>
           )}
 
