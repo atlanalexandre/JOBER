@@ -6116,7 +6116,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
   if (isMobile) {
     return (
-      <div style={{ maxWidth:430, margin:"0 auto", height:"100vh", display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden", boxShadow:"0 0 80px rgba(0,0,0,0.8)" }}>
+      <div style={{ width:"100%", height:"100vh", display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden" }}>
         {hybridBanner}
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {children}
@@ -6124,7 +6124,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
         {adminBtn}
-
       </div>
     );
   }
