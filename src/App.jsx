@@ -716,6 +716,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
   const [typeCompte, setTypeCompte] = useState("particulier");
@@ -753,6 +754,13 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
       await supabase.auth.signOut();
       return;
+    }
+    if (stayLoggedIn) {
+      localStorage.setItem("jober_stay_logged_in", "1");
+      sessionStorage.removeItem("jober_session_active");
+    } else {
+      sessionStorage.setItem("jober_session_active", "1");
+      localStorage.removeItem("jober_stay_logged_in");
     }
     onLogin();
   };
@@ -902,6 +910,13 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
                 )}
               </div>
             )}
+
+            <label style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18, cursor:"pointer" }}>
+              <div onClick={()=>setStayLoggedIn(!stayLoggedIn)} style={{ width:20, height:20, borderRadius:6, border:`2px solid ${stayLoggedIn?accentColor:C.border}`, background:stayLoggedIn?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all 0.15s" }}>
+                {stayLoggedIn && <span style={{ color:"#fff", fontSize:12, fontWeight:900, lineHeight:1 }}>✓</span>}
+              </div>
+              <span onClick={()=>setStayLoggedIn(!stayLoggedIn)} style={{ color:C.textSub, fontSize:13 }}>Rester connecté</span>
+            </label>
 
             {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
             <Btn full onClick={handleLogin} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:20 }}>
@@ -6969,8 +6984,9 @@ export default function App() {
       setSupaUser(session?.user||null);
       if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
       if(event==="SIGNED_OUT") {
+        localStorage.removeItem("jober_stay_logged_in");
+        sessionStorage.removeItem("jober_session_active");
         setRole(null);
-        // Ne pas naviguer si on est déjà sur un écran pré-connexion (auth, splash, etc.)
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }
@@ -6982,6 +6998,14 @@ export default function App() {
   const handleSplashNext = async () => {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
+      const stayLoggedIn  = localStorage.getItem("jober_stay_logged_in");
+      const sessionActive = sessionStorage.getItem("jober_session_active");
+      if (!stayLoggedIn && !sessionActive) {
+        // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
+        await supabase.auth.signOut();
+        setScreen("role");
+        return;
+      }
       setSupaUser(session.user);
       const { data:profile } = await supabase.from("profiles").select("role,status").eq("id",session.user.id).single();
       if(profile?.role){
