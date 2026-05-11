@@ -1112,6 +1112,10 @@ function ContactSupportScreen({ onBack }) {
 
 // ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
 function PendingApprovalScreen({ onLogout }) {
+  const [userEmail, setUserEmail] = useState("");
+  useEffect(()=>{
+    supabase.auth.getUser().then(({ data })=>{ if(data?.user) setUserEmail(data.user.email||""); });
+  },[]);
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
       <div style={{ width:80, height:80, borderRadius:24, background:"rgba(124,111,224,0.15)", border:"2px solid rgba(124,111,224,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24 }}>⏳</div>
@@ -1124,6 +1128,7 @@ function PendingApprovalScreen({ onLogout }) {
       <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"16px 20px", marginBottom:32, width:"100%", maxWidth:320 }}>
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>Statut du compte</div>
         <div style={{ fontSize:14, fontWeight:700, color:"#FCD34D" }}>⏳ En attente de validation</div>
+        {userEmail ? <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:8 }}>{userEmail}</div> : null}
       </div>
       <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
         Se déconnecter
@@ -4627,7 +4632,9 @@ function BOComptes() {
   const [profiles, setProfiles]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [filter, setFilter]       = useState("pending");
+  const [roleFilter, setRoleFilter] = useState("all");
   const [actioning, setActioning] = useState(null);
+  const [expanded, setExpanded]   = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -4650,16 +4657,26 @@ function BOComptes() {
 
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
   const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
-  const filtered = profiles.filter(p => filter==="all" || p.status===filter);
+  const filtered = profiles.filter(p =>
+    (filter==="all" || p.status===filter) &&
+    (roleFilter==="all" || p.role===roleFilter)
+  );
 
   return (
     <div style={{ padding:"16px 18px" }}>
       <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Validation des comptes</h3>
 
-      {/* Filtres */}
-      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+      {/* Filtre statut */}
+      <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
         {[["pending","⏳ En attente"],["approved","✅ Approuvés"],["rejected","❌ Refusés"],["all","Tous"]].map(([val,label])=>(
           <button key={val} onClick={()=>setFilter(val)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${filter===val?C.violet:"rgba(255,255,255,0.15)"}`, background:filter===val?`${C.violet}33`:"transparent", color:filter===val?C.violet:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:filter===val?700:400, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Filtre rôle */}
+      <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+        {[["all","👥 Tous"],["client","🏢 Clients"],["prestataire","👷 Prestataires"]].map(([val,label])=>(
+          <button key={val} onClick={()=>setRoleFilter(val)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${roleFilter===val?"#FCD34D":"rgba(255,255,255,0.1)"}`, background:roleFilter===val?"rgba(252,211,77,0.12)":"transparent", color:roleFilter===val?"#FCD34D":"rgba(255,255,255,0.4)", fontSize:11, fontWeight:roleFilter===val?700:400, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
         ))}
       </div>
 
@@ -4670,43 +4687,116 @@ function BOComptes() {
       ) : filtered.map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-            <div>
+            <div style={{ flex:1, minWidth:0 }}>
               <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>
-                {p.prenom||p.nom ? `${p.prenom} ${p.nom}`.trim() : "Nom non renseigné"}
+                {p.prenom||p.nom ? `${p.prenom||""} ${p.nom||""}`.trim() : "Nom non renseigné"}
               </div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
+                {p.email || "Email non disponible"}
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginTop:2 }}>
                 {p.role==="prestataire"?"👷 Prestataire":"🏢 Client"} · {new Date(p.created_at).toLocaleDateString("fr-FR")}
               </div>
             </div>
-            <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
-              {statusLabel[p.status]||p.status}
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+              <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
+                {statusLabel[p.status]||p.status}
+              </div>
+              <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} style={{ fontSize:10, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+                {expanded===p.id?"▲ Masquer":"▼ Détails"}
+              </button>
             </div>
           </div>
+
+          {/* Détails étendus */}
+          {expanded===p.id && (
+            <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"12px", marginBottom:10, fontSize:12 }}>
+              {p.rib && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏦 IBAN : </span><span style={{ color:C.white, fontWeight:600, fontFamily:"monospace" }}>{p.rib}</span></div>}
+              {p.type_compte && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>👤 Type : </span><span style={{ color:C.white }}>{p.type_compte==="professionnel"?"Professionnel":"Particulier"}</span></div>}
+              {p.societe_nom && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏢 Société : </span><span style={{ color:C.white }}>{p.societe_nom}</span></div>}
+              {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
+              {!p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
+            </div>
+          )}
+
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {p.status==="pending" && <>
-              <button
-                onClick={()=>handleAction(p.id,"approve")}
-                disabled={!!actioning}
-                style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
-              >
+              <button onClick={()=>handleAction(p.id,"approve")} disabled={!!actioning} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
                 {actioning===p.id+"approve" ? "…" : "✅ Approuver"}
               </button>
-              <button
-                onClick={()=>handleAction(p.id,"reject")}
-                disabled={!!actioning}
-                style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"rgba(242,94,94,0.12)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
-              >
+              <button onClick={()=>handleAction(p.id,"reject")} disabled={!!actioning} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"rgba(242,94,94,0.12)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
-            <button
-              onClick={()=>{ if(window.confirm(`Supprimer définitivement le compte de ${p.prenom||""} ${p.nom||""}`.trim()+"?")) handleAction(p.id,"delete"); }}
-              disabled={!!actioning}
-              style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}
-            >
+            <button onClick={()=>{ if(window.confirm(`Supprimer définitivement le compte de ${(p.prenom||""+" "+p.nom||"").trim()||p.email} ?`)) handleAction(p.id,"delete"); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               {actioning===p.id+"delete" ? "…" : "🗑️"}
             </button>
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BOSupport() {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState("open");
+  const [actioning, setActioning] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list_tickets" }) });
+      const data = await res.json();
+      setTickets(Array.isArray(data) ? data : []);
+    } catch { setTickets([]); }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ load(); },[]);
+
+  const closeTicket = async (id) => {
+    setActioning(id);
+    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"close_ticket", profileId:id }) });
+    setActioning(null);
+    load();
+  };
+
+  const filtered = tickets.filter(t => filter==="all" || t.status===filter);
+
+  return (
+    <div style={{ padding:"16px 18px" }}>
+      <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Tickets support</h3>
+      <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+        {[["open","🔴 Ouverts"],["closed","✅ Fermés"],["all","Tous"]].map(([val,label])=>(
+          <button key={val} onClick={()=>setFilter(val)} style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${filter===val?C.violet:"rgba(255,255,255,0.15)"}`, background:filter===val?`${C.violet}33`:"transparent", color:filter===val?C.violet:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:filter===val?700:400, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
+        ))}
+      </div>
+      {loading ? (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0", fontSize:13 }}>Aucun ticket</div>
+      ) : filtered.map(t => (
+        <div key={t.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+            <div>
+              <div style={{ color:C.white, fontWeight:700, fontSize:13 }}>{t.subject}</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>{t.user_name||"Anonyme"} · {t.user_email||""}</div>
+              <div style={{ color:"rgba(255,255,255,0.25)", fontSize:10, marginTop:2 }}>{new Date(t.created_at).toLocaleString("fr-FR")}</div>
+            </div>
+            <div style={{ background:t.status==="open"?"rgba(242,94,94,0.15)":"rgba(34,197,94,0.1)", border:`1px solid ${t.status==="open"?"rgba(242,94,94,0.4)":"rgba(34,197,94,0.3)"}`, borderRadius:8, padding:"3px 10px", color:t.status==="open"?"#F25E5E":C.success, fontSize:10, fontWeight:700 }}>
+              {t.status==="open"?"Ouvert":"Fermé"}
+            </div>
+          </div>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:t.status==="open"?10:0, background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px" }}>
+            {t.message}
+          </div>
+          {t.status==="open" && (
+            <button onClick={()=>closeTicket(t.id)} disabled={actioning===t.id} style={{ marginTop:2, padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>
+              {actioning===t.id?"…":"✅ Marquer résolu"}
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -4799,7 +4889,7 @@ function BackofficeDashboard({ onBack, onModelChange }) {
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:0, overflowX:"auto", padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"comptes",l:"✅ Comptes"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
+        {[{id:"comptes",l:"✅ Comptes"},{id:"support",l:"🎧 Support"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"9px 14px", border:"none", borderBottom:`3px solid ${tab===t.id?C.violet:"transparent"}`, background:"transparent", color:tab===t.id?C.violet:C.gray, fontWeight:tab===t.id?800:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.2s" }}>{t.l}</button>
         ))}
       </div>
@@ -4809,6 +4899,9 @@ function BackofficeDashboard({ onBack, onModelChange }) {
 
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
+
+        {/* ── SUPPORT ── */}
+        {tab==="support" && <BOSupport />}
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
