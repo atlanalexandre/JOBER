@@ -6836,7 +6836,12 @@ export default function App() {
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
       setSupaUser(session?.user||null);
       if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
-      if(event==="SIGNED_OUT") { setRole(null); setScreen("role"); }
+      if(event==="SIGNED_OUT") {
+        setRole(null);
+        // Ne pas naviguer si on est déjà sur un écran pré-connexion (auth, splash, etc.)
+        const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
+        setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
+      }
     });
     return ()=>subscription.unsubscribe();
   },[]);
