@@ -6091,10 +6091,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
       onClick={() => onNavigate("bo_login")}
       title="Administration"
       style={{
-        position: "absolute",
+        position: "fixed",
         top: 14,
         right: 14,
-        zIndex: 1000,
+        zIndex: 9999,
         width: 34,
         height: 34,
         borderRadius: 10,
