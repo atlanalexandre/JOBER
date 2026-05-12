@@ -1,6 +1,31 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase.js";
 
+// ── Géolocalisation — Haversine ───────────────────────────────────
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
+}
+
+// Table de correspondance CP → [lat, lng] pour les 20 premiers départements
+const CP_COORDS = {
+  "75":[ 48.8566,  2.3522], "92":[ 48.8924,  2.2540], "93":[ 48.9156,  2.4825],
+  "94":[ 48.7847,  2.4697], "91":[ 48.6325,  2.4427], "95":[ 49.0379,  2.0769],
+  "77":[ 48.8400,  2.9713], "78":[ 48.8017,  1.9670], "69":[ 45.7640,  4.8357],
+  "13":[ 43.2965,  5.3698], "33":[ 44.8378, -0.5792], "31":[ 43.6047,  1.4442],
+  "59":[ 50.6292,  3.0573], "67":[ 48.5734,  7.7521], "44":[ 47.2184, -1.5536],
+  "06":[ 43.7102,  7.2620], "34":[ 43.6119,  3.8772], "76":[ 49.4432,  1.0993],
+  "38":[ 45.1885,  5.7245], "35":[ 48.1173, -1.6778],
+};
+
+function cpToCoords(cp) {
+  const dept = (cp||"").slice(0,2);
+  return CP_COORDS[dept] || null;
+}
+
 // ── Responsive hook ───────────────────────────────────────────────
 const useResponsive = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
