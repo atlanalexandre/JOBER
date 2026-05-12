@@ -940,6 +940,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [niveau, setNiveau] = useState("");
   const [experienceAns, setExperienceAns] = useState(2);
   const [competences, setCompetences] = useState([]);
+  const [langues, setLangues] = useState(["Français"]);
   const [disponJours, setDisponJours] = useState([]);
   const [disponCreneaux, setDisponCreneaux] = useState([]);
   const [dispoImmediat, setDispoImmediat] = useState(true);
@@ -995,7 +996,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
-        secteur, metier, niveau, experience_ans: experienceAns, competences,
+        secteur, metier, niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
         tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
       }},
@@ -1104,12 +1105,24 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
           {compListe.length > 0 && <>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Compétences clés (optionnel)</label>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
               {compListe.map(c => (
                 <button key={c} onClick={()=>toggleItem(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?accentColor:C.border}`, background:competences.includes(c)?`${accentColor}25`:"transparent", color:competences.includes(c)?accentColor:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
               ))}
             </div>
           </>}
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Langues parlées</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {LANGUES_LIST.map(l => (
+              <button key={l} onClick={()=>{
+                if (l === "Français") return;
+                toggleItem(langues, setLangues, l);
+              }} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${langues.includes(l)?accentColor:C.border}`, background:langues.includes(l)?`${accentColor}25`:"transparent", color:langues.includes(l)?accentColor:C.textSub, fontSize:12, fontWeight:langues.includes(l)?700:400, cursor:l==="Français"?"default":"pointer", fontFamily:"inherit", transition:"all 0.2s", opacity:l==="Français"?0.6:1 }}>
+                {l}{l==="Français" ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6, paddingLeft:2 }}>Le français est sélectionné par défaut</div>
         </>}
 
         {step === 4 && <>
@@ -1179,6 +1192,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
               { l:"Disponibilités",v:disponJours.map(j=>j.slice(0,3)).join(", ") },
               { l:"Créneaux",      v:disponCreneaux.map(c=>c.split(" ")[0]).join(", ") },
+              { l:"Langues",       v:langues.join(", ") },
               { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
               { l:"Statut",        v:statutPro },
             ].map(({l,v}) => (
