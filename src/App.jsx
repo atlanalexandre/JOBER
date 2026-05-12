@@ -915,6 +915,488 @@ function RoleScreen({ onSelect }) {
 
 
 // ── AUTH SCREEN — Connexion / Inscription ────────────────────────
+
+const COMPETENCES_PAR_SECTEUR = {
+  proprete:    ["Nettoyage bureaux","Désinfection","Nettoyage industriel","Vitres","Sols spéciaux","Monobrosse","Autolaveuse","HACCP","Tri sélectif"],
+  logistique:  ["CACES 1","CACES 3","CACES 5","Prépa commandes","Gestion de stock","WMS","Scan","Palettisation","Réception/Expédition"],
+  hotellerie:  ["Opera PMS","Accueil VIP","Check-in/out","Conciergerie","Réservations","Service buffet","Gestion réclamations","Fidelio","Yield management"],
+  btp:         ["Maçonnerie","Coffrage","Béton armé","Câblage électrique","NF C 15-100","Plomberie","Soudure","Peinture intérieure","Carrelage","Lecture plans","AIPR","CACES Nacelle"],
+  restauration:["Service en salle","HACCP","Cuisine française","Cuissons","Pâtisserie","Sommellerie","Barman cocktails","Caisse","Accueil clientèle"],
+  commercial:  ["Prospection B2B","CRM","Closing","Négociation","Salesforce","HubSpot","Account management","Upselling","Cold calling"],
+  distribution:["Encaissement","Mise en rayon","Gestion DLC","Facing","PLV","Inventaire","SAV caisse","Gestion de rayon"],
+  divers:      ["CQP APS","Surveillance vidéo","Contrôle accès","Permis B","VTC","Animation événements","Bureautique","Standard téléphonique"],
+};
+
+function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
+  const TOTAL = 6;
+  const [step, setStep] = useState(1);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [secteur, setSecteur] = useState("");
+  const [metier, setMetier] = useState("");
+  const [niveau, setNiveau] = useState("");
+  const [experienceAns, setExperienceAns] = useState(2);
+  const [competences, setCompetences] = useState([]);
+  const [disponJours, setDisponJours] = useState([]);
+  const [disponCreneaux, setDisponCreneaux] = useState([]);
+  const [dispoImmediat, setDispoImmediat] = useState(true);
+  const [tarifNet, setTarifNet] = useState(13);
+  const [ribIban, setRibIban] = useState("");
+  const [statutPro, setStatutPro] = useState("auto-entrepreneur");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    if (secteur && metier && METIERS_TARIFS[secteur]?.[metier]) {
+      setTarifNet(METIERS_TARIFS[secteur][metier].default);
+    }
+  }, [secteur, metier]);
+
+  const toggleItem = (arr, setArr, item) =>
+    setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
+
+  const validateStep = () => {
+    if (step === 1) {
+      if (!prenom.trim() || !nom.trim()) return "Prénom et nom obligatoires";
+      if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
+    }
+    if (step === 2) {
+      if (!secteur) return "Choisissez un secteur d'activité";
+      if (!metier)  return "Choisissez votre métier";
+    }
+    if (step === 3) { if (!niveau) return "Sélectionnez votre niveau"; }
+    if (step === 4) {
+      if (!disponJours.length)    return "Sélectionnez au moins un jour";
+      if (!disponCreneaux.length) return "Sélectionnez au moins un créneau horaire";
+    }
+    if (step === 6) {
+      if (!email || !password)  return "Email et mot de passe requis";
+      if (password.length < 6)  return "Mot de passe minimum 6 caractères";
+    }
+    return null;
+  };
+
+  const handleNext = () => {
+    const err = validateStep();
+    if (err) { setError(err); return; }
+    setError(""); setStep(s => s + 1);
+  };
+
+  const handleSubmit = async () => {
+    const err = validateStep();
+    if (err) { setError(err); return; }
+    setLoading(true); setError("");
+    const { data, error: signUpErr } = await supabase.auth.signUp({
+      email, password,
+      options: { data: {
+        role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
+        telephone: telephone.replace(/[\s.\-]/g,""),
+        secteur, metier, niveau, experience_ans: experienceAns, competences,
+        dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
+        tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
+      }},
+    });
+    if (signUpErr) {
+      setLoading(false);
+      setError(signUpErr.message.includes("already") || signUpErr.message.includes("registered")
+        ? "Un compte existe déjà avec cet email. Connectez-vous à la place."
+        : signUpErr.message);
+      return;
+    }
+    if (data?.user) {
+      await supabase.from("profiles").upsert({
+        id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+      });
+      await supabase.auth.signOut();
+    }
+    setLoading(false);
+    onRegister();
+  };
+
+  const secteurInfo  = SECTORS.find(s => s.id === secteur);
+  const metiersListe = secteur ? Object.keys(METIERS_TARIFS[secteur] || {}) : [];
+  const compListe    = COMPETENCES_PAR_SECTEUR[secteur] || [];
+  const tarifInfo    = secteur && metier ? METIERS_TARIFS[secteur]?.[metier] : null;
+  const tarifMin     = tarifInfo?.min || 11;
+  const tarifMax     = tarifInfo?.max || 30;
+  const tarifClient  = prixClient(tarifNet, secteur || "divers");
+
+  const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre compte"];
+  const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","🔐"];
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
+      {/* Header */}
+      <div style={{ padding:"54px 24px 16px" }}>
+        <button onClick={step===1 ? onBack : ()=>{setError("");setStep(s=>s-1)}} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:16, display:"flex", alignItems:"center", gap:6, fontFamily:"inherit" }}>
+          ← {step===1 ? "Retour à la connexion" : "Étape précédente"}
+        </button>
+        <div style={{ display:"flex", gap:4, marginBottom:16 }}>
+          {Array.from({length:TOTAL},(_,i) => (
+            <div key={i} style={{ flex:1, height:3, borderRadius:2, background:i<step?accentColor:`${accentColor}25`, transition:"background 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{STEP_ICONS[step-1]}</div>
+          <div>
+            <div style={{ color:C.textMuted, fontSize:11, letterSpacing:1, textTransform:"uppercase" }}>Étape {step}/{TOTAL} — Inscription Prestataire</div>
+            <div style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display }}>{STEP_TITLES[step-1]}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto" }}>
+        {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+
+        {step === 1 && <>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
+            <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
+          </div>
+          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginTop:4, display:"flex", gap:10 }}>
+            <span style={{ fontSize:18 }}>💡</span>
+            <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Votre numéro ne sera communiqué au client qu'après confirmation d'une mission.</p>
+          </div>
+        </>}
+
+        {step === 2 && <>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Dans quel secteur exercez-vous votre activité ?</p>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            {SECTORS.map(s => (
+              <button key={s.id} onClick={()=>{setSecteur(s.id); setMetier(""); setCompetences([]);}} style={{ padding:"14px 10px", borderRadius:r, border:`2px solid ${secteur===s.id?s.color:C.border}`, background:secteur===s.id?`${s.color}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
+                <div style={{ fontSize:26, marginBottom:6 }}>{s.icon}</div>
+                <div style={{ color:secteur===s.id?s.color:C.textSub, fontWeight:secteur===s.id?700:500, fontSize:12 }}>{s.label}</div>
+              </button>
+            ))}
+          </div>
+          {secteur && <>
+            <p style={{ color:C.textSub, fontSize:13, marginBottom:10 }}>Quel est votre métier principal ?</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {metiersListe.map(m => (
+                <button key={m} onClick={()=>setMetier(m)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${metier===m?(secteurInfo?.color||accentColor):C.border}`, background:metier===m?`${secteurInfo?.color||accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"all 0.2s" }}>
+                  <span style={{ color:metier===m?(secteurInfo?.color||accentColor):C.text, fontWeight:metier===m?700:500, fontSize:14 }}>{m}</span>
+                  {METIERS_TARIFS[secteur]?.[m] && <span style={{ color:C.textSub, fontSize:12 }}>{METIERS_TARIFS[secteur][m].min}–{METIERS_TARIFS[secteur][m].max} €/h</span>}
+                </button>
+              ))}
+            </div>
+          </>}
+        </>}
+
+        {step === 3 && <>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Votre niveau pour le poste de <strong style={{ color:C.text }}>{metier}</strong> ?</p>
+          <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+            {NIVEAUX.map(n => (
+              <button key={n} onClick={()=>setNiveau(n)} style={{ flex:1, padding:"13px 8px", borderRadius:r, border:`2px solid ${niveau===n?accentColor:C.border}`, background:niveau===n?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
+                <div style={{ fontSize:22, marginBottom:4 }}>{n==="Débutant"?"🌱":n==="Confirmé"?"💪":"🏆"}</div>
+                <div style={{ color:niveau===n?accentColor:C.textSub, fontWeight:niveau===n?700:500, fontSize:12 }}>{n}</div>
+              </button>
+            ))}
+          </div>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>
+            Années d'expérience : <span style={{ color:accentColor, fontWeight:800 }}>{experienceAns} an{experienceAns>1?"s":""}</span>
+          </label>
+          <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
+          {compListe.length > 0 && <>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Compétences clés (optionnel)</label>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {compListe.map(c => (
+                <button key={c} onClick={()=>toggleItem(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?accentColor:C.border}`, background:competences.includes(c)?`${accentColor}25`:"transparent", color:competences.includes(c)?accentColor:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
+              ))}
+            </div>
+          </>}
+        </>}
+
+        {step === 4 && <>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Quels jours êtes-vous disponible ?</p>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
+            {JOURS.map(j => (
+              <button key={j} onClick={()=>toggleItem(disponJours,setDisponJours,j)} style={{ padding:"9px 13px", borderRadius:r, border:`2px solid ${disponJours.includes(j)?accentColor:C.border}`, background:disponJours.includes(j)?`${accentColor}20`:"transparent", color:disponJours.includes(j)?accentColor:C.textSub, fontSize:13, fontWeight:disponJours.includes(j)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{j.slice(0,3)}</button>
+            ))}
+          </div>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Créneaux horaires</label>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
+            {PLAGES.map(p => (
+              <button key={p} onClick={()=>toggleItem(disponCreneaux,setDisponCreneaux,p)} style={{ padding:"12px 16px", borderRadius:r, border:`2px solid ${disponCreneaux.includes(p)?accentColor:C.border}`, background:disponCreneaux.includes(p)?`${accentColor}20`:"transparent", color:disponCreneaux.includes(p)?accentColor:C.textSub, fontSize:13, fontWeight:disponCreneaux.includes(p)?700:400, cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all 0.2s" }}>{p}</button>
+            ))}
+          </div>
+          <div onClick={()=>setDispoImmediat(!dispoImmediat)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", cursor:"pointer" }}>
+            <div>
+              <div style={{ color:C.text, fontWeight:600, fontSize:14 }}>Disponible immédiatement</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>Apparaissez dans les résultats urgents</div>
+            </div>
+            <div style={{ width:44, height:24, borderRadius:12, background:dispoImmediat?accentColor:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+              <div style={{ position:"absolute", top:2, left:dispoImmediat?22:2, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
+            </div>
+          </div>
+        </>}
+
+        {step === 5 && <>
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
+              Tarif horaire net souhaité : <span style={{ color:accentColor, fontWeight:800, fontSize:16 }}>{tarifNet.toFixed(2)} €/h</span>
+            </label>
+            <input type="range" min={tarifMin} max={tarifMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
+            <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}>
+              <span>{tarifMin} €/h (min)</span><span>{tarifMax} €/h (max)</span>
+            </div>
+            <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"12px 14px", marginTop:12, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:16 }}>ℹ️</span>
+              <span style={{ color:C.textSub, fontSize:12 }}>Le client verra <strong style={{ color:C.text }}>{tarifClient.toFixed(2)} €/h</strong> (frais inclus). Vous encaissez <strong style={{ color:accentColor }}>{tarifNet.toFixed(2)} €/h</strong>.</span>
+            </div>
+          </div>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Statut professionnel *</label>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
+            {[
+              { id:"auto-entrepreneur", label:"Auto-entrepreneur / Micro-entreprise", icon:"🧾" },
+              { id:"salarie-porte",     label:"Salarié porté",                        icon:"🤝" },
+              { id:"interimaire",       label:"Via agence d'intérim",                 icon:"🏢" },
+            ].map(s => (
+              <button key={s.id} onClick={()=>setStatutPro(s.id)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${statutPro===s.id?accentColor:C.border}`, background:statutPro===s.id?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:10, alignItems:"center", transition:"all 0.2s" }}>
+                <span style={{ fontSize:18 }}>{s.icon}</span>
+                <span style={{ color:statutPro===s.id?accentColor:C.text, fontWeight:statutPro===s.id?700:500, fontSize:13 }}>{s.label}</span>
+              </button>
+            ))}
+          </div>
+          <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+        </>}
+
+        {step === 6 && <>
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", marginBottom:20 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:12 }}>📋 Récapitulatif de votre profil</div>
+            {[
+              { l:"Nom",           v:`${prenom} ${nom}` },
+              { l:"Téléphone",     v:telephone },
+              { l:"Secteur",       v:secteurInfo?.label || secteur },
+              { l:"Métier",        v:metier },
+              { l:"Niveau",        v:niveau },
+              { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
+              { l:"Disponibilités",v:disponJours.map(j=>j.slice(0,3)).join(", ") },
+              { l:"Créneaux",      v:disponCreneaux.map(c=>c.split(" ")[0]).join(", ") },
+              { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
+              { l:"Statut",        v:statutPro },
+            ].map(({l,v}) => (
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
+                <span style={{ color:C.textSub }}>{l}</span>
+                <span style={{ color:C.text, fontWeight:600, maxWidth:"60%", textAlign:"right" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+          <div style={{ position:"relative" }}>
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
+          </div>
+          <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+          </p>
+        </>}
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{ padding:"16px 24px 40px", display:"flex", gap:10 }}>
+        {step > 1 && <Btn variant="ghost" onClick={()=>{setError("");setStep(s=>s-1)}} style={{ flex:1 }}>← Retour</Btn>}
+        <Btn onClick={step===TOTAL?handleSubmit:handleNext} disabled={loading} style={{ flex:2, background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, padding:"14px" }}>
+          {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
+  const TOTAL = 3;
+  const [step, setStep] = useState(1);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [typeCompte, setTypeCompte] = useState("particulier");
+  const [societeNom, setSocieteNom] = useState("");
+  const [kbisNum, setKbisNum] = useState("");
+  const [secteursBesoins, setSecteursBesoins] = useState([]);
+  const [frequence, setFrequence] = useState("");
+  const [ville, setVille] = useState("");
+  const [rib, setRib] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+
+  const toggleSecteur = id =>
+    setSecteursBesoins(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+
+  const validateStep = () => {
+    if (step === 1) {
+      if (!prenom.trim() || !nom.trim()) return "Prénom et nom obligatoires";
+      if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
+      if (typeCompte === "professionnel") {
+        if (!societeNom.trim()) return "Nom de société obligatoire";
+        if (!kbisNum.trim())    return "Numéro SIRET/KBIS obligatoire";
+      }
+    }
+    if (step === 2) {
+      if (!secteursBesoins.length) return "Sélectionnez au moins un secteur";
+      if (!frequence)              return "Indiquez la fréquence de vos besoins";
+      if (!ville.trim())           return "Indiquez votre ville ou zone géographique";
+    }
+    if (step === 3) {
+      if (!email || !password) return "Email et mot de passe requis";
+      if (password.length < 6) return "Mot de passe minimum 6 caractères";
+    }
+    return null;
+  };
+
+  const handleNext = () => {
+    const err = validateStep();
+    if (err) { setError(err); return; }
+    setError(""); setStep(s => s + 1);
+  };
+
+  const handleSubmit = async () => {
+    const err = validateStep();
+    if (err) { setError(err); return; }
+    setLoading(true); setError("");
+    const { data, error: signUpErr } = await supabase.auth.signUp({
+      email, password,
+      options: { data: {
+        role: "client", prenom: prenom.trim(), nom: nom.trim(),
+        telephone: telephone.replace(/[\s.\-]/g,""),
+        type_compte: typeCompte, societe_nom: societeNom||null, kbis: kbisNum||null,
+        secteurs_besoins: secteursBesoins, frequence_besoins: frequence, ville,
+        rib: rib.replace(/\s/g,"") || null,
+      }},
+    });
+    if (signUpErr) {
+      setLoading(false);
+      setError(signUpErr.message.includes("already") || signUpErr.message.includes("registered")
+        ? "Un compte existe déjà avec cet email. Connectez-vous à la place."
+        : signUpErr.message);
+      return;
+    }
+    if (data?.user) {
+      await supabase.from("profiles").upsert({
+        id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+      });
+      await supabase.auth.signOut();
+    }
+    setLoading(false);
+    onRegister();
+  };
+
+  const STEP_TITLES = ["Votre identité","Vos besoins","Votre compte"];
+  const STEP_ICONS  = ["👤","🎯","🔐"];
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
+      <div style={{ padding:"54px 24px 16px" }}>
+        <button onClick={step===1 ? onBack : ()=>{setError("");setStep(s=>s-1)}} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:16, display:"flex", alignItems:"center", gap:6, fontFamily:"inherit" }}>
+          ← {step===1 ? "Retour à la connexion" : "Étape précédente"}
+        </button>
+        <div style={{ display:"flex", gap:4, marginBottom:16 }}>
+          {Array.from({length:TOTAL},(_,i) => (
+            <div key={i} style={{ flex:1, height:3, borderRadius:2, background:i<step?accentColor:`${accentColor}25`, transition:"background 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{STEP_ICONS[step-1]}</div>
+          <div>
+            <div style={{ color:C.textMuted, fontSize:11, letterSpacing:1, textTransform:"uppercase" }}>Étape {step}/{TOTAL} — Inscription Client</div>
+            <div style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display }}>{STEP_TITLES[step-1]}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto" }}>
+        {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+
+        {step === 1 && <>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
+            <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
+          </div>
+          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Type de compte *</label>
+          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+            {[{id:"particulier",label:"👤 Particulier"},{id:"professionnel",label:"🏢 Professionnel"}].map(t=>(
+              <button key={t.id} onClick={()=>setTypeCompte(t.id)} style={{ flex:1, padding:"12px", borderRadius:r, border:`2px solid ${typeCompte===t.id?accentColor:C.border}`, background:typeCompte===t.id?`${accentColor}20`:"transparent", color:typeCompte===t.id?accentColor:C.textSub, fontWeight:typeCompte===t.id?700:500, fontSize:13, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
+            ))}
+          </div>
+          {typeCompte === "professionnel" && <>
+            <Input label="Nom de société *" placeholder="ACME SARL" icon="🏢" value={societeNom} onChange={e=>setSocieteNom(e.target.value)} />
+            <Input label="N° SIRET / KBIS *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} />
+          </>}
+        </>}
+
+        {step === 2 && <>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>
+            Dans quels secteurs avez-vous besoin de main-d'œuvre ? <span style={{ color:C.textMuted }}>(plusieurs choix possibles)</span>
+          </p>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            {SECTORS.map(s => (
+              <button key={s.id} onClick={()=>toggleSecteur(s.id)} style={{ padding:"13px 10px", borderRadius:r, border:`2px solid ${secteursBesoins.includes(s.id)?s.color:C.border}`, background:secteursBesoins.includes(s.id)?`${s.color}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s", position:"relative" }}>
+                {secteursBesoins.includes(s.id) && <div style={{ position:"absolute", top:6, right:8, width:16, height:16, borderRadius:"50%", background:s.color, display:"flex", alignItems:"center", justifyContent:"center" }}><span style={{ color:"#fff", fontSize:10, fontWeight:900 }}>✓</span></div>}
+                <div style={{ fontSize:22, marginBottom:5 }}>{s.icon}</div>
+                <div style={{ color:secteursBesoins.includes(s.id)?s.color:C.textSub, fontWeight:secteursBesoins.includes(s.id)?700:500, fontSize:12 }}>{s.label}</div>
+              </button>
+            ))}
+          </div>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
+            {[
+              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⚡" },
+              { id:"regulier",  label:"Régulier",           desc:"Besoin récurrent chaque semaine ou mois",    icon:"📅" },
+              { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de missions récurrentes et ponctuelles", icon:"🔄" },
+            ].map(f => (
+              <button key={f.id} onClick={()=>setFrequence(f.id)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${frequence===f.id?accentColor:C.border}`, background:frequence===f.id?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:12, alignItems:"center", transition:"all 0.2s" }}>
+                <span style={{ fontSize:20 }}>{f.icon}</span>
+                <div>
+                  <div style={{ color:frequence===f.id?accentColor:C.text, fontWeight:frequence===f.id?700:500, fontSize:13 }}>{f.label}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{f.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+          <Input label="Ville / Zone géographique *" placeholder="Paris, Lyon, Bordeaux…" icon="📍" value={ville} onChange={e=>setVille(e.target.value)} />
+        </>}
+
+        {step === 3 && <>
+          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10 }}>
+            <span style={{ fontSize:18 }}>🏦</span>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
+            </div>
+          </div>
+          <Input label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+          <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+          <div style={{ position:"relative" }}>
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
+          </div>
+          <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+          </p>
+        </>}
+      </div>
+
+      <div style={{ padding:"16px 24px 40px", display:"flex", gap:10 }}>
+        {step > 1 && <Btn variant="ghost" onClick={()=>{setError("");setStep(s=>s-1)}} style={{ flex:1 }}>← Retour</Btn>}
+        <Btn onClick={step===TOTAL?handleSubmit:handleNext} disabled={loading} style={{ flex:2, background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, padding:"14px" }}>
+          {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+
 function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -1008,6 +1490,11 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     setLoading(false);
     onRegister();
   };
+
+  if (mode === "register") {
+    if (isClient) return <ClientRegisterFlow onRegister={onRegister} onBack={()=>setMode("login")} accentColor={accentColor} />;
+    return <PrestaRegisterFlow onRegister={onRegister} onBack={()=>setMode("login")} accentColor={accentColor} />;
+  }
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column", position:"relative", overflow:"hidden" }}>
