@@ -2517,7 +2517,7 @@ function useProviders() {
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
-function SectorDetailScreen({ sector, onNavigate }) {
+function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
@@ -2792,7 +2792,7 @@ function SectorDetailScreen({ sector, onNavigate }) {
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                           <Stars rating={p.rating} size={12}/>
-                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {p.distance} · {p.responseTime}</span>
+                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords) return haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1])+" km"; } return p.distance||"—"; })()} · {p.responseTime}</span>
                         </div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -5094,7 +5094,7 @@ function PrestaDashboard({ onNavigate }) {
 }
 
 // ── NAV BARS ──────────────────────────────────────────────────────
-function ClientNav({ active, onNavigate }) {
+function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"home",          icon:"🏠", label:"Accueil" },
     {id:"catalogue",     icon:"🗂️", label:"Secteurs"},
@@ -5116,7 +5116,12 @@ function ClientNav({ active, onNavigate }) {
         const active2 = active===t.id;
         return (
           <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s" }}>{t.icon}</span>
+            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+              {t.icon}
+              {t.id==="search_filters" && unreadCount > 0 && (
+                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              )}
+            </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.violet:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
             {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
           </button>
@@ -5126,7 +5131,7 @@ function ClientNav({ active, onNavigate }) {
   );
 }
 
-function PrestaNav({ active, onNavigate }) {
+function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"p_home",     icon:"🏠", label:"Accueil" },
     {id:"p_missions", icon:"📋", label:"Missions"},
@@ -5147,7 +5152,12 @@ function PrestaNav({ active, onNavigate }) {
         const active2 = active===t.id;
         return (
           <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s" }}>{t.icon}</span>
+            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+              {t.icon}
+              {t.id==="p_missions" && unreadCount > 0 && (
+                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              )}
+            </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.accent:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
             {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
           </button>
@@ -5207,7 +5217,29 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
   useEffect(() => {
     if (!processing) return;
     const t1 = setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
-    const t2 = setTimeout(() => onSuccess && onSuccess(), 3800);
+    const t2 = setTimeout(async () => {
+      // Envoyer l'email de confirmation de réservation
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const clientEmail = userData?.user?.email || null;
+        const clientName  = userData?.user?.user_metadata?.prenom || userData?.user?.user_metadata?.nom || null;
+        const mainProvider = providers[0] || {};
+        await fetch("/api/booking-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientEmail,
+            clientName,
+            prestaName: mainProvider.name || null,
+            job:        mainProvider.jobTitle || mainProvider.role || null,
+            date:       null,
+            hours:      null,
+            total,
+          }),
+        });
+      } catch (_) {}
+      onSuccess && onSuccess();
+    }, 3800);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [processing]);
 
@@ -7413,7 +7445,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 }
 
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
-function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
+function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline, unreadCount }) {
   const { isMobile } = useResponsive();
 
   const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
@@ -7461,8 +7493,8 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {children}
         </div>
-        {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
-        {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
+        {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
+        {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
         {adminBtn}
       </div>
     );
@@ -8336,6 +8368,45 @@ export default function App() {
   const [onlineStatus,setOnlineStatus]=useState(true);
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
+  const [unreadCount,setUnreadCount]=useState(0);
+  const [clientCoords,setClientCoords]=useState(null);
+
+  // Reset badge messages non lus quand le chat est ouvert
+  useEffect(()=>{
+    if(screen==="chat"){
+      localStorage.setItem("jober_msg_last_seen", new Date().toISOString());
+      setUnreadCount(0);
+    }
+  },[screen]);
+
+  // Géolocalisation au montage
+  useEffect(()=>{
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>setClientCoords({ lat:pos.coords.latitude, lng:pos.coords.longitude }),
+        ()=>{}
+      );
+    }
+  },[]);
+
+  // Poll messages non lus toutes les 10 secondes
+  useEffect(()=>{
+    if(!supaUser) return;
+    const userId = supaUser.id;
+    const poll = async()=>{
+      const lastSeen = localStorage.getItem("jober_msg_last_seen") || new Date(0).toISOString();
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id", { count:"exact" })
+        .ilike("conversation_key", `%${userId}%`)
+        .neq("sender_tag","client")
+        .gt("created_at", lastSeen);
+      if(!error) setUnreadCount(data?.length || 0);
+    };
+    poll();
+    const interval = setInterval(poll, 10000);
+    return ()=>clearInterval(interval);
+  },[supaUser]);
 
   // Écouter les changements de session (déconnexion, reset password)
   // Ne pas auto-naviguer au démarrage : l'utilisateur passe toujours par le splash
@@ -8405,6 +8476,7 @@ export default function App() {
       screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
+      unreadCount={unreadCount}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
       {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
@@ -8432,7 +8504,7 @@ export default function App() {
       {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
-      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} />}
+      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
