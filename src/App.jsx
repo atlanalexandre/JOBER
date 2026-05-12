@@ -276,7 +276,38 @@ const PROVIDERS = [
   _mkP({ id:72, name:"Mounia Brahim",    jobTitle:"Hôte(sse) de caisse",      tarifNet:11.8, avatar:"🏷️", color:"#4DB6AC", rating:4.3, reviews:10, skills:["Caisse","Accueil","Mise en rayon légère"],       experience:"1 an",   available:true,  sector:"distribution", bio:"Disponible tôt le matin et week-ends.",                       distance:"2,2 km", responseTime:"~8 min",  missions:10, role:"Hôte(sse) de caisse" }),
   _mkP({ id:80, name:"Omar Messaoud",    jobTitle:"Agent de sécurité",        tarifNet:13.5, avatar:"🛡️", color:"#7986CB", rating:4.6, reviews:33, skills:["CQP APS","Rondes","Gestion conflits"],           experience:"6 ans",  available:true,  sector:"divers",       bio:"Agent qualifié CQP APS, calme et professionnel.",             distance:"2,9 km", responseTime:"~12 min", missions:33, role:"Agent de sécurité" }),
   _mkP({ id:81, name:"Stéphane Veron",   jobTitle:"Agent de sécurité",        tarifNet:14.0, avatar:"🔐",  color:"#7986CB", rating:4.7, reviews:45, skills:["CQP APS","SST","Surveillance vidéo"],           experience:"8 ans",  available:true,  sector:"divers",       bio:"Agent expérimenté, habilité sûreté aéroportuaire.",           distance:"1,1 km", responseTime:"~4 min",  missions:45, role:"Agent de sécurité" }),
-  _mkP({ id:82, name:"Fatoumata Balde",  jobTitle:"Agent de sécurité",        tarifNet:13.5, avatar:"👮‍♀️",color:"#7986CB", rating:4.5, reviews:24, skills:["CQP APS","Contrôle accès","Prévention"],       experience:"4 ans",  available:true,  sector:"divers",       bio:"Agente de sécurité qualifiée, spécialiste contrôle accès.",   distance:"0,6 km", responseTime:"~2 min",  missions:24, role:"Agent de sécurité" })
+  _mkP({ id:82, name:"Fatoumata Balde",  jobTitle:"Agent de sécurité",        tarifNet:13.5, avatar:"👮‍♀️",color:"#7986CB", rating:4.5, reviews:24, skills:["CQP APS","Contrôle accès","Prévention"],       experience:"4 ans",  available:true,  sector:"divers",       bio:"Agente de sécurité qualifiée, spécialiste contrôle accès.",   distance:"0,6 km", responseTime:"~2 min",  missions:24, role:"Agent de sécurité" }),
+  // BTP
+  _mkP({ id:90, name:"Rachid Benali",     jobTitle:"Maçon",                   tarifNet:17.0, avatar:"🧱",  color:"#FF8A65", rating:4.7, reviews:38, skills:["Maçonnerie","Béton","Coffrage","Enduit"],          experience:"10 ans", available:true,  sector:"btp",          bio:"Maçon confirmé, travaux neufs et rénovation.",                distance:"1,8 km", responseTime:"~7 min",  missions:38, role:"Maçon" }),
+  _mkP({ id:91, name:"Didier Fontaine",   jobTitle:"Électricien",             tarifNet:20.0, avatar:"⚡",  color:"#FF8A65", rating:4.8, reviews:51, skills:["Câblage","Tableau élec.","Norme NF C 15-100"],      experience:"12 ans", available:true,  sector:"btp",          bio:"Électricien qualifié, habilitations BR-B1V à jour.",          distance:"2,4 km", responseTime:"~9 min",  missions:51, role:"Électricien" }),
+  _mkP({ id:92, name:"Karim Hajjar",      jobTitle:"Plombier",                tarifNet:19.0, avatar:"🔧",  color:"#FF8A65", rating:4.6, reviews:33, skills:["Plomberie","Soudure","Sanitaire","Chauffage"],      experience:"8 ans",  available:true,  sector:"btp",          bio:"Plombier chauffagiste, installations neuves et dépannage.",   distance:"3,1 km", responseTime:"~13 min", missions:33, role:"Plombier" }),
+  _mkP({ id:93, name:"Julien Merlin",     jobTitle:"Peintre en bâtiment",     tarifNet:15.0, avatar:"🎨",  color:"#FF8A65", rating:4.5, reviews:27, skills:["Peinture intérieure","Enduit","Ravalement"],        experience:"6 ans",  available:true,  sector:"btp",          bio:"Peintre soigneux, intérieur et extérieur, délais respectés.", distance:"0,9 km", responseTime:"~4 min",  missions:27, role:"Peintre en bâtiment" }),
+  _mkP({ id:94, name:"Ibrahima Diallo",   jobTitle:"Manœuvre BTP",            tarifNet:13.0, avatar:"🏗️", color:"#FF8A65", rating:4.3, reviews:14, skills:["Aide maçonnerie","Port de charges","Nettoyage chantier"],experience:"2 ans",available:true, sector:"btp",           bio:"Manœuvre polyvalent, ponctuel et disponible rapidement.",      distance:"1,5 km", responseTime:"~6 min",  missions:14, role:"Manœuvre BTP" }),
+  _mkP({ id:95, name:"Patrice Giroux",    jobTitle:"Carreleur",               tarifNet:18.0, avatar:"🪟",  color:"#FF8A65", rating:4.7, reviews:42, skills:["Carrelage","Faïence","Chape","Ragréage"],           experience:"9 ans",  available:false, sector:"btp",           bio:"Carreleur-faïencier expert, finitions soignées.",             distance:"4,2 km", responseTime:"~20 min", missions:42, role:"Carreleur" }),
+  // Logistique (extras)
+  _mkP({ id:96, name:"Élodie Vasseur",    jobTitle:"Préparateur(trice) commandes", tarifNet:12.5, avatar:"📦", color:"#4FC3F7", rating:4.5, reviews:22, skills:["Prépa commandes","Scan","WMS","CACES 1"],    experience:"3 ans",  available:true,  sector:"logistique",   bio:"Rapide et rigoureuse, habituée aux grands entrepôts.",        distance:"1,0 km", responseTime:"~4 min",  missions:22, role:"Préparateur(trice) commandes" }),
+  _mkP({ id:97, name:"Yannick Aubert",    jobTitle:"Chauffeur VL",            tarifNet:14.5, avatar:"🚐",  color:"#4FC3F7", rating:4.6, reviews:35, skills:["Permis B","Livraison VL","Scan colis","Plan de tournée"],experience:"5 ans",available:true,sector:"logistique",  bio:"Chauffeur livreur fiable, connaissance IDF.",                 distance:"2,6 km", responseTime:"~10 min", missions:35, role:"Chauffeur VL" }),
+  _mkP({ id:98, name:"Abdelkader Saadi",  jobTitle:"Cariste CACES 3",         tarifNet:15.0, avatar:"🏋️", color:"#4FC3F7", rating:4.7, reviews:40, skills:["CACES 3","CACES 5","Palettisation","Stock"],        experience:"7 ans",  available:true,  sector:"logistique",   bio:"Cariste CACES 3 et 5, expert gestion de stock.",              distance:"0,8 km", responseTime:"~3 min",  missions:40, role:"Cariste CACES 3" }),
+  // Restauration (extras)
+  _mkP({ id:99, name:"Laura Schmitt",     jobTitle:"Cuisinier(ère)",          tarifNet:14.0, avatar:"👨‍🍳", color:"#F06292", rating:4.8, reviews:61, skills:["Cuisine française","Pastry","HACCP","Cold kitchen"],experience:"9 ans",  available:true,  sector:"restauration", bio:"Cuisinière confirmée, brigade étoilée et brasseries.",        distance:"1,3 km", responseTime:"~5 min",  missions:61, role:"Cuisinier(ère)" }),
+  _mkP({ id:100, name:"Ali Toure",        jobTitle:"Plongeur / Commis",       tarifNet:11.5, avatar:"🍳",  color:"#F06292", rating:4.4, reviews:16, skills:["Plonge","Aide cuisine","Découpe","Nettoyage"],       experience:"2 ans",  available:true,  sector:"restauration", bio:"Dynamique et rigoureux, disponible soirs et week-ends.",      distance:"0,4 km", responseTime:"~2 min",  missions:16, role:"Plongeur / Commis" }),
+  _mkP({ id:101, name:"Chloé Nguyen",     jobTitle:"Barman / Barmaid",        tarifNet:13.0, avatar:"🍸",  color:"#F06292", rating:4.6, reviews:39, skills:["Cocktails","Gestion stock bar","Caisse","Accueil"],  experience:"5 ans",  available:true,  sector:"restauration", bio:"Barmaid créative, expérience cocktail bars et restaurants.",  distance:"1,9 km", responseTime:"~7 min",  missions:39, role:"Barman / Barmaid" }),
+  // Hôtellerie (extras)
+  _mkP({ id:102, name:"Amira Slimani",    jobTitle:"Femme / Valet de chambre", tarifNet:12.0, avatar:"🛏️", color:"#FFB74D", rating:4.5, reviews:28, skills:["Nettoyage chambres","Hygiène hôtelière","Check-out"],experience:"4 ans", available:true,  sector:"hotellerie",   bio:"Gouvernante expérimentée, hôtels 3 et 4 étoiles.",            distance:"1,6 km", responseTime:"~6 min",  missions:28, role:"Femme / Valet de chambre" }),
+  _mkP({ id:103, name:"Nicolas Faure",    jobTitle:"Concierge",               tarifNet:15.0, avatar:"🗺️", color:"#FFB74D", rating:4.9, reviews:74, skills:["Conciergerie","Multilingue","Réservations","Accueil VIP"],experience:"11 ans",available:true,sector:"hotellerie",  bio:"Concierge 5 étoiles, anglais-espagnol-arabe courants.",       distance:"0,7 km", responseTime:"~3 min",  missions:74, role:"Concierge" }),
+  _mkP({ id:104, name:"Pauline Dumont",   jobTitle:"Responsable petit-déjeuner", tarifNet:13.5, avatar:"☕", color:"#FFB74D", rating:4.6, reviews:31, skills:["Service buffet","Hygiène alimentaire","Caisse"],    experience:"5 ans",  available:false, sector:"hotellerie",   bio:"Spécialiste service petit-déjeuner, rigoureuse HACCP.",       distance:"3,5 km", responseTime:"~15 min", missions:31, role:"Responsable petit-déjeuner" }),
+  // Propreté (extras)
+  _mkP({ id:105, name:"Sylvie Lecomte",   jobTitle:"Agent de propreté",       tarifNet:12.5, avatar:"✨",  color:"#26C6DA", rating:4.8, reviews:58, skills:["Nettoyage bureaux","Technique J38","Sols spéciaux"],  experience:"8 ans",  available:true,  sector:"proprete",     bio:"Agente confirmée, expérience immeubles de prestige.",         distance:"0,5 km", responseTime:"~2 min",  missions:58, role:"Agent de propreté" }),
+  _mkP({ id:106, name:"Hamidou Traoré",   jobTitle:"Technicien de surface",   tarifNet:13.5, avatar:"🧴",  color:"#26C6DA", rating:4.5, reviews:22, skills:["Monobrosse","Autolaveuse","Produits Pro"],            experience:"5 ans",  available:true,  sector:"proprete",     bio:"Technicien machines, remise en état sols et moquettes.",      distance:"2,3 km", responseTime:"~9 min",  missions:22, role:"Technicien de surface" }),
+  // Commercial (extras)
+  _mkP({ id:107, name:"Vanessa Piotrowski",jobTitle:"Téléprospecteur(trice)", tarifNet:13.0, avatar:"📞", color:"#BA68C8", rating:4.5, reviews:30, skills:["Cold calling","CRM","Qualification leads","Argumentation"],experience:"4 ans",available:true,sector:"commercial",  bio:"Téléprospectrice B2B, taux de prise de RDV au-dessus de la moyenne.",distance:"1,2 km",responseTime:"~5 min",missions:30,role:"Téléprospecteur(trice)" }),
+  _mkP({ id:108, name:"Hugo Bertin",      jobTitle:"Chargé(e) de compte",     tarifNet:16.0, avatar:"🤝",  color:"#BA68C8", rating:4.6, reviews:41, skills:["Account management","Upsell","Fidélisation","CRM"],   experience:"6 ans",  available:true,  sector:"commercial",   bio:"Chargé de compte confirmé, portefeuille PME-ETI.",            distance:"2,8 km", responseTime:"~11 min", missions:41, role:"Chargé(e) de compte" }),
+  // Distribution (extras)
+  _mkP({ id:109, name:"Leila Ouali",      jobTitle:"Mise en rayon",           tarifNet:11.5, avatar:"🏪",  color:"#4DB6AC", rating:4.4, reviews:19, skills:["Facing","Réassort","Étiquetage","PLV"],              experience:"2 ans",  available:true,  sector:"distribution", bio:"Expérience grandes surfaces, disponible tôt le matin.",       distance:"0,9 km", responseTime:"~4 min",  missions:19, role:"Mise en rayon" }),
+  _mkP({ id:110, name:"Frédéric Blanche", jobTitle:"Chef de rayon",           tarifNet:14.0, avatar:"📊",  color:"#4DB6AC", rating:4.7, reviews:46, skills:["Gestion rayon","Commandes","Management","Pertes"],    experience:"7 ans",  available:true,  sector:"distribution", bio:"Chef de rayon expérimenté, réduction des pertes et DLC.",      distance:"3,3 km", responseTime:"~14 min", missions:46, role:"Chef de rayon" }),
+  // Divers (extras)
+  _mkP({ id:111, name:"Cédric Masson",    jobTitle:"Chauffeur VTC",           tarifNet:15.5, avatar:"🚗",  color:"#7986CB", rating:4.8, reviews:67, skills:["Permis B","VTC","Anglais","Carte pro"],               experience:"5 ans",  available:true,  sector:"divers",       bio:"Chauffeur VTC professionnel, discret et ponctuel.",           distance:"0,3 km", responseTime:"~1 min",  missions:67, role:"Chauffeur VTC" }),
+  _mkP({ id:112, name:"Roxane Levy",      jobTitle:"Assistant(e) événementiel", tarifNet:13.0, avatar:"🎉", color:"#7986CB", rating:4.6, reviews:34, skills:["Organisation événements","Accueil","Logistique","Tenue pro"],experience:"4 ans",available:true,sector:"divers",    bio:"Hotesse et assistante événementielle, multilingue.",           distance:"1,7 km", responseTime:"~7 min",  missions:34, role:"Assistant(e) événementiel" })
 ];
 
 const DOCS_REQUIS = [
@@ -1595,51 +1626,14 @@ function CatalogueScreen({ onNavigate }) {
           const sectorProviders = PROVIDERS.filter(p=>p.sector===sector.id);
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
-              {/* Bannière secteur */}
+              {/* Bannière secteur cliquable uniquement */}
               <div style={{ margin:"0 18px 14px", background:`linear-gradient(135deg,${sector.color}44,${sector.color}22)`, borderRadius:18, padding:"20px 18px", position:"relative", overflow:"hidden", cursor:"pointer" }} onClick={()=>onNavigate("sector_detail",sector)}>
                 <div style={{ position:"absolute", right:-10, top:-10, fontSize:64, opacity:0.25 }}>{sector.banner}</div>
                 <div style={{ position:"absolute", right:14, bottom:14, fontSize:36 }}>{sector.icon}</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:18 }}>{sector.label}</div>
                 <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sector.count} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
-                <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les métiers →</Badge></div>
+                <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les prestataires →</Badge></div>
               </div>
-
-              {/* Prestataires du secteur — style carte Uber Eats */}
-              {sectorProviders.length > 0 ? (
-                <div style={{ display:"flex", gap:12, overflowX:"auto", padding:"0 18px 16px", scrollbarWidth:"none" }}>
-                  {sectorProviders.map(p=>(
-                    <div key={p.id} onClick={()=>onNavigate("profile",p)} style={{ background:"#0D1B3E", borderRadius:16, minWidth:160, maxWidth:160, cursor:"pointer", boxShadow:"0 4px 20px rgba(0,0,0,0.5)", overflow:"hidden", flexShrink:0 }}>
-                      <div style={{ height:90, background:`linear-gradient(135deg,${p.color}33,${p.color}11)`, display:"flex", alignItems:"center", justifyContent:"center", position:"relative" }}>
-                        <span style={{ fontSize:36 }}>{p.avatar}</span>
-                        {p.available
-                          ? <div style={{ position:"absolute", top:8, right:8, background:C.success, borderRadius:8, padding:"2px 7px", fontSize:10, color:C.white, fontWeight:700 }}>Dispo</div>
-                          : <div style={{ position:"absolute", top:8, right:8, background:C.gray, borderRadius:8, padding:"2px 7px", fontSize:10, color:C.white, fontWeight:700 }}>Occupé</div>}
-                      </div>
-                      <div style={{ padding:"10px" }}>
-                        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:2 }}>{p.name}</div>
-                        <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>{p.role}</div>
-                        <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:6 }}>
-                          <Stars rating={p.rating} size={11} />
-                          <span style={{ color:C.textSub, fontSize:10 }}>{p.rating}</span>
-                        </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ color:C.violet, fontWeight:800, fontSize:12 }}>{p.hourlyRate} HT</span>
-                          <span style={{ color:C.textSub, fontSize:10 }}>{p.distance}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {/* Voir plus */}
-                  <div onClick={()=>onNavigate("sector_detail",sector)} style={{ background:`${sector.color}15`, border:`2px dashed ${sector.color}44`, borderRadius:16, minWidth:120, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6, cursor:"pointer", padding:"20px 10px", flexShrink:0 }}>
-                    <span style={{ fontSize:22 }}>{sector.icon}</span>
-                    <span style={{ fontSize:11, fontWeight:700, color:sector.color, textAlign:"center" }}>Voir tout {sector.label}</span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ margin:"0 18px 16px", background:"#0D1B3E", borderRadius:r, padding:"16px", textAlign:"center", color:C.textSub, fontSize:13 }}>
-                  Aucun prestataire pour ce secteur pour l'instant
-                </div>
-              )}
             </div>
           );
         })}
