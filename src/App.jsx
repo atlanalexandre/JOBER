@@ -254,6 +254,184 @@ const CV_DATA = {
     permis:"Permis B — véhiculé",
     hasCV: true,
   },
+  // ── Extras ──────────────────────────────────────────────────────
+  13: { // Inès Moreau
+    titre:"Serveuse — Service en salle & Brasseries",
+    accroche:"Serveuse dynamique avec 3 ans d'expérience en brasseries parisiennes. Sens du service irréprochable, sourire naturel et aisance avec une clientèle variée.",
+    experiences:[
+      { poste:"Serveuse", entreprise:"Brasserie Bouillon Chartier", periode:"2023 – 2025", desc:"Service en salle · 80+ couverts/service · Encaissement · Accueil clients" },
+      { poste:"Serveuse", entreprise:"Café de Flore", periode:"2022 – 2023", desc:"Service rapide brasserie · Gestion des tables · Formation nouveaux serveurs" },
+    ],
+    formations:[
+      { diplome:"CAP Service en Salle", etablissement:"CFA Hôtelier Paris", annee:"2022" },
+      { diplome:"Hygiène alimentaire (HACCP)", etablissement:"Chambre de Commerce Paris", annee:"2022" },
+    ],
+    langues:["Français (natif)","Anglais (B1)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  15: { // Camille Dupont
+    titre:"Serveuse Gastronomique — Service VIP & Anglophone",
+    accroche:"5 ans en restauration haut de gamme, bilingue français-anglais. Expérience service VIP et sommellerie de base. Reconnue pour son professionnalisme et sa discrétion.",
+    experiences:[
+      { poste:"Serveuse VIP", entreprise:"Hôtel Le Meurice", periode:"2022 – 2025", desc:"Service en salle gastronomique · Clientèle internationale · Sommellerie de base · Upselling" },
+      { poste:"Chef de rang", entreprise:"Restaurant Guy Savoy", periode:"2020 – 2022", desc:"Service étoilé Michelin · Coordination salle · Gestion des alliances mets-vins" },
+      { poste:"Serveuse", entreprise:"Brasserie Terminus Nord", periode:"2019 – 2020", desc:"Service brasserie volume · 100+ couverts · Travail en équipe" },
+    ],
+    formations:[
+      { diplome:"BTS Hôtellerie-Restauration", etablissement:"Lycée Hôtelier Jean Drouant", annee:"2019" },
+      { diplome:"Formation Sommellerie Niveau 1", etablissement:"CIVB Bordeaux", annee:"2021" },
+    ],
+    langues:["Français (natif)","Anglais (courant C1)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  34: { // Mathilde Perrin
+    titre:"Réceptionniste Trilingue — Hôtellerie 4 & 5 étoiles",
+    accroche:"7 ans en hôtellerie haut de gamme. Trilingue français-anglais-espagnol, maîtrise Opera PMS et Fidelio. Passionnée par l'accueil et le service personnalisé.",
+    experiences:[
+      { poste:"Réceptionniste Senior", entreprise:"Four Seasons Hotel George V Paris", periode:"2022 – 2025", desc:"Check-in/out VIP · Conciergerie · Gestion réclamations · Supervision stagiaires" },
+      { poste:"Réceptionniste", entreprise:"Hôtel de Crillon", periode:"2019 – 2022", desc:"Accueil clientèle internationale · Facturation · Opera PMS · Standard" },
+      { poste:"Agent de réservation", entreprise:"Marriott Paris", periode:"2018 – 2019", desc:"Gestion réservations · Yield management · Upselling suites" },
+    ],
+    formations:[
+      { diplome:"BTS Tourisme option Hôtellerie", etablissement:"Institut Paul Bocuse Lyon", annee:"2018" },
+      { diplome:"Certification Opera PMS avancé", etablissement:"Oracle Hospitality", annee:"2020" },
+    ],
+    langues:["Français (natif)","Anglais (C1)","Espagnol (B2)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  47: { // Houda Saidi
+    titre:"Agente de Propreté — Bureaux & Surfaces Commerciales",
+    accroche:"3 ans d'expérience en entretien de bureaux et surfaces commerciales. Consciencieuse et discrète, maîtrise des techniques de nettoyage et des produits professionnels.",
+    experiences:[
+      { poste:"Agente de propreté", entreprise:"ISS Facility Services", periode:"2023 – 2025", desc:"Nettoyage bureaux · Désinfection surfaces · Gestion produits chimiques · Traçabilité" },
+      { poste:"Agente de surface", entreprise:"Onet Propreté", periode:"2022 – 2023", desc:"Entretien centres commerciaux · Nettoyage vitres · Tri sélectif" },
+    ],
+    formations:[
+      { diplome:"CAP Maintenance et Hygiène des Locaux", etablissement:"AFPA Île-de-France", annee:"2022" },
+      { diplome:"Formation produits chimiques (INRS)", etablissement:"INRS Paris", annee:"2023" },
+    ],
+    langues:["Français (courant)","Arabe (natif)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  61: { // Sophie Renard
+    titre:"Commercial(e) B2B Senior — Grands Comptes & Closing",
+    accroche:"Top performer commerciale avec 8 ans d'expérience B2B. Spécialiste grands comptes et cycles de vente complexes. Track record : +2M€ CA généré sur les 3 dernières années.",
+    experiences:[
+      { poste:"Account Executive Senior", entreprise:"HubSpot France", periode:"2022 – 2025", desc:"Portefeuille 80 comptes ETI · CA généré 750k€/an · Taux de rétention 91% · Mentoring juniors" },
+      { poste:"Business Developer", entreprise:"Dassault Systèmes", periode:"2019 – 2022", desc:"Prospection secteur industrie · Closing cycles 6-18 mois · Négociation contrats 200k€+" },
+      { poste:"Commerciale terrain", entreprise:"Oracle", periode:"2017 – 2019", desc:"Prospection terrain IDF · 45 RDV/mois · Taux transformation 38%" },
+    ],
+    formations:[
+      { diplome:"Master Commerce & Négociation", etablissement:"ESSEC Business School", annee:"2017" },
+      { diplome:"Certification Salesforce Sales Cloud", etablissement:"Salesforce", annee:"2019" },
+    ],
+    langues:["Français (natif)","Anglais (C2)","Allemand (B1)"],
+    permis:"Permis B — véhiculée",
+    hasCV: true,
+  },
+  71: { // Stéphanie Collin
+    titre:"Hôtesse de Caisse — Grande Distribution",
+    accroche:"4 ans en grande distribution, spécialiste encaissement et relation client. Rapide, fiable et habituée aux environnements à fort flux. Connaissance SAV et fidélité.",
+    experiences:[
+      { poste:"Hôtesse de caisse principale", entreprise:"Carrefour Market Paris 15e", periode:"2022 – 2025", desc:"Encaissement flux élevé · Formation nouveaux caissiers · Gestion coffre · SAV caisse" },
+      { poste:"Caissière", entreprise:"Monoprix République", periode:"2021 – 2022", desc:"Encaissement · Accueil · Programme fidélité · Échanges et remboursements" },
+    ],
+    formations:[
+      { diplome:"CAP Employé de Commerce", etablissement:"CFA Paris Commerce", annee:"2021" },
+      { diplome:"Formation Geste & Posture Caisse", etablissement:"CARREFOUR Academy", annee:"2022" },
+    ],
+    langues:["Français (natif)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  81: { // Stéphane Veron
+    titre:"Agent de Sécurité — CQP APS · Sûreté Aéroportuaire",
+    accroche:"8 ans d'expérience en sécurité privée, habilitation sûreté aéroportuaire. Calme, réactif et professionnel. Spécialiste surveillance vidéo et gestion de crise.",
+    experiences:[
+      { poste:"Agent de sécurité APS", entreprise:"Prosegur France", periode:"2021 – 2025", desc:"Rondes sécurité · Surveillance vidéo · Gestion accès · Rédaction mains courantes" },
+      { poste:"Agent de sûreté aéroportuaire", entreprise:"Securitas Airport Services", periode:"2018 – 2021", desc:"Contrôle sûreté passagers · Détection d'objets interdits · Protocoles DGAC" },
+      { poste:"Vigile", entreprise:"G4S France", periode:"2017 – 2018", desc:"Gardiennage entrepôt · Rondes nocturnes · Accueil visiteurs" },
+    ],
+    formations:[
+      { diplome:"CQP APS (Agent de Prévention et Sécurité)", etablissement:"CNPP Vernon", annee:"2017" },
+      { diplome:"SST (Secouriste du Travail)", etablissement:"INRS", annee:"2019" },
+      { diplome:"Habilitation Sûreté Aéroportuaire (DGAC)", etablissement:"Aéroports de Paris", annee:"2018" },
+    ],
+    langues:["Français (natif)","Anglais (B1)"],
+    permis:"Permis B — véhiculé",
+    hasCV: true,
+  },
+  91: { // Didier Fontaine
+    titre:"Électricien Qualifié — Habilitations BR-B1V · Norme NF C 15-100",
+    accroche:"12 ans en électricité du bâtiment, travaux neufs et rénovation. Habilitations BR et B1V à jour. Rigoureux, autonome, respectueux des normes de sécurité.",
+    experiences:[
+      { poste:"Électricien chef d'équipe", entreprise:"Spie Batignolles IDF", periode:"2020 – 2025", desc:"Travaux neufs résidentiel & tertiaire · Mise en conformité tableaux · Encadrement 3 personnes" },
+      { poste:"Électricien", entreprise:"Bouygues Energies & Services", periode:"2016 – 2020", desc:"Câblage courants forts/faibles · Raccordement TGBT · Tests et mesures" },
+      { poste:"Électricien junior", entreprise:"SNEF Paris", periode:"2013 – 2016", desc:"Tirage de câbles · Pose chemins de câbles · Aide mise en service" },
+    ],
+    formations:[
+      { diplome:"Bac Pro Électrotechnique", etablissement:"Lycée Diderot Paris", annee:"2013" },
+      { diplome:"Habilitations B1V-BR-BC", etablissement:"APAVE Paris", annee:"2021" },
+      { diplome:"CACES Nacelle 3B", etablissement:"AFTRAL", annee:"2019" },
+    ],
+    langues:["Français (natif)"],
+    permis:"Permis B — véhiculé",
+    hasCV: true,
+  },
+  90: { // Rachid Benali
+    titre:"Maçon Confirmé — Travaux Neufs & Rénovation",
+    accroche:"10 ans en maçonnerie, aussi bien sur chantiers neufs qu'en rénovation. Maîtrise coffrage, béton armé et enduits. Autonome et capable de conduire une équipe.",
+    experiences:[
+      { poste:"Maçon chef d'équipe", entreprise:"Eiffage Construction IDF", periode:"2021 – 2025", desc:"Maçonnerie gros œuvre · Coffrage banche · Coulage béton · Coordination équipe 4 personnes" },
+      { poste:"Maçon", entreprise:"Vinci Construction France", periode:"2018 – 2021", desc:"Élévation murs · Dalles béton · Réservations techniques · Lecture plans" },
+      { poste:"Aide maçon", entreprise:"Chantiers Loiseau", periode:"2015 – 2018", desc:"Préparation mortier · Manutention · Nettoyage chantier · Assistance maçons" },
+    ],
+    formations:[
+      { diplome:"CAP Maçon", etablissement:"CFA BTP Île-de-France", annee:"2015" },
+      { diplome:"Bac Pro Technicien du Bâtiment", etablissement:"Lycée Gustave Eiffel Cachan", annee:"2017" },
+      { diplome:"AIPR (Autorisation Intervention Proximité Réseaux)", etablissement:"OPPBTP", annee:"2022" },
+    ],
+    langues:["Français (courant)","Arabe (natif)"],
+    permis:"Permis B — véhiculé",
+    hasCV: true,
+  },
+  99: { // Laura Schmitt
+    titre:"Cuisinière Confirmée — Brigade étoilée & Cuisine française",
+    accroche:"9 ans en cuisine professionnelle, de la brasserie au restaurant étoilé. Créative, rigoureuse HACCP et à l'aise sur tous les postes de brigade. Disponible en renfort ou remplacement.",
+    experiences:[
+      { poste:"Cuisinière (Chef de partie froid)", entreprise:"Restaurant Taillevent **", periode:"2022 – 2025", desc:"Garde-manger · Entrées froides · Pâtisserie salée · Respect HACCP strict" },
+      { poste:"Commis puis demi-chef", entreprise:"Hôtel Lutetia — Restaurant Paris", periode:"2019 – 2022", desc:"Poste chaud et froid · Préparations en amont · Aide chef de partie" },
+      { poste:"Cuisinière", entreprise:"Brasserie Flo Paris", periode:"2016 – 2019", desc:"Production volume · Cuissons vapeur/four · Fiches techniques" },
+    ],
+    formations:[
+      { diplome:"CAP Cuisine", etablissement:"École Ferrandi Paris", annee:"2016" },
+      { diplome:"Mention Complémentaire Cuisine Gastronomique", etablissement:"École Ferrandi Paris", annee:"2017" },
+      { diplome:"Formation Hygiène HACCP", etablissement:"UMIH Formation", annee:"2018" },
+    ],
+    langues:["Français (natif)","Anglais (B1)"],
+    permis:"Permis B",
+    hasCV: true,
+  },
+  103: { // Nicolas Faure
+    titre:"Concierge 5 Étoiles — Multilingue & Conciergerie Haut de Gamme",
+    accroche:"11 ans en conciergerie de luxe, trilingue français-anglais-arabe. Réseau solide de prestataires premium. Reconnu pour sa discrétion, sa réactivité et son sens du service.",
+    experiences:[
+      { poste:"Chef Concierge", entreprise:"Hôtel Ritz Paris", periode:"2020 – 2025", desc:"Conciergerie VIP · Réseau prestataires · Organisation événements privés · Management équipe 5 personnes" },
+      { poste:"Concierge", entreprise:"Hôtel Plaza Athénée", periode:"2016 – 2020", desc:"Réservations gastronomiques · Transferts privés · Visites privées musées · Clientèle UHNWI" },
+      { poste:"Groom / Agent d'accueil", entreprise:"Hôtel Le Bristol Paris", periode:"2014 – 2016", desc:"Accueil clientèle · Bagagerie · Service voiturier · Orientation" },
+    ],
+    formations:[
+      { diplome:"Bac Pro Hôtellerie", etablissement:"Lycée Hôtelier de Nice", annee:"2014" },
+      { diplome:"Clefs d'Or — Membre Association des Concierges de Palace", etablissement:"Les Clefs d'Or France", annee:"2019" },
+    ],
+    langues:["Français (natif)","Anglais (C2)","Arabe (B2)"],
+    permis:"Permis B — véhiculé",
+    hasCV: true,
+  },
 };
 const PROVIDERS = [
   _mkP({ id:1,  name:"Thomas Saumur",    jobTitle:"Cariste CACES 1",          tarifNet:14.0, avatar:"👨‍💼", color:"#4FC3F7", rating:4.8, reviews:47, skills:["CACES 1","CACES 3","Gestion entrepôt"],    experience:"8 ans",  available:true,  sector:"logistique",   bio:"Expert en logistique 8 ans. Certifié CACES 1,3,5.",           distance:"2,3 km", responseTime:"~10 min", missions:47, role:"Cariste CACES 1" }),
@@ -2252,6 +2430,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
   const [startTime, setStartTime] = useState("08:00");
   const [description, setDescription] = useState("");
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
+  const [cvOpen, setCvOpen] = useState(false);
 
   // Auto-ajuster la pause minimum si on monte à ≥7h et que la pause est à 0
   useEffect(() => {
@@ -2286,6 +2465,83 @@ function BookingScreen({ provider, onNavigate, onBack }) {
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {/* Overlay CV */}
+      {cvOpen && (() => {
+        const cv = CV_DATA[p.id];
+        return (
+          <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40 }}>
+            <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
+              <div style={{ position:"absolute", top:-40, right:-40, width:200, height:200, borderRadius:"50%", background:`${p.color}15`, pointerEvents:"none" }} />
+              <button onClick={()=>setCvOpen(false)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:"#fff", cursor:"pointer", fontSize:13, marginBottom:18 }}>← Retour à la réservation</button>
+              <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:16 }}>
+                <div style={{ width:60, height:60, borderRadius:18, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, border:"2px solid rgba(255,255,255,0.2)" }}>{p.avatar}</div>
+                <div>
+                  <h2 style={{ color:"#fff", fontSize:20, fontWeight:700, margin:"0 0 3px", fontFamily:font.display }}>{p.name}</h2>
+                  <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:0 }}>{cv ? cv.titre : p.jobTitle||p.role}</p>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                <Badge color="rgba(255,255,255,0.9)" small>⭐ {p.rating}/5</Badge>
+                <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} missions</Badge>
+                <Badge color="rgba(255,255,255,0.9)" small>🕐 {p.experience}</Badge>
+              </div>
+            </div>
+            <div style={{ padding:"20px 18px" }}>
+              {!cv ? (
+                <div style={{ textAlign:"center", padding:"40px 20px", color:C.textSub, fontSize:14, lineHeight:1.7 }}>
+                  <div style={{ fontSize:50, marginBottom:14 }}>📄</div>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>CV en cours de rédaction</div>
+                  {p.name} n'a pas encore renseigné son CV complet.<br/>Consultez son profil et ses avis pour vous décider.
+                </div>
+              ) : (<>
+                <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10 }}>
+                    <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>👤</div>
+                    <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Profil</span>
+                  </div>
+                  <p style={{ color:C.textSub, fontSize:13, lineHeight:1.7, margin:0 }}>{cv.accroche}</p>
+                </div>
+                <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14 }}>
+                    <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>💼</div>
+                    <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Expériences</span>
+                  </div>
+                  {cv.experiences.map((e,i)=>(
+                    <div key={i} style={{ paddingBottom:i<cv.experiences.length-1?16:0, marginBottom:i<cv.experiences.length-1?16:0, borderBottom:i<cv.experiences.length-1?`1px solid ${C.border}`:"none", paddingLeft:18, position:"relative" }}>
+                      <div style={{ position:"absolute", left:0, top:4, width:8, height:8, borderRadius:"50%", background:C.violet }} />
+                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{e.poste}</div>
+                      <div style={{ color:p.color, fontSize:12, margin:"2px 0" }}>{e.entreprise} · {e.periode}</div>
+                      <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{e.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14 }}>
+                    <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🎓</div>
+                    <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Formations</span>
+                  </div>
+                  {cv.formations.map((f,i)=>(
+                    <div key={i} style={{ marginBottom:i<cv.formations.length-1?10:0, paddingBottom:i<cv.formations.length-1?10:0, borderBottom:i<cv.formations.length-1?`1px solid ${C.border}`:"none" }}>
+                      <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>{f.diplome}</div>
+                      <div style={{ color:C.textSub, fontSize:12 }}>{f.etablissement} · {f.annee}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", display:"flex", gap:16, flexWrap:"wrap" }}>
+                  {cv.langues?.length > 0 && <div><div style={{ color:C.textSub, fontSize:11, fontWeight:600, marginBottom:4 }}>LANGUES</div>{cv.langues.map((l,i)=><div key={i} style={{ color:C.text, fontSize:13 }}>🌐 {l}</div>)}</div>}
+                  {cv.permis && <div><div style={{ color:C.textSub, fontSize:11, fontWeight:600, marginBottom:4 }}>PERMIS</div><div style={{ color:C.text, fontSize:13 }}>🚗 {cv.permis}</div></div>}
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {p.skills?.map((s,i)=><Badge key={i} color={p.color} small>{s}</Badge>)}
+                  </div>
+                </div>
+              </>)}
+            </div>
+          </div>
+        );
+      })()}
+
       <StepHeader step={step} total={4}
         title={["Détails mission","Localisation","Paiement","Confirmation"][step-1]}
         onBack={step===1?onBack:()=>setStep(s=>s-1)} />
@@ -2301,6 +2557,11 @@ function BookingScreen({ provider, onNavigate, onBack }) {
             </div>
             {isUrgent && <Badge color={C.accent} small>🚨 Urgence</Badge>}
           </div>
+
+          {/* Bouton CV */}
+          <button onClick={()=>setCvOpen(true)} style={{ width:"100%", background:`${p.color}14`, border:`1px solid ${p.color}44`, borderRadius:12, padding:"11px 16px", marginBottom:14, color:p.color, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <span>📄</span> Consulter le CV de {p.name}
+          </button>
 
           {isLaunchPhase() && <LaunchBadge context="booking" />}
 
