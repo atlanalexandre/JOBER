@@ -2415,7 +2415,7 @@ function HomeScreen({ onNavigate }) {
 
 
 // ── CATALOGUE style Uber Eats ─────────────────────────────────────
-function CatalogueScreen({ onNavigate }) {
+function CatalogueScreen({ onNavigate, realProviders=[] }) {
   const [activeSector, setActiveSector] = useState(null);
   const sectorRefs = useRef({});
 
@@ -2471,53 +2471,41 @@ function useProviders() {
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
-    (async()=>{
-      const { data, error } = await supabase
-        .from("prestataires")
-        .select(`id, available, bio, note_moy, nb_missions, ville, profiles(prenom, nom, avatar_url), metiers(sector, job_title, tarif_net, niveau, certifs)`);
-
-      if(error || !data?.length){ setLoading(false); return; }
-
-      const AVATAR_POOL = ["👷","👩‍🔧","🧑‍🍳","👩‍⚕️","🧑‍🏫","👮","🧹","🏗️"];
-      const normalized = data
-        .filter(p => (p.metiers||[]).length > 0)
-        .map((p, i) => {
-          const metier = p.metiers[0];
-          return {
-            id: p.id,
-            name: `${p.profiles?.prenom||""} ${p.profiles?.nom||""}`.trim() || "Prestataire",
-            jobTitle: metier.job_title,
-            tarifNet: metier.tarif_net || 12,
-            rateNum:  metier.tarif_net || 12,
-            avatar:   AVATAR_POOL[i % AVATAR_POOL.length],
-            color:    "#7C6FE0",
-            rating:   p.note_moy  || 4.8,
-            reviews:  p.nb_missions || 0,
-            skills:   (p.metiers||[]).map(m=>m.job_title),
-            experience: "Nouveau",
-            available: p.available,
-            sector:   metier.sector,
-            bio:      p.bio || "",
-            distance: "À proximité",
-            responseTime: "~5 min",
-            missions: p.nb_missions || 0,
-            role:     metier.job_title,
-            ville:    p.ville || "",
-            isReal:   true,
-          };
-        });
-
-      // Vrais prestataires en premier, puis les fictifs en fallback
-      setProviders([...normalized, ...PROVIDERS]);
-      setLoading(false);
-    })();
+    fetch("/api/prestataires")
+      .then(r=>r.json())
+      .then(({ prestataires })=>{
+        if(!Array.isArray(prestataires) || !prestataires.length){ setLoading(false); return; }
+        const normalized = prestataires.map(p=>({
+          id:          p.id,
+          name:        p.name,
+          jobTitle:    p.metier || "Prestataire",
+          role:        p.metier || "Prestataire",
+          avatar:      "👤",
+          color:       "#7C6FE0",
+          rating:      4.8,
+          reviews:     0,
+          tarifNet:    p.tarif_net || 12,
+          rateNum:     Math.round((p.tarif_net||12)*1.35),
+          hourlyRate:  `${Math.round((p.tarif_net||12)*1.35)} €/h HT`,
+          available:   !!p.dispo_immediat,
+          sector:      p.secteur,
+          code_postal: p.code_postal,
+          distance:    "À proximité",
+          responseTime:"< 2h",
+          missions:    0,
+          isReal:      true,
+        }));
+        setProviders([...normalized, ...PROVIDERS]);
+        setLoading(false);
+      })
+      .catch(()=>setLoading(false));
   },[]);
 
   return { providers, loading };
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
-function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
+function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[] }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
@@ -8370,6 +8358,36 @@ export default function App() {
   const [bookingSource,setBookingSource]=useState("profile");
   const [unreadCount,setUnreadCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
+  const [realProviders,setRealProviders]=useState([]);
+
+  // Chargement des prestataires réels depuis Supabase
+  useEffect(()=>{
+    fetch("/api/prestataires")
+      .then(r=>r.json())
+      .then(({ prestataires })=>{
+        if(!Array.isArray(prestataires)) return;
+        setRealProviders(prestataires.map(p=>({
+          id: p.id,
+          name: p.name,
+          jobTitle: p.metier || "Prestataire",
+          role: p.metier || "Prestataire",
+          avatar: "👤",
+          color: C.violet,
+          rating: 4.5,
+          reviews: 0,
+          hourlyRate: `${Math.round((p.tarif_net||12)*1.35)} €/h HT`,
+          rateNum: Math.round((p.tarif_net||12)*1.35),
+          tarifNet: p.tarif_net||12,
+          available: !!p.dispo_immediat,
+          sector: p.secteur,
+          code_postal: p.code_postal,
+          responseTime: "< 2h",
+          distance: "—",
+          _real: true,
+        })));
+      })
+      .catch(()=>{});
+  },[]);
 
   // Reset badge messages non lus quand le chat est ouvert
   useEffect(()=>{
@@ -8503,8 +8521,8 @@ export default function App() {
       {screen==="client_onboarding" && <ClientOnboarding onComplete={()=>setScreen("home")} onBack={()=>setScreen("how_client")} />}
       {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
-      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
-      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
+      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
+      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
