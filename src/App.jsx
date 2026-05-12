@@ -1872,20 +1872,43 @@ function PendingApprovalScreen({ onLogout }) {
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{ if(data?.user) setUserEmail(data.user.email||""); });
   },[]);
+
+  const steps = [
+    { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
+    { icon:"🔍", label:"Vérification en cours",  sub:"Délai habituel : 24 à 48h ouvrés",            done:false, active:true  },
+    { icon:"🎉", label:"Accès accordé",           sub:"Vous recevrez un email de confirmation",      done:false, active:false },
+  ];
+
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
       <div style={{ width:80, height:80, borderRadius:24, background:"rgba(124,111,224,0.15)", border:"2px solid rgba(124,111,224,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24 }}>⏳</div>
-      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 12px" }}>Compte en attente</h2>
-      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:320, margin:"0 0 32px" }}>
-        Votre compte a bien été créé. Notre équipe va vérifier vos informations et activer votre accès sous 24h.
-        <br/><br/>
-        Vous recevrez une notification par email dès que votre compte sera validé.
+      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>Compte en attente</h2>
+      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
+        Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement.
       </p>
-      <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"16px 20px", marginBottom:32, width:"100%", maxWidth:320 }}>
-        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>Statut du compte</div>
-        <div style={{ fontSize:14, fontWeight:700, color:"#FCD34D" }}>⏳ En attente de validation</div>
-        {userEmail ? <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:8 }}>{userEmail}</div> : null}
+
+      {/* Timeline */}
+      <div style={{ width:"100%", maxWidth:320, marginBottom:28, textAlign:"left" }}>
+        {steps.map((step, i) => (
+          <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", flexShrink:0 }}>
+              <div style={{ width:38, height:38, borderRadius:"50%", background:step.done?"rgba(16,217,143,0.2)":step.active?"rgba(124,111,224,0.2)":"rgba(255,255,255,0.06)", border:`2px solid ${step.done?"#10D98F":step.active?"#7C6FE0":"rgba(255,255,255,0.12)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{step.icon}</div>
+              {i < steps.length-1 && <div style={{ width:2, height:26, background:step.done?"rgba(16,217,143,0.35)":"rgba(255,255,255,0.08)", margin:"4px 0" }} />}
+            </div>
+            <div style={{ paddingTop:9, paddingBottom:i<steps.length-1?0:0 }}>
+              <div style={{ color:step.done?"#10D98F":step.active?"#fff":"rgba(255,255,255,0.3)", fontWeight:step.active||step.done?700:400, fontSize:13 }}>{step.label}</div>
+              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11, marginTop:1, marginBottom:i<steps.length-1?16:0 }}>{step.sub}</div>
+            </div>
+          </div>
+        ))}
       </div>
+
+      <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"14px 20px", marginBottom:24, width:"100%", maxWidth:320 }}>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>Notification envoyée à</div>
+        <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>{userEmail||"votre email"}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6 }}>Vérifiez vos spams si vous ne recevez rien</div>
+      </div>
+
       <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
         Se déconnecter
       </button>
@@ -1897,16 +1920,44 @@ function PendingApprovalScreen({ onLogout }) {
 function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName]   = useState("");
+  const [clientMeta, setClientMeta] = useState(null);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [cpAdresse, setCpAdresse]     = useState("");
+  const [cpCodePostal, setCpCodePostal] = useState("");
+  const [cpVille, setCpVille]         = useState("");
+  const [cpVolume, setCpVolume]       = useState("");
+  const [cpFrequence, setCpFrequence] = useState("");
+  const [cpSaving, setCpSaving]       = useState(false);
+  const [cpSaved, setCpSaved]         = useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{
       const user = data?.user;
       if(!user) return;
       setUserEmail(user.email||"");
+      const m = user.user_metadata || {};
+      if(role === "client") {
+        setClientMeta(m);
+        setCpAdresse(m.adresse||"");
+        setCpCodePostal(m.code_postal||"");
+        setCpVille(m.ville||"");
+        setCpVolume(m.volume_horaire||"");
+        setCpFrequence(m.frequence_besoins||"");
+      }
       supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
         .then(({ data:p })=>{ if(p) setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); });
     });
   },[]);
+
+  const handleSaveClientProfile = async () => {
+    setCpSaving(true);
+    await supabase.auth.updateUser({ data: {
+      adresse: cpAdresse, code_postal: cpCodePostal, ville: cpVille,
+      volume_horaire: cpVolume, frequence_besoins: cpFrequence,
+    }});
+    setCpSaving(false); setCpSaved(true);
+    setTimeout(()=>{ setCpSaved(false); setEditingProfile(false); }, 1200);
+  };
 
   const sections = [
     {
@@ -1953,6 +2004,48 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
             <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:4 }}>{role==="prestataire"?"Prestataire":"Client"} JOBER</div>
           </div>
         </div>
+
+        {/* Profil client éditable */}
+        {role === "client" && (
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Mon profil client</div>
+              <button onClick={()=>setEditingProfile(!editingProfile)} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{editingProfile?"Annuler":"✏️ Modifier"}</button>
+            </div>
+            {!editingProfile ? (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {clientMeta?.adresse && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>📍</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.adresse}, {clientMeta.code_postal} {clientMeta.ville}</span></div>}
+                {clientMeta?.frequence_besoins && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🔄</span><span style={{ color:C.textSub, fontSize:13, textTransform:"capitalize" }}>{clientMeta.frequence_besoins}</span></div>}
+                {clientMeta?.volume_horaire && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>⏱️</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.volume_horaire} / semaine</span></div>}
+                {clientMeta?.secteurs_besoins?.length > 0 && <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:4 }}>{clientMeta.secteurs_besoins.map(sid=>{ const s=SECTORS.find(x=>x.id===sid); return s?<span key={sid} style={{ background:`${s.color}20`, border:`1px solid ${s.color}44`, borderRadius:6, padding:"2px 8px", color:s.color, fontSize:11, fontWeight:600 }}>{s.icon} {s.label}</span>:null; })}</div>}
+                {!clientMeta?.adresse && !clientMeta?.frequence_besoins && <div style={{ color:C.textSub, fontSize:12 }}>Aucune information de profil renseignée.</div>}
+              </div>
+            ) : (
+              <div>
+                <Input label="Adresse" placeholder="12 rue de la Paix" icon="📍" value={cpAdresse} onChange={e=>setCpAdresse(e.target.value)} />
+                <div style={{ display:"flex", gap:10 }}>
+                  <div style={{ flex:1 }}><Input label="Code postal" placeholder="75001" value={cpCodePostal} onChange={e=>setCpCodePostal(e.target.value)} /></div>
+                  <div style={{ flex:2 }}><Input label="Ville" placeholder="Paris" value={cpVille} onChange={e=>setCpVille(e.target.value)} /></div>
+                </div>
+                <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence des besoins</label>
+                <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+                  {[{id:"ponctuel",label:"⚡ Ponctuel"},{id:"regulier",label:"📅 Régulier"},{id:"les-deux",label:"🔄 Les deux"}].map(f=>(
+                    <button key={f.id} onClick={()=>setCpFrequence(f.id)} style={{ flex:1, padding:"9px 6px", borderRadius:r, border:`2px solid ${cpFrequence===f.id?C.violet:C.border}`, background:cpFrequence===f.id?`${C.violet}20`:"transparent", color:cpFrequence===f.id?C.violet:C.textSub, fontSize:11, fontWeight:cpFrequence===f.id?700:400, cursor:"pointer", fontFamily:"inherit" }}>{f.label}</button>
+                  ))}
+                </div>
+                <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Volume horaire estimé</label>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
+                  {[{id:"<8h",l:"< 8h"},{id:"8-20h",l:"8–20h"},{id:"20-40h",l:"20–40h"},{id:">40h",l:"> 40h"}].map(v=>(
+                    <button key={v.id} onClick={()=>setCpVolume(v.id)} style={{ padding:"9px", borderRadius:r, border:`2px solid ${cpVolume===v.id?C.violet:C.border}`, background:cpVolume===v.id?`${C.violet}20`:"transparent", color:cpVolume===v.id?C.violet:C.textSub, fontSize:12, fontWeight:cpVolume===v.id?700:400, cursor:"pointer", fontFamily:"inherit" }}>{v.l}</button>
+                  ))}
+                </div>
+                <Btn full onClick={handleSaveClientProfile} disabled={cpSaving} style={{ background:C.violet, padding:"13px" }}>
+                  {cpSaving?"Enregistrement…":cpSaved?"✅ Sauvegardé !":"Enregistrer"}
+                </Btn>
+              </div>
+            )}
+          </div>
+        )}
 
         {sections.map(section=>(
           <div key={section.title} style={{ marginBottom:20 }}>
@@ -2403,6 +2496,11 @@ function SectorDetailScreen({ sector, onNavigate }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
+  const [filterDispo, setFilterDispo] = useState(false);
+  const [filterTarifMax, setFilterTarifMax] = useState(50);
+  const [filterNoteMin, setFilterNoteMin] = useState(0);
+  const [sortBy, setSortBy] = useState("rating");
+  const [showFilters, setShowFilters] = useState(false);
   const SURCHARGE = 2;
   const { providers } = useProviders();
 
@@ -2415,9 +2513,16 @@ function SectorDetailScreen({ sector, onNavigate }) {
     return { name, rate:`${price.toFixed(2).replace(".",",")} € HT/h`, count, availCount, base, price };
   });
 
-  const filteredProviders = providers.filter(p =>
-    p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob)
-  );
+  const filteredProviders = providers
+    .filter(p => p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob))
+    .filter(p => !filterDispo || p.available)
+    .filter(p => p.rateNum <= filterTarifMax)
+    .filter(p => p.rating >= filterNoteMin)
+    .sort((a,b) => {
+      if(sortBy==="tarif")    return a.rateNum - b.rateNum;
+      if(sortBy==="distance") return parseFloat(a.distance||"9") - parseFloat(b.distance||"9");
+      return b.rating - a.rating;
+    });
 
   const basePrice = selectedJob
     ? (() => { const t = METIERS_TARIFS[s.id]?.[selectedJob]; return t ? prixClient(t.default, s.id) : 12; })()
@@ -2527,8 +2632,50 @@ function SectorDetailScreen({ sector, onNavigate }) {
         {selectedJob && <>
 
           {/* Lien retour */}
-          <div onClick={()=>{ setSelectedJob(null); setUrgentMode(false); }} style={{ display:"flex", alignItems:"center", gap:6, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", marginBottom:14 }}>
+          <div onClick={()=>{ setSelectedJob(null); setUrgentMode(false); setShowFilters(false); }} style={{ display:"flex", alignItems:"center", gap:6, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", marginBottom:14 }}>
             ← Tous les métiers
+          </div>
+
+          {/* Barre filtres */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:showFilters?12:0 }}>
+              <button onClick={()=>setShowFilters(!showFilters)} style={{ flex:1, padding:"10px 14px", borderRadius:r, border:`1.5px solid ${showFilters?s.color:C.border}`, background:showFilters?`${s.color}20`:"rgba(255,255,255,0.04)", color:showFilters?s.color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:6, transition:"all 0.2s" }}>
+                🎛️ Filtres {filterDispo||filterNoteMin>0||filterTarifMax<50?<span style={{ background:s.color, color:"#fff", borderRadius:"50%", width:16, height:16, fontSize:10, display:"inline-flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>!</span>:null}
+              </button>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ flex:1, padding:"10px 10px", borderRadius:r, border:`1.5px solid ${C.border}`, background:"rgba(255,255,255,0.04)", color:C.text, fontSize:12, fontFamily:"inherit", cursor:"pointer" }}>
+                <option value="rating">⭐ Par note</option>
+                <option value="tarif">💶 Par tarif</option>
+                <option value="distance">📍 Par distance</option>
+              </select>
+            </div>
+            {showFilters && (
+              <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
+                <div onClick={()=>setFilterDispo(!filterDispo)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, cursor:"pointer" }}>
+                  <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>Disponible maintenant uniquement</span>
+                  <div style={{ width:40, height:22, borderRadius:11, background:filterDispo?s.color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                    <div style={{ position:"absolute", top:2, left:filterDispo?20:2, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                  </div>
+                </div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6 }}>Tarif max : <strong style={{ color:s.color }}>{filterTarifMax === 50 ? "Tous" : `${filterTarifMax} €/h`}</strong></div>
+                  <input type="range" min={10} max={50} step={1} value={filterTarifMax} onChange={e=>setFilterTarifMax(Number(e.target.value))} style={{ width:"100%", accentColor:s.color }} />
+                  <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:10, marginTop:2 }}><span>10 €/h</span><span>50 €/h</span></div>
+                </div>
+                <div>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Note minimum</div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {[0,3,4,4.5].map(n=>(
+                      <button key={n} onClick={()=>setFilterNoteMin(n)} style={{ flex:1, padding:"7px 4px", borderRadius:8, border:`1.5px solid ${filterNoteMin===n?s.color:C.border}`, background:filterNoteMin===n?`${s.color}20`:"transparent", color:filterNoteMin===n?s.color:C.textSub, fontSize:11, fontWeight:filterNoteMin===n?700:400, cursor:"pointer", fontFamily:"inherit" }}>
+                        {n===0?"Tous":`${n}★+`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {(filterDispo||filterNoteMin>0||filterTarifMax<50) && (
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bouton urgence APRÈS le choix du métier */}
@@ -4479,6 +4626,229 @@ function PrestaOnboarding({ onComplete, onBack }) {
   );
 }
 
+// ── PRESTA PROFIL TAB ─────────────────────────────────────────────
+function PrestaProfilTab({ onNavigate }) {
+  const [meta, setMeta] = useState(null);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{ if(data?.user) setMeta(data.user.user_metadata||{}); });
+  },[]);
+
+  const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta.secteur) : null;
+  const color = secteurInfo?.color || C.accentGold;
+
+  return (
+    <div>
+      {/* Carte profil métier */}
+      {meta && (meta.secteur || meta.metier) && (
+        <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:12, border:`1px solid ${color}33` }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Mon profil professionnel</div>
+            <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:`${color}20`, border:`1px solid ${color}44`, borderRadius:8, padding:"5px 12px", color:color, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✏️ Modifier</button>
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
+            {secteurInfo && <Badge color={color} small>{secteurInfo.icon} {secteurInfo.label}</Badge>}
+            {meta.metier && <Badge color={C.violet} small>💼 {meta.metier}</Badge>}
+            {meta.niveau && <Badge color={C.textSub} small>{meta.niveau==="Débutant"?"🌱":meta.niveau==="Confirmé"?"💪":"🏆"} {meta.niveau}</Badge>}
+            {meta.experience_ans!=null && <Badge color={C.textSub} small>🕐 {meta.experience_ans} an{meta.experience_ans>1?"s":""}</Badge>}
+          </div>
+          {meta.tarif_net && (
+            <div style={{ background:`${color}15`, borderRadius:10, padding:"10px 12px", marginBottom:meta.langues?.length?10:0, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ color:C.textSub, fontSize:12 }}>Tarif net</span>
+              <span style={{ color:color, fontWeight:800, fontSize:15 }}>{Number(meta.tarif_net).toFixed(2)} €/h</span>
+            </div>
+          )}
+          {meta.langues?.length > 0 && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {meta.langues.map(l=><span key={l} style={{ background:"rgba(255,255,255,0.06)", borderRadius:6, padding:"3px 8px", color:C.textSub, fontSize:11 }}>🌐 {l}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Disponibilités */}
+      {meta && (meta.dispon_jours?.length || meta.dispon_creneaux?.length) && (
+        <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>📅 Disponibilités</div>
+            <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:"transparent", border:"none", color:C.violet, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Modifier</button>
+          </div>
+          {meta.dispon_jours?.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+              {meta.dispon_jours.map(j=><span key={j} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"3px 9px", color:C.violet, fontSize:11, fontWeight:600 }}>{j.slice(0,3)}</span>)}
+            </div>
+          )}
+          {meta.dispon_creneaux?.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {meta.dispon_creneaux.map(c=><span key={c} style={{ background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 8px", color:C.textSub, fontSize:11 }}>{c.split(" ")[0]}</span>)}
+            </div>
+          )}
+          {meta.dispo_immediat && <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:8 }}>⚡ Disponible immédiatement</div>}
+        </div>
+      )}
+
+      {/* Si aucune donnée d'inscription → incitation à compléter */}
+      {meta && !meta.secteur && (
+        <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}35`, borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
+          <div style={{ fontWeight:700, color:C.accentGold, fontSize:13, marginBottom:6 }}>⚠️ Profil incomplet</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Complétez votre profil pour apparaître dans les résultats et recevoir des missions.</div>
+          <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:C.accentGold, border:"none", borderRadius:10, padding:"9px 16px", color:"#000", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Compléter mon profil →</button>
+        </div>
+      )}
+
+      {/* Liens fixes */}
+      {[
+        {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
+        {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
+        {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"Accès gratuit · 6 mois restants":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
+      ].map((item,i)=>(
+        <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
+          onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
+          onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}
+        >
+          <div style={{ width:40, height:40, borderRadius:12, background:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>{item.icon}</div>
+          <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{item.label}</div><div style={{ color:C.textSub, fontSize:11 }}>{item.sub}</div></div>
+          <span style={{ color:C.textSub, fontSize:17 }}>›</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── PRESTA PROFILE EDIT ────────────────────────────────────────────
+function PrestaProfileEditScreen({ onBack }) {
+  const [meta, setMeta] = useState(null);
+  const [disponJours, setDisponJours] = useState([]);
+  const [disponCreneaux, setDisponCreneaux] = useState([]);
+  const [dispoImmediat, setDispoImmediat] = useState(true);
+  const [tarifNet, setTarifNet] = useState(13);
+  const [langues, setLangues] = useState(["Français"]);
+  const [competences, setCompetences] = useState([]);
+  const [statutPro, setStatutPro] = useState("auto-entrepreneur");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const m = data?.user?.user_metadata || {};
+      setMeta(m);
+      setDisponJours(m.dispon_jours || []);
+      setDisponCreneaux(m.dispon_creneaux || []);
+      setDispoImmediat(m.dispo_immediat !== false);
+      setTarifNet(m.tarif_net || 13);
+      setLangues(m.langues?.length ? m.langues : ["Français"]);
+      setCompetences(m.competences || []);
+      setStatutPro(m.statut_pro || "auto-entrepreneur");
+    });
+  },[]);
+
+  const toggle = (arr, setArr, item) =>
+    setArr(prev => prev.includes(item) ? prev.filter(x=>x!==item) : [...prev, item]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await supabase.auth.updateUser({ data: {
+      dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
+      tarif_net: tarifNet, langues, competences, statut_pro: statutPro,
+    }});
+    setSaving(false); setSaved(true);
+    setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
+  };
+
+  const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta?.secteur) : null;
+  const color = secteurInfo?.color || C.accentGold;
+  const tarifInfo = meta?.secteur && meta?.metier ? METIERS_TARIFS[meta.secteur]?.[meta.metier] : null;
+  const tarifMin = tarifInfo?.min || 11;
+  const tarifMax = tarifInfo?.max || 30;
+  const compListe = COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:100 }}>
+      <div style={{ background:`linear-gradient(135deg,${color}55,${color}22)`, padding:"52px 22px 22px" }}>
+        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:"#fff", cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:"#fff", fontSize:20, fontWeight:700, margin:0, fontFamily:font.display }}>✏️ Modifier mon profil</h2>
+        {meta?.metier && <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13, marginTop:4 }}>{secteurInfo?.label} · {meta.metier}</div>}
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        {/* Tarif */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
+            Tarif horaire net : <span style={{ color, fontWeight:800, fontSize:15 }}>{Number(tarifNet).toFixed(2)} €/h</span>
+          </label>
+          <input type="range" min={tarifMin} max={tarifMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
+          <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{tarifMin} €</span><span>{tarifMax} €</span></div>
+        </div>
+
+        {/* Disponibilités jours */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📅 Jours disponibles</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
+            {JOURS.map(j=>(
+              <button key={j} onClick={()=>toggle(disponJours,setDisponJours,j)} style={{ padding:"8px 12px", borderRadius:r, border:`2px solid ${disponJours.includes(j)?color:C.border}`, background:disponJours.includes(j)?`${color}20`:"transparent", color:disponJours.includes(j)?color:C.textSub, fontSize:12, fontWeight:disponJours.includes(j)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{j.slice(0,3)}</button>
+            ))}
+          </div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Créneaux horaires</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+            {PLAGES.map(p=>(
+              <button key={p} onClick={()=>toggle(disponCreneaux,setDisponCreneaux,p)} style={{ padding:"11px 14px", borderRadius:r, border:`2px solid ${disponCreneaux.includes(p)?color:C.border}`, background:disponCreneaux.includes(p)?`${color}20`:"transparent", color:disponCreneaux.includes(p)?color:C.textSub, fontSize:13, fontWeight:disponCreneaux.includes(p)?700:400, cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all 0.2s" }}>{p}</button>
+            ))}
+          </div>
+          <div onClick={()=>setDispoImmediat(!dispoImmediat)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+            <span style={{ color:C.text, fontSize:13 }}>Disponible immédiatement</span>
+            <div style={{ width:40, height:22, borderRadius:11, background:dispoImmediat?color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s" }}>
+              <div style={{ position:"absolute", top:2, left:dispoImmediat?20:2, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Langues */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>🌐 Langues parlées</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {LANGUES_LIST.map(l=>(
+              <button key={l} onClick={()=>{ if(l==="Français") return; toggle(langues,setLangues,l); }} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${langues.includes(l)?color:C.border}`, background:langues.includes(l)?`${color}25`:"transparent", color:langues.includes(l)?color:C.textSub, fontSize:12, fontWeight:langues.includes(l)?700:400, cursor:l==="Français"?"default":"pointer", fontFamily:"inherit", opacity:l==="Français"?0.6:1 }}>{l}{l==="Français"?" ✓":""}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Compétences */}
+        {compListe.length > 0 && (
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>⚡ Compétences clés</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {compListe.map(c=>(
+                <button key={c} onClick={()=>toggle(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?color:C.border}`, background:competences.includes(c)?`${color}25`:"transparent", color:competences.includes(c)?color:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Statut pro */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>🧾 Statut professionnel</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {[
+              { id:"auto-entrepreneur", label:"Auto-entrepreneur / Micro-entreprise", icon:"🧾" },
+              { id:"salarie-porte",     label:"Salarié porté",                        icon:"🤝" },
+              { id:"interimaire",       label:"Via agence d'intérim",                 icon:"🏢" },
+            ].map(s=>(
+              <button key={s.id} onClick={()=>setStatutPro(s.id)} style={{ padding:"12px 14px", borderRadius:r, border:`2px solid ${statutPro===s.id?color:C.border}`, background:statutPro===s.id?`${color}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:10, alignItems:"center", transition:"all 0.2s" }}>
+                <span style={{ fontSize:16 }}>{s.icon}</span>
+                <span style={{ color:statutPro===s.id?color:C.text, fontWeight:statutPro===s.id?700:500, fontSize:13 }}>{s.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Btn full onClick={handleSave} disabled={saving} style={{ background:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
+          {saving ? "Enregistrement…" : saved ? "✅ Sauvegardé !" : "Enregistrer les modifications"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate }) {
   const [tab,setTab]=useState("missions");
@@ -4545,27 +4915,7 @@ function PrestaDashboard({ onNavigate }) {
             <Btn full variant="gold" style={{ padding:"10px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider la mission</Btn>
           </div>
         </>}
-        {tab==="profil" && <>
-          {[
-            {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
-            {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-            {icon:"📍",label:"Adresse & zone",sub:"Domicile, rayon d’intervention", action:()=>onNavigate("settings")},
-            {icon:"💼",label:"Mes métiers",sub:"3 métiers enregistrés", action:()=>onNavigate("settings")},
-            {icon:"📅",label:"Disponibilités",sub:"Lundi-Vendredi, matin & après-midi", action:()=>onNavigate("settings")},
-            {icon:"⚙️",label:"Préférences de mission",sub:"Contrat, tarif min, mobilité", action:()=>onNavigate("settings")},
-            {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"Accès gratuit · 6 mois restants":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
-            {icon:"🔔",label:"Notifications",sub:"3 nouvelles alertes", action:()=>onNavigate("notifications")},
-          ].map((item,i)=>(
-            <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
-              onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
-              onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}
-            >
-              <div style={{ width:40, height:40, borderRadius:12, background:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>{item.icon}</div>
-              <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{item.label}</div><div style={{ color:C.textSub, fontSize:11 }}>{item.sub}</div></div>
-              <span style={{ color:C.textSub, fontSize:17 }}>›</span>
-            </div>
-          ))}
-        </>}
+        {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="docs" && <>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12 }}>⚠️ Certains documents doivent être renouvelés annuellement (attestation URSSAF, RC Pro).</div>
           {DOCS_REQUIS.map((doc,i)=>(
@@ -7873,7 +8223,7 @@ export default function App() {
     setScreen("role");
   };
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
@@ -7956,7 +8306,8 @@ export default function App() {
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="cashback"          && <CashbackWalletScreen onBack={()=>setScreen("dashboard")} onNavigate={navigate} />}
       {screen==="rating"            && <RatingScreen provider={selectedProvider} onSubmit={()=>setScreen("home")} onBack={()=>setScreen("validation")} />}
-      {screen==="doc_upload"        && <DocUploadScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="doc_upload"           && <DocUploadScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
