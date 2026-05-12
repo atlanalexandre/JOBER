@@ -776,11 +776,10 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       if (!kbisNum.trim()) { setError("Numéro KBIS obligatoire"); return; }
     }
     const ribClean = rib.replace(/\s/g,"");
-    if (!ribClean || ribClean.length < 14) { setError("IBAN / RIB obligatoire (ex: FR76 3000 4028...)"); return; }
     setLoading(true); setError("");
     const { data, error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { role, prenom, nom, telephone: telClean, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean } },
+      options: { data: { role, prenom, nom, telephone: telClean, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean||null } },
     });
     if (err) {
       setLoading(false);
@@ -986,7 +985,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </>
             )}
 
-            <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+            <Input label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des missions</div>
 
             <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
@@ -2245,6 +2245,11 @@ function BookingScreen({ provider, onNavigate, onBack }) {
   const isUrgent = p.urgentMode || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
+  const [userRib,setUserRib]=useState(null);
+  const [ribError,setRibError]=useState(false);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
+  },[]);
   const [payMethod,setPayMethod]=useState("carte");
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
@@ -2603,7 +2608,12 @@ function BookingScreen({ provider, onNavigate, onBack }) {
           <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:18, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
             🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la mission
           </div>
-          <Btn full onClick={()=>onNavigate("stripe_pay",{ amount: totalGlobal, hours })} style={{ background: isUrgent?C.accent:undefined }}>
+          {ribError && (
+            <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
+              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages pour passer une commande.
+            </div>
+          )}
+          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -3690,6 +3700,11 @@ function PrestaOnboarding({ onComplete, onBack }) {
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate }) {
   const [tab,setTab]=useState("missions");
+  const [userRib,setUserRib]=useState(null);
+  const [ribMissionError,setRibMissionError]=useState(false);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
+  },[]);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
@@ -3717,6 +3732,11 @@ function PrestaDashboard({ onNavigate }) {
           ))}
         </div>
         {tab==="missions" && <>
+          {ribMissionError && (
+            <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
+              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
+            </div>
+          )}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions proposées</p>
           {[{titre:"Préparateur de commandes",client:"LogiPro",date:"Lun 05 Mai",time:"08h-16h",tarif:"12,50 €/h",urgent:true},{titre:"Agent de propreté",client:"Centre Nord",date:"Mar 06 Mai",time:"06h-13h",tarif:"13,00 €/h",urgent:false}].map((m,i)=>(
             <div key={i} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:12, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
@@ -3727,6 +3747,7 @@ function PrestaDashboard({ onNavigate }) {
           alert("Mission refusée. JOBER va proposer un remplaçant au client.");
         }}>Refuser</Btn>
         <Btn variant="success" style={{ flex:2, padding:"9px", fontSize:12 }} onClick={()=>{
+          if(!userRib){ setRibMissionError(true); return; }
           alert("✅ Mission acceptée ! Le contrat va vous être envoyé pour signature.");
         }}>✓ Accepter</Btn>
               </div>
@@ -4665,6 +4686,24 @@ function BOComptes() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [actioning, setActioning] = useState(null);
   const [expanded, setExpanded]   = useState(null);
+  const [verifs, setVerifs]       = useState({});
+  const [verifying, setVerifying] = useState(null);
+
+  const handleVerify = async (p) => {
+    setVerifying(p.id);
+    try {
+      const res = await fetch("/api/verify-docs", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ iban: p.rib||"", siret: p.kbis||"" }),
+      });
+      const data = await res.json();
+      setVerifs(v => ({ ...v, [p.id]: data }));
+    } catch(e) {
+      setVerifs(v => ({ ...v, [p.id]: { error: "Erreur réseau" } }));
+    }
+    setVerifying(null);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -4745,8 +4784,42 @@ function BOComptes() {
               {p.rib && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏦 IBAN : </span><span style={{ color:C.white, fontWeight:600, fontFamily:"monospace" }}>{p.rib}</span></div>}
               {p.type_compte && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>👤 Type : </span><span style={{ color:C.white }}>{p.type_compte==="professionnel"?"Professionnel":"Particulier"}</span></div>}
               {p.societe_nom && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏢 Société : </span><span style={{ color:C.white }}>{p.societe_nom}</span></div>}
-              {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
+              {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS/SIRET : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
               {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
+
+              {/* Bouton vérification */}
+              {(p.rib || p.kbis) && (
+                <div style={{ marginTop:10 }}>
+                  <button onClick={()=>handleVerify(p)} disabled={verifying===p.id} style={{ padding:"7px 14px", borderRadius:10, border:"1px solid rgba(124,111,224,0.4)", background:"rgba(124,111,224,0.1)", color:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:verifying===p.id?0.6:1 }}>
+                    {verifying===p.id ? "Vérification…" : "🔍 Vérifier les documents"}
+                  </button>
+                  {verifs[p.id] && (
+                    <div style={{ marginTop:10, fontSize:12, lineHeight:1.8 }}>
+                      {verifs[p.id].iban && (
+                        <div style={{ marginBottom:4 }}>
+                          <span style={{ color:verifs[p.id].iban.valid ? C.success : "#F25E5E", fontWeight:700 }}>
+                            {verifs[p.id].iban.valid ? "✅" : "❌"} IBAN
+                          </span>
+                          {!verifs[p.id].iban.valid && <span style={{ color:"#F25E5E", marginLeft:6 }}>{verifs[p.id].iban.error}</span>}
+                          {verifs[p.id].iban.valid && <span style={{ color:C.success, marginLeft:6 }}>Valide</span>}
+                        </div>
+                      )}
+                      {verifs[p.id].siret && (
+                        <div>
+                          <span style={{ color:verifs[p.id].siret.valid && verifs[p.id].siret.exists !== false ? C.success : "#F25E5E", fontWeight:700 }}>
+                            {verifs[p.id].siret.valid && verifs[p.id].siret.exists !== false ? "✅" : "❌"} SIRET
+                          </span>
+                          {verifs[p.id].siret.error && <span style={{ color:"#F25E5E", marginLeft:6 }}>{verifs[p.id].siret.error}</span>}
+                          {verifs[p.id].siret.nom && <span style={{ color:C.success, marginLeft:6 }}>{verifs[p.id].siret.nom}</span>}
+                          {verifs[p.id].siret.statut && <span style={{ color:verifs[p.id].siret.actif ? C.success : "#F25E5E", marginLeft:6 }}>— {verifs[p.id].siret.statut}</span>}
+                          {verifs[p.id].siret.siege && <span style={{ color:"rgba(255,255,255,0.4)", marginLeft:6 }}>({verifs[p.id].siret.siege})</span>}
+                          {verifs[p.id].siret.apiError && <span style={{ color:"rgba(255,255,255,0.3)", marginLeft:6 }}>{verifs[p.id].siret.apiError}</span>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
