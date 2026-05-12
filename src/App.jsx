@@ -940,6 +940,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [niveau, setNiveau] = useState("");
   const [experienceAns, setExperienceAns] = useState(2);
   const [competences, setCompetences] = useState([]);
+  const [langues, setLangues] = useState(["Français"]);
   const [disponJours, setDisponJours] = useState([]);
   const [disponCreneaux, setDisponCreneaux] = useState([]);
   const [dispoImmediat, setDispoImmediat] = useState(true);
@@ -995,7 +996,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
-        secteur, metier, niveau, experience_ans: experienceAns, competences,
+        secteur, metier, niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
         tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
       }},
@@ -1104,12 +1105,24 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
           {compListe.length > 0 && <>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Compétences clés (optionnel)</label>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
               {compListe.map(c => (
                 <button key={c} onClick={()=>toggleItem(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?accentColor:C.border}`, background:competences.includes(c)?`${accentColor}25`:"transparent", color:competences.includes(c)?accentColor:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
               ))}
             </div>
           </>}
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Langues parlées</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {LANGUES_LIST.map(l => (
+              <button key={l} onClick={()=>{
+                if (l === "Français") return;
+                toggleItem(langues, setLangues, l);
+              }} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${langues.includes(l)?accentColor:C.border}`, background:langues.includes(l)?`${accentColor}25`:"transparent", color:langues.includes(l)?accentColor:C.textSub, fontSize:12, fontWeight:langues.includes(l)?700:400, cursor:l==="Français"?"default":"pointer", fontFamily:"inherit", transition:"all 0.2s", opacity:l==="Français"?0.6:1 }}>
+                {l}{l==="Français" ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6, paddingLeft:2 }}>Le français est sélectionné par défaut</div>
         </>}
 
         {step === 4 && <>
@@ -1179,6 +1192,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
               { l:"Disponibilités",v:disponJours.map(j=>j.slice(0,3)).join(", ") },
               { l:"Créneaux",      v:disponCreneaux.map(c=>c.split(" ")[0]).join(", ") },
+              { l:"Langues",       v:langues.join(", ") },
               { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
               { l:"Statut",        v:statutPro },
             ].map(({l,v}) => (
@@ -1223,7 +1237,10 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [kbisNum, setKbisNum] = useState("");
   const [secteursBesoins, setSecteursBesoins] = useState([]);
   const [frequence, setFrequence] = useState("");
+  const [adresse, setAdresse] = useState("");
+  const [codePostal, setCodePostal] = useState("");
   const [ville, setVille] = useState("");
+  const [volumeHoraire, setVolumeHoraire] = useState("");
   const [rib, setRib] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1244,7 +1261,9 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 2) {
       if (!secteursBesoins.length) return "Sélectionnez au moins un secteur";
       if (!frequence)              return "Indiquez la fréquence de vos besoins";
-      if (!ville.trim())           return "Indiquez votre ville ou zone géographique";
+      if (!ville.trim())           return "Indiquez votre ville";
+      if (!codePostal.trim())      return "Indiquez votre code postal";
+      if (!volumeHoraire)          return "Indiquez votre volume horaire estimé";
     }
     if (step === 3) {
       if (!email || !password) return "Email et mot de passe requis";
@@ -1269,7 +1288,9 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         role: "client", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
         type_compte: typeCompte, societe_nom: societeNom||null, kbis: kbisNum||null,
-        secteurs_besoins: secteursBesoins, frequence_besoins: frequence, ville,
+        secteurs_besoins: secteursBesoins, frequence_besoins: frequence,
+        adresse: adresse||null, code_postal: codePostal||null, ville,
+        volume_horaire: volumeHoraire,
         rib: rib.replace(/\s/g,"") || null,
       }},
     });
@@ -1363,7 +1384,26 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <Input label="Ville / Zone géographique *" placeholder="Paris, Lyon, Bordeaux…" icon="📍" value={ville} onChange={e=>setVille(e.target.value)} />
+          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} />
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} /></div>
+            <div style={{ flex:2 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} /></div>
+          </div>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Volume horaire estimé *</label>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            {[
+              { id:"<8h",   label:"Moins de 8h",  desc:"Quelques heures / semaine",    icon:"🕐" },
+              { id:"8-20h", label:"8 à 20h",       desc:"1 à 3 jours / semaine",       icon:"📆" },
+              { id:"20-40h",label:"20 à 40h",      desc:"Mi-temps à temps plein",      icon:"💼" },
+              { id:">40h",  label:"Plus de 40h",   desc:"Plusieurs personnes / sites",  icon:"🏢" },
+            ].map(v => (
+              <button key={v.id} onClick={()=>setVolumeHoraire(v.id)} style={{ padding:"12px 10px", borderRadius:r, border:`2px solid ${volumeHoraire===v.id?accentColor:C.border}`, background:volumeHoraire===v.id?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
+                <div style={{ fontSize:20, marginBottom:4 }}>{v.icon}</div>
+                <div style={{ color:volumeHoraire===v.id?accentColor:C.text, fontWeight:volumeHoraire===v.id?700:500, fontSize:13 }}>{v.label}</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{v.desc}</div>
+              </button>
+            ))}
+          </div>
         </>}
 
         {step === 3 && <>
