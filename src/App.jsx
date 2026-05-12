@@ -1,6 +1,31 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase.js";
 
+// ── Géolocalisation — Haversine ───────────────────────────────────
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
+}
+
+// Table de correspondance CP → [lat, lng] pour les 20 premiers départements
+const CP_COORDS = {
+  "75":[ 48.8566,  2.3522], "92":[ 48.8924,  2.2540], "93":[ 48.9156,  2.4825],
+  "94":[ 48.7847,  2.4697], "91":[ 48.6325,  2.4427], "95":[ 49.0379,  2.0769],
+  "77":[ 48.8400,  2.9713], "78":[ 48.8017,  1.9670], "69":[ 45.7640,  4.8357],
+  "13":[ 43.2965,  5.3698], "33":[ 44.8378, -0.5792], "31":[ 43.6047,  1.4442],
+  "59":[ 50.6292,  3.0573], "67":[ 48.5734,  7.7521], "44":[ 47.2184, -1.5536],
+  "06":[ 43.7102,  7.2620], "34":[ 43.6119,  3.8772], "76":[ 49.4432,  1.0993],
+  "38":[ 45.1885,  5.7245], "35":[ 48.1173, -1.6778],
+};
+
+function cpToCoords(cp) {
+  const dept = (cp||"").slice(0,2);
+  return CP_COORDS[dept] || null;
+}
+
 // ── Responsive hook ───────────────────────────────────────────────
 const useResponsive = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -2390,7 +2415,7 @@ function HomeScreen({ onNavigate }) {
 
 
 // ── CATALOGUE style Uber Eats ─────────────────────────────────────
-function CatalogueScreen({ onNavigate }) {
+function CatalogueScreen({ onNavigate, realProviders=[] }) {
   const [activeSector, setActiveSector] = useState(null);
   const sectorRefs = useRef({});
 
@@ -2442,57 +2467,13 @@ function CatalogueScreen({ onNavigate }) {
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
 function useProviders() {
-  const [providers, setProviders] = useState(PROVIDERS);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(()=>{
-    (async()=>{
-      const { data, error } = await supabase
-        .from("prestataires")
-        .select(`id, available, bio, note_moy, nb_missions, ville, profiles(prenom, nom, avatar_url), metiers(sector, job_title, tarif_net, niveau, certifs)`);
-
-      if(error || !data?.length){ setLoading(false); return; }
-
-      const AVATAR_POOL = ["👷","👩‍🔧","🧑‍🍳","👩‍⚕️","🧑‍🏫","👮","🧹","🏗️"];
-      const normalized = data
-        .filter(p => (p.metiers||[]).length > 0)
-        .map((p, i) => {
-          const metier = p.metiers[0];
-          return {
-            id: p.id,
-            name: `${p.profiles?.prenom||""} ${p.profiles?.nom||""}`.trim() || "Prestataire",
-            jobTitle: metier.job_title,
-            tarifNet: metier.tarif_net || 12,
-            rateNum:  metier.tarif_net || 12,
-            avatar:   AVATAR_POOL[i % AVATAR_POOL.length],
-            color:    "#7C6FE0",
-            rating:   p.note_moy  || 4.8,
-            reviews:  p.nb_missions || 0,
-            skills:   (p.metiers||[]).map(m=>m.job_title),
-            experience: "Nouveau",
-            available: p.available,
-            sector:   metier.sector,
-            bio:      p.bio || "",
-            distance: "À proximité",
-            responseTime: "~5 min",
-            missions: p.nb_missions || 0,
-            role:     metier.job_title,
-            ville:    p.ville || "",
-            isReal:   true,
-          };
-        });
-
-      // Vrais prestataires en premier, puis les fictifs en fallback
-      setProviders([...normalized, ...PROVIDERS]);
-      setLoading(false);
-    })();
-  },[]);
-
-  return { providers, loading };
+  // Prestataires fictifs uniquement pour la présentation
+  // Repasser sur /api/prestataires après la démo pour charger les vrais inscrits
+  return { providers: PROVIDERS, loading: false };
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
-function SectorDetailScreen({ sector, onNavigate }) {
+function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[] }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
@@ -2767,7 +2748,7 @@ function SectorDetailScreen({ sector, onNavigate }) {
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                           <Stars rating={p.rating} size={12}/>
-                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {p.distance} · {p.responseTime}</span>
+                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords) return haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1])+" km"; } return p.distance||"—"; })()} · {p.responseTime}</span>
                         </div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -5069,7 +5050,7 @@ function PrestaDashboard({ onNavigate }) {
 }
 
 // ── NAV BARS ──────────────────────────────────────────────────────
-function ClientNav({ active, onNavigate }) {
+function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"home",          icon:"🏠", label:"Accueil" },
     {id:"catalogue",     icon:"🗂️", label:"Secteurs"},
@@ -5091,7 +5072,12 @@ function ClientNav({ active, onNavigate }) {
         const active2 = active===t.id;
         return (
           <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s" }}>{t.icon}</span>
+            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+              {t.icon}
+              {t.id==="search_filters" && unreadCount > 0 && (
+                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              )}
+            </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.violet:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
             {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
           </button>
@@ -5101,7 +5087,7 @@ function ClientNav({ active, onNavigate }) {
   );
 }
 
-function PrestaNav({ active, onNavigate }) {
+function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"p_home",     icon:"🏠", label:"Accueil" },
     {id:"p_missions", icon:"📋", label:"Missions"},
@@ -5122,7 +5108,12 @@ function PrestaNav({ active, onNavigate }) {
         const active2 = active===t.id;
         return (
           <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s" }}>{t.icon}</span>
+            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+              {t.icon}
+              {t.id==="p_missions" && unreadCount > 0 && (
+                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              )}
+            </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.accent:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
             {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
           </button>
@@ -5182,7 +5173,29 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
   useEffect(() => {
     if (!processing) return;
     const t1 = setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
-    const t2 = setTimeout(() => onSuccess && onSuccess(), 3800);
+    const t2 = setTimeout(async () => {
+      // Envoyer l'email de confirmation de réservation
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const clientEmail = userData?.user?.email || null;
+        const clientName  = userData?.user?.user_metadata?.prenom || userData?.user?.user_metadata?.nom || null;
+        const mainProvider = providers[0] || {};
+        await fetch("/api/booking-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientEmail,
+            clientName,
+            prestaName: mainProvider.name || null,
+            job:        mainProvider.jobTitle || mainProvider.role || null,
+            date:       null,
+            hours:      null,
+            total,
+          }),
+        });
+      } catch (_) {}
+      onSuccess && onSuccess();
+    }, 3800);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [processing]);
 
@@ -7388,7 +7401,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 }
 
 // ── RESPONSIVE LAYOUT WRAPPER ─────────────────────────────────────
-function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline }) {
+function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline, unreadCount }) {
   const { isMobile } = useResponsive();
 
   const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
@@ -7436,8 +7449,8 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {children}
         </div>
-        {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} />}
-        {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} />}
+        {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
+        {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
         {adminBtn}
       </div>
     );
@@ -8311,6 +8324,75 @@ export default function App() {
   const [onlineStatus,setOnlineStatus]=useState(true);
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
+  const [unreadCount,setUnreadCount]=useState(0);
+  const [clientCoords,setClientCoords]=useState(null);
+  const [realProviders,setRealProviders]=useState([]);
+
+  // Chargement des prestataires réels depuis Supabase
+  useEffect(()=>{
+    fetch("/api/prestataires")
+      .then(r=>r.json())
+      .then(({ prestataires })=>{
+        if(!Array.isArray(prestataires)) return;
+        setRealProviders(prestataires.map(p=>({
+          id: p.id,
+          name: p.name,
+          jobTitle: p.metier || "Prestataire",
+          role: p.metier || "Prestataire",
+          avatar: "👤",
+          color: C.violet,
+          rating: 4.5,
+          reviews: 0,
+          hourlyRate: `${Math.round((p.tarif_net||12)*1.35)} €/h HT`,
+          rateNum: Math.round((p.tarif_net||12)*1.35),
+          tarifNet: p.tarif_net||12,
+          available: !!p.dispo_immediat,
+          sector: p.secteur,
+          code_postal: p.code_postal,
+          responseTime: "< 2h",
+          distance: "—",
+          _real: true,
+        })));
+      })
+      .catch(()=>{});
+  },[]);
+
+  // Reset badge messages non lus quand le chat est ouvert
+  useEffect(()=>{
+    if(screen==="chat"){
+      localStorage.setItem("jober_msg_last_seen", new Date().toISOString());
+      setUnreadCount(0);
+    }
+  },[screen]);
+
+  // Géolocalisation au montage
+  useEffect(()=>{
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>setClientCoords({ lat:pos.coords.latitude, lng:pos.coords.longitude }),
+        ()=>{}
+      );
+    }
+  },[]);
+
+  // Poll messages non lus toutes les 10 secondes
+  useEffect(()=>{
+    if(!supaUser) return;
+    const userId = supaUser.id;
+    const poll = async()=>{
+      const lastSeen = localStorage.getItem("jober_msg_last_seen") || new Date(0).toISOString();
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id", { count:"exact" })
+        .ilike("conversation_key", `%${userId}%`)
+        .neq("sender_tag","client")
+        .gt("created_at", lastSeen);
+      if(!error) setUnreadCount(data?.length || 0);
+    };
+    poll();
+    const interval = setInterval(poll, 10000);
+    return ()=>clearInterval(interval);
+  },[supaUser]);
 
   // Écouter les changements de session (déconnexion, reset password)
   // Ne pas auto-naviguer au démarrage : l'utilisateur passe toujours par le splash
@@ -8380,6 +8462,7 @@ export default function App() {
       screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
       onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
+      unreadCount={unreadCount}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
       {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
@@ -8406,8 +8489,8 @@ export default function App() {
       {screen==="client_onboarding" && <ClientOnboarding onComplete={()=>setScreen("home")} onBack={()=>setScreen("how_client")} />}
       {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
-      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
-      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} />}
+      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
+      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
