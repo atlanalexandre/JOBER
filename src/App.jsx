@@ -2467,41 +2467,9 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
 function useProviders() {
-  const [providers, setProviders] = useState(PROVIDERS);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(()=>{
-    fetch("/api/prestataires")
-      .then(r=>r.json())
-      .then(({ prestataires })=>{
-        if(!Array.isArray(prestataires) || !prestataires.length){ setLoading(false); return; }
-        const normalized = prestataires.map(p=>({
-          id:          p.id,
-          name:        p.name,
-          jobTitle:    p.metier || "Prestataire",
-          role:        p.metier || "Prestataire",
-          avatar:      "👤",
-          color:       "#7C6FE0",
-          rating:      4.8,
-          reviews:     0,
-          tarifNet:    p.tarif_net || 12,
-          rateNum:     Math.round((p.tarif_net||12)*1.35),
-          hourlyRate:  `${Math.round((p.tarif_net||12)*1.35)} €/h HT`,
-          available:   !!p.dispo_immediat,
-          sector:      p.secteur,
-          code_postal: p.code_postal,
-          distance:    "À proximité",
-          responseTime:"< 2h",
-          missions:    0,
-          isReal:      true,
-        }));
-        setProviders([...normalized, ...PROVIDERS]);
-        setLoading(false);
-      })
-      .catch(()=>setLoading(false));
-  },[]);
-
-  return { providers, loading };
+  // Prestataires fictifs uniquement pour la présentation
+  // Repasser sur /api/prestataires après la démo pour charger les vrais inscrits
+  return { providers: PROVIDERS, loading: false };
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
