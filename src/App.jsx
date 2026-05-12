@@ -4033,26 +4033,61 @@ function ValidationScreen({ provider, role, onNavigate }) {
 }
 
 // ── MESSAGERIE ────────────────────────────────────────────────────
-function ChatScreen({ provider, onBack }) {
-  const p = provider||PROVIDERS[0];
-  const [msg,setMsg]=useState("");
-  const [msgs,setMsgs]=useState([
-    { from:"presta", text:"Bonjour ! J’ai bien reçu votre demande. Je suis disponible au créneau indiqué.", time:"09:14" },
-    { from:"client", text:"Parfait ! Pouvez-vous confirmer votre arrivée à 8h00 précises ?", time:"09:16" },
-    { from:"presta", text:"Bien sûr, je serai là à 8h00. J’ai tout le matériel nécessaire.", time:"09:18" },
-  ]);
-  const endRef=useRef(null);
-  const replyTimerRef=useRef(null);
-  useEffect(()=>endRef.current?.scrollIntoView({behavior:"smooth"}),[msgs]);
-  useEffect(()=>()=>clearTimeout(replyTimerRef.current),[]);
+const MOCK_MSGS = [
+  { id:"m1", sender_tag:"presta", content:"Bonjour ! J’ai bien reçu votre demande. Je suis disponible au créneau indiqué.", created_at: new Date(Date.now()-3600000).toISOString() },
+  { id:"m2", sender_tag:"client", content:"Parfait ! Pouvez-vous confirmer votre arrivée à 8h00 précises ?", created_at: new Date(Date.now()-3540000).toISOString() },
+  { id:"m3", sender_tag:"presta", content:"Bien sûr, je serai là à 8h00. J’ai tout le matériel nécessaire.", created_at: new Date(Date.now()-3480000).toISOString() },
+];
 
-  const send=()=>{
-    if(!msg.trim()) return;
-    setMsgs(m=>[...m,{from:"client",text:msg,time:new Date().toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"})}]);
-    setMsg("");
-    clearTimeout(replyTimerRef.current);
-    replyTimerRef.current=setTimeout(()=>setMsgs(m=>[...m,{from:"presta",text:"Compris, je prends note !",time:new Date().toLocaleTimeString("fr",{hour:"2-digit",minute:"2-digit"})}]),1200);
+function ChatScreen({ provider, onBack }) {
+  const p = provider || PROVIDERS[0];
+  const [msg, setMsg] = useState("");
+  const [msgs, setMsgs] = useState(MOCK_MSGS);
+  const [userId, setUserId] = useState(null);
+  const [sending, setSending] = useState(false);
+  const endRef = useRef(null);
+  const pollRef = useRef(null);
+
+  const fmtTime = (iso) => new Date(iso).toLocaleTimeString("fr", { hour:"2-digit", minute:"2-digit" });
+  const convKey = `prov${p.id}-user${userId||"anon"}`;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data?.user?.id || null));
+  }, []);
+
+  const loadMsgs = async (uid) => {
+    const key = `prov${p.id}-user${uid}`;
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_key", key)
+      .order("created_at", { ascending: true });
+    if (!error && data && data.length > 0) setMsgs(data);
   };
+
+  useEffect(() => {
+    if (!userId) return;
+    loadMsgs(userId);
+    pollRef.current = setInterval(() => loadMsgs(userId), 4000);
+    return () => clearInterval(pollRef.current);
+  }, [userId]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
+
+  const send = async () => {
+    if (!msg.trim() || sending) return;
+    const content = msg.trim();
+    setMsg("");
+    setSending(true);
+    const optimistic = { id: `opt-${Date.now()}`, sender_tag:"client", sender_id:userId, conversation_key:convKey, content, created_at:new Date().toISOString() };
+    setMsgs(m => [...m, optimistic]);
+    try {
+      await supabase.from("messages").insert({ conversation_key:convKey, sender_id:userId, sender_tag:"client", content });
+    } catch (_) {}
+    setSending(false);
+  };
+
+  const isClient = (m) => m.sender_tag === "client" || m.from === "client";
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, display:"flex", flexDirection:"column" }}>
@@ -4060,25 +4095,43 @@ function ChatScreen({ provider, onBack }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ display:"flex", gap:12, alignItems:"center" }}>
           <div style={{ width:44, height:44, borderRadius:r, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
-          <div><div style={{ color:C.white, fontWeight:700, fontSize:15 }}>{p.name}</div><div style={{ color:`${C.success}`, fontSize:12, fontWeight:600 }}>● En ligne</div></div>
+          <div>
+            <div style={{ color:C.white, fontWeight:700, fontSize:15 }}>{p.name}</div>
+            <div style={{ color:C.success, fontSize:12, fontWeight:600 }}>● En ligne</div>
+          </div>
         </div>
       </div>
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 18px" }}>
-        {msgs.map((m,i)=>(
-          <div key={i} style={{ display:"flex", justifyContent:m.from==="client"?"flex-end":"flex-start", marginBottom:12 }}>
-            {m.from==="presta" && <div style={{ width:28, height:28, borderRadius:9, background:`${p.color}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, marginRight:8, flexShrink:0 }}>{p.avatar}</div>}
-            <div style={{ maxWidth:"75%" }}>
-              <div style={{ background:m.from==="client"?`linear-gradient(135deg,${C.violet},${C.indigo})`:C.white, color:m.from==="client"?C.white:C.text, borderRadius:m.from==="client"?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", fontSize:14, boxShadow:"0 2px 8px rgba(0,0,0,0.08)" }}>{m.text}</div>
-              <div style={{ fontSize:10, color:C.textSub, marginTop:3, textAlign:m.from==="client"?"right":"left" }}>{m.time}</div>
+      <div style={{ flex:1, overflowY:"auto", padding:"16px 18px", minHeight:200 }}>
+        {msgs.map((m, i) => {
+          const mine = isClient(m);
+          return (
+            <div key={m.id || i} style={{ display:"flex", justifyContent:mine?"flex-end":"flex-start", marginBottom:12 }}>
+              {!mine && (
+                <div style={{ width:28, height:28, borderRadius:9, background:`${p.color}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, marginRight:8, flexShrink:0 }}>{p.avatar}</div>
+              )}
+              <div style={{ maxWidth:"75%" }}>
+                <div style={{ background:mine?`linear-gradient(135deg,${C.violet},${C.indigo})`:"#1a2d4a", color:C.white, borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", fontSize:14 }}>
+                  {m.content || m.text}
+                </div>
+                <div style={{ fontSize:10, color:C.textSub, marginTop:3, textAlign:mine?"right":"left" }}>
+                  {fmtTime(m.created_at || new Date().toISOString())}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={endRef} />
       </div>
       <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          <input value={msg} onChange={e=>setMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Votre message…" style={{ flex:1, padding:"12px 16px", borderRadius:24, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none" }} />
-          <button onClick={send} style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, border:"none", cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>➤</button>
+          <input
+            value={msg}
+            onChange={e => setMsg(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && send()}
+            placeholder="Votre message…"
+            style={{ flex:1, padding:"12px 16px", borderRadius:24, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", background:"#112240", color:C.text }}
+          />
+          <button onClick={send} disabled={sending || !msg.trim()} style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, border:"none", cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:(!msg.trim()||sending)?0.5:1 }}>➤</button>
         </div>
       </div>
     </div>
@@ -4849,6 +4902,59 @@ function PrestaProfileEditScreen({ onBack }) {
   );
 }
 
+// ── PRESTA ONBOARDING CHECKLIST ───────────────────────────────────
+function PrestaOnboardingChecklist({ onNavigate }) {
+  const [meta, setMeta] = useState(null);
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem("jober_presta_checklist_dismissed") === "1");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setMeta(data?.user?.user_metadata || {}));
+  }, []);
+
+  if (dismissed || !meta) return null;
+
+  const items = [
+    { id:"secteur",  label:"Secteur d'activité choisi",   done:!!meta.secteur,               action:"presta_profile_edit" },
+    { id:"metier",   label:"Métier renseigné",             done:!!meta.metier,                 action:"presta_profile_edit" },
+    { id:"dispos",   label:"Disponibilités configurées",   done:!!(meta.dispon_jours?.length), action:"presta_profile_edit" },
+    { id:"tarif",    label:"Tarif horaire défini",         done:!!meta.tarif_net,              action:"presta_profile_edit" },
+    { id:"rib",      label:"IBAN renseigné",               done:!!meta.rib,                    action:"settings"            },
+  ];
+
+  const doneCount = items.filter(i => i.done).length;
+  if (doneCount === items.length) return null;
+  const pct = Math.round((doneCount / items.length) * 100);
+
+  return (
+    <div style={{ background:"linear-gradient(135deg,#0D1B3E,#162547)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px", marginBottom:18 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+        <div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Premiers pas</div>
+          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doneCount}/{items.length} étapes complétées</div>
+        </div>
+        <button onClick={() => { localStorage.setItem("jober_presta_checklist_dismissed","1"); setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
+      </div>
+      <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, marginBottom:14, overflow:"hidden" }}>
+        <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.5s" }} />
+      </div>
+      {items.map((item, idx) => (
+        <div key={item.id}
+          onClick={() => !item.done && onNavigate(item.action)}
+          style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom: idx < items.length-1 ? `1px solid rgba(255,255,255,0.05)` : "none", cursor:item.done?"default":"pointer" }}>
+          <div style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800,
+            background: item.done ? `${C.success}22` : `${C.violet}22`,
+            border: `1.5px solid ${item.done ? C.success : C.violet}66`,
+            color: item.done ? C.success : C.violet }}>
+            {item.done ? "✓" : "→"}
+          </div>
+          <span style={{ flex:1, fontSize:13, color:item.done?C.textSub:C.text, fontWeight:item.done?400:600, textDecoration:item.done?"line-through":"none" }}>{item.label}</span>
+          {!item.done && <span style={{ color:C.violet, fontSize:11, fontWeight:700, flexShrink:0 }}>Compléter →</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate }) {
   const [tab,setTab]=useState("missions");
@@ -4884,6 +4990,7 @@ function PrestaDashboard({ onNavigate }) {
           ))}
         </div>
         {tab==="missions" && <>
+          <PrestaOnboardingChecklist onNavigate={onNavigate} />
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
@@ -4906,13 +5013,16 @@ function PrestaDashboard({ onNavigate }) {
             </div>
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
-          <div onClick={()=>onNavigate("validation",PROVIDERS[0])} style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", cursor:"pointer", marginBottom:12 }}>
+          <div style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", marginBottom:12 }}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
               <div style={{ fontWeight:800, color:C.text }}>Cariste CACES 1</div>
               <Badge color={C.accentGold} small>En cours</Badge>
             </div>
-            <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Entrepôt XYZ · Mer 12 Mai · 09h-17h</div>
-            <Btn full variant="gold" style={{ padding:"10px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider la mission</Btn>
+            <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>Entrepôt XYZ · Mer 12 Mai · 09h-17h</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("chat",PROVIDERS[0])}>💬 Chat client</Btn>
+              <Btn variant="gold" style={{ flex:2, padding:"9px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider</Btn>
+            </div>
           </div>
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
@@ -7674,6 +7784,12 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
   const [comment, setComment] = useState("");
   const [tags, setTags] = useState([]);
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data?.user?.id || null));
+  }, []);
 
   const TAGS_POS = ["Ponctuel","Efficace","Professionnel","Communicatif","Excellent travail","Je recommande"];
   const TAGS_NEG = ["En retard","Qualité insuffisante","Communication difficile"];
@@ -7759,8 +7875,23 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
           />
         </div>
 
-        <Btn full disabled={rating===0} onClick={()=>setSubmitted(true)} style={{ fontSize:15, padding:"16px" }}>
-          ⭐ Publier mon avis
+        <Btn full disabled={rating===0||saving} onClick={async()=>{
+          setSaving(true);
+          try {
+            await supabase.from("ratings").insert({
+              reviewer_id: userId,
+              reviewee_provider_id: p.id,
+              reviewee_name: p.name,
+              rating,
+              tags,
+              comment: comment.trim()||null,
+              mission_id: missionId||null,
+            });
+          } catch(_) {}
+          setSaving(false);
+          setSubmitted(true);
+        }} style={{ fontSize:15, padding:"16px" }}>
+          {saving ? "Envoi…" : "⭐ Publier mon avis"}
         </Btn>
         {rating===0 && <p style={{ textAlign:"center", color:C.textMuted, fontSize:12, marginTop:8 }}>Sélectionnez une note pour continuer</p>}
       </div>
