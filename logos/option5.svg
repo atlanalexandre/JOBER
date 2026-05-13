@@ -1,0 +1,12 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="g5" x1="60" y1="0" x2="340" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="55%" stop-color="#9B8BF0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+  </defs>
+  <rect x="60" y="25" width="280" height="70" rx="35" fill="url(#g5)"/>
+  <text x="200" y="70" font-family="-apple-system, Helvetica Neue, Arial, sans-serif" font-size="32" font-weight="700" fill="#FFFFFF" letter-spacing="8" text-anchor="middle">ALANE</text>
+</svg>

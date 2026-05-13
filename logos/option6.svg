@@ -1,0 +1,19 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="g6" x1="20" y1="0" x2="90" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+  </defs>
+  <!-- client node -->
+  <circle cx="28" cy="60" r="16" fill="none" stroke="#7C6FE0" stroke-width="2"/>
+  <circle cx="28" cy="60" r="6" fill="#7C6FE0"/>
+  <!-- connector dashed -->
+  <line x1="44" y1="60" x2="76" y2="60" stroke="url(#g6)" stroke-width="2" stroke-dasharray="4 3"/>
+  <!-- prestataire node -->
+  <circle cx="92" cy="60" r="16" fill="none" stroke="#F0B429" stroke-width="2"/>
+  <circle cx="92" cy="60" r="6" fill="#F0B429"/>
+  <!-- wordmark -->
+  <text x="126" y="72" font-family="-apple-system, Helvetica Neue, Arial, sans-serif" font-size="40" font-weight="700" fill="#FFFFFF" letter-spacing="4">ALANE</text>
+</svg>
