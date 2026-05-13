@@ -26,6 +26,15 @@ function cpToCoords(cp) {
   return CP_COORDS[dept] || null;
 }
 
+// Génère un code à 4 chiffres déterministe basé sur l'ID du prestataire + date du jour
+// Les deux parties (client et presta) calculent le même code sans communication
+function genMissionCode(provId, type) {
+  const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+  const base = (provId * 7919 + parseInt(today.slice(-4)) * 31) % 9000;
+  const offset = type === "out" ? 4567 : 0;
+  return String(((Math.abs(base) + offset) % 9000) + 1000).slice(-4);
+}
+
 // ── Responsive hook ───────────────────────────────────────────────
 const useResponsive = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -1049,8 +1058,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const metiersListe = secteur ? Object.keys(METIERS_TARIFS[secteur] || {}) : [];
   const compListe    = COMPETENCES_PAR_SECTEUR[secteur] || [];
   const tarifInfo    = secteur && metier ? METIERS_TARIFS[secteur]?.[metier] : null;
-  const tarifMin     = tarifInfo?.min || 11;
-  const tarifMax     = tarifInfo?.max || 30;
+  const sliderMin    = 1;
+  const sliderMax    = 100;
   const tarifClient  = prixClient(tarifNet, secteur || "divers");
 
   const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre compte"];
@@ -1181,10 +1190,17 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
               Tarif horaire net souhaité : <span style={{ color:accentColor, fontWeight:800, fontSize:16 }}>{tarifNet.toFixed(2)} €/h</span>
             </label>
-            <input type="range" min={tarifMin} max={tarifMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
+            <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
             <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}>
-              <span>{tarifMin} €/h (min)</span><span>{tarifMax} €/h (max)</span>
+              <span>{sliderMin} €/h</span><span>{sliderMax} €/h</span>
             </div>
+            {tarifInfo && (
+              <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"7px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
+                {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
+                {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
+                📊 Fourchette marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h net</strong>
+              </div>
+            )}
             <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"12px 14px", marginTop:12, display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:16 }}>ℹ️</span>
               <span style={{ color:C.textSub, fontSize:12 }}>Le client verra <strong style={{ color:C.text }}>{tarifClient.toFixed(2)} €/h</strong> (frais inclus). Vous encaissez <strong style={{ color:accentColor }}>{tarifNet.toFixed(2)} €/h</strong>.</span>
@@ -3901,6 +3917,25 @@ function TrackingScreen({ provider, onNavigate }) {
           <MissionTimeline status={timelineStatus} />
         </div>
 
+        {/* Codes de présence — communiquer au prestataire sur place */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:14 }}>🔐 Codes de présence</div>
+          <p style={{ color:C.textSub, fontSize:12, margin:"0 0 14px", lineHeight:1.6 }}>Communiquez ces codes au prestataire uniquement lorsqu'il est physiquement sur place.</p>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1, background:`${C.success}12`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
+              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Arrivée</div>
+              <div style={{ fontSize:28, fontWeight:900, color:C.success, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"in")}</div>
+            </div>
+            <div style={{ flex:1, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
+              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Départ</div>
+              <div style={{ fontSize:28, fontWeight:900, color:C.accentGold, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"out")}</div>
+            </div>
+          </div>
+          <div style={{ marginTop:10, background:"rgba(255,165,0,0.08)", border:"1px solid rgba(255,165,0,0.25)", borderRadius:8, padding:"8px 12px", fontSize:11, color:"#FFA500" }}>
+            ⚠️ Ces codes changent chaque jour. Ne les partagez qu'en présence du prestataire.
+          </div>
+        </div>
+
         {step===3 && (
           <Btn full variant="success" onClick={()=>onNavigate("validation",provider)} style={{ fontSize:15, padding:"16px" }}>
             ✅ Valider la mission
@@ -4835,8 +4870,8 @@ function PrestaProfileEditScreen({ onBack }) {
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta?.secteur) : null;
   const color = secteurInfo?.color || C.accentGold;
   const tarifInfo = meta?.secteur && meta?.metier ? METIERS_TARIFS[meta.secteur]?.[meta.metier] : null;
-  const tarifMin = tarifInfo?.min || 11;
-  const tarifMax = tarifInfo?.max || 30;
+  const sliderMin = 1;
+  const sliderMax = 100;
   const compListe = COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
 
   return (
@@ -4853,8 +4888,15 @@ function PrestaProfileEditScreen({ onBack }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
             Tarif horaire net : <span style={{ color, fontWeight:800, fontSize:15 }}>{Number(tarifNet).toFixed(2)} €/h</span>
           </label>
-          <input type="range" min={tarifMin} max={tarifMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
-          <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{tarifMin} €</span><span>{tarifMax} €</span></div>
+          <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
+          <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{sliderMin} €</span><span>{sliderMax} €</span></div>
+          {tarifInfo && (
+            <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"6px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
+              {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
+              {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
+              📊 Marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h</strong>
+            </div>
+          )}
         </div>
 
         {/* Disponibilités jours */}
@@ -4921,6 +4963,127 @@ function PrestaProfileEditScreen({ onBack }) {
         <Btn full onClick={handleSave} disabled={saving} style={{ background:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
           {saving ? "Enregistrement…" : saved ? "✅ Sauvegardé !" : "Enregistrer les modifications"}
         </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── PRESTA POINTAGE (check-in / check-out) ────────────────────────
+function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
+  const p = provider || PROVIDERS[0];
+  const expectedCode = genMissionCode(p.id, type);
+  const isIn = type === "in";
+
+  const [gpsStatus, setGpsStatus] = useState("loading"); // loading | ok | warning | error
+  const [gpsDistance, setGpsDistance] = useState(null);
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!navigator.geolocation) { setGpsStatus("error"); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const missionCoords = cpToCoords(p.code_postal || "75");
+        if (missionCoords) {
+          const dist = haversineKm(pos.coords.latitude, pos.coords.longitude, missionCoords[0], missionCoords[1]);
+          setGpsDistance(dist);
+          setGpsStatus(dist <= 0.5 ? "ok" : "warning");
+        } else {
+          setGpsStatus("ok");
+        }
+      },
+      () => setGpsStatus("error"),
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  }, []);
+
+  const handleValidate = () => {
+    if (code.trim() !== expectedCode) {
+      setCodeError("Code incorrect. Vérifiez avec le client.");
+      return;
+    }
+    setDone(true);
+    const key = `jober_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
+    localStorage.setItem(key, isIn ? "checkin" : "checkout");
+    setTimeout(() => onSuccess && onSuccess(), 2000);
+  };
+
+  if (done) return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1a7a40)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
+      <div style={{ fontSize:72, marginBottom:16 }}>{isIn ? "✅" : "🏁"}</div>
+      <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>{isIn ? "Arrivée confirmée !" : "Départ confirmé !"}</h2>
+      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto" }}>
+        {isIn ? "Votre présence est enregistrée. Bonne mission !" : "Mission terminée. En attente de validation."}
+      </p>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>{isIn ? "📍 Pointer mon arrivée" : "🏁 Pointer mon départ"}</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{p.name} · Cariste CACES 1 · Entrepôt XYZ</p>
+      </div>
+
+      <div style={{ padding:"22px 18px" }}>
+        {/* Étape 1 — GPS */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${gpsStatus==="ok"?C.success:gpsStatus==="warning"?"#FFA500":C.border}`, borderRadius:r, padding:"16px", marginBottom:16 }}>
+          <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+            <div style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22,
+              background: gpsStatus==="ok" ? `${C.success}22` : gpsStatus==="warning" ? "rgba(255,165,0,0.15)" : "rgba(255,255,255,0.05)" }}>
+              {gpsStatus==="loading" ? "📡" : gpsStatus==="ok" ? "✅" : gpsStatus==="warning" ? "⚠️" : "❌"}
+            </div>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Vérification GPS</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>
+                {gpsStatus==="loading" && "Localisation en cours…"}
+                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de mission)`}
+                {gpsStatus==="warning" && `Vous semblez éloigné du lieu (${gpsDistance} km). Vérifiez votre position.`}
+                {gpsStatus==="error" && "GPS indisponible. Continuez avec le code client."}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Étape 2 — Code client */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>🔢 Code client</div>
+          <p style={{ color:C.textSub, fontSize:12, margin:"0 0 16px", lineHeight:1.6 }}>
+            Demandez au client le code {isIn ? "d'arrivée" : "de départ"} affiché dans son application.
+          </p>
+          <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:16 }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ width:56, height:64, borderRadius:r, border:`2px solid ${code[i] ? C.violet : C.border}`, background: code[i] ? `${C.violet}18` : "rgba(255,255,255,0.03)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontWeight:900, color:C.text, fontFamily:"monospace" }}>
+                {code[i] || "—"}
+              </div>
+            ))}
+          </div>
+          {/* Pavé numérique */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, maxWidth:240, margin:"0 auto" }}>
+            {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i) => (
+              <button key={i} disabled={k===""} onClick={() => {
+                if (k === "⌫") { setCode(c => c.slice(0,-1)); setCodeError(""); }
+                else if (code.length < 4) { setCode(c => c + k); setCodeError(""); }
+              }} style={{ padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, background: k===""?"transparent":"#162547", color:C.text, fontSize:18, fontWeight:700, cursor:k===""?"default":"pointer", fontFamily:"monospace", opacity:k===""?0:1 }}>
+                {k}
+              </button>
+            ))}
+          </div>
+          {codeError && <p style={{ color:C.accent, fontSize:12, textAlign:"center", marginTop:10 }}>{codeError}</p>}
+        </div>
+
+        <Btn full disabled={code.length < 4 || gpsStatus==="loading"}
+          onClick={handleValidate}
+          style={{ fontSize:15, padding:"16px", background: isIn ? C.success : C.accentGold, boxShadow:`0 8px 24px ${isIn?C.success:C.accentGold}44` }}>
+          {isIn ? "✅ Confirmer mon arrivée" : "🏁 Confirmer mon départ"}
+        </Btn>
+        {gpsStatus === "warning" && (
+          <p style={{ color:"#FFA500", fontSize:11, textAlign:"center", marginTop:8, lineHeight:1.5 }}>
+            ⚠️ Votre position GPS est éloignée. L'alerte sera enregistrée.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -5037,17 +5200,46 @@ function PrestaDashboard({ onNavigate }) {
             </div>
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
-          <div style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", marginBottom:12 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-              <div style={{ fontWeight:800, color:C.text }}>Cariste CACES 1</div>
-              <Badge color={C.accentGold} small>En cours</Badge>
-            </div>
-            <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>Entrepôt XYZ · Mer 12 Mai · 09h-17h</div>
-            <div style={{ display:"flex", gap:8 }}>
-              <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("chat",PROVIDERS[0])}>💬 Chat client</Btn>
-              <Btn variant="gold" style={{ flex:2, padding:"9px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider</Btn>
-            </div>
-          </div>
+          {(()=>{
+            const todayKey = `jober_pointage_${PROVIDERS[0].id}_${new Date().toISOString().slice(0,10)}`;
+            const pointageStatus = localStorage.getItem(todayKey); // null | "checkin" | "checkout"
+            return (
+              <div style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", marginBottom:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <div style={{ fontWeight:800, color:C.text }}>Cariste CACES 1</div>
+                  <Badge color={C.accentGold} small>En cours</Badge>
+                </div>
+                <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>Entrepôt XYZ · Mer 12 Mai · 09h-17h</div>
+                {/* Statut pointage */}
+                <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                  <div style={{ fontSize:11, padding:"4px 10px", borderRadius:99, fontWeight:700,
+                    background: pointageStatus ? `${C.success}22` : "rgba(255,255,255,0.05)",
+                    color: pointageStatus ? C.success : C.textMuted,
+                    border: `1px solid ${pointageStatus ? C.success+"44" : C.border}` }}>
+                    {pointageStatus ? "✓ Arrivée pointée" : "○ Arrivée non pointée"}
+                  </div>
+                  <div style={{ fontSize:11, padding:"4px 10px", borderRadius:99, fontWeight:700,
+                    background: pointageStatus==="checkout" ? `${C.accentGold}22` : "rgba(255,255,255,0.05)",
+                    color: pointageStatus==="checkout" ? C.accentGold : C.textMuted,
+                    border: `1px solid ${pointageStatus==="checkout" ? C.accentGold+"44" : C.border}` }}>
+                    {pointageStatus==="checkout" ? "✓ Départ pointé" : "○ Départ non pointé"}
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {!pointageStatus && (
+                    <Btn variant="success" style={{ flex:2, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("presta_pointage",{...PROVIDERS[0], _pointageType:"in"})}>📍 Pointer arrivée</Btn>
+                  )}
+                  {pointageStatus==="checkin" && (
+                    <Btn style={{ flex:2, padding:"9px", fontSize:12, background:C.accentGold, boxShadow:"none" }} onClick={()=>onNavigate("presta_pointage",{...PROVIDERS[0], _pointageType:"out"})}>🏁 Pointer départ</Btn>
+                  )}
+                  <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("chat",PROVIDERS[0])}>💬</Btn>
+                  {pointageStatus==="checkout" && (
+                    <Btn variant="gold" style={{ flex:2, padding:"9px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider</Btn>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="docs" && <>
@@ -8479,12 +8671,12 @@ export default function App() {
     setScreen("role");
   };
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
-    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract") setSelectedProvider(data);
+    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage") setSelectedProvider(data);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); }
@@ -8565,6 +8757,7 @@ export default function App() {
       {screen==="rating"            && <RatingScreen provider={selectedProvider} onSubmit={()=>setScreen("home")} onBack={()=>setScreen("validation")} />}
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
