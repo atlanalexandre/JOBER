@@ -8318,7 +8318,20 @@ function AbonnementPrestaScreen({ onBack }) {
                 </div>
               ))}
               {plan.note && <p style={{ color:C.textMuted, fontSize:10, margin:"8px 0 0", lineHeight:1.5, fontStyle:"italic" }}>{plan.note}</p>}
-              {price>0&&active&&<div style={{ marginTop:10, background:plan.color+"12", borderRadius:10, padding:"9px 12px", fontSize:12, color:C.textSub }}>Rentabilisé dès {Math.ceil(price/(8*14*0.20))} missions/mois</div>}
+              {price > 0 && (
+                <div style={{ marginTop:10, background:plan.color+"10", border:`1px solid ${plan.color}30`, borderRadius:10, padding:"9px 12px" }}>
+                  <div style={{ fontSize:11, color:C.textSub, marginBottom:4 }}>💡 Rentabilité estimée</div>
+                  <div style={{ fontSize:12, color:C.text, lineHeight:1.6 }}>
+                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère mission</strong><br/>
+                    <span style={{ color:C.textSub, fontSize:11 }}>
+                      {plan.id==="premium"
+                        ? `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€`
+                        : `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€ · Position #1 + Manager dédié`
+                      }
+                    </span>
+                  </div>
+                </div>
+              )}
               {plan.missions < 999 && active && (
                 <div style={{ marginTop:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub, marginBottom:4 }}>
