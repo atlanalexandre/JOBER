@@ -1,0 +1,17 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="gc-text" x1="40" y1="0" x2="360" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded squares (pill nodes) instead of circles -->
+  <rect x="22" y="44" width="32" height="32" rx="10" fill="#7C6FE020" stroke="#7C6FE0" stroke-width="2"/>
+  <rect x="27" y="49" width="22" height="22" rx="7" fill="#7C6FE0"/>
+  <line x1="54" y1="60" x2="86" y2="60" stroke="#7C6FE080" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <rect x="86" y="44" width="32" height="32" rx="10" fill="#F0B42920" stroke="#F0B429" stroke-width="2"/>
+  <rect x="91" y="49" width="22" height="22" rx="7" fill="#F0B429"/>
+  <!-- Gradient wordmark -->
+  <text x="136" y="72" font-family="Georgia, serif" font-size="36" font-weight="700" fill="url(#gc-text)" letter-spacing="2">ALANE</text>
+</svg>

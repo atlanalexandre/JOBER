@@ -1,0 +1,23 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="ga-line" x1="52" y1="60" x2="108" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+    <filter id="glow-a">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- Filled circles with glow -->
+  <circle cx="40" cy="60" r="18" fill="#7C6FE0" opacity="0.2"/>
+  <circle cx="40" cy="60" r="12" fill="#7C6FE0" filter="url(#glow-a)"/>
+  <circle cx="40" cy="60" r="5" fill="#fff"/>
+  <line x1="52" y1="60" x2="108" y2="60" stroke="url(#ga-line)" stroke-width="2.5"/>
+  <circle cx="120" cy="60" r="18" fill="#F0B429" opacity="0.2"/>
+  <circle cx="120" cy="60" r="12" fill="#F0B429" filter="url(#glow-a)"/>
+  <circle cx="120" cy="60" r="5" fill="#fff"/>
+  <!-- Wordmark -->
+  <text x="152" y="72" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="34" font-weight="700" fill="#FFFFFF" letter-spacing="1">ALANE</text>
+</svg>

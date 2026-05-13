@@ -1,0 +1,19 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="gd-arc" x1="20" y1="60" x2="130" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+  </defs>
+  <!-- Bold arc connector with arrow -->
+  <circle cx="34" cy="60" r="14" fill="none" stroke="#7C6FE0" stroke-width="2.5"/>
+  <circle cx="34" cy="60" r="6" fill="#7C6FE0"/>
+  <!-- Bold line with arrowhead -->
+  <line x1="48" y1="60" x2="100" y2="60" stroke="url(#gd-arc)" stroke-width="3" stroke-linecap="round"/>
+  <polygon points="100,54 112,60 100,66" fill="#F0B429"/>
+  <circle cx="122" cy="60" r="14" fill="none" stroke="#F0B429" stroke-width="2.5"/>
+  <circle cx="122" cy="60" r="6" fill="#F0B429"/>
+  <!-- Wordmark -->
+  <text x="152" y="72" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="34" font-weight="700" fill="#FFFFFF" letter-spacing="1">ALANE</text>
+</svg>
