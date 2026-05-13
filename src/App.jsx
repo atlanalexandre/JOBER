@@ -1,6 +1,30 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase.js";
 
+// ── Logo ALANE — Option 6 : deux nœuds reliés (client ↔ prestataire) ─
+function ALANELogo({ size = "md" }) {
+  const small = size === "sm";
+  const fs = small ? 17 : 18;
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap: small ? 7 : 8 }}>
+      <svg width={small?36:40} height={small?24:28} viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="alane-logo-line" x1="14" y1="14" x2="26" y2="14" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#7C6FE0"/>
+            <stop offset="100%" stopColor="#F0B429"/>
+          </linearGradient>
+        </defs>
+        <circle cx="7" cy="14" r="6.5" fill="none" stroke="#7C6FE0" strokeWidth="1.8"/>
+        <circle cx="7" cy="14" r="2.8" fill="#7C6FE0"/>
+        <line x1="13.5" y1="14" x2="26.5" y2="14" stroke="url(#alane-logo-line)" strokeWidth="1.8" strokeDasharray="3 2.5"/>
+        <circle cx="33" cy="14" r="6.5" fill="none" stroke="#F0B429" strokeWidth="1.8"/>
+        <circle cx="33" cy="14" r="2.8" fill="#F0B429"/>
+      </svg>
+      <span style={{ color:"#FFFFFF", fontSize:fs, fontWeight:700, letterSpacing:-0.3, fontFamily:"inherit" }}>ALANE</span>
+    </div>
+  );
+}
+
 // ── Géolocalisation — Haversine ───────────────────────────────────
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -787,15 +811,7 @@ function SplashScreen({ onNext, onBackoffice }) {
 
       {/* Top bar */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:60, marginBottom:"auto" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{
-            width:34, height:34, borderRadius:10,
-            background:`linear-gradient(135deg, ${C.violet}, ${C.violetDark})`,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:17, boxShadow:shadow.glow,
-          }}>⚡</div>
-          <span style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display, letterSpacing:-0.3 }}>ALANE</span>
-        </div>
+        <ALANELogo size="md" />
       </div>
 
       {/* Hero content */}
@@ -880,8 +896,7 @@ function RoleScreen({ onSelect }) {
 
       <div style={{ marginBottom:48 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:32 }}>
-          <div style={{ width:32, height:32, borderRadius:9, background:`linear-gradient(135deg,${C.violet},${C.violetDark})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>⚡</div>
-          <span style={{ color:C.text, fontSize:17, fontWeight:700, fontFamily:font.display }}>ALANE</span>
+          <ALANELogo size="sm" />
         </div>
         <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1.5, textTransform:"uppercase", fontWeight:600, marginBottom:10 }}>Bienvenue</p>
         <h2 style={{ color:C.text, fontSize:32, fontWeight:800, margin:0, lineHeight:1.15, fontFamily:font.display }}>Vous êtes ?</h2>
