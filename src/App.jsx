@@ -110,10 +110,10 @@ const shadow = {
 // ── Modèle dual M1 ↔ Hybride ─────────────────────────────────────
 const MODEL_CONFIG = {
   get currentModel() {
-    try { return localStorage.getItem("jober_model") || "launch"; } catch { return "launch"; }
+    try { return localStorage.getItem("alane_model") || "launch"; } catch { return "launch"; }
   },
   set currentModel(v) {
-    try { localStorage.setItem("jober_model", v); } catch {}
+    try { localStorage.setItem("alane_model", v); } catch {}
   },
 };
 const isLaunchPhase = () => MODEL_CONFIG.currentModel === "launch";
@@ -794,7 +794,7 @@ function SplashScreen({ onNext, onBackoffice }) {
             display:"flex", alignItems:"center", justifyContent:"center",
             fontSize:17, boxShadow:shadow.glow,
           }}>⚡</div>
-          <span style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display, letterSpacing:-0.3 }}>JOBER</span>
+          <span style={{ color:C.text, fontSize:18, fontWeight:700, fontFamily:font.display, letterSpacing:-0.3 }}>ALANE</span>
         </div>
       </div>
 
@@ -881,7 +881,7 @@ function RoleScreen({ onSelect }) {
       <div style={{ marginBottom:48 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:32 }}>
           <div style={{ width:32, height:32, borderRadius:9, background:`linear-gradient(135deg,${C.violet},${C.violetDark})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>⚡</div>
-          <span style={{ color:C.text, fontSize:17, fontWeight:700, fontFamily:font.display }}>JOBER</span>
+          <span style={{ color:C.text, fontSize:17, fontWeight:700, fontFamily:font.display }}>ALANE</span>
         </div>
         <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1.5, textTransform:"uppercase", fontWeight:600, marginBottom:10 }}>Bienvenue</p>
         <h2 style={{ color:C.text, fontSize:32, fontWeight:800, margin:0, lineHeight:1.15, fontFamily:font.display }}>Vous êtes ?</h2>
@@ -1570,11 +1570,11 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       return;
     }
     if (stayLoggedIn) {
-      localStorage.setItem("jober_stay_logged_in", "1");
-      sessionStorage.removeItem("jober_session_active");
+      localStorage.setItem("alane_stay_logged_in", "1");
+      sessionStorage.removeItem("alane_session_active");
     } else {
-      sessionStorage.setItem("jober_session_active", "1");
-      localStorage.removeItem("jober_stay_logged_in");
+      sessionStorage.setItem("alane_session_active", "1");
+      localStorage.removeItem("alane_stay_logged_in");
     }
     onLogin();
   };
@@ -1634,7 +1634,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
           <div>
             <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1, textTransform:"uppercase", margin:"0 0 3px" }}>Espace {roleLabel}</p>
             <h2 style={{ color:C.text, fontSize:26, fontWeight:700, margin:0, fontFamily:font.display }}>
-              {mode==="login" ? "Bon retour 👋" : "Rejoignez JOBER"}
+              {mode==="login" ? "Bon retour 👋" : "Rejoignez ALANE"}
             </h2>
           </div>
         </div>
@@ -1768,7 +1768,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:18 }}>ℹ️</span>
               <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>
-                Vous allez créer un compte <strong style={{ color:C.text }}>{roleLabel} JOBER</strong>.
+                Vous allez créer un compte <strong style={{ color:C.text }}>{roleLabel} ALANE</strong>.
                 {isClient
                   ? " Renseignez vos informations et commencez à réserver en quelques minutes."
                   : " Vous serez guidé à travers les étapes de validation de votre dossier."
@@ -2084,7 +2084,7 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           <div>
             <div style={{ fontWeight:700, color:C.text, fontSize:16 }}>{userName||"Mon compte"}</div>
             <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{userEmail}</div>
-            <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:4 }}>{role==="prestataire"?"Prestataire":"Client"} JOBER</div>
+            <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:4 }}>{role==="prestataire"?"Prestataire":"Client"} ALANE</div>
           </div>
         </div>
 
@@ -2153,7 +2153,7 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           🚪 Se déconnecter
         </button>
 
-        <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>JOBER v1.0 · Tous droits réservés</p>
+        <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>ALANE v1.0 · Tous droits réservés</p>
       </div>
     </div>
   );
@@ -2941,7 +2941,7 @@ function CVScreen({ provider, onBack, onNavigate }) {
       <div style={{ fontSize:60, marginBottom:16 }}>📄</div>
       <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>CV non disponible</h3>
       <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:260, margin:"0 auto 28px" }}>
-        {p.name} n'a pas encore renseigné son CV sur JOBER.
+        {p.name} n'a pas encore renseigné son CV sur ALANE.
       </p>
       <Btn onClick={onBack} variant="ghost">← Retour au profil</Btn>
     </div>
@@ -4082,7 +4082,7 @@ function ValidationScreen({ provider, role, onNavigate }) {
           <div style={{ marginTop:16, background:`${C.accent}10`, border:`2px solid ${C.accent}44`, borderRadius:16, padding:"16px" }}>
             <div style={{ fontWeight:800, color:C.danger, fontSize:14, marginBottom:8 }}>⚠️ Signalement de litige</div>
             <textarea placeholder="Décrivez le problème rencontré…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`2px solid ${C.accent}44`, fontSize:13, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
-            <Btn full variant="danger" onClick={()=>alert("📞 Médiation JOBER\n\nVotre demande de médiation a été transmise à notre équipe.\n\n✅ Numéro de dossier : LIT-2025-" + Math.floor(Math.random()*9000+1000) + "\n\nNotre équipe vous contactera sous 24h ouvrées pour arbitrer le litige.\n\nEmail : mediation@jober.fr\nTél : +33 1 XX XX XX XX")} style={{ fontSize:13, padding:"12px" }}>📞 Contacter la médiation JOBER</Btn>
+            <Btn full variant="danger" onClick={()=>alert("📞 Médiation ALANE\n\nVotre demande de médiation a été transmise à notre équipe.\n\n✅ Numéro de dossier : LIT-2025-" + Math.floor(Math.random()*9000+1000) + "\n\nNotre équipe vous contactera sous 24h ouvrées pour arbitrer le litige.\n\nEmail : mediation@alane.fr\nTél : +33 1 XX XX XX XX")} style={{ fontSize:13, padding:"12px" }}>📞 Contacter la médiation ALANE</Btn>
           </div>
         )}
       </div>
@@ -4229,7 +4229,7 @@ function FavoritesScreen({ onNavigate, onBack }) {
 // ── PARRAINAGE ────────────────────────────────────────────────────
 function ReferralScreen({ onBack }) {
   const [copied,setCopied]=useState(false);
-  const code="JOBER-A7K2X";
+  const code="ALANE-A7K2X";
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, padding:"48px 22px 36px", borderRadius:"0 0 28px 28px", textAlign:"center" }}>
@@ -4411,7 +4411,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
           </div>
         </>}
         {step===3 && <>
-          <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}55`, borderRadius:r, padding:"14px", marginBottom:18, fontSize:13, lineHeight:1.5 }}>⚠️ <strong>Auto-entrepreneur obligatoire</strong><br/><span style={{ color:C.textSub }}>JOBER travaille exclusivement avec des AE. Vos infos seront vérifiées.</span></div>
+          <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}55`, borderRadius:r, padding:"14px", marginBottom:18, fontSize:13, lineHeight:1.5 }}>⚠️ <strong>Auto-entrepreneur obligatoire</strong><br/><span style={{ color:C.textSub }}>ALANE travaille exclusivement avec des AE. Vos infos seront vérifiées.</span></div>
           <Input label="N° SIRET *" placeholder="XXX XXX XXX XXXXX" icon="🔢" value={ae.siret} onChange={e=>setAe({...ae,siret:e.target.value})} hint="14 chiffres — visible sur votre extrait KBIS" />
           <Input label="N° SIREN *" placeholder="XXX XXX XXX" icon="🏢" value={ae.siren} onChange={e=>setAe({...ae,siren:e.target.value})} hint="9 premiers chiffres du SIRET" />
           <Input label="Activité déclarée *" placeholder="Prestation de services…" value={ae.activite} onChange={e=>setAe({...ae,activite:e.target.value})} />
@@ -4456,7 +4456,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
                 </div>
               ))}
               <div style={{ fontSize:11, color:C.textMuted, lineHeight:1.6, padding:"10px 0" }}>
-                ℹ️ JOBER ne perçoit aucune commission sur la création de votre entreprise. Revenez avec votre SIRET pour finaliser votre inscription.
+                ℹ️ ALANE ne perçoit aucune commission sur la création de votre entreprise. Revenez avec votre SIRET pour finaliser votre inscription.
               </div>
             </div>
           )}
@@ -4605,7 +4605,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
                     </div>
                   </div>
                   <p style={{ fontSize:11, color:C.textSub, margin:"8px 0 0", textAlign:"center", lineHeight:1.4 }}>
-                    Le tarif client inclut les frais de service JOBER
+                    Le tarif client inclut les frais de service ALANE
                   </p>
                 </div>
               );
@@ -4635,7 +4635,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
         </>}
         {!isLaunchPhase() && step===7 && <>
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
-            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan JOBER</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan ALANE</div>
             <div style={{ color:C.textSub, fontSize:12 }}>0% de commission sur toutes vos missions. Changez de plan à tout moment.</div>
           </div>
           {ABONNEMENTS_PRESTA.map(plan=>{
@@ -4724,7 +4724,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}>
               <input type="checkbox" style={{ marginTop:2, accentColor:C.violet }} />
-              <span style={{ fontSize:13, color:C.textSub, lineHeight:1.5 }}>J'accepte les <strong style={{ color:C.violet }}>CGU</strong> et la <strong style={{ color:C.violet }}>Politique de confidentialité</strong> de JOBER</span>
+              <span style={{ fontSize:13, color:C.textSub, lineHeight:1.5 }}>J'accepte les <strong style={{ color:C.violet }}>CGU</strong> et la <strong style={{ color:C.violet }}>Politique de confidentialité</strong> de ALANE</span>
             </label>
           </div>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
@@ -5003,7 +5003,7 @@ function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
       return;
     }
     setDone(true);
-    const key = `jober_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
+    const key = `alane_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
     localStorage.setItem(key, isIn ? "checkin" : "checkout");
     setTimeout(() => onSuccess && onSuccess(), 2000);
   };
@@ -5091,7 +5091,7 @@ function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
 // ── PRESTA ONBOARDING CHECKLIST ───────────────────────────────────
 function PrestaOnboardingChecklist({ onNavigate }) {
   const [meta, setMeta] = useState(null);
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem("jober_presta_checklist_dismissed") === "1");
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem("alane_presta_checklist_dismissed") === "1");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMeta(data?.user?.user_metadata || {}));
@@ -5118,7 +5118,7 @@ function PrestaOnboardingChecklist({ onNavigate }) {
           <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Premiers pas</div>
           <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doneCount}/{items.length} étapes complétées</div>
         </div>
-        <button onClick={() => { localStorage.setItem("jober_presta_checklist_dismissed","1"); setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
+        <button onClick={() => { localStorage.setItem("alane_presta_checklist_dismissed","1"); setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
       </div>
       <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, marginBottom:14, overflow:"hidden" }}>
         <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.5s" }} />
@@ -5189,7 +5189,7 @@ function PrestaDashboard({ onNavigate }) {
               <div style={{ display:"flex", gap:6, marginBottom:10 }}><Badge color={C.indigo} small>📅 {m.date}</Badge><Badge color={C.gray} small>{m.time}</Badge><Badge color={C.success} small>{m.tarif}</Badge></div>
               <div style={{ display:"flex", gap:8 }}>
                 <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>{
-          alert("Mission refusée. JOBER va proposer un remplaçant au client.");
+          alert("Mission refusée. ALANE va proposer un remplaçant au client.");
         }}>Refuser</Btn>
         <Btn variant="success" style={{ flex:2, padding:"9px", fontSize:12 }} onClick={()=>{
           if(!userRib){ setRibMissionError(true); return; }
@@ -5200,7 +5200,7 @@ function PrestaDashboard({ onNavigate }) {
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
           {(()=>{
-            const todayKey = `jober_pointage_${PROVIDERS[0].id}_${new Date().toISOString().slice(0,10)}`;
+            const todayKey = `alane_pointage_${PROVIDERS[0].id}_${new Date().toISOString().slice(0,10)}`;
             const pointageStatus = localStorage.getItem(todayKey); // null | "checkin" | "checkout"
             return (
               <div style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", marginBottom:12 }}>
@@ -5443,7 +5443,7 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
       <div style={{ width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:44, marginBottom:20 }}>✓</div>
       <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Paiement sécurisé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 24px" }}>
-        <strong>{total} €</strong> placés en escrow JOBER.<br/>Libérés après validation de la mission.
+        <strong>{total} €</strong> placés en escrow ALANE.<br/>Libérés après validation de la mission.
       </p>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", width:"100%", maxWidth:300, marginBottom:24, textAlign:"left" }}>
         {[
@@ -5533,8 +5533,8 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
           )}
           {method==="wire" && (
             <div style={{ background:`${C.accentGold}15`, borderRadius:12, padding:"14px", fontSize:13, lineHeight:1.7 }}>
-              <div style={{ fontWeight:800, color:C.text, marginBottom:8 }}>Coordonnées bancaires JOBER</div>
-              {[["IBAN","FR76 3000 4000 0100 0000 0000 123"],["BIC","BNPAFRPPXXX"],["Référence",`JOBER-${Date.now().toString().slice(-6)}`],["Montant",`${total} €`]].map(([l,v])=>(
+              <div style={{ fontWeight:800, color:C.text, marginBottom:8 }}>Coordonnées bancaires ALANE</div>
+              {[["IBAN","FR76 3000 4000 0100 0000 0000 123"],["BIC","BNPAFRPPXXX"],["Référence",`ALANE-${Date.now().toString().slice(-6)}`],["Montant",`${total} €`]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0" }}>
                   <span style={{ color:C.textSub }}>{l}</span><span style={{ fontWeight:700, color:C.text, fontSize:12 }}>{v}</span>
                 </div>
@@ -5564,7 +5564,7 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
 function InvoiceScreen({ provider, amount, hours, onBack }) {
   const p = provider || PROVIDERS[0];
-  const invoiceNum = `JOBER-2025-${Math.floor(Math.random()*9000+1000)}`;
+  const invoiceNum = `ALANE-2025-${Math.floor(Math.random()*9000+1000)}`;
   const date = new Date().toLocaleDateString("fr-FR");
   const ht = amount || 124;
   const tva = 0; // auto-entrepreneur → pas de TVA
@@ -5580,7 +5580,7 @@ function InvoiceScreen({ provider, amount, hours, onBack }) {
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"20px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
             <div>
-              <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display }}>JOBER</div>
+              <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display }}>ALANE</div>
               <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande</div>
             </div>
             <div style={{ textAlign:"right" }}>
@@ -5634,7 +5634,7 @@ function InvoiceScreen({ provider, amount, hours, onBack }) {
           <span style={{ fontSize:24 }}>✅</span>
           <div>
             <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Paiement reçu</div>
-            <div style={{ color:C.textSub, fontSize:11 }}>Virement effectué le {date} via JOBER Escrow</div>
+            <div style={{ color:C.textSub, fontSize:11 }}>Virement effectué le {date} via ALANE Escrow</div>
           </div>
         </div>
 
@@ -5673,7 +5673,7 @@ function CancellationScreen({ provider, missionDate, onNavigate, onBack }) {
       </div>
       <div style={{ padding:"20px 18px" }}>
         <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:13, color:C.text }}>
-          ⚡ JOBER a trouvé <strong>{replacements.length} remplaçant{replacements.length>1?"s":""}</strong> disponible{replacements.length>1?"s":""} sur votre créneau
+          ⚡ ALANE a trouvé <strong>{replacements.length} remplaçant{replacements.length>1?"s":""}</strong> disponible{replacements.length>1?"s":""} sur votre créneau
         </div>
         {replacements.length === 0 ? (
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
@@ -5732,7 +5732,7 @@ function CancellationScreen({ provider, missionDate, onNavigate, onBack }) {
       <div style={{ padding:"20px 18px" }}>
         {/* Politique d'annulation */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:14 }}>📋 Politique d'annulation JOBER</div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:14 }}>📋 Politique d'annulation ALANE</div>
           {[
             { label:"Plus de 48h avant", detail:"Annulation gratuite", color:C.success, icon:"✅" },
             { label:"Entre 24h et 48h",  detail:"Frais de 50% du montant", color:C.warning, icon:"⚠️" },
@@ -6036,7 +6036,7 @@ const BO_PIN = "1234";
 const BO_DATA = {
   users:        { clients:142, prestataires:89, total:231, newThisWeek:14 },
   missions:     { total:387, enCours:23, terminees:341, annulees:23, tauxCompletion:88 },
-  finance:      { caTotal:48320, commissionJober:8920, escrowEnAttente:3240, litiges:3 },
+  finance:      { caTotal:48320, commissionAlane:8920, escrowEnAttente:3240, litiges:3 },
   abonnements:  { free:54, premium:28, elite:7, newThisWeek:6, churnThisMonth:2 },
   noteMoyenne:  4.7,
   tauxReponse:  94,
@@ -6138,7 +6138,7 @@ function BackofficeLogin({ onLogin, onBack }) {
       <button onClick={onBack} style={{ position:"absolute", top:54, left:22, background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13 }}>← Retour</button>
 
       <div style={{ width:72, height:72, borderRadius:22, background:`${C.violet}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, marginBottom:20, border:`2px solid ${C.violet}66` }}>⚙️</div>
-      <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Backoffice JOBER</h2>
+      <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Backoffice ALANE</h2>
       <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, margin:"0 0 36px" }}>Accès administrateur uniquement</p>
 
       {/* PIN display */}
@@ -6422,7 +6422,7 @@ function BackofficeDashboard({ onBack, onModelChange }) {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"0 0 2px" }}>Administration</p>
-            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 2px", fontFamily:font.display }}>⚙️ Backoffice JOBER</h2>
+            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 2px", fontFamily:font.display }}>⚙️ Backoffice ALANE</h2>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>Tableau de bord · Temps réel</p>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -6513,7 +6513,7 @@ function BackofficeDashboard({ onBack, onModelChange }) {
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
             <KPICard icon="💶" label="CA total (€)" value={`${(d.finance.caTotal/1000).toFixed(0)}k`} sub="Depuis le lancement" color={C.accentGold} />
             {isLaunchPhase()
-              ? <KPICard icon="⚡" label="Commission JOBER" value={`${(d.finance.commissionJober/1000).toFixed(1)}k €`} color={C.accent} />
+              ? <KPICard icon="⚡" label="Commission ALANE" value={`${(d.finance.commissionAlane/1000).toFixed(1)}k €`} color={C.accent} />
               : <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
             }
           </div>
@@ -6689,11 +6689,11 @@ function BackofficeDashboard({ onBack, onModelChange }) {
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>dont <strong style={{ color:C.accentGold }}>{d.finance.commissionJober.toLocaleString()} €</strong> de commission JOBER</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>dont <strong style={{ color:C.accentGold }}>{d.finance.commissionAlane.toLocaleString()} €</strong> de commission ALANE</div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"Commission JOBER",v:`${d.finance.commissionJober.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Escrow en attente",v:`${d.finance.escrowEnAttente.toLocaleString()} €`,c:C.violet,i:"🔒"},{l:"Taux de commission moy.",v:"18,4%",c:C.success,i:"📊"},{l:"Litiges en cours",v:d.finance.litiges,c:C.danger,i:"⚠️"}].map(s=>(
+            {[{l:"Commission ALANE",v:`${d.finance.commissionAlane.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Escrow en attente",v:`${d.finance.escrowEnAttente.toLocaleString()} €`,c:C.violet,i:"🔒"},{l:"Taux de commission moy.",v:"18,4%",c:C.success,i:"📊"},{l:"Litiges en cours",v:d.finance.litiges,c:C.danger,i:"⚠️"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -6722,8 +6722,8 @@ function BackofficeDashboard({ onBack, onModelChange }) {
           </div>
 
           <div style={{ display:"flex", gap:10 }}>
-            <button onClick={()=>alert("📊 Export CSV\n\nLe fichier CSV contenant toutes les transactions est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@jober.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📊 Export CSV</button>
-            <button onClick={()=>alert("📄 Rapport PDF\n\nLe rapport financier mensuel est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@jober.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📄 Rapport PDF</button>
+            <button onClick={()=>alert("📊 Export CSV\n\nLe fichier CSV contenant toutes les transactions est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@alane.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📊 Export CSV</button>
+            <button onClick={()=>alert("📄 Rapport PDF\n\nLe rapport financier mensuel est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@alane.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📄 Rapport PDF</button>
           </div>
         </>}
 
@@ -6748,7 +6748,7 @@ function BackofficeDashboard({ onBack, onModelChange }) {
             { icon:"🔒", label:"Suspendre un compte", color:C.danger,
               action:()=>{ const email = prompt("🔒 Suspendre un compte\n\nEntrez l’email du compte à suspendre :"); if(email) alert(`⚠️ Compte suspendu\n\nLe compte ${email} a été suspendu. L'utilisateur a été notifié par email.`); }},
             { icon:"📊", label:"Générer rapport hebdomadaire", color:C.success,
-              action:()=>alert("📊 Rapport hebdomadaire\n\nGénération en cours...\n\nLe rapport sera envoyé à admin@jober.fr dans quelques minutes.")},
+              action:()=>alert("📊 Rapport hebdomadaire\n\nGénération en cours...\n\nLe rapport sera envoyé à admin@alane.fr dans quelques minutes.")},
             { icon:"🔄", label:"Synchroniser les données", color:C.indigo,
               action:()=>alert("🔄 Synchronisation\n\nToutes les données ont été synchronisées avec succès.\n\nDernier sync : " + new Date().toLocaleTimeString("fr-FR"))},
           ].map((a,i) => (
@@ -6808,7 +6808,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire" ? "Accès gratuit · 0% de commission sur toutes vos missions pendant 6 mois" : "Tarifs préférentiels pendant toute la période de lancement JOBER"}
+                {role==="prestataire" ? "Accès gratuit · 0% de commission sur toutes vos missions pendant 6 mois" : "Tarifs préférentiels pendant toute la période de lancement ALANE"}
               </div>
             </div>
           </div>
@@ -6819,7 +6819,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
             <div style={{ background:`linear-gradient(135deg,${C.violet}18,${C.indigo}10)`, border:`1px solid ${C.violet}40`, borderRadius:r+4, padding:"14px 16px", marginBottom:10 }}>
               <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
                 <span style={{ fontSize:16 }}>⚡</span>
-                <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>Abonnements JOBER</div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>Abonnements ALANE</div>
               </div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:12 }}>
                 0% de commission sur toutes vos missions. Choisissez le plan adapté à votre activité.
@@ -6853,7 +6853,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:4 }}>Tarification transparente</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
-                Les prestataires JOBER sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la mission.
+                Les prestataires ALANE sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la mission.
               </div>
             </div>
           </div>
@@ -7007,7 +7007,7 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
   const [finalised, setFinalised] = useState(false);
   const [activeTab, setActiveTab] = useState("contrat");
   const bothSigned = clientSigned && prestaSigned;
-  const contractNum = `CTR-JOBER-2025-${Math.floor(Math.random()*90000+10000)}`;
+  const contractNum = `CTR-ALANE-2025-${Math.floor(Math.random()*90000+10000)}`;
   const today = new Date().toLocaleDateString("fr-FR");
   const missionDate = date || "05/05/2025";
   const missionHours = hours || 8;
@@ -7045,7 +7045,7 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
   const articles = [
     {
       title:"Article 1 — Objet du contrat",
-      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme JOBER.\n\nNature de la prestation : ${p.role}\nDate de la mission : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
+      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la mission : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
     },
     {
       title:"Article 2 — Indépendance du prestataire",
@@ -7053,23 +7053,23 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service JOBER)\n\nLe paiement est sécurisé via le système d'escrow JOBER : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, JOBER intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service ALANE)\n\nLe paiement est sécurisé via le système d'escrow ALANE : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
-      content:`Le Prestataire s'engage à :\n• Exécuter la mission avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et JOBER de tout empêchement dans un délai minimum de 4h avant la mission\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de mission\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
+      content:`Le Prestataire s'engage à :\n• Exécuter la mission avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et ALANE de tout empêchement dans un délai minimum de 4h avant la mission\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de mission\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
     },
     {
       title:"Article 5 — Obligations du client",
-      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la mission\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la mission dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme JOBER pour des missions futures avec le même prestataire`
+      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la mission\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la mission dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme ALANE pour des missions futures avec le même prestataire`
     },
     {
       title:"Article 6 — Politique d’annulation",
-      content:`Annulation par le Client :\n• Plus de 48h avant la mission : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, JOBER propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine mission\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, JOBER s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
+      content:`Annulation par le Client :\n• Plus de 48h avant la mission : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, ALANE propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine mission\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, ALANE s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
     },
     {
       title:"Article 7 — Responsabilité et assurance",
-      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa mission et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nJOBER agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de mission. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
+      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa mission et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nALANE agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de mission. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
     },
     {
       title:"Article 8 — Confidentialité",
@@ -7081,11 +7081,11 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
     },
     {
       title:"Article 10 — Règlement des litiges",
-      content:`En cas de différend relatif à l'exécution ou à l'interprétation du présent contrat, les parties s'engagent à recourir en premier lieu à la médiation JOBER, accessible via l'application.\n\nJOBER dispose d'un délai de 72h ouvrées pour proposer une solution amiable. En cas d'échec de la médiation, les parties pourront saisir les juridictions compétentes.\n\nLe présent contrat est soumis au droit français. En cas de litige judiciaire, les tribunaux de Paris seront seuls compétents.`
+      content:`En cas de différend relatif à l'exécution ou à l'interprétation du présent contrat, les parties s'engagent à recourir en premier lieu à la médiation ALANE, accessible via l'application.\n\nALANE dispose d'un délai de 72h ouvrées pour proposer une solution amiable. En cas d'échec de la médiation, les parties pourront saisir les juridictions compétentes.\n\nLe présent contrat est soumis au droit français. En cas de litige judiciaire, les tribunaux de Paris seront seuls compétents.`
     },
     {
       title:"Article 11 — Protection des données",
-      content:`Les données personnelles collectées dans le cadre du présent contrat sont traitées par JOBER SAS conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés.\n\nCes données sont utilisées exclusivement pour la gestion de la relation contractuelle et ne sont pas transmises à des tiers sans consentement explicite.\n\nChaque partie dispose d'un droit d'accès, de rectification, d'effacement et de portabilité de ses données en contactant : rgpd@jober.fr`
+      content:`Les données personnelles collectées dans le cadre du présent contrat sont traitées par ALANE SAS conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés.\n\nCes données sont utilisées exclusivement pour la gestion de la relation contractuelle et ne sont pas transmises à des tiers sans consentement explicite.\n\nChaque partie dispose d'un droit d'accès, de rectification, d'effacement et de portabilité de ses données en contactant : rgpd@alane.fr`
     },
   ];
 
@@ -7123,7 +7123,7 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
             {/* En-tête officiel */}
             <div style={{ background:"#0D1B3E", borderRadius:16, padding:"20px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ textAlign:"center", paddingBottom:16, borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
-                <div style={{ fontSize:24, fontWeight:800, color:C.violet, fontFamily:font.display, marginBottom:4 }}>JOBER</div>
+                <div style={{ fontSize:24, fontWeight:800, color:C.violet, fontFamily:font.display, marginBottom:4 }}>ALANE</div>
                 <div style={{ fontSize:13, fontWeight:700, color:C.text }}>CONTRAT DE PRESTATION DE SERVICES</div>
                 <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Régi par les articles 1710 et suivants du Code Civil français</div>
                 <div style={{ fontSize:11, color:C.textSub }}>N° {contractNum} · Établi le {today}</div>
@@ -7196,18 +7196,18 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
               ))}
             </div>
 
-            {/* JOBER */}
+            {/* ALANE */}
             <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:12 }}>Plateforme intermédiaire</div>
               <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
                 <div style={{ width:46, height:46, borderRadius:13, background:`${C.violet}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>⚡</div>
                 <div>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>JOBER SAS</div>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>ALANE SAS</div>
                   <div style={{ color:C.textSub, fontSize:12 }}>Plateforme de mise en relation</div>
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 JOBER agit en qualité d'intermédiaire et gestionnaire de paiement. Les fonds de <strong>{totalAmount} €</strong> sont placés en escrow sécurisé jusqu'à validation mutuelle de la mission.
+                💡 ALANE agit en qualité d'intermédiaire et gestionnaire de paiement. Les fonds de <strong>{totalAmount} €</strong> sont placés en escrow sécurisé jusqu'à validation mutuelle de la mission.
               </div>
             </div>
           </div>
@@ -7278,7 +7278,7 @@ function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
 
             {/* Info escrow */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Escrow sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement bloqués chez JOBER et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
+              🔒 <strong>Escrow sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement bloqués chez ALANE et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
             </div>
           </div>
         )}
@@ -7295,12 +7295,12 @@ function LegalScreen({ type, onBack }) {
       title:"Conditions Générales d’Utilisation",
       icon:"📋",
       sections:[
-        { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme JOBER, service de mise en relation entre clients et prestataires de services. En utilisant JOBER, vous acceptez sans réserve les présentes conditions." },
+        { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme ALANE, service de mise en relation entre clients et prestataires de services. En utilisant ALANE, vous acceptez sans réserve les présentes conditions." },
         { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
-        { title:"3. Responsabilités", text:"JOBER agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. JOBER ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
-        { title:"4. Paiements", text:"Les paiements sont sécurisés via un système d’escrow. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. La commission JOBER est incluse dans le tarif affiché." },
+        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via un système d’escrow. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. La commission ALANE est incluse dans le tarif affiché." },
         { title:"5. Annulations", text:"Politique d’annulation : gratuit au-delà de 48h, 50% entre 24-48h, 100% en dessous de 24h. Ces frais s’appliquent tant aux clients qu’aux prestataires." },
-        { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation JOBER en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
+        { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
       ]
     },
@@ -7312,7 +7312,7 @@ function LegalScreen({ type, onBack }) {
         { title:"2. Utilisation des données", text:"Vos données sont utilisées pour : la gestion de votre compte, la mise en relation client/prestataire, le traitement des paiements, l’amélioration de nos services et la lutte contre la fraude." },
         { title:"3. Conservation", text:"Vos données sont conservées pendant la durée de votre inscription, augmentée de 3 ans pour les données de facturation (obligation légale). Les documents d’identité sont supprimés après vérification." },
         { title:"4. Partage des données", text:"Vos données ne sont jamais vendues à des tiers. Elles peuvent être partagées avec : nos prestataires de paiement (Stripe), nos services de vérification d’identité, les autorités judiciaires sur réquisition." },
-        { title:"5. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : accès, rectification, suppression, portabilité, opposition. Exercez-les en nous contactant : privacy@jober.fr" },
+        { title:"5. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : accès, rectification, suppression, portabilité, opposition. Exercez-les en nous contactant : privacy@alane.fr" },
         { title:"6. Cookies", text:"Nous utilisons des cookies essentiels au fonctionnement de l’app. Aucun cookie publicitaire n’est utilisé. Vous pouvez configurer vos préférences dans les paramètres." },
       ]
     }
@@ -7336,7 +7336,7 @@ function LegalScreen({ type, onBack }) {
           </div>
         ))}
         <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}22`, borderRadius:r, padding:"14px 16px", marginTop:8, fontSize:12, color:C.textSub, textAlign:"center", lineHeight:1.6 }}>
-          Pour toute question : <strong style={{ color:C.violet }}>legal@jober.fr</strong>
+          Pour toute question : <strong style={{ color:C.violet }}>legal@alane.fr</strong>
         </div>
       </div>
     </div>
@@ -7363,7 +7363,7 @@ function PayslipScreen({ provider, mission, onBack }) {
           {/* En-tête */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16, paddingBottom:16, borderBottom:`1px solid ${C.border}` }}>
             <div>
-              <div style={{ fontSize:20, fontWeight:800, color:C.violet, fontFamily:font.display }}>JOBER</div>
+              <div style={{ fontSize:20, fontWeight:800, color:C.violet, fontFamily:font.display }}>ALANE</div>
               <div style={{ fontSize:10, color:C.textSub }}>Attestation de mission</div>
             </div>
             <div style={{ textAlign:"right" }}>
@@ -7562,7 +7562,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
       <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${C.violet},${C.violetLight})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, boxShadow:`0 4px 12px ${C.violet}55` }}>⚡</div>
-          <div style={{ fontSize:22, fontWeight:800, color:C.white, fontFamily:font.display, letterSpacing:-0.5 }}>JOBER</div>
+          <div style={{ fontSize:22, fontWeight:800, color:C.white, fontFamily:font.display, letterSpacing:-0.5 }}>ALANE</div>
         </div>
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
@@ -8055,7 +8055,7 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Noter la mission</h2>
-        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Votre avis aide la communauté JOBER</p>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Votre avis aide la communauté ALANE</p>
       </div>
 
       <div style={{ padding:"22px 18px" }}>
@@ -8396,11 +8396,11 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 
   // Spinner CSS
   useEffect(()=>{
-    const style = document.getElementById("jober-spin-style");
+    const style = document.getElementById("alane-spin-style");
     if(!style){
       const s=document.createElement("style");
-      s.id="jober-spin-style";
-      s.textContent="@keyframes joberSpin{to{transform:rotate(360deg)}}";
+      s.id="alane-spin-style";
+      s.textContent="@keyframes alaneSpin{to{transform:rotate(360deg)}}";
       document.head.appendChild(s);
     }
   },[]);
@@ -8424,7 +8424,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
-      <style>{`@keyframes joberSpin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes alaneSpin{to{transform:rotate(360deg)}}`}</style>
 
       {/* Header */}
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 20px", borderBottom:`1px solid ${C.border}` }}>
@@ -8454,7 +8454,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
         {/* Indicateur attente */}
         {waiting > 0 && (
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:16, display:"flex", gap:12, alignItems:"center", border:`1px solid ${C.border}` }}>
-            <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.violet}`, borderTopColor:"transparent", animation:"joberSpin 0.9s linear infinite", flexShrink:0 }} />
+            <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.violet}`, borderTopColor:"transparent", animation:"alaneSpin 0.9s linear infinite", flexShrink:0 }} />
             <div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>En attente de {waiting} prestataire{waiting>1?"s":""}</div>
               <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les réponses arrivent en temps réel…</div>
@@ -8595,7 +8595,7 @@ export default function App() {
   // Reset badge messages non lus quand le chat est ouvert
   useEffect(()=>{
     if(screen==="chat"){
-      localStorage.setItem("jober_msg_last_seen", new Date().toISOString());
+      localStorage.setItem("alane_msg_last_seen", new Date().toISOString());
       setUnreadCount(0);
     }
   },[screen]);
@@ -8615,7 +8615,7 @@ export default function App() {
     if(!supaUser) return;
     const userId = supaUser.id;
     const poll = async()=>{
-      const lastSeen = localStorage.getItem("jober_msg_last_seen") || new Date(0).toISOString();
+      const lastSeen = localStorage.getItem("alane_msg_last_seen") || new Date(0).toISOString();
       const { data, error } = await supabase
         .from("messages")
         .select("id", { count:"exact" })
@@ -8636,8 +8636,8 @@ export default function App() {
       setSupaUser(session?.user||null);
       if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
       if(event==="SIGNED_OUT") {
-        localStorage.removeItem("jober_stay_logged_in");
-        sessionStorage.removeItem("jober_session_active");
+        localStorage.removeItem("alane_stay_logged_in");
+        sessionStorage.removeItem("alane_session_active");
         setRole(null);
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
@@ -8650,8 +8650,8 @@ export default function App() {
   const handleSplashNext = async () => {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
-      const stayLoggedIn  = localStorage.getItem("jober_stay_logged_in");
-      const sessionActive = sessionStorage.getItem("jober_session_active");
+      const stayLoggedIn  = localStorage.getItem("alane_stay_logged_in");
+      const sessionActive = sessionStorage.getItem("alane_session_active");
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
         await supabase.auth.signOut();
@@ -8841,7 +8841,7 @@ export default function App() {
 
             {/* Version / Sign out */}
             <div style={{ marginTop:20, textAlign:"center" }}>
-              <div style={{ color:C.textMuted, fontSize:11, marginBottom:8 }}>JOBER v1.0 — Île-de-France</div>
+              <div style={{ color:C.textMuted, fontSize:11, marginBottom:8 }}>ALANE v1.0 — Île-de-France</div>
               <button onClick={async()=>{ if(window.confirm("Se déconnecter ?")) { await supabase.auth.signOut(); setRole(null); setScreen("role"); }}} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:r, padding:"10px 28px", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Se déconnecter
               </button>

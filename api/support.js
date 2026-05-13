@@ -45,7 +45,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             from: RESEND_FROM,
             to: [ADMIN_EMAIL],
-            subject: `[JOBER Support] ${subject}`,
+            subject: `[ALANE Support] ${subject}`,
             text: `Nouveau ticket support\n\nDe : ${userName||"Inconnu"} (${userEmail||"email inconnu"})\nSujet : ${subject}\n\nMessage :\n${message}`,
           }),
         });
