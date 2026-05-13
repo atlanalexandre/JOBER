@@ -1058,8 +1058,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const metiersListe = secteur ? Object.keys(METIERS_TARIFS[secteur] || {}) : [];
   const compListe    = COMPETENCES_PAR_SECTEUR[secteur] || [];
   const tarifInfo    = secteur && metier ? METIERS_TARIFS[secteur]?.[metier] : null;
-  const sliderMin    = tarifInfo ? Math.max(1,  Math.floor(tarifInfo.min * 0.7)) : 1;
-  const sliderMax    = tarifInfo ? Math.min(100, Math.ceil(tarifInfo.max * 1.6)) : 100;
+  const sliderMin    = 1;
+  const sliderMax    = 100;
   const tarifClient  = prixClient(tarifNet, secteur || "divers");
 
   const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre compte"];
@@ -1195,8 +1195,10 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               <span>{sliderMin} €/h</span><span>{sliderMax} €/h</span>
             </div>
             {tarifInfo && (
-              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
-                📊 Fourchette marché pour ce métier : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h net</strong>
+              <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"7px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
+                {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
+                {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
+                📊 Fourchette marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h net</strong>
               </div>
             )}
             <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"12px 14px", marginTop:12, display:"flex", gap:10, alignItems:"center" }}>
@@ -4868,8 +4870,8 @@ function PrestaProfileEditScreen({ onBack }) {
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta?.secteur) : null;
   const color = secteurInfo?.color || C.accentGold;
   const tarifInfo = meta?.secteur && meta?.metier ? METIERS_TARIFS[meta.secteur]?.[meta.metier] : null;
-  const sliderMin = tarifInfo ? Math.max(1,  Math.floor(tarifInfo.min * 0.7)) : 1;
-  const sliderMax = tarifInfo ? Math.min(100, Math.ceil(tarifInfo.max * 1.6)) : 100;
+  const sliderMin = 1;
+  const sliderMax = 100;
   const compListe = COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
 
   return (
@@ -4888,7 +4890,13 @@ function PrestaProfileEditScreen({ onBack }) {
           </label>
           <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
           <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{sliderMin} €</span><span>{sliderMax} €</span></div>
-          {tarifInfo && <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 12px", marginTop:8, fontSize:11, color:C.textSub }}>📊 Marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h</strong></div>}
+          {tarifInfo && (
+            <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"6px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
+              {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
+              {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
+              📊 Marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h</strong>
+            </div>
+          )}
         </div>
 
         {/* Disponibilités jours */}
