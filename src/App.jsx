@@ -8320,19 +8320,16 @@ function AbonnementPrestaScreen({ onBack }) {
               {plan.note && <p style={{ color:C.textMuted, fontSize:10, margin:"8px 0 0", lineHeight:1.5, fontStyle:"italic" }}>{plan.note}</p>}
               {price > 0 && (
                 <div style={{ marginTop:10, background:plan.color+"10", border:`1px solid ${plan.color}30`, borderRadius:10, padding:"9px 12px" }}>
-                  <div style={{ fontSize:11, color:C.textSub, marginBottom:2 }}>💡 Rentabilité estimée</div>
-                  {plan.id==="premium" && (
-                    <div style={{ fontSize:12, color:C.text, lineHeight:1.5 }}>
-                      Rentabilisé dès la <strong style={{ color:plan.color }}>11ème mission/mois</strong><br/>
-                      <span style={{ color:C.textSub, fontSize:11 }}>Au-delà de 10 missions, chaque mission = ~96€ net · Gain mensuel estimé : <strong>+67€</strong> vs Gratuit</span>
-                    </div>
-                  )}
-                  {plan.id==="elite" && (
-                    <div style={{ fontSize:12, color:C.text, lineHeight:1.5 }}>
-                      Rentabilisé dès la <strong style={{ color:plan.color }}>11ème mission/mois</strong><br/>
-                      <span style={{ color:C.textSub, fontSize:11 }}>Position #1 = +1 client/mois estimé · Manager dédié inclus · Valeur totale estimée : <strong>+37€</strong> vs Gratuit</span>
-                    </div>
-                  )}
+                  <div style={{ fontSize:11, color:C.textSub, marginBottom:4 }}>💡 Rentabilité estimée</div>
+                  <div style={{ fontSize:12, color:C.text, lineHeight:1.6 }}>
+                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère mission</strong><br/>
+                    <span style={{ color:C.textSub, fontSize:11 }}>
+                      {plan.id==="premium"
+                        ? `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€`
+                        : `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€ · Position #1 + Manager dédié`
+                      }
+                    </span>
+                  </div>
                 </div>
               )}
               {plan.missions < 999 && active && (
