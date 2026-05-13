@@ -3,11 +3,14 @@ import { supabase } from "./lib/supabase.js";
 
 // ── Logo ALANE — Option 6 : deux nœuds reliés (client ↔ prestataire) ─
 function ALANELogo({ size = "md" }) {
-  const small = size === "sm";
-  const fs = small ? 17 : 18;
+  const cfg = {
+    sm: { svgW:36, svgH:24, fs:17, gap:7 },
+    md: { svgW:40, svgH:28, fs:18, gap:8 },
+    lg: { svgW:64, svgH:44, fs:32, gap:12 },
+  }[size] || { svgW:40, svgH:28, fs:18, gap:8 };
   return (
-    <div style={{ display:"flex", alignItems:"center", gap: small ? 7 : 8 }}>
-      <svg width={small?36:40} height={small?24:28} viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <div style={{ display:"flex", alignItems:"center", gap:cfg.gap }}>
+      <svg width={cfg.svgW} height={cfg.svgH} viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="alane-logo-line" x1="14" y1="14" x2="26" y2="14" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#7C6FE0"/>
@@ -20,7 +23,7 @@ function ALANELogo({ size = "md" }) {
         <circle cx="33" cy="14" r="6.5" fill="none" stroke="#F0B429" strokeWidth="1.8"/>
         <circle cx="33" cy="14" r="2.8" fill="#F0B429"/>
       </svg>
-      <span style={{ color:"#FFFFFF", fontSize:fs, fontWeight:700, letterSpacing:-0.3, fontFamily:"inherit" }}>ALANE</span>
+      <span style={{ color:"#FFFFFF", fontSize:cfg.fs, fontWeight:700, letterSpacing:-0.3, fontFamily:"inherit" }}>ALANE</span>
     </div>
   );
 }
@@ -809,10 +812,8 @@ function SplashScreen({ onNext, onBackoffice }) {
       <div style={{ position:"absolute", bottom:-100, left:-100, width:320, height:320, borderRadius:"50%", background:`radial-gradient(circle, rgba(30,58,123,0.4) 0%, transparent 65%)`, pointerEvents:"none" }} />
       <div style={{ position:"absolute", top:"40%", left:"50%", transform:"translate(-50%,-50%)", width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.10) 0%, transparent 60%)`, pointerEvents:"none" }} />
 
-      {/* Top bar */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:60, marginBottom:"auto" }}>
-        <ALANELogo size="md" />
-      </div>
+      {/* Top bar spacer */}
+      <div style={{ paddingTop:60, marginBottom:"auto" }} />
 
       {/* Hero content */}
       <div style={{
@@ -821,6 +822,11 @@ function SplashScreen({ onNext, onBackoffice }) {
         opacity:v?1:0, transform:v?"translateY(0)":"translateY(24px)",
         transition:"all 0.8s cubic-bezier(0.22,1,0.36,1)",
       }}>
+        {/* Large logo */}
+        <div style={{ marginBottom:28 }}>
+          <ALANELogo size="lg" />
+        </div>
+
         {/* Tag */}
         <div style={{ marginBottom:20 }}>
           <Badge color={C.violet}>Plateforme de services à la demande</Badge>
