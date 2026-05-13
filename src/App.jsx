@@ -4,9 +4,9 @@ import { supabase } from "./lib/supabase.js";
 // ── Logo ALANE — Option 6 : deux nœuds reliés (client ↔ prestataire) ─
 function ALANELogo({ size = "md" }) {
   const cfg = {
-    sm: { svgW:36, svgH:24, fs:17, gap:7 },
-    md: { svgW:40, svgH:28, fs:18, gap:8 },
-    lg: { svgW:64, svgH:44, fs:32, gap:12 },
+    sm: { svgW:36,  svgH:24,  fs:17, gap:7  },
+    md: { svgW:40,  svgH:28,  fs:18, gap:8  },
+    lg: { svgW:88,  svgH:60,  fs:48, gap:16 },
   }[size] || { svgW:40, svgH:28, fs:18, gap:8 };
   return (
     <div style={{ display:"flex", alignItems:"center", gap:cfg.gap }}>
