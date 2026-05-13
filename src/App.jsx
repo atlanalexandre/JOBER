@@ -123,7 +123,7 @@ const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 const ABONNEMENTS_PRESTA = [
   { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:2,   popular:false, features:["2 missions/mois","Profil visible"],         locked:["Missions illimitées","Badge Vérifié","Missions urgentes"] },
   { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:999, popular:true,  features:["Missions illimitées","Badge Vérifié","Urgences"], locked:["Manager dédié"] },
-  { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false, features:["Missions illimitées","Badge Elite","Position #1","Manager dédié"], locked:[] },
+  { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false, features:["Missions illimitées","Badge Elite","Position #1 *","Manager dédié"], locked:[], note:"* Position #1 attribuée selon la notation et les commentaires positifs du prestataire." },
 ];
 const prixClient = (tarifNet, sector) =>
   isLaunchPhase()
@@ -1210,8 +1210,6 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
               { id:"auto-entrepreneur", label:"Auto-entrepreneur / Micro-entreprise", icon:"🧾" },
-              { id:"salarie-porte",     label:"Salarié porté",                        icon:"🤝" },
-              { id:"interimaire",       label:"Via agence d'intérim",                 icon:"🏢" },
             ].map(s => (
               <button key={s.id} onClick={()=>setStatutPro(s.id)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${statutPro===s.id?accentColor:C.border}`, background:statutPro===s.id?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:10, alignItems:"center", transition:"all 0.2s" }}>
                 <span style={{ fontSize:18 }}>{s.icon}</span>
@@ -1252,6 +1250,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                       <span key={f} style={{ fontSize:11, color:C.textMuted, background:"rgba(255,255,255,0.03)", borderRadius:99, padding:"3px 9px" }}>🔒 {f}</span>
                     ))}
                   </div>
+                  {plan.note && <p style={{ color:C.textMuted, fontSize:10, margin:"8px 0 0", lineHeight:1.5, fontStyle:"italic" }}>{plan.note}</p>}
                 </div>
               );
             })}
@@ -8292,6 +8291,7 @@ function AbonnementPrestaScreen({ onBack }) {
                   <span style={{ color:C.text, fontSize:12 }}>{f}</span>
                 </div>
               ))}
+              {plan.note && <p style={{ color:C.textMuted, fontSize:10, margin:"8px 0 0", lineHeight:1.5, fontStyle:"italic" }}>{plan.note}</p>}
               {price>0&&active&&<div style={{ marginTop:10, background:plan.color+"12", borderRadius:10, padding:"9px 12px", fontSize:12, color:C.textSub }}>Rentabilisé dès {Math.ceil(price/(8*14*0.20))} missions/mois</div>}
               <button onClick={()=>{ if(plan.id!==current&&window.confirm("Passer au plan "+plan.label+" ?")) setCurrent(plan.id); }} style={{ width:"100%", padding:"11px", border:"none", borderRadius:r, cursor:"pointer", fontFamily:"inherit", fontWeight:700, fontSize:13, marginTop:12, background:active?plan.color+"30":plan.price===0?C.bgSurface:`linear-gradient(135deg,${plan.color},${plan.color}cc)`, color:active?plan.color:plan.price===0?C.textSub:"#fff" }}>
                 {active?"✓ Plan actuel":plan.price===0?"Utiliser gratuitement":"Choisir "+plan.label}
