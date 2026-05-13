@@ -953,7 +953,7 @@ const COMPETENCES_PAR_SECTEUR = {
 };
 
 function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
-  const TOTAL = 6;
+  const TOTAL = 7;
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -972,6 +972,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [tarifNet, setTarifNet] = useState(13);
   const [ribIban, setRibIban] = useState("");
   const [statutPro, setStatutPro] = useState("auto-entrepreneur");
+  const [planChoisi, setPlanChoisi] = useState("free");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -999,7 +1000,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!disponJours.length)    return "Sélectionnez au moins un jour";
       if (!disponCreneaux.length) return "Sélectionnez au moins un créneau horaire";
     }
-    if (step === 6) {
+    if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
       if (password.length < 6)  return "Mot de passe minimum 6 caractères";
     }
@@ -1024,6 +1025,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         secteur, metier, niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
         tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
+        plan_abonnement: planChoisi,
       }},
     });
     if (signUpErr) {
@@ -1206,6 +1208,46 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 6 && <>
+          <div style={{ marginBottom:8 }}>
+            <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.6 }}>Choisissez votre formule. Vous pouvez changer à tout moment depuis votre espace.</p>
+            {ABONNEMENTS_PRESTA.map(plan => {
+              const active = planChoisi === plan.id;
+              return (
+                <div key={plan.id} onClick={() => setPlanChoisi(plan.id)}
+                  style={{ background: active ? `${plan.color}18` : "#0D1B3E", border: `2px solid ${active ? plan.color : C.border}`, borderRadius: r + 4, padding:"16px", marginBottom:10, cursor:"pointer", position:"relative", transition:"all 0.2s" }}>
+                  {plan.popular && <div style={{ position:"absolute", top:-10, right:14, background:plan.color, color:"#fff", fontSize:10, fontWeight:800, borderRadius:99, padding:"3px 10px", letterSpacing:0.5 }}>POPULAIRE</div>}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:22 }}>{plan.icon}</span>
+                      <div>
+                        <div style={{ fontWeight:800, color: active ? plan.color : C.text, fontSize:15 }}>{plan.label}</div>
+                        <div style={{ color:C.textSub, fontSize:12 }}>{plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}</div>
+                      </div>
+                    </div>
+                    <div style={{ width:22, height:22, borderRadius:"50%", border:`2px solid ${active ? plan.color : C.border}`, background: active ? plan.color : "transparent", display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.2s" }}>
+                      {active && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {plan.features.map(f => (
+                      <span key={f} style={{ fontSize:11, color: active ? plan.color : C.textSub, background: active ? `${plan.color}18` : "rgba(255,255,255,0.05)", borderRadius:99, padding:"3px 9px", fontWeight:600 }}>✓ {f}</span>
+                    ))}
+                    {plan.locked.map(f => (
+                      <span key={f} style={{ fontSize:11, color:C.textMuted, background:"rgba(255,255,255,0.03)", borderRadius:99, padding:"3px 9px" }}>🔒 {f}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {isLaunchPhase() && (
+              <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
+                🎉 <strong>Phase de lancement</strong> — Tous les plans sont <strong style={{ color:C.success }}>gratuits pendant 6 mois</strong> !
+              </div>
+            )}
+          </div>
+        </>}
+
+        {step === 7 && <>
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", marginBottom:20 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:12 }}>📋 Récapitulatif de votre profil</div>
             {[
@@ -1220,6 +1262,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { l:"Langues",       v:langues.join(", ") },
               { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
               { l:"Statut",        v:statutPro },
+              { l:"Abonnement",    v:(ABONNEMENTS_PRESTA.find(p=>p.id===planChoisi)||ABONNEMENTS_PRESTA[0]).label },
             ].map(({l,v}) => (
               <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
                 <span style={{ color:C.textSub }}>{l}</span>
@@ -5089,11 +5132,11 @@ function ClientNav({ active, onNavigate, unreadCount }) {
 
 function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
-    {id:"p_home",     icon:"🏠", label:"Accueil" },
-    {id:"p_missions", icon:"📋", label:"Missions"},
-    {id:"calendar",   icon:"📅", label:"Planning"},
-    {id:"p_dashboard",icon:"👤", label:"Profil"  },
-    {id:"settings",   icon:"⚙️", label:"Réglages"},
+    {id:"p_home",          icon:"🏠", label:"Accueil"   },
+    {id:"p_missions",      icon:"📋", label:"Missions"  },
+    {id:"abonnement_presta",icon:"⚡", label:"Abonnement"},
+    {id:"p_dashboard",     icon:"👤", label:"Profil"    },
+    {id:"settings",        icon:"⚙️", label:"Réglages"  },
   ];
   return (
     <div style={{
