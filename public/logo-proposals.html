@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALANE — Propositions logo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #050E20; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px 20px; }
+  h1 { color: #8B8FA8; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; text-align: center; margin-bottom: 48px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; max-width: 1100px; margin: 0 auto; }
+  .card { background: #0D1B3E; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 40px 30px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .label { color: #8B8FA8; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+  .desc { color: #556080; font-size: 12px; text-align: center; line-height: 1.6; max-width: 240px; }
+  .dark-bg { background: #050E20; border-radius: 16px; padding: 28px 36px; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 100px; }
+  .light-bg { background: #ffffff; border-radius: 16px; padding: 28px 36px; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 100px; }
+  .row { display: flex; gap: 12px; width: 100%; }
+  .row .dark-bg, .row .light-bg { flex: 1; min-height: 80px; }
+</style>
+</head>
+<body>
+<h1>Propositions visuelles — ALANE</h1>
+<div class="grid">
+
+  <!-- Option 1: Wordmark gradient violet→or -->
+  <div class="card">
+    <div class="label">Option 1 — Gradient Signature</div>
+    <div class="dark-bg">
+      <svg width="160" height="44" viewBox="0 0 160 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g1" x1="0" y1="0" x2="160" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7C6FE0"/>
+            <stop offset="100%" stop-color="#F0B429"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="36" font-family="Georgia, serif" font-size="42" font-weight="700" fill="url(#g1)" letter-spacing="6">ALANE</text>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="160" height="44" viewBox="0 0 160 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g1b" x1="0" y1="0" x2="160" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5B50C8"/>
+            <stop offset="100%" stop-color="#D4920A"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="36" font-family="Georgia, serif" font-size="42" font-weight="700" fill="url(#g1b)" letter-spacing="6">ALANE</text>
+      </svg>
+    </div>
+    <div class="desc">Serif élégant, dégradé violet → or. Signature haut de gamme, lisible sur fond sombre et clair.</div>
+  </div>
+
+  <!-- Option 2: Monogramme + wordmark -->
+  <div class="card">
+    <div class="label">Option 2 — Monogramme A</div>
+    <div class="dark-bg">
+      <svg width="200" height="52" viewBox="0 0 200 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g2" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7C6FE0"/>
+            <stop offset="100%" stop-color="#F0B429"/>
+          </linearGradient>
+        </defs>
+        <!-- Hexagon -->
+        <path d="M24 2 L44 13 L44 35 L24 46 L4 35 L4 13 Z" fill="url(#g2)" opacity="0.15"/>
+        <path d="M24 2 L44 13 L44 35 L24 46 L4 35 L4 13 Z" fill="none" stroke="url(#g2)" stroke-width="1.5"/>
+        <!-- A letter -->
+        <text x="24" y="34" font-family="Georgia, serif" font-size="26" font-weight="700" fill="#F0B429" text-anchor="middle">A</text>
+        <!-- LANE text -->
+        <text x="58" y="38" font-family="-apple-system, sans-serif" font-size="28" font-weight="300" fill="#FFFFFF" letter-spacing="4">LANE</text>
+        <text x="58" y="16" font-family="-apple-system, sans-serif" font-size="9" font-weight="500" fill="#8B8FA8" letter-spacing="3">AL</text>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="200" height="52" viewBox="0 0 200 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g2b" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5B50C8"/>
+            <stop offset="100%" stop-color="#D4920A"/>
+          </linearGradient>
+        </defs>
+        <path d="M24 2 L44 13 L44 35 L24 46 L4 35 L4 13 Z" fill="url(#g2b)" opacity="0.12"/>
+        <path d="M24 2 L44 13 L44 35 L24 46 L4 35 L4 13 Z" fill="none" stroke="url(#g2b)" stroke-width="1.5"/>
+        <text x="24" y="34" font-family="Georgia, serif" font-size="26" font-weight="700" fill="#D4920A" text-anchor="middle">A</text>
+        <text x="58" y="38" font-family="-apple-system, sans-serif" font-size="28" font-weight="300" fill="#050E20" letter-spacing="4">LANE</text>
+        <text x="58" y="16" font-family="-apple-system, sans-serif" font-size="9" font-weight="500" fill="#8B8FA8" letter-spacing="3">AL</text>
+      </svg>
+    </div>
+    <div class="desc">Hexagone (symbole réseau/alvéole) + lettre A dorée + wordmark fin. Style tech premium.</div>
+  </div>
+
+  <!-- Option 3: Minimaliste lowercase -->
+  <div class="card">
+    <div class="label">Option 3 — Lowercase Minimal</div>
+    <div class="dark-bg">
+      <svg width="170" height="54" viewBox="0 0 170 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g3" x1="0" y1="0" x2="0" y2="54" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#A899F5"/>
+            <stop offset="100%" stop-color="#7C6FE0"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="44" font-family="Georgia, 'Times New Roman', serif" font-size="48" font-weight="400" font-style="italic" fill="url(#g3)" letter-spacing="2">alane</text>
+        <!-- dot accent -->
+        <circle cx="158" cy="8" r="5" fill="#F0B429"/>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="170" height="54" viewBox="0 0 170 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g3b" x1="0" y1="0" x2="0" y2="54" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5B50C8"/>
+            <stop offset="100%" stop-color="#4B41B8"/>
+          </linearGradient>
+        </defs>
+        <text x="0" y="44" font-family="Georgia, 'Times New Roman', serif" font-size="48" font-weight="400" font-style="italic" fill="url(#g3b)" letter-spacing="2">alane</text>
+        <circle cx="158" cy="8" r="5" fill="#D4920A"/>
+      </svg>
+    </div>
+    <div class="desc">Minuscules en serif italique + point doré. Style lifestyle/luxe sobre, féminin et moderne.</div>
+  </div>
+
+  <!-- Option 4: Split color A+LANE -->
+  <div class="card">
+    <div class="label">Option 4 — Split Bicolore</div>
+    <div class="dark-bg">
+      <svg width="190" height="52" viewBox="0 0 190 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="0" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="44" font-weight="800" fill="#F0B429" letter-spacing="-1">A</text>
+        <text x="32" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="44" font-weight="200" fill="#FFFFFF" letter-spacing="3">LANE</text>
+        <!-- underline accent -->
+        <line x1="0" y1="48" x2="190" y2="48" stroke="#7C6FE0" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="190" height="52" viewBox="0 0 190 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <text x="0" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="44" font-weight="800" fill="#D4920A" letter-spacing="-1">A</text>
+        <text x="32" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="44" font-weight="200" fill="#050E20" letter-spacing="3">LANE</text>
+        <line x1="0" y1="48" x2="190" y2="48" stroke="#5B50C8" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="desc">A en bold or + LANE en light blanc. Contraste fort, dynamique, très lisible. Ligne violette en soulignement.</div>
+  </div>
+
+  <!-- Option 5: Pill / Badge style -->
+  <div class="card">
+    <div class="label">Option 5 — Badge Pill</div>
+    <div class="dark-bg">
+      <svg width="180" height="56" viewBox="0 0 180 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g5" x1="0" y1="0" x2="180" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7C6FE0"/>
+            <stop offset="60%" stop-color="#9B8BF0"/>
+            <stop offset="100%" stop-color="#F0B429"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="180" height="56" rx="28" fill="url(#g5)"/>
+        <text x="90" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="28" font-weight="700" fill="#FFFFFF" letter-spacing="6" text-anchor="middle">ALANE</text>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="180" height="56" viewBox="0 0 180 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g5b" x1="0" y1="0" x2="180" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5B50C8"/>
+            <stop offset="60%" stop-color="#7C6FE0"/>
+            <stop offset="100%" stop-color="#D4920A"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="180" height="56" rx="28" fill="url(#g5b)"/>
+        <text x="90" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="28" font-weight="700" fill="#FFFFFF" letter-spacing="6" text-anchor="middle">ALANE</text>
+      </svg>
+    </div>
+    <div class="desc">Pill gradient avec texte blanc. Style app store, accrocheur pour splash screen et icône d'app.</div>
+  </div>
+
+  <!-- Option 6: Icône connexion + wordmark -->
+  <div class="card">
+    <div class="label">Option 6 — Réseau & Connexion</div>
+    <div class="dark-bg">
+      <svg width="210" height="52" viewBox="0 0 210 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g6" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7C6FE0"/>
+            <stop offset="100%" stop-color="#F0B429"/>
+          </linearGradient>
+        </defs>
+        <!-- Two circles connected -->
+        <circle cx="14" cy="26" r="10" fill="none" stroke="#7C6FE0" stroke-width="2"/>
+        <circle cx="38" cy="26" r="10" fill="none" stroke="#F0B429" stroke-width="2"/>
+        <circle cx="14" cy="26" r="4" fill="#7C6FE0"/>
+        <circle cx="38" cy="26" r="4" fill="#F0B429"/>
+        <line x1="18" y1="26" x2="34" y2="26" stroke="url(#g6)" stroke-width="2" stroke-dasharray="3 2"/>
+        <!-- wordmark -->
+        <text x="58" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="30" font-weight="700" fill="#FFFFFF" letter-spacing="4">ALANE</text>
+      </svg>
+    </div>
+    <div class="light-bg">
+      <svg width="210" height="52" viewBox="0 0 210 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g6b" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5B50C8"/>
+            <stop offset="100%" stop-color="#D4920A"/>
+          </linearGradient>
+        </defs>
+        <circle cx="14" cy="26" r="10" fill="none" stroke="#5B50C8" stroke-width="2"/>
+        <circle cx="38" cy="26" r="10" fill="none" stroke="#D4920A" stroke-width="2"/>
+        <circle cx="14" cy="26" r="4" fill="#5B50C8"/>
+        <circle cx="38" cy="26" r="4" fill="#D4920A"/>
+        <line x1="18" y1="26" x2="34" y2="26" stroke="url(#g6b)" stroke-width="2" stroke-dasharray="3 2"/>
+        <text x="58" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" font-size="30" font-weight="700" fill="#050E20" letter-spacing="4">ALANE</text>
+      </svg>
+    </div>
+    <div class="desc">Deux nœuds reliés (client ↔ prestataire) + wordmark. Illustre directement le concept de la plateforme.</div>
+  </div>
+
+</div>
+
+<p style="text-align:center; color:#556080; font-size:12px; margin-top:48px; letter-spacing:1px;">
+  Chaque option est affichée sur fond sombre (app) et fond clair (documents, emails).
+</p>
+</body>
+</html>

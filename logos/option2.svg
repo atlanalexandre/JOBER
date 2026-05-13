@@ -1,0 +1,16 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="120" rx="16" fill="#050E20"/>
+  <defs>
+    <linearGradient id="g2" x1="30" y1="20" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C6FE0"/>
+      <stop offset="100%" stop-color="#F0B429"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexagon icon -->
+  <path d="M65 18 L95 35 L95 68 L65 85 L35 68 L35 35 Z" fill="#7C6FE020" stroke="url(#g2)" stroke-width="2"/>
+  <text x="65" y="63" font-family="Georgia, serif" font-size="34" font-weight="700" fill="#F0B429" text-anchor="middle">A</text>
+  <!-- LANE -->
+  <text x="120" y="70" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="38" font-weight="200" fill="#FFFFFF" letter-spacing="5">LANE</text>
+  <!-- small AL above -->
+  <text x="120" y="38" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="10" font-weight="500" fill="#7C6FE0" letter-spacing="5">MISE EN RELATION</text>
+</svg>
