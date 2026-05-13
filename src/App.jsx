@@ -1190,9 +1190,9 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
               Tarif horaire net souhaité : <span style={{ color:accentColor, fontWeight:800, fontSize:16 }}>{tarifNet.toFixed(2)} €/h</span>
             </label>
-            <input type="range" min={8} max={60} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
+            <input type="range" min={1} max={100} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
             <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}>
-              <span>8 €/h</span><span>60 €/h</span>
+              <span>1 €/h</span><span>100 €/h</span>
             </div>
             {tarifInfo && (
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
@@ -4886,8 +4886,8 @@ function PrestaProfileEditScreen({ onBack }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
             Tarif horaire net : <span style={{ color, fontWeight:800, fontSize:15 }}>{Number(tarifNet).toFixed(2)} €/h</span>
           </label>
-          <input type="range" min={8} max={60} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
-          <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>8 €</span><span>60 €</span></div>
+          <input type="range" min={1} max={100} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
+          <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>1 €</span><span>100 €</span></div>
           {tarifInfo && <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 12px", marginTop:8, fontSize:11, color:C.textSub }}>📊 Marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h</strong></div>}
         </div>
 
