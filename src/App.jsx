@@ -127,8 +127,8 @@ const C = {
 
 // Typography helpers
 const font = {
-  display: "’Playfair Display’, Georgia, serif",
-  body:    "’DM Sans’, system-ui, sans-serif",
+  display: "’Plus Jakarta Sans’, ‘Inter’, system-ui, sans-serif",
+  body:    "’Inter’, system-ui, sans-serif",
 };
 
 // Spacing — 1 système cohérent
