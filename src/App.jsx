@@ -821,8 +821,8 @@ function SplashScreen({ onNext, onBackoffice }) {
       <div style={{ position:"absolute", bottom:-100, left:-100, width:320, height:320, borderRadius:"50%", background:`radial-gradient(circle, rgba(30,58,123,0.4) 0%, transparent 65%)`, pointerEvents:"none" }} />
       <div style={{ position:"absolute", top:"40%", left:"50%", transform:"translate(-50%,-50%)", width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.10) 0%, transparent 60%)`, pointerEvents:"none" }} />
 
-      {/* Logo centré en haut */}
-      <div style={{ paddingTop:64, marginBottom:"auto", display:"flex", justifyContent:"center" }}>
+      {/* Logo aligné à gauche */}
+      <div style={{ paddingTop:64, marginBottom:"auto" }}>
         <ALANELogo size="lg" />
       </div>
 
