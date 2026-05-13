@@ -1079,8 +1079,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const sliderMax    = 100;
   const tarifClient  = prixClient(tarifNet, secteur || "divers");
 
-  const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre compte"];
-  const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","🔐"];
+  const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre abonnement","Récapitulatif"];
+  const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","⚡","✅"];
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
@@ -2267,7 +2267,7 @@ function HomeScreen({ onNavigate }) {
             display:"flex", alignItems:"center", justifyContent:"center",
             fontFamily:font.display, fontWeight:800, fontSize:18, color:"#fff",
             boxShadow:`0 8px 22px ${C.violetGlow}`,
-          }}>J</div>
+          }}>{userName?.charAt(0)?.toUpperCase()||"A"}</div>
           <div>
             <div style={{ fontSize:11, color:C.textMuted, letterSpacing:0.4, lineHeight:1.2 }}>Bonjour 👋</div>
             <div style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{userName || "Mon espace"}</div>
