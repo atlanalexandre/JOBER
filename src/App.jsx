@@ -6,7 +6,7 @@ function ALANELogo({ size = "md" }) {
   const cfg = {
     sm: { svgW:36,  svgH:24,  fs:17, gap:7  },
     md: { svgW:40,  svgH:28,  fs:18, gap:8  },
-    lg: { svgW:100, svgH:68,  fs:56, gap:18 },
+    lg: { svgW:56,  svgH:38,  fs:28, gap:12 },
   }[size] || { svgW:40, svgH:28, fs:18, gap:8 };
   return (
     <div style={{ display:"flex", alignItems:"center", gap:cfg.gap }}>
