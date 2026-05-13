@@ -874,7 +874,7 @@ function SplashScreen({ onNext, onBackoffice }) {
             <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>0% de commission · 10 missions gratuites pour les 100 premiers prestataires</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>10 missions gratuites · Réservé aux 100 premiers prestataires inscrits</div>
             </div>
           </div>
         )}
@@ -952,7 +952,7 @@ function RoleScreen({ onSelect }) {
           <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>0% de commission · 10 missions gratuites pour les 100 premiers prestataires</div>
+            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>10 missions gratuites · Réservé aux 100 premiers prestataires inscrits</div>
           </div>
         </div>
       )}
@@ -1688,7 +1688,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <div style={{ flex:1 }}>
               <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement</span>
               <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                {role==="client" ? "0% de commission · tarif affiché = tarif réel de la mission" : "0% de commission · 10 missions gratuites pour les 100 premiers prestataires"}
+                {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la mission" : "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits"}
               </div>
             </div>
           </div>
@@ -4648,7 +4648,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
         {step===7 && <>
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan ALANE</div>
-            <div style={{ color:C.textSub, fontSize:12 }}>0% de commission sur toutes vos missions. Changez de plan à tout moment.</div>
+            <div style={{ color:C.textSub, fontSize:12 }}>Tarif transparent · prix affiché = prix réel. Changez de plan à tout moment.</div>
           </div>
           {ABONNEMENTS_PRESTA.map(plan=>{
             const active=abonnement===plan.id;
@@ -6765,7 +6765,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
             <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-              {role==="prestataire" ? "0% de commission · 10 missions gratuites pour les 100 premiers prestataires" : "0% de commission · tarif affiché = tarif réel de la mission"}
+              {role==="prestataire" ? "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la mission"}
             </div>
           </div>
         </div>
@@ -6778,7 +6778,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
                 <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>Abonnements ALANE</div>
               </div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:12 }}>
-                0% de commission sur toutes vos missions. Choisissez le plan adapté à votre activité.
+                Tarif transparent, prix affiché = prix réel. Choisissez le plan adapté à votre activité.
               </div>
               <div style={{ display:"flex", gap:8 }}>
                 {ABONNEMENTS_PRESTA.map(plan => (
@@ -7597,7 +7597,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   const hybridBanner = !["bo_login","bo_dashboard"].includes(screen) && (
     <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
       <span style={{ fontSize:13 }}>⚡</span>
-      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>MODE HYBRIDE · Abonnements activés · 0% de commission</span>
+      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>⚡ ALANE · Tarif transparent · Prix affiché = Prix réel</span>
     </div>
   );
 
@@ -8181,9 +8181,9 @@ const LAUNCH_MONTHS = 6;
 function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:"0% de commission sur toutes vos missions pendant la période de lancement" },
-    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · 10 missions/mois gratuites` : "Réservé aux 100 premiers prestataires inscrits" },
-    booking: { icon:"💡", title:"0% de commission", sub:"Aucun frais de mise en relation pendant la période de lancement" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:"10 missions gratuites pour les 100 premiers prestataires inscrits" },
+    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;
   return (
@@ -8207,7 +8207,7 @@ function AbonnementPrestaScreen({ onBack }) {
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
-        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>0% de commission sur vos missions</p>
+        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Tarif transparent · prix affiché = prix réel</p>
       </div>
       <div style={{ padding:"20px 18px" }}>
         {isLaunchPhase() && (
