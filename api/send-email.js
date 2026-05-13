@@ -1,6 +1,6 @@
 export async function sendEmail({ to, subject, text }) {
   const key  = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "JOBER <onboarding@resend.dev>";
+  const from = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
   if (!key) return;
   try {
     const r = await fetch("https://api.resend.com/emails", {

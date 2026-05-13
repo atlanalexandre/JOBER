@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Confirmation de réservation JOBER</title>
+  <title>Confirmation de réservation ALANE</title>
 </head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:'DM Sans',system-ui,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;">
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             <td style="padding:28px;">
               <p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${clientName || "cher client"}</strong>,</p>
               <p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 24px;">
-                Votre paiement a été sécurisé sur JOBER. Retrouvez ci-dessous le récapitulatif de votre mission.
+                Votre paiement a été sécurisé sur ALANE. Retrouvez ci-dessous le récapitulatif de votre mission.
               </p>
 
               <!-- Mission card -->
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
               </table>`).join("")}
 
               <div style="text-align:center;margin-top:28px;">
-                <a href="https://jober-delta.vercel.app" style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">
+                <a href="https://alane-delta.vercel.app" style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">
                   Suivre ma mission →
                 </a>
               </div>
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
           <!-- Footer -->
           <tr>
             <td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;">
-              <p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe JOBER · <a href="https://jober-delta.vercel.app" style="color:#7C6FE0;text-decoration:none;">jober-delta.vercel.app</a></p>
+              <p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="https://alane-delta.vercel.app" style="color:#7C6FE0;text-decoration:none;">alane-delta.vercel.app</a></p>
             </td>
           </tr>
         </table>
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           from: RESEND_FROM,
           to: [clientEmail],
-          subject: `✅ Réservation confirmée — ${job || "Mission"} · JOBER`,
+          subject: `✅ Réservation confirmée — ${job || "Mission"} · ALANE`,
           html,
         }),
       });

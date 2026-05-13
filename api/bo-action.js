@@ -74,14 +74,14 @@ export default async function handler(req, res) {
         if (status === "approved") {
           await sendEmail({
             to: userEmail,
-            subject: "Votre compte JOBER est activé !",
-            text: `Bonjour,\n\nVotre compte JOBER a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://jober-delta.vercel.app\n\nBienvenue sur JOBER !\nL'équipe JOBER`,
+            subject: "Votre compte ALANE est activé !",
+            text: `Bonjour,\n\nVotre compte ALANE a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://alane-delta.vercel.app\n\nBienvenue sur ALANE !\nL'équipe ALANE`,
           });
         } else {
           await sendEmail({
             to: userEmail,
-            subject: "Votre demande de compte JOBER",
-            text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe JOBER`,
+            subject: "Votre demande de compte ALANE",
+            text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe ALANE`,
           });
         }
       }
