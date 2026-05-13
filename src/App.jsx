@@ -1,27 +1,36 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase.js";
 
-// ── Logo ALANE — Option 6 : deux nœuds reliés (client ↔ prestataire) ─
+// ── Logo ALANE — Variation A : cercles pleins avec halo lumineux ─────
 function ALANELogo({ size = "md" }) {
   const cfg = {
-    sm: { svgW:36,  svgH:24,  fs:17, gap:7  },
-    md: { svgW:40,  svgH:28,  fs:18, gap:8  },
-    lg: { svgW:56,  svgH:38,  fs:28, gap:12 },
-  }[size] || { svgW:40, svgH:28, fs:18, gap:8 };
+    sm: { svgW:36, svgH:24, vW:160, fs:17, gap:7  },
+    md: { svgW:44, svgH:30, vW:160, fs:18, gap:9  },
+    lg: { svgW:60, svgH:40, vW:160, fs:28, gap:12 },
+  }[size] || { svgW:44, svgH:30, vW:160, fs:18, gap:9 };
   return (
     <div style={{ display:"flex", alignItems:"center", gap:cfg.gap }}>
-      <svg width={cfg.svgW} height={cfg.svgH} viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg width={cfg.svgW} height={cfg.svgH} viewBox="0 0 160 110" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="alane-logo-line" x1="14" y1="14" x2="26" y2="14" gradientUnits="userSpaceOnUse">
+          <linearGradient id="al-line" x1="52" y1="55" x2="108" y2="55" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#7C6FE0"/>
             <stop offset="100%" stopColor="#F0B429"/>
           </linearGradient>
+          <filter id="al-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
-        <circle cx="7" cy="14" r="6.5" fill="none" stroke="#7C6FE0" strokeWidth="1.8"/>
-        <circle cx="7" cy="14" r="2.8" fill="#7C6FE0"/>
-        <line x1="13.5" y1="14" x2="26.5" y2="14" stroke="url(#alane-logo-line)" strokeWidth="1.8" strokeDasharray="3 2.5"/>
-        <circle cx="33" cy="14" r="6.5" fill="none" stroke="#F0B429" strokeWidth="1.8"/>
-        <circle cx="33" cy="14" r="2.8" fill="#F0B429"/>
+        {/* Left node — violet */}
+        <circle cx="40" cy="55" r="28" fill="#7C6FE0" opacity="0.15"/>
+        <circle cx="40" cy="55" r="18" fill="#7C6FE0" filter="url(#al-glow)"/>
+        <circle cx="40" cy="55" r="7" fill="#fff"/>
+        {/* Connector */}
+        <line x1="58" y1="55" x2="102" y2="55" stroke="url(#al-line)" strokeWidth="3" strokeLinecap="round"/>
+        {/* Right node — gold */}
+        <circle cx="120" cy="55" r="28" fill="#F0B429" opacity="0.15"/>
+        <circle cx="120" cy="55" r="18" fill="#F0B429" filter="url(#al-glow)"/>
+        <circle cx="120" cy="55" r="7" fill="#fff"/>
       </svg>
       <span style={{ color:"#FFFFFF", fontSize:cfg.fs, fontWeight:700, letterSpacing:-0.3, fontFamily:"inherit" }}>ALANE</span>
     </div>
