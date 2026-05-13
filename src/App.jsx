@@ -1255,8 +1255,9 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               );
             })}
             {isLaunchPhase() && (
-              <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
-                🎉 <strong>Phase de lancement</strong> — Tous les plans sont <strong style={{ color:C.success }}>gratuits pendant 6 mois</strong> !
+              <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
+                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> obtiennent le plan <strong style={{ color:C.accentGold }}>Premium 6 mois offert</strong> !<br/>
+                <span style={{ color:C.textSub }}>Pour tous : plan Gratuit inclus à vie (2 missions/mois).</span>
               </div>
             )}
           </div>
@@ -4810,7 +4811,7 @@ function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"Accès gratuit · 6 mois restants":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"100 premiers → Premium 6 mois offert · 2 missions/mois gratuit":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -5146,8 +5147,13 @@ function PrestaDashboard({ onNavigate }) {
   const [tab,setTab]=useState("missions");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
+  const [spotsLeft,setSpotsLeft]=useState(null);
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
+    if(isLaunchPhase()){
+      supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
+        .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
+    }
   },[]);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -5169,7 +5175,7 @@ function PrestaDashboard({ onNavigate }) {
         </div>
       </div>
       <div style={{ padding:"18px 18px 0" }}>
-        {isLaunchPhase() && <LaunchBadge context="presta" />}
+        {isLaunchPhase() && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18 }}>
           {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
@@ -8222,12 +8228,12 @@ function DocUploadScreen({ onBack }) {
 // ── OFFRE DE LANCEMENT ───────────────────────────────────────────
 const LAUNCH_MONTHS = 6;
 
-function LaunchBadge({ context="home" }) {
+function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement — 6 mois", sub:"Tarifs préférentiels · Profitez-en avant la fin de la période" },
-    presta:  { icon:"🚀", title:"Phase de lancement — 6 mois offerts", sub:"Accès illimité gratuit · 0% de commission sur vos missions" },
-    booking: { icon:"💡", title:"Tarif de lancement", sub:"Commission réduite pendant la période de lancement de 6 mois" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:"Frais de mise en relation réduits pendant toute la période de lancement" },
+    presta:  { icon:"🚀", title:"Plan Premium offert — 6 mois", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    booking: { icon:"💡", title:"Tarif de lancement", sub:"Frais MER réduits pendant la période de lancement" },
   };
   const m = msgs[context] || msgs.home;
   return (
@@ -8255,11 +8261,13 @@ function AbonnementPrestaScreen({ onBack }) {
       </div>
       <div style={{ padding:"20px 18px" }}>
         {isLaunchPhase() && (
-          <div style={{ background:C.success+"12", border:`1px solid ${C.success}35`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"center" }}>
-            <span style={{ fontSize:20 }}>🚀</span>
-            <div>
-              <div style={{ fontWeight:700, color:C.success, fontSize:13 }}>Phase de lancement — Accès gratuit</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>Toutes les missions sont incluses. Choisissez votre plan pour après le lancement.</div>
+          <div style={{ background:`${C.violet}18`, border:`1px solid ${C.violet}50`, borderRadius:r, padding:"13px 15px", marginBottom:20 }}>
+            <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+              <span style={{ fontSize:20 }}>🚀</span>
+              <div>
+                <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient du plan <strong style={{ color:C.accentGold }}>Premium 6 mois offert</strong>.<br/>Plan Gratuit : 2 missions/mois incluses à vie pour tous.</div>
+              </div>
             </div>
           </div>
         )}
