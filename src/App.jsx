@@ -5177,12 +5177,16 @@ function UpgradeNudge({ onNavigate }) {
 }
 
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
-function PrestaDashboard({ onNavigate }) {
+function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
   const [planActuel,setPlanActuel]=useState("free");
+  useEffect(()=>{
+    if(activeScreen==="p_dashboard") setTab("profil");
+    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
+  },[activeScreen]);
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       setUserRib(data?.user?.user_metadata?.rib||null);
@@ -8913,7 +8917,7 @@ export default function App() {
 
       {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-          <PrestaDashboard onNavigate={(to,data)=>{
+          <PrestaDashboard activeScreen={screen} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
             else if(to==="legal") navigate("legal",data);
             else navigate(to,data);
