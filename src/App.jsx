@@ -4386,7 +4386,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
     if(step===7)return true;
     return true;
   };
-  const TITLES=["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Abonnement","Récapitulatif"];
+  const TITLES=["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Votre abonnement","Récapitulatif"];
   const SUBS=["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Choisissez votre plan","Vérifiez avant envoi"];
 
   return (
@@ -4649,6 +4649,9 @@ function PrestaOnboarding({ onComplete, onBack }) {
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan ALANE</div>
             <div style={{ color:C.textSub, fontSize:12 }}>Tarif transparent · prix affiché = prix réel. Changez de plan à tout moment.</div>
+          </div>
+          <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:r, padding:"10px 14px", marginBottom:14, fontSize:12, color:C.textSub }}>
+            💡 Vous pourrez changer de plan à tout moment depuis votre espace.
           </div>
           {ABONNEMENTS_PRESTA.map(plan=>{
             const active=abonnement===plan.id;
@@ -5153,14 +5156,38 @@ function PrestaOnboardingChecklist({ onNavigate }) {
   );
 }
 
+// ── UPGRADE NUDGE ─────────────────────────────────────────────────
+function UpgradeNudge({ onNavigate }) {
+  const [plan,setPlan]=useState(null);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      setPlan(data?.user?.user_metadata?.plan_abonnement||"free");
+    });
+  },[]);
+  if(plan !== "free") return null;
+  return (
+    <div onClick={()=>onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+      <div>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>⚡ Passez Premium</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
+      </div>
+      <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate }) {
   const [tab,setTab]=useState("missions");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
+  const [planActuel,setPlanActuel]=useState("free");
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
+    supabase.auth.getUser().then(({data})=>{
+      setUserRib(data?.user?.user_metadata?.rib||null);
+      setPlanActuel(data?.user?.user_metadata?.plan_abonnement||"free");
+    });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
   },[]);
@@ -5182,6 +5209,19 @@ function PrestaDashboard({ onNavigate }) {
             </div>
           ))}
         </div>
+        {(() => {
+          const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
+          return (
+            <div onClick={()=>onNavigate("abonnement_presta")} style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"8px 14px", cursor:"pointer" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:14 }}>{plan.icon}</span>
+                <span style={{ color:plan.color, fontWeight:700, fontSize:12 }}>Plan {plan.label}</span>
+                {plan.id==="free" && <span style={{ color:C.textMuted, fontSize:11 }}>· Upgrader →</span>}
+              </div>
+              <span style={{ color:C.textSub, fontSize:11 }}>Gérer ›</span>
+            </div>
+          );
+        })()}
       </div>
       <div style={{ padding:"18px 18px 0" }}>
         {isLaunchPhase() && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
@@ -5192,6 +5232,7 @@ function PrestaDashboard({ onNavigate }) {
         </div>
         {tab==="missions" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
+          <UpgradeNudge onNavigate={onNavigate} />
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
@@ -8202,6 +8243,33 @@ function LaunchBadge({ context="home", spotsLeft=null }) {
 function AbonnementPrestaScreen({ onBack }) {
   const [current,setCurrent]=useState("free");
   const [billing,setBilling]=useState("monthly");
+  const [saving,setSaving]=useState(false);
+  const [loaded,setLoaded]=useState(false);
+  const [missionsUsed,setMissionsUsed]=useState(0);
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const plan = data?.user?.user_metadata?.plan_abonnement || "free";
+      setCurrent(plan);
+      setLoaded(true);
+    });
+    // Compter les missions du mois
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    supabase.from("missions").select("id", {count:"exact", head:true})
+      .gte("created_at", startOfMonth)
+      .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
+  },[]);
+
+  const handleChangePlan = async (planId) => {
+    if(planId === current) return;
+    if(!window.confirm(`Passer au plan ${ABONNEMENTS_PRESTA.find(p=>p.id===planId)?.label} ?`)) return;
+    setSaving(true);
+    await supabase.auth.updateUser({ data: { plan_abonnement: planId } });
+    setCurrent(planId);
+    setSaving(false);
+  };
+
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:40 }}>
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
@@ -8251,7 +8319,18 @@ function AbonnementPrestaScreen({ onBack }) {
               ))}
               {plan.note && <p style={{ color:C.textMuted, fontSize:10, margin:"8px 0 0", lineHeight:1.5, fontStyle:"italic" }}>{plan.note}</p>}
               {price>0&&active&&<div style={{ marginTop:10, background:plan.color+"12", borderRadius:10, padding:"9px 12px", fontSize:12, color:C.textSub }}>Rentabilisé dès {Math.ceil(price/(8*14*0.20))} missions/mois</div>}
-              <button onClick={()=>{ if(plan.id!==current&&window.confirm("Passer au plan "+plan.label+" ?")) setCurrent(plan.id); }} style={{ width:"100%", padding:"11px", border:"none", borderRadius:r, cursor:"pointer", fontFamily:"inherit", fontWeight:700, fontSize:13, marginTop:12, background:active?plan.color+"30":plan.price===0?C.bgSurface:`linear-gradient(135deg,${plan.color},${plan.color}cc)`, color:active?plan.color:plan.price===0?C.textSub:"#fff" }}>
+              {plan.missions < 999 && active && (
+                <div style={{ marginTop:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub, marginBottom:4 }}>
+                    <span>Missions ce mois</span>
+                    <span style={{ color: missionsUsed >= plan.missions ? C.danger : C.success }}>{missionsUsed} / {plan.missions}</span>
+                  </div>
+                  <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:4 }}>
+                    <div style={{ width:`${Math.min(100,(missionsUsed/plan.missions)*100)}%`, height:"100%", background: missionsUsed >= plan.missions ? C.danger : C.success, borderRadius:99, transition:"width 0.5s" }} />
+                  </div>
+                </div>
+              )}
+              <button onClick={()=>handleChangePlan(plan.id)} disabled={saving} style={{ width:"100%", padding:"11px", border:"none", borderRadius:r, cursor:saving?"not-allowed":"pointer", fontFamily:"inherit", fontWeight:700, fontSize:13, marginTop:12, background:active?plan.color+"30":plan.price===0?C.bgSurface:`linear-gradient(135deg,${plan.color},${plan.color}cc)`, color:active?plan.color:plan.price===0?C.textSub:"#fff", opacity:saving?0.7:1 }}>
                 {active?"✓ Plan actuel":plan.price===0?"Utiliser gratuitement":"Choisir "+plan.label}
               </button>
             </div>
