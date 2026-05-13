@@ -4963,8 +4963,6 @@ function PrestaProfileEditScreen({ onBack }) {
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
             {[
               { id:"auto-entrepreneur", label:"Auto-entrepreneur / Micro-entreprise", icon:"🧾" },
-              { id:"salarie-porte",     label:"Salarié porté",                        icon:"🤝" },
-              { id:"interimaire",       label:"Via agence d'intérim",                 icon:"🏢" },
             ].map(s=>(
               <button key={s.id} onClick={()=>setStatutPro(s.id)} style={{ padding:"12px 14px", borderRadius:r, border:`2px solid ${statutPro===s.id?color:C.border}`, background:statutPro===s.id?`${color}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:10, alignItems:"center", transition:"all 0.2s" }}>
                 <span style={{ fontSize:16 }}>{s.icon}</span>
