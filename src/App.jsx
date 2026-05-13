@@ -143,28 +143,18 @@ const shadow = {
   glowStrong:"0 0 50px rgba(123,111,240,0.4)",
 };
 
-// ── Modèle dual M1 ↔ Hybride ─────────────────────────────────────
-const MODEL_CONFIG = {
-  get currentModel() {
-    try { return localStorage.getItem("alane_model") || "launch"; } catch { return "launch"; }
-  },
-  set currentModel(v) {
-    try { localStorage.setItem("alane_model", v); } catch {}
-  },
-};
-const isLaunchPhase = () => MODEL_CONFIG.currentModel === "launch";
+// ── Modèle hybride — abonnements prestataires, 0% commission ─────
+const IS_LAUNCH = true; // Période de lancement — offre 10 missions gratuites pour les 100 premiers
+const isLaunchPhase = () => IS_LAUNCH; // conservé pour compatibilité, sera nettoyé après
 
 const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, btp:0.15, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
 const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 const ABONNEMENTS_PRESTA = [
-  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:2,   popular:false, features:["2 missions/mois","Profil visible"],         locked:["Missions illimitées","Badge Vérifié","Missions urgentes"] },
+  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false, features:["10 missions/mois *","Profil visible"],       locked:["Missions illimitées","Badge Vérifié","Missions urgentes"], note:"* 10 missions/mois réservé aux 100 premiers inscrits. 2 missions/mois ensuite." },
   { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:999, popular:true,  features:["Missions illimitées","Badge Vérifié","Urgences"], locked:["Manager dédié"] },
   { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false, features:["Missions illimitées","Badge Elite","Position #1 *","Manager dédié"], locked:[], note:"* Position #1 attribuée selon la notation et les commentaires positifs du prestataire." },
 ];
-const prixClient = (tarifNet, sector) =>
-  isLaunchPhase()
-    ? Math.round(tarifNet * (1 + (MARGES[sector]||0.20)) * 100) / 100
-    : tarifNet;
+const prixClient = (tarifNet, _sector) => tarifNet;
 const tarifInterim = (t) => Math.round(t*2.2*100)/100;
 const economiePct  = (t) => Math.round(((tarifInterim(t)-t)/tarifInterim(t))*100);
 
@@ -883,8 +873,8 @@ function SplashScreen({ onNext, onBackoffice }) {
           }}>
             <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
             <div>
-              <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Commission réduite · Accès illimité · Profitez-en avant la fin de la période</div>
+              <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>0% de commission · 10 missions gratuites pour les 100 premiers prestataires</div>
             </div>
           </div>
         )}
@@ -961,8 +951,8 @@ function RoleScreen({ onSelect }) {
         }}>
           <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
           <div>
-            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>Clients : tarifs préférentiels · Prestataires : accès gratuit et 0% de commission</div>
+            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
+            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>0% de commission · 10 missions gratuites pour les 100 premiers prestataires</div>
           </div>
         </div>
       )}
@@ -1283,8 +1273,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             })}
             {isLaunchPhase() && (
               <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
-                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> obtiennent le plan <strong style={{ color:C.accentGold }}>Premium 6 mois offert</strong> !<br/>
-                <span style={{ color:C.textSub }}>Pour tous : plan Gratuit inclus à vie (2 missions/mois).</span>
+                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> → <strong style={{ color:C.accentGold }}>10 missions/mois gratuites</strong> !<br/>
+                <span style={{ color:C.textSub }}>2 missions/mois ensuite pour le plan Gratuit.</span>
               </div>
             )}
           </div>
@@ -1696,9 +1686,9 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
           }}>
             <span style={{ fontSize:16, flexShrink:0 }}>🎉</span>
             <div style={{ flex:1 }}>
-              <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement — 6 mois offerts</span>
+              <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement</span>
               <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                {role==="client" ? "Commissions réduites pendant toute la période de lancement" : "Accès illimité gratuit · 0% de commission sur vos missions"}
+                {role==="client" ? "0% de commission · tarif affiché = tarif réel de la mission" : "0% de commission · 10 missions gratuites pour les 100 premiers prestataires"}
               </div>
             </div>
           </div>
@@ -4318,7 +4308,7 @@ function DocUploadCard({ doc, value, onChange, required }) {
 // ── PRESTATAIRE ONBOARDING ────────────────────────────────────────
 function PrestaOnboarding({ onComplete, onBack }) {
   const [step,setStep]=useState(1);
-  const TOTAL=isLaunchPhase()?7:8;
+  const TOTAL=8;
   const [infos,setInfos]=useState({prenom:"",nom:"",email:"",tel:"",password:"",dateNaissance:"",lieuNaissance:"",nationalite:"France"});
   const [adresse,setAdresse]=useState({rue:"",ville:"",cp:"",pays:"France",rayon:"20"});
   const [ae,setAe]=useState({siret:"",siren:"",activite:"",dateCreation:"",codeAPE:"",regime:"micro-entreprise"});
@@ -4350,7 +4340,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [submitError,setSubmitError]=useState("");
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
-  const recapStep=isLaunchPhase()?7:8;
+  const recapStep=8;
 
   const handleSubmitDossier=async()=>{
     setSubmitting(true);
@@ -4375,9 +4365,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
         const dispoRows=[];
         Object.entries(dispos).forEach(([jour,creneaux])=>(creneaux||[]).forEach(c=>dispoRows.push({ prestataire_id:user.id, jour, creneau:c })));
         if(dispoRows.length>0) await supabase.from("disponibilites").insert(dispoRows);
-        if(!isLaunchPhase()){
-          await supabase.from("abonnements").upsert({ prestataire_id:user.id, plan:abonnement });
-        }
+        await supabase.from("abonnements").upsert({ prestataire_id:user.id, plan:abonnement });
       }
     } catch(e){
       console.error("Supabase submit error",e);
@@ -4395,15 +4383,11 @@ function PrestaOnboarding({ onComplete, onBack }) {
     if(step===4)return true;
     if(step===5)return true;
     if(step===dispoStep)return Object.keys(dispos).some(j=>(dispos[j]||[]).length>0);
-    if(!isLaunchPhase()&&step===7)return true;
+    if(step===7)return true;
     return true;
   };
-  const TITLES=isLaunchPhase()
-    ?["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Récapitulatif"]
-    :["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Abonnement","Récapitulatif"];
-  const SUBS=isLaunchPhase()
-    ?["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Vérifiez avant envoi"]
-    :["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Choisissez votre plan","Vérifiez avant envoi"];
+  const TITLES=["Informations personnelles","Adresse & zone","Statut auto-entrepreneur","Documents administratifs","Métiers & compétences","Disponibilités","Abonnement","Récapitulatif"];
+  const SUBS=["Vos coordonnées","Résidence et intervention","Informations légales","Obligatoires pour valider","Vos savoir-faire","Vos créneaux","Choisissez votre plan","Vérifiez avant envoi"];
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
@@ -4661,7 +4645,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             <textarea placeholder="Décrivez votre parcours…" value={bio} onChange={e=>setBio(e.target.value)} style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text }} />
           </div>
         </>}
-        {!isLaunchPhase() && step===7 && <>
+        {step===7 && <>
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan ALANE</div>
             <div style={{ color:C.textSub, fontSize:12 }}>0% de commission sur toutes vos missions. Changez de plan à tout moment.</div>
@@ -4741,7 +4725,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
             {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${DOCS_REQUIS.length} chargés`]},
             {title:"💼 Métiers & taux nets",items:metiers.map(m=>m.tarifNet?`${m.metier} — ${formatE(m.tarifNet)} net`:m.metier)},
             {title:"📅 Disponibilités",items:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j} : ${(dispos[j]||[]).map(p=>p.split(" ")[0]).join(", ")}`)},
-            ...(!isLaunchPhase()?[{title:"⚡ Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}]:[]),
+            ...[{title:"⚡ Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}],
           ].map(section=>(
             <div key={section.title} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:8 }}>{section.title}</div>
@@ -4838,7 +4822,7 @@ function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"⚡",label:isLaunchPhase()?"Abonnement (lancement)":"Mon abonnement",sub:isLaunchPhase()?"100 premiers → Premium 6 mois offert · 2 missions/mois gratuit":"Gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"⚡",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -5177,10 +5161,8 @@ function PrestaDashboard({ onNavigate }) {
   const [spotsLeft,setSpotsLeft]=useState(null);
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
-    if(isLaunchPhase()){
-      supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
-        .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
-    }
+    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
+      .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
   },[]);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -6429,11 +6411,8 @@ function BOSupport() {
   );
 }
 
-function BackofficeDashboard({ onBack, onModelChange }) {
+function BackofficeDashboard({ onBack }) {
   const [tab, setTab] = useState("dashboard");
-  const [boConfirm, setBoConfirm] = useState(false);
-  const [toggled, setToggled] = useState(false);
-  const [, forceUpdate] = useState(0);
   const d = BO_DATA;
 
   const KPICard = ({ icon, label, value, sub, color=C.violet, onClick }) => (
@@ -6461,55 +6440,6 @@ function BackofficeDashboard({ onBack, onModelChange }) {
           <div style={{ textAlign:"right" }}>
             <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Plateforme active</div>
           </div>
-        </div>
-      </div>
-
-      {toggled && (
-        <div style={{ margin:"12px 18px 0", background: isLaunchPhase()?"rgba(217,119,6,0.20)":"rgba(124,111,224,0.20)", border:`1px solid ${isLaunchPhase()?"rgba(217,119,6,0.5)":"rgba(124,111,224,0.5)"}`, borderRadius:r, padding:"12px 16px", display:"flex", gap:10, alignItems:"center" }}>
-          <span style={{ fontSize:20 }}>{isLaunchPhase()?"🚀":"⚡"}</span>
-          <div>
-            <div style={{ fontWeight:700, color:C.white, fontSize:13 }}>Modèle {isLaunchPhase()?"Lancement (M1)":"Hybride"} actif</div>
-            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, marginTop:2 }}>
-              {isLaunchPhase()?"Commission 20% — prestataires gratuits":"Abonnements activés — 0% commission — étape inscription ajoutée"}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Toggle modèle M1 ↔ Hybride ── */}
-      <div style={{ padding:"14px 18px", background:"rgba(255,255,255,0.02)", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
-        <div style={{ background:"rgba(255,255,255,0.05)", border:`1px solid rgba(255,255,255,0.10)`, borderRadius:r+2, padding:"14px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <div>
-              <div style={{ fontWeight:700, color:C.white, fontSize:13 }}>Modèle économique actif</div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                {isLaunchPhase()?"Commission 20% · Prestataires gratuits":"Abonnements + Frais MER · 0% commission"}
-              </div>
-            </div>
-            <div style={{ background:isLaunchPhase()?"rgba(217,119,6,0.25)":"rgba(124,111,224,0.25)", borderRadius:8, padding:"5px 12px", color:isLaunchPhase()?"#FCD34D":"#A78BFA", fontWeight:800, fontSize:11 }}>
-              {isLaunchPhase()?"🚀 M1":"⚡ Hybride"}
-            </div>
-          </div>
-          {!boConfirm ? (
-            <button onClick={()=>setBoConfirm(true)} style={{ width:"100%", padding:"11px", border:`1px solid ${isLaunchPhase()?"rgba(124,111,224,0.4)":"rgba(217,119,6,0.4)"}`, borderRadius:r, background:isLaunchPhase()?"rgba(124,111,224,0.12)":"rgba(217,119,6,0.12)", color:isLaunchPhase()?"#A78BFA":"#FCD34D", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              {isLaunchPhase()?"⚡ Basculer en modèle Hybride":"🚀 Revenir en phase Lancement"}
-            </button>
-          ) : (
-            <div style={{ background:"rgba(220,38,38,0.10)", border:"1px solid rgba(220,38,38,0.30)", borderRadius:r, padding:"12px" }}>
-              <div style={{ fontWeight:700, color:C.white, fontSize:13, marginBottom:6 }}>
-                Confirmer la bascule vers {isLaunchPhase()?"le modèle Hybride":"la phase Lancement"} ?
-              </div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.6, marginBottom:10 }}>
-                {isLaunchPhase()
-                  ? "Prix client = taux net pur. Abonnements prestataires activés. Frais MER facturés aux clients."
-                  : "Retour à la commission 20% intégrée. Abonnements et frais MER désactivés."}
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>{ const m=isLaunchPhase()?"hybrid":"launch"; MODEL_CONFIG.currentModel=m; setBoConfirm(false); setToggled(true); forceUpdate(n=>n+1); onModelChange?.(m); setTimeout(()=>setToggled(false),4000); }} style={{ flex:1, padding:"10px", border:"none", borderRadius:r, background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ Confirmer</button>
-                <button onClick={()=>setBoConfirm(false)} style={{ flex:1, padding:"10px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:r, background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -6545,64 +6475,59 @@ function BackofficeDashboard({ onBack, onModelChange }) {
             <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`+${d.users.newThisWeek} cette semaine`} color={C.violet} />
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
             <KPICard icon="💶" label="CA total (€)" value={`${(d.finance.caTotal/1000).toFixed(0)}k`} sub="Depuis le lancement" color={C.accentGold} />
-            {isLaunchPhase()
-              ? <KPICard icon="⚡" label="Commission ALANE" value={`${(d.finance.commissionAlane/1000).toFixed(1)}k €`} color={C.accent} />
-              : <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
-            }
+            <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
           </div>
 
-          {/* Bloc abonnements — hybride uniquement */}
-          {!isLaunchPhase() && (
-            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>⚡ Abonnements prestataires</div>
-                <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                  <span style={{ fontSize:11, color:C.success, fontWeight:700 }}>+{d.abonnements.newThisWeek} cette sem.</span>
-                  <span style={{ fontSize:11, color:C.accent, fontWeight:600 }}>-{d.abonnements.churnThisMonth} churn</span>
-                </div>
+          {/* Bloc abonnements — hybride */}
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>⚡ Abonnements prestataires</div>
+              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                <span style={{ fontSize:11, color:C.success, fontWeight:700 }}>+{d.abonnements.newThisWeek} cette sem.</span>
+                <span style={{ fontSize:11, color:C.accent, fontWeight:600 }}>-{d.abonnements.churnThisMonth} churn</span>
               </div>
-              {/* Plans */}
-              <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-                {[
-                  { plan: ABONNEMENTS_PRESTA[0], count: d.abonnements.free    },
-                  { plan: ABONNEMENTS_PRESTA[1], count: d.abonnements.premium },
-                  { plan: ABONNEMENTS_PRESTA[2], count: d.abonnements.elite   },
-                ].map(({ plan, count }) => {
-                  const total = d.abonnements.free + d.abonnements.premium + d.abonnements.elite;
-                  const pct = Math.round((count / total) * 100);
-                  return (
-                    <div key={plan.id} style={{ flex:1, background:`${plan.color}12`, border:`1px solid ${plan.color}33`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, marginBottom:4 }}>{plan.icon}</div>
-                      <div style={{ fontWeight:800, color:plan.color, fontSize:22 }}>{count}</div>
-                      <div style={{ fontWeight:700, color:C.text, fontSize:11, marginTop:2 }}>{plan.label}</div>
-                      <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>
-                        {plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}
-                      </div>
-                      <div style={{ marginTop:6, height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, overflow:"hidden" }}>
-                        <div style={{ height:"100%", width:`${pct}%`, background:plan.color, borderRadius:2 }} />
-                      </div>
-                      <div style={{ color:C.textSub, fontSize:10, marginTop:3 }}>{pct}%</div>
+            </div>
+            {/* Plans */}
+            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+              {[
+                { plan: ABONNEMENTS_PRESTA[0], count: d.abonnements.free    },
+                { plan: ABONNEMENTS_PRESTA[1], count: d.abonnements.premium },
+                { plan: ABONNEMENTS_PRESTA[2], count: d.abonnements.elite   },
+              ].map(({ plan, count }) => {
+                const total = d.abonnements.free + d.abonnements.premium + d.abonnements.elite;
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={plan.id} style={{ flex:1, background:`${plan.color}12`, border:`1px solid ${plan.color}33`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
+                    <div style={{ fontSize:20, marginBottom:4 }}>{plan.icon}</div>
+                    <div style={{ fontWeight:800, color:plan.color, fontSize:22 }}>{count}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:11, marginTop:2 }}>{plan.label}</div>
+                    <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>
+                      {plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}
                     </div>
-                  );
-                })}
-              </div>
-              {/* MRR total */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(124,111,224,0.10)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 14px" }}>
-                <div>
-                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>MRR total</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:"#7C6FE0" }}>
-                    {(d.abonnements.premium*29 + d.abonnements.elite*59).toLocaleString()} €/mois
+                    <div style={{ marginTop:6, height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${pct}%`, background:plan.color, borderRadius:2 }} />
+                    </div>
+                    <div style={{ color:C.textSub, fontSize:10, marginTop:3 }}>{pct}%</div>
                   </div>
+                );
+              })}
+            </div>
+            {/* MRR total */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(124,111,224,0.10)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 14px" }}>
+              <div>
+                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>MRR total</div>
+                <div style={{ fontSize:20, fontWeight:800, color:"#7C6FE0" }}>
+                  {(d.abonnements.premium*29 + d.abonnements.elite*59).toLocaleString()} €/mois
                 </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>Abonnés payants</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:C.text }}>
-                    {d.abonnements.premium + d.abonnements.elite}
-                  </div>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>Abonnés payants</div>
+                <div style={{ fontSize:20, fontWeight:800, color:C.text }}>
+                  {d.abonnements.premium + d.abonnements.elite}
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Missions par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
@@ -6830,24 +6755,22 @@ function HowItWorksScreen({ role, onNext, onBack }) {
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
-        {isLaunchPhase() && (
-          <div style={{
-            background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
-            border:"1px solid rgba(16,217,143,0.35)",
-            borderRadius:r, padding:"12px 14px", marginBottom:20,
-            display:"flex", gap:10, alignItems:"center",
-          }}>
-            <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
-            <div>
-              <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement — 6 mois</div>
-              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire" ? "Accès gratuit · 0% de commission sur toutes vos missions pendant 6 mois" : "Tarifs préférentiels pendant toute la période de lancement ALANE"}
-              </div>
+        <div style={{
+          background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
+          border:"1px solid rgba(16,217,143,0.35)",
+          borderRadius:r, padding:"12px 14px", marginBottom:20,
+          display:"flex", gap:10, alignItems:"center",
+        }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
+          <div>
+            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
+            <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
+              {role==="prestataire" ? "0% de commission · 10 missions gratuites pour les 100 premiers prestataires" : "0% de commission · tarif affiché = tarif réel de la mission"}
             </div>
           </div>
-        )}
+        </div>
 
-        {!isLaunchPhase() && role==="prestataire" && (
+        {role==="prestataire" && (
           <div style={{ marginBottom:20 }}>
             <div style={{ background:`linear-gradient(135deg,${C.violet}18,${C.indigo}10)`, border:`1px solid ${C.violet}40`, borderRadius:r+4, padding:"14px 16px", marginBottom:10 }}>
               <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
@@ -6880,7 +6803,7 @@ function HowItWorksScreen({ role, onNext, onBack }) {
           </div>
         )}
 
-        {!isLaunchPhase() && role==="client" && (
+        {role==="client" && (
           <div style={{ background:`linear-gradient(135deg,${C.violet}12,${C.indigo}08)`, border:`1px solid ${C.violet}35`, borderRadius:r+4, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"flex-start" }}>
             <span style={{ fontSize:20, flexShrink:0 }}>💡</span>
             <div>
@@ -7671,10 +7594,10 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, showClientNav, showPrestaNav, onlineStatus, onToggleOnline, unreadCount }) {
   const { isMobile } = useResponsive();
 
-  const hybridBanner = !isLaunchPhase() && !["bo_login","bo_dashboard"].includes(screen) && (
+  const hybridBanner = !["bo_login","bo_dashboard"].includes(screen) && (
     <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
       <span style={{ fontSize:13 }}>⚡</span>
-      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>MODE HYBRIDE ACTIF — Abonnements activés · 0% commission</span>
+      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>MODE HYBRIDE · Abonnements activés · 0% de commission</span>
     </div>
   );
 
@@ -8258,9 +8181,9 @@ const LAUNCH_MONTHS = 6;
 function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:"Frais de mise en relation réduits pendant toute la période de lancement" },
-    presta:  { icon:"🚀", title:"Plan Premium offert — 6 mois", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
-    booking: { icon:"💡", title:"Tarif de lancement", sub:"Frais MER réduits pendant la période de lancement" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:"0% de commission sur toutes vos missions pendant la période de lancement" },
+    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · 10 missions/mois gratuites` : "Réservé aux 100 premiers prestataires inscrits" },
+    booking: { icon:"💡", title:"0% de commission", sub:"Aucun frais de mise en relation pendant la période de lancement" },
   };
   const m = msgs[context] || msgs.home;
   return (
@@ -8293,7 +8216,7 @@ function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient du plan <strong style={{ color:C.accentGold }}>Premium 6 mois offert</strong>.<br/>Plan Gratuit : 2 missions/mois incluses à vie pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 missions/mois gratuites</strong>.<br/>Plan Gratuit : 2 missions/mois ensuite pour tous.</div>
               </div>
             </div>
           </div>
@@ -8317,7 +8240,7 @@ function AbonnementPrestaScreen({ onBack }) {
                 <div style={{ width:42, height:42, borderRadius:12, background:plan.color+"20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{plan.icon}</div>
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{plan.label}</div>
-                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":price+" €"}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois{isLaunchPhase()?" après lancement":""}</span>}</div>
+                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":price+" €"}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
                 </div>
               </div>
               {plan.features.map((f,i)=>(
@@ -8580,7 +8503,6 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("splash");
-  const [model,setModel]=useState(()=>MODEL_CONFIG.currentModel);
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [selectedProvider,setSelectedProvider]=useState(null);
@@ -8797,7 +8719,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onModelChange={m=>{ MODEL_CONFIG.currentModel=m; setModel(m); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} />}
 
       {screen==="dashboard" && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:90 }}>
