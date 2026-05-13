@@ -6,7 +6,7 @@ function ALANELogo({ size = "md" }) {
   const cfg = {
     sm: { svgW:36,  svgH:24,  fs:17, gap:7  },
     md: { svgW:40,  svgH:28,  fs:18, gap:8  },
-    lg: { svgW:88,  svgH:60,  fs:48, gap:16 },
+    lg: { svgW:100, svgH:68,  fs:56, gap:18 },
   }[size] || { svgW:40, svgH:28, fs:18, gap:8 };
   return (
     <div style={{ display:"flex", alignItems:"center", gap:cfg.gap }}>
@@ -812,8 +812,10 @@ function SplashScreen({ onNext, onBackoffice }) {
       <div style={{ position:"absolute", bottom:-100, left:-100, width:320, height:320, borderRadius:"50%", background:`radial-gradient(circle, rgba(30,58,123,0.4) 0%, transparent 65%)`, pointerEvents:"none" }} />
       <div style={{ position:"absolute", top:"40%", left:"50%", transform:"translate(-50%,-50%)", width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.10) 0%, transparent 60%)`, pointerEvents:"none" }} />
 
-      {/* Top bar spacer */}
-      <div style={{ paddingTop:60, marginBottom:"auto" }} />
+      {/* Logo centré en haut */}
+      <div style={{ paddingTop:64, marginBottom:"auto", display:"flex", justifyContent:"center" }}>
+        <ALANELogo size="lg" />
+      </div>
 
       {/* Hero content */}
       <div style={{
@@ -822,11 +824,6 @@ function SplashScreen({ onNext, onBackoffice }) {
         opacity:v?1:0, transform:v?"translateY(0)":"translateY(24px)",
         transition:"all 0.8s cubic-bezier(0.22,1,0.36,1)",
       }}>
-        {/* Large logo */}
-        <div style={{ marginBottom:28 }}>
-          <ALANELogo size="lg" />
-        </div>
-
         {/* Tag */}
         <div style={{ marginBottom:20 }}>
           <Badge color={C.violet}>Plateforme de services à la demande</Badge>
