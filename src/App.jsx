@@ -1342,6 +1342,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [societeNom, setSocieteNom] = useState("");
   const [kbisNum, setKbisNum] = useState("");
   const [secteursBesoins, setSecteursBesoins] = useState([]);
+  const [metiersBesoins, setMetiersBesoins] = useState([]);
   const [frequence, setFrequence] = useState("");
   const [adresse, setAdresse] = useState("");
   const [codePostal, setCodePostal] = useState("");
@@ -1352,8 +1353,17 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  const toggleSecteur = id =>
-    setSecteursBesoins(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  const toggleSecteur = id => {
+    setSecteursBesoins(prev => {
+      const next = prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id];
+      const metiersValides = next.flatMap(s => Object.keys(METIERS_TARIFS[s] || {}));
+      setMetiersBesoins(m => m.filter(x => metiersValides.includes(x)));
+      return next;
+    });
+  };
+
+  const toggleMetier = id =>
+    setMetiersBesoins(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
 
   const validateStep = () => {
     if (step === 1) {
@@ -1394,7 +1404,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         role: "client", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
         type_compte: typeCompte, societe_nom: societeNom||null, kbis: kbisNum||null,
-        secteurs_besoins: secteursBesoins, frequence_besoins: frequence,
+        secteurs_besoins: secteursBesoins, metiers_besoins: metiersBesoins, frequence_besoins: frequence,
         adresse: adresse||null, code_postal: codePostal||null, ville,
         volume_horaire: volumeHoraire,
         rib: rib.replace(/\s/g,"") || null,
@@ -1479,6 +1489,27 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
+          {secteursBesoins.length > 0 && <>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Métiers recherchés <span style={{ color:C.textMuted, textTransform:"none", letterSpacing:0 }}>(plusieurs choix possibles)</span></label>
+            {secteursBesoins.map(sid => {
+              const s = SECTORS.find(x=>x.id===sid);
+              const metiers = Object.keys(METIERS_TARIFS[sid] || {});
+              if (!metiers.length) return null;
+              return (
+                <div key={sid} style={{ marginBottom:14 }}>
+                  <div style={{ color:s?.color||accentColor, fontSize:12, fontWeight:700, marginBottom:6 }}>{s?.icon} {s?.label}</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {metiers.map(m => (
+                      <button key={m} onClick={()=>toggleMetier(m)} style={{ padding:"8px 14px", borderRadius:20, border:`1.5px solid ${metiersBesoins.includes(m)?(s?.color||accentColor):C.border}`, background:metiersBesoins.includes(m)?`${s?.color||accentColor}20`:"rgba(255,255,255,0.03)", color:metiersBesoins.includes(m)?(s?.color||accentColor):C.textSub, fontWeight:metiersBesoins.includes(m)?700:400, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+                        {metiersBesoins.includes(m) && "✓ "}{m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ height:8 }} />
+          </>}
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
