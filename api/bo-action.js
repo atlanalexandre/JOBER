@@ -1,4 +1,34 @@
-async function sendEmail({ to, subject, text }) {
+function emailHtml(content) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,Helvetica Neue,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
+        <tr>
+          <td style="background:#050E20;padding:28px 36px;text-align:center;">
+            <span style="font-size:28px;font-weight:800;letter-spacing:2px;">
+              <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
+            ${content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+async function sendEmail({ to, subject, html }) {
   const key  = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
   if (!key) return;
@@ -6,7 +36,7 @@ async function sendEmail({ to, subject, text }) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, text }),
+      body: JSON.stringify({ from, to: [to], subject, html }),
     });
     console.log("Resend bo-action:", await r.text());
   } catch (e) {
@@ -75,13 +105,13 @@ export default async function handler(req, res) {
           await sendEmail({
             to: userEmail,
             subject: "Votre compte ALANE est activé !",
-            text: `Bonjour,\n\nVotre compte ALANE a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://www.alane.fr\n\nBienvenue sur ALANE !\nL'équipe ALANE`,
+            html: emailHtml(`<p>Bonjour,</p><p>Bonne nouvelle ! Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p><p>Vous pouvez maintenant vous connecter et accéder à la plateforme.</p><p style="text-align:center;margin:28px 0;"><a href="https://www.alane.fr" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Se connecter</a></p>`),
           });
         } else {
           await sendEmail({
             to: userEmail,
             subject: "Votre demande de compte ALANE",
-            text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe ALANE`,
+            html: emailHtml(`<p>Bonjour,</p><p>Nous avons examiné votre demande d'inscription mais ne sommes pas en mesure de l'activer pour le moment.</p><p>Pour plus d'informations, contactez notre support depuis l'application.</p>`),
           });
         }
       }
@@ -98,11 +128,11 @@ export default async function handler(req, res) {
       const userEmail = userData.email;
 
       if (userEmail) {
-        const reasonBlock = reason ? `\n\nRaison communiquée : ${reason}` : "";
+        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${reason}</p>` : "";
         await sendEmail({
           to: userEmail,
           subject: "Votre compte ALANE a été supprimé",
-          text: `Bonjour,\n\nNous vous informons que votre compte ALANE a été supprimé par notre équipe d'administration.${reasonBlock}\n\nSi vous pensez qu'il s'agit d'une erreur, vous pouvez nous contacter via le formulaire de support.\n\nL'équipe ALANE`,
+          html: emailHtml(`<p>Bonjour,</p><p>Nous vous informons que votre compte <strong>ALANE</strong> a été supprimé par notre équipe d'administration.</p>${reasonBlock}<p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support depuis l'application.</p>`),
         });
       }
 
