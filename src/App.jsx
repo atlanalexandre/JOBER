@@ -2081,7 +2081,7 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       title:"Aide",
       items:[
         { icon:"🎧", label:"Contacter le support", action:()=>onNavigate("contact_support"), chevron:true, highlight:true },
-        { icon:"📖", label:"FAQ", action:()=>{}, chevron:true },
+        { icon:"📖", label:"FAQ", action:()=>onNavigate("faq"), chevron:true },
       ]
     },
   ];
@@ -4244,10 +4244,72 @@ function FavoritesScreen({ onNavigate, onBack }) {
   );
 }
 
+// ── FAQ ──────────────────────────────────────────────────────────
+function FAQScreen({ onBack, role }) {
+  const [open, setOpen] = useState(null);
+  const faqs = role === "prestataire" ? [
+    { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin de prestataires dans votre secteur. Vous recevez des propositions de missions correspondant à votre profil et vous choisissez d'accepter ou non." },
+    { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée directement sur votre IBAN après validation de la mission par le client. Le délai habituel est de 3 à 5 jours ouvrés." },
+    { q:"Quels documents dois-je fournir ?", a:"Pour être validé sur ALANE vous devez fournir : un KBIS ou extrait D1 (auto-entrepreneur), une attestation URSSAF à jour, une RC Professionnelle, et un RIB." },
+    { q:"Comment changer ou upgrader mon abonnement ?", a:"Rendez-vous dans l'onglet Abonnement de votre espace prestataire. Vous pouvez changer de plan à tout moment, le changement est immédiat." },
+    { q:"Que se passe-t-il si je refuse une mission ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la mission à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
+    { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage à un autre prestataire. Dès qu'il complète sa première mission, vous recevez tous les deux 50€ de bonus crédités sur votre prochaine facture." },
+    { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
+  ] : [
+    { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des prestataires qualifiés dans votre secteur, vérifiés et assurés. Vous choisissez le profil, la date et l'horaire — ALANE s'occupe du reste." },
+    { q:"Comment réserver un prestataire ?", a:"Parcourez les profils disponibles, sélectionnez celui qui correspond à vos besoins, choisissez le créneau et confirmez la réservation. Vous recevez une confirmation immédiate." },
+    { q:"Le prix affiché est-il le prix final ?", a:"Oui. ALANE applique un tarif transparent : le prix affiché est le prix réel, sans frais cachés ni commission supplémentaire." },
+    { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la mission annulée." },
+    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler jusqu'à 24h avant le début de la mission sans frais. En dessous de ce délai, des frais d'annulation peuvent s'appliquer selon les CGU." },
+    { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la mission." },
+    { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
+  ];
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg, paddingBottom:80 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14, fontFamily:"inherit" }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:0, fontFamily:font.display }}>📖 FAQ</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Questions fréquentes</p>
+      </div>
+      <div style={{ padding:"20px 18px" }}>
+        {faqs.map((f,i) => (
+          <div key={i} onClick={()=>setOpen(open===i?null:i)} style={{ background:"#0D1B3E", borderRadius:r, marginBottom:9, border:`1px solid ${open===i?C.violet+"66":C.border}`, overflow:"hidden", cursor:"pointer", transition:"border-color 0.2s" }}>
+            <div style={{ padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
+              <span style={{ fontWeight:600, color:open===i?C.violet:C.text, fontSize:13, flex:1, lineHeight:1.4 }}>{f.q}</span>
+              <span style={{ color:C.textMuted, fontSize:16, flexShrink:0, transform:open===i?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▾</span>
+            </div>
+            {open===i && (
+              <div style={{ padding:"0 16px 16px", color:C.textSub, fontSize:13, lineHeight:1.7, borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
+                {f.a}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── PARRAINAGE ────────────────────────────────────────────────────
 function ReferralScreen({ onBack }) {
-  const [copied,setCopied]=useState(false);
-  const code="ALANE-A7K2X";
+  const [copied, setCopied] = useState(false);
+  const [code, setCode] = useState("ALANE-…");
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const uid = data?.user?.id;
+      if(uid) setCode("ALANE-" + uid.slice(0,6).toUpperCase());
+    });
+  },[]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(()=>{
+      setCopied(true);
+      setTimeout(()=>setCopied(false), 2000);
+    });
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, padding:"48px 22px 36px", borderRadius:"0 0 28px 28px", textAlign:"center" }}>
@@ -4257,15 +4319,24 @@ function ReferralScreen({ onBack }) {
         <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, margin:0 }}>50€ pour vous et votre filleul à la 1ère mission</p>
       </div>
       <div style={{ padding:"24px 18px" }}>
-        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"20px", marginBottom:16, boxShadow:"0 2px 14px rgba(0,0,0,0.08)", textAlign:"center" }}>
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
           <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px" }}>Votre code de parrainage</p>
           <div style={{ background:`${C.accentGold}15`, border:`2px dashed ${C.accentGold}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
             <div style={{ fontSize:24, fontWeight:800, color:C.text, letterSpacing:3 }}>{code}</div>
           </div>
-          <Btn full variant="gold" onClick={()=>setCopied(true)} style={{ fontSize:14 }}>{copied?"✓ Copié !":"📋 Copier le code"}</Btn>
+          <Btn full variant="gold" onClick={handleCopy} style={{ fontSize:14 }}>
+            {copied ? "✓ Copié !" : "📋 Copier le code"}
+          </Btn>
         </div>
-        {[{i:"🔗",t:"Partagez votre code",s:"Via SMS, email ou réseaux sociaux"},{i:"✅",t:"Votre filleul s’inscrit",s:"Il utilise votre code à l’inscription"},{i:"💶",t:"Vous gagnez 50€ chacun",s:"Crédité après sa première mission"}].map((s,i)=>(
-          <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:9, display:"flex", gap:12, alignItems:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+        <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          💡 Votre filleul doit renseigner votre code lors de son inscription. Le bonus de 50€ est crédité après sa première mission complétée.
+        </div>
+        {[
+          {i:"🔗", t:"Partagez votre code", s:"Via SMS, email ou réseaux sociaux"},
+          {i:"✅", t:"Votre filleul s’inscrit", s:"Il utilise votre code à l’inscription"},
+          {i:"💶", t:"Vous gagnez 50€ chacun", s:"Crédité après sa première mission"},
+        ].map((s,i)=>(
+          <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:9, display:"flex", gap:12, alignItems:"center" }}>
             <div style={{ width:42, height:42, borderRadius:12, background:`${C.accentGold}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{s.i}</div>
             <div><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{s.t}</div><div style={{ color:C.textSub, fontSize:11 }}>{s.s}</div></div>
           </div>
@@ -4851,6 +4922,7 @@ function PrestaProfileEditScreen({ onBack }) {
   const [langues, setLangues] = useState(["Français"]);
   const [competences, setCompetences] = useState([]);
   const [statutPro, setStatutPro] = useState("auto-entrepreneur");
+  const [rayon, setRayon] = useState(20);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -4865,6 +4937,7 @@ function PrestaProfileEditScreen({ onBack }) {
       setLangues(m.langues?.length ? m.langues : ["Français"]);
       setCompetences(m.competences || []);
       setStatutPro(m.statut_pro || "auto-entrepreneur");
+      setRayon(m.zone_km || 20);
     });
   },[]);
 
@@ -4875,7 +4948,7 @@ function PrestaProfileEditScreen({ onBack }) {
     setSaving(true);
     await supabase.auth.updateUser({ data: {
       dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
-      tarif_net: tarifNet, langues, competences, statut_pro: statutPro,
+      tarif_net: tarifNet, langues, competences, statut_pro: statutPro, zone_km: rayon,
     }});
     setSaving(false); setSaved(true);
     setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
@@ -4956,6 +5029,17 @@ function PrestaProfileEditScreen({ onBack }) {
             </div>
           </div>
         )}
+
+        {/* Rayon géographique */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📍 Rayon d'intervention</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+            {["5","10","20","30","50","100"].map(km=>(
+              <button key={km} onClick={()=>setRayon(parseInt(km))} style={{ padding:"9px 16px", borderRadius:20, border:"none", cursor:"pointer", background:rayon===parseInt(km)?color:C.grayLight, color:rayon===parseInt(km)?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{km} km</button>
+            ))}
+          </div>
+          <p style={{ color:color, fontSize:12, fontWeight:700, margin:0 }}>Zone : {rayon} km autour de chez vous</p>
+        </div>
 
         {/* Statut pro */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
@@ -5184,6 +5268,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [planActuel,setPlanActuel]=useState("free");
   const [userName,setUserName]=useState("");
   const [userStatus,setUserStatus]=useState(null);
+  const [dispoRapide,setDispoRapide]=useState(true);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -5193,6 +5278,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       const u=data?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
+      setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
       if(prof) setUserStatus(prof.status);
@@ -5221,6 +5307,21 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
             </div>
           ))}
         </div>
+        {/* Toggle disponibilité rapide */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px", marginTop:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ width:8, height:8, borderRadius:"50%", background:dispoRapide?C.success:"rgba(255,255,255,0.3)" }} />
+            <span style={{ color:C.text, fontSize:12, fontWeight:600 }}>
+              {dispoRapide ? "Disponible maintenant" : "Non disponible"}
+            </span>
+          </div>
+          <button onClick={()=>{ const v=!dispoRapide; setDispoRapide(v); supabase.auth.updateUser({data:{dispo_immediat:v}}); }}
+            style={{ width:44, height:24, borderRadius:12, border:"none", cursor:"pointer", position:"relative",
+              background:dispoRapide?C.success:"rgba(255,255,255,0.15)", transition:"background 0.2s" }}>
+            <div style={{ position:"absolute", top:3, left:dispoRapide?21:3, width:18, height:18, borderRadius:"50%",
+              background:C.white, transition:"left 0.2s" }} />
+          </button>
+        </div>
         {(() => {
           const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
           return (
@@ -5245,6 +5346,15 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
         {tab==="missions" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <UpgradeNudge onNavigate={onNavigate} />
+          {(planActuel==="premium"||planActuel==="elite") && (
+            <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:16 }}>⚡</span>
+              <div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Missions urgentes activées</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les missions urgentes de votre secteur.</div>
+              </div>
+            </div>
+          )}
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
@@ -8695,6 +8805,7 @@ export default function App() {
       {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
+      {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
       {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
 
