@@ -2304,12 +2304,15 @@ function HomeScreen({ onNavigate }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
   const { isDesktop } = useResponsive();
-  const tier = getCashbackTier(INITIAL_WALLET.missionsThisMonth);
+  const { providers, loading: providersLoading } = useProviders();
+  const walletMissions = 0;
+  const walletBalance  = 0;
+  const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
-  const missionsToNext = nextTier ? nextTier.min - INITIAL_WALLET.missionsThisMonth : 0;
+  const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
   const tierProgress = nextTier
-    ? Math.min(100, Math.max(8, (INITIAL_WALLET.missionsThisMonth / nextTier.min) * 100))
-    : 100;
+    ? Math.min(100, Math.max(8, (walletMissions / nextTier.min) * 100))
+    : 8;
 
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{
@@ -2368,7 +2371,9 @@ function HomeScreen({ onNavigate }) {
           qu'il vous faut.
         </h1>
         <p style={{ marginTop:10, fontSize:13, color:C.textSub, lineHeight:1.5, maxWidth:300 }}>
-          Plus de {PROVIDERS.length} prestataires vérifiés, prêts à intervenir aujourd'hui.
+          {providers.length > 0
+            ? <>Plus de {providers.length} prestataire{providers.length > 1 ? "s" : ""} vérifié{providers.length > 1 ? "s" : ""}, prêt{providers.length > 1 ? "s" : ""} à intervenir.</>
+            : <>Rejoignez la plateforme ALANE et accédez aux meilleurs prestataires.</>}
         </p>
       </div>
 
@@ -2409,7 +2414,7 @@ function HomeScreen({ onNavigate }) {
 
           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:14 }}>
             <span style={{ fontFamily:font.display, fontSize:38, fontWeight:700, color:"#fff", letterSpacing:-1, lineHeight:1 }}>
-              {INITIAL_WALLET.balance.toFixed(2).replace(".", ",")}
+              {walletBalance.toFixed(2).replace(".", ",")}
             </span>
             <span style={{ fontSize:18, color:"rgba(255,255,255,0.7)", fontWeight:500 }}>€</span>
           </div>
@@ -2494,49 +2499,59 @@ function HomeScreen({ onNavigate }) {
           <span onClick={()=>onNavigate("search_filters")} style={{ fontSize:12, color:violetLite, fontWeight:600, cursor:"pointer" }}>Voir tout ›</span>
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
-          {PROVIDERS.filter(p=>p.available).slice(0,3).map((p,i)=>(
-            <div key={p.id} onClick={()=>onNavigate("profile",p)}
-              className="card-hover"
-              style={{
-                background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`,
-                border:`1px solid ${C.border}`,
-                borderRadius:16, padding:13,
-                display:"flex", gap:12, alignItems:"center",
-                cursor:"pointer", position:"relative", overflow:"hidden",
-                animationDelay:`${i*0.08}s`,
-              }}>
-              <div style={{
-                width:54, height:54, borderRadius:r,
-                background:`linear-gradient(135deg, ${p.color}40, ${p.color}15)`,
-                border:`1px solid ${p.color}40`,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:26, flexShrink:0, position:"relative",
-              }}>
-                {p.avatar}
-                <div style={{ position:"absolute", bottom:-2, right:-2, width:14, height:14, borderRadius:"50%", background:C.success, border:`2.5px solid ${C.bgCard}`, boxShadow:`0 0 8px ${C.success}` }} />
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                  <span style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{p.name}</span>
-                  <span style={{ fontSize:11, color:violetLite }}>✓</span>
-                </div>
-                <div style={{ fontSize:11.5, color:C.textSub, marginBottom:5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.jobTitle||p.role}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:C.textMuted }}>
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
-                    <Stars rating={p.rating} size={10}/>
-                    <span style={{ color:C.text, fontWeight:600 }}>{p.rating}</span>
-                    <span>({p.reviews})</span>
-                  </span>
-                  <span>·</span>
-                  <span>{p.distance}</span>
-                </div>
-              </div>
-              <div style={{ textAlign:"right", flexShrink:0 }}>
-                <div style={{ fontFamily:font.display, fontWeight:700, fontSize:15, color:violetLite, lineHeight:1 }}>{p.hourlyRate}</div>
-                <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{p.responseTime}</div>
-              </div>
+          {providersLoading ? (
+            <div style={{ background:`${C.bgCard}`, border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
+              <div style={{ color:C.textMuted, fontSize:13 }}>Chargement…</div>
             </div>
-          ))}
+          ) : providers.filter(p=>p.available).length === 0 ? (
+            <div style={{ background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`, border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 20px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>👷</div>
+              <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:6 }}>Bientôt disponible</div>
+              <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>Les premiers prestataires ALANE arrivent très prochainement.</div>
+            </div>
+          ) : (
+            providers.filter(p=>p.available).slice(0,3).map((p,i)=>(
+              <div key={p.id} onClick={()=>onNavigate("profile",p)}
+                className="card-hover"
+                style={{
+                  background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`,
+                  border:`1px solid ${C.border}`,
+                  borderRadius:16, padding:13,
+                  display:"flex", gap:12, alignItems:"center",
+                  cursor:"pointer", position:"relative", overflow:"hidden",
+                  animationDelay:`${i*0.08}s`,
+                }}>
+                <div style={{
+                  width:54, height:54, borderRadius:r,
+                  background:`linear-gradient(135deg, ${p.color}40, ${p.color}15)`,
+                  border:`1px solid ${p.color}40`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:26, flexShrink:0, position:"relative",
+                }}>
+                  {p.avatar}
+                  <div style={{ position:"absolute", bottom:-2, right:-2, width:14, height:14, borderRadius:"50%", background:C.success, border:`2.5px solid ${C.bgCard}`, boxShadow:`0 0 8px ${C.success}` }} />
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                    <span style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{p.name}</span>
+                    <span style={{ fontSize:11, color:violetLite }}>✓</span>
+                  </div>
+                  <div style={{ fontSize:11.5, color:C.textSub, marginBottom:5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.jobTitle}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:C.textMuted }}>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
+                      <Stars rating={p.rating} size={10}/>
+                      <span style={{ color:C.text, fontWeight:600 }}>{p.rating || "—"}</span>
+                    </span>
+                    {p.code_postal && <><span>·</span><span>📍 {p.code_postal}</span></>}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <div style={{ fontFamily:font.display, fontWeight:700, fontSize:15, color:violetLite, lineHeight:1 }}>{p.hourlyRate}</div>
+                  <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>HT/h</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -8129,10 +8144,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
 // Paliers de fidélité
 const CASHBACK_TIERS = [
-  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.03, color:"#8B8FA8", icon:"⭐"  },
-  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.05, color:"#C0C0C0", icon:"🥈"  },
-  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.07, color:"#F0B429", icon:"🥇"  },
-  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.10, color:"#A89DF5", icon:"💎"  },
+  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.005,  color:"#8B8FA8", icon:"⭐"  },
+  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.0075, color:"#C0C0C0", icon:"🥈"  },
+  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.01,   color:"#F0B429", icon:"🥇"  },
+  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.015,  color:"#A89DF5", icon:"💎"  },
 ];
 
 const getCashbackTier = (missionsThisMonth) => {
@@ -9245,12 +9260,12 @@ export default function App() {
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:1 }}>
                   <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Cashback disponible</span>
-                  <Badge color={getCashbackTier(INITIAL_WALLET.missionsThisMonth).color} small>
-                    {getCashbackTier(INITIAL_WALLET.missionsThisMonth).icon} {getCashbackTier(INITIAL_WALLET.missionsThisMonth).label}
+                  <Badge color={getCashbackTier(0).color} small>
+                    {getCashbackTier(0).icon} {getCashbackTier(0).label}
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{INITIAL_WALLET.balance.toFixed(2)} €</strong> · {(getCashbackTier(INITIAL_WALLET.missionsThisMonth).rate*100).toFixed(0)}% sur chaque mission
+                  <strong style={{ color:C.success }}>0,00 €</strong> · {(getCashbackTier(0).rate*100).toFixed(0)}% sur chaque mission
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
