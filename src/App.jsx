@@ -6309,6 +6309,8 @@ function BOComptes() {
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
   const [verifying, setVerifying] = useState(null);
+  const [deleteModal, setDeleteModal] = useState(null); // { profileId, name, email }
+  const [deleteReason, setDeleteReason] = useState("");
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -6338,11 +6340,18 @@ function BOComptes() {
 
   useEffect(()=>{ load(); },[]);
 
-  const handleAction = async (profileId, action) => {
+  const handleAction = async (profileId, action, reason) => {
     setActioning(profileId+action);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId }) });
+    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId, reason }) });
     setActioning(null);
     load();
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal) return;
+    await handleAction(deleteModal.profileId, "delete", deleteReason.trim());
+    setDeleteModal(null);
+    setDeleteReason("");
   };
 
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
@@ -6453,12 +6462,36 @@ function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
-            <button onClick={()=>{ if(window.confirm(`Supprimer définitivement le compte de ${(p.prenom||""+" "+p.nom||"").trim()||p.email} ?`)) handleAction(p.id,"delete"); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+            <button onClick={()=>{ setDeleteReason(""); setDeleteModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               {actioning===p.id+"delete" ? "…" : "🗑️"}
             </button>
           </div>
         </div>
       ))}
+
+      {deleteModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:400, border:"1px solid rgba(242,94,94,0.3)" }}>
+            <h3 style={{ color:"#F25E5E", fontSize:15, fontWeight:800, margin:"0 0 8px" }}>Supprimer le compte</h3>
+            <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:"0 0 16px" }}>
+              Vous allez supprimer définitivement le compte de <strong style={{ color:"#fff" }}>{deleteModal.name}</strong>. Un email sera envoyé à cette personne.
+            </p>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>RAISON (optionnelle)</label>
+            <textarea
+              value={deleteReason}
+              onChange={e=>setDeleteReason(e.target.value)}
+              placeholder="Ex : documents non conformes, comportement inapproprié..."
+              style={{ width:"100%", minHeight:80, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }}
+            />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={()=>setDeleteModal(null)} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button onClick={handleDeleteConfirm} disabled={!!actioning} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+                {actioning ? "…" : "Supprimer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
