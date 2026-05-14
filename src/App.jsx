@@ -5029,7 +5029,7 @@ function PrestaProfilTab({ onNavigate }) {
   return (
     <div>
       {/* Carte profil métier */}
-      {meta && (meta.secteur || meta.metier) && (
+      {meta && (meta.secteur || meta.metier || meta.tarif_net) && (
         <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:12, border:`1px solid ${color}33` }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Mon profil professionnel</div>
@@ -5118,6 +5118,7 @@ function PrestaProfileEditScreen({ onBack }) {
   const [rayon, setRayon] = useState(20);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
 
@@ -5142,13 +5143,15 @@ function PrestaProfileEditScreen({ onBack }) {
     setArr(prev => prev.includes(item) ? prev.filter(x=>x!==item) : [...prev, item]);
 
   const handleSave = async () => {
-    setSaving(true);
-    await supabase.auth.updateUser({ data: {
+    setSaving(true); setSaveError(false);
+    const { error } = await supabase.auth.updateUser({ data: {
       dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
-      tarif_net: tarifNet, langues, competences, statut_pro: statutPro, zone_km: rayon,
+      tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
       telephone, rib: iban,
     }});
-    setSaving(false); setSaved(true);
+    setSaving(false);
+    if (error) { setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return; }
+    setSaved(true);
     setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
   };
 
@@ -5261,7 +5264,8 @@ function PrestaProfileEditScreen({ onBack }) {
           <Input label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" icon="💳" value={iban} onChange={e=>setIban(e.target.value)} />
         </div>
 
-        <Btn full onClick={handleSave} disabled={saving} style={{ background:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
+        {saveError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#F25E5E", textAlign:"center" }}>❌ Erreur lors de l'enregistrement. Vérifiez votre connexion et réessayez.</div>}
+        <Btn full onClick={handleSave} disabled={saving} style={{ background:saveError?C.accent:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
           {saving ? "Enregistrement…" : saved ? "✅ Sauvegardé !" : "Enregistrer les modifications"}
         </Btn>
       </div>
