@@ -7125,14 +7125,6 @@ function BackofficeDashboard({ onBack, onNavigate }) {
           {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
           {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
           {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucune alerte active</div>}
-<div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>📋 Litiges en cours</div>
-          {[
-            { client:"Société ABC",  presta:"Thomas Saumur",  montant:"96 €",  motif:"Heures non effectuées",  date:"Il y a 2h" },
-            { client:"Hôtel Lumière",presta:"Karim Benali",   montant:"78 €",  motif:"Qualité insuffisante",   date:"Il y a 1j" },
-            { client:"LogiPro",      presta:"Julie Evan",     montant:"120 €", motif:"Annulation tardive",     date:"Il y a 2j" },
-          ].map((l,i) => (
-            <LitigeRow key={i} l={l} />
-          ))}
 <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>🔧 Actions rapides</div>
           {[
             { icon:"📧", label:"Envoyer une communication globale", color:C.violet,
@@ -9199,6 +9191,7 @@ export default function App() {
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
   const [boUnlocked,setBoUnlocked]=useState(false);
+  const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
   const [payslipData,setPayslipData]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
@@ -9408,7 +9401,13 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r)=>{ if(r) setRole(r); navigate(s); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s); }} />}
+      {boTestMode && screen!=="bo_dashboard" && (
+        <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
+          onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
+          <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>← Retour BO</span>
+        </div>
+      )}
 
       {screen==="dashboard" && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:90 }}>
