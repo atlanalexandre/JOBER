@@ -1347,6 +1347,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [adresse, setAdresse] = useState("");
   const [codePostal, setCodePostal] = useState("");
   const [ville, setVille] = useState("");
+  const [lieuxIntervention, setLieuxIntervention] = useState([{ adresse:"", codePostal:"", ville:"" }]);
   const [volumeHoraire, setVolumeHoraire] = useState("");
   const [rib, setRib] = useState("");
   const [email, setEmail] = useState("");
@@ -1380,6 +1381,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!ville.trim())           return "Indiquez votre ville";
       if (!codePostal.trim())      return "Indiquez votre code postal";
       if (!volumeHoraire)          return "Indiquez votre volume horaire estimé";
+      if (lieuxIntervention.some(l => !l.adresse.trim() || !l.ville.trim())) return "Remplissez tous les lieux d'intervention (adresse et ville)";
     }
     if (step === 3) {
       if (!email || !password) return "Email et mot de passe requis";
@@ -1405,6 +1407,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         telephone: telephone.replace(/[\s.\-]/g,""),
         type_compte: typeCompte, societe_nom: societeNom||null, kbis: kbisNum||null,
         secteurs_besoins: secteursBesoins, metiers_besoins: metiersBesoins, frequence_besoins: frequence,
+        lieux_intervention: lieuxIntervention.filter(l=>l.adresse.trim()||l.ville.trim()),
         adresse: adresse||null, code_postal: codePostal||null, ville,
         volume_horaire: volumeHoraire,
         rib: rib.replace(/\s/g,"") || null,
@@ -1546,6 +1549,27 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
+
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, marginTop:20, textTransform:"uppercase", letterSpacing:0.8 }}>Lieux d'intervention *</label>
+          <p style={{ color:C.textMuted, fontSize:12, margin:"0 0 12px" }}>Indiquez où le prestataire devra intervenir (plusieurs adresses possibles).</p>
+          {lieuxIntervention.map((lieu, i) => (
+            <div key={i} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:10, position:"relative" }}>
+              {lieuxIntervention.length > 1 && (
+                <button onClick={()=>setLieuxIntervention(prev=>prev.filter((_,j)=>j!==i))} style={{ position:"absolute", top:10, right:10, background:"transparent", border:"none", color:"rgba(242,94,94,0.7)", fontSize:16, cursor:"pointer", lineHeight:1 }}>✕</button>
+              )}
+              <Input label={`Adresse ${lieuxIntervention.length > 1 ? i+1 : ""}`} placeholder="12 rue de la Paix" icon="📍"
+                value={lieu.adresse} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:e.target.value}:l))} />
+              <div style={{ display:"flex", gap:10 }}>
+                <div style={{ flex:1 }}><Input label="Code postal" placeholder="75001"
+                  value={lieu.codePostal} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,codePostal:e.target.value}:l))} /></div>
+                <div style={{ flex:2 }}><Input label="Ville" placeholder="Paris"
+                  value={lieu.ville} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,ville:e.target.value}:l))} /></div>
+              </div>
+            </div>
+          ))}
+          <button onClick={()=>setLieuxIntervention(prev=>[...prev,{adresse:"",codePostal:"",ville:""}])} style={{ width:"100%", padding:"11px", borderRadius:r, border:`1.5px dashed ${accentColor}60`, background:"transparent", color:accentColor, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:8 }}>
+            + Ajouter un lieu
+          </button>
         </>}
 
         {step === 3 && <>
