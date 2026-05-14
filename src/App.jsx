@@ -2478,9 +2478,9 @@ function HomeScreen({ onNavigate }) {
           <div style={{ width:42, height:42, borderRadius:12, background:`${C.accentGold}1F`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🎁</div>
           <div style={{ flex:1, position:"relative" }}>
             <div style={{ fontSize:13.5, fontWeight:600, color:C.text, marginBottom:2 }}>
-              Parrainez & gagnez <span style={{ color:C.accentGold }}>50 €</span>
+              Parrainez & gagnez <span style={{ color:C.accentGold }}>1 mois Premium</span>
             </div>
-            <div style={{ fontSize:11.5, color:C.textSub }}>Pour vous et votre filleul</div>
+            <div style={{ fontSize:11.5, color:C.textSub }}>3 filleuls abonnés = 1 mois offert</div>
           </div>
           <span style={{ color:C.accentGold, fontSize:18 }}>›</span>
         </div>
@@ -4253,7 +4253,7 @@ function FAQScreen({ onBack, role }) {
     { q:"Quels documents dois-je fournir ?", a:"Pour être validé sur ALANE vous devez fournir : un KBIS ou extrait D1 (auto-entrepreneur), une attestation URSSAF à jour, une RC Professionnelle, et un RIB." },
     { q:"Comment changer ou upgrader mon abonnement ?", a:"Rendez-vous dans l'onglet Abonnement de votre espace prestataire. Vous pouvez changer de plan à tout moment, le changement est immédiat." },
     { q:"Que se passe-t-il si je refuse une mission ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la mission à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
-    { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage à un autre prestataire. Dès qu'il complète sa première mission, vous recevez tous les deux 50€ de bonus crédités sur votre prochaine facture." },
+    { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage à d'autres prestataires. Dès que 3 de vos filleuls souscrivent un abonnement Premium, vous recevez 1 mois Premium offert automatiquement." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ] : [
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des prestataires qualifiés dans votre secteur, vérifiés et assurés. Vous choisissez le profil, la date et l'horaire — ALANE s'occupe du reste." },
@@ -4316,9 +4316,16 @@ function ReferralScreen({ onBack }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:20, display:"block" }}>← Retour</button>
         <div style={{ fontSize:52, marginBottom:10 }}>🎁</div>
         <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Parrainez & gagnez</h2>
-        <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, margin:0 }}>50€ pour vous et votre filleul à la 1ère mission</p>
+        <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, margin:0 }}>1 mois Premium offert pour 3 filleuls abonnés</p>
       </div>
       <div style={{ padding:"24px 18px" }}>
+        {/* Récompense */}
+        <div style={{ background:`linear-gradient(135deg,${C.violet}22,${C.accentGold}15)`, border:`1px solid ${C.accentGold}55`, borderRadius:18, padding:"18px 16px", marginBottom:16, textAlign:"center" }}>
+          <div style={{ fontSize:32, marginBottom:6 }}>👑</div>
+          <div style={{ color:C.text, fontWeight:800, fontSize:15, marginBottom:4 }}>1 mois Premium offert</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>Dès que 3 de vos filleuls souscrivent un abonnement Premium, vous recevez 1 mois Premium gratuit.</div>
+        </div>
+        {/* Code */}
         <div style={{ background:"#0D1B3E", borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
           <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px" }}>Votre code de parrainage</p>
           <div style={{ background:`${C.accentGold}15`, border:`2px dashed ${C.accentGold}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
@@ -4329,12 +4336,12 @@ function ReferralScreen({ onBack }) {
           </Btn>
         </div>
         <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          💡 Votre filleul doit renseigner votre code lors de son inscription. Le bonus de 50€ est crédité après sa première mission complétée.
+          💡 Votre filleul renseigne votre code à l’inscription. Le mois offert est crédité dès que le 3ème filleul passe en Premium.
         </div>
         {[
           {i:"🔗", t:"Partagez votre code", s:"Via SMS, email ou réseaux sociaux"},
-          {i:"✅", t:"Votre filleul s’inscrit", s:"Il utilise votre code à l’inscription"},
-          {i:"💶", t:"Vous gagnez 50€ chacun", s:"Crédité après sa première mission"},
+          {i:"✅", t:"3 filleuls passent Premium", s:"Ils utilisent votre code à l’inscription"},
+          {i:"👑", t:"1 mois Premium offert", s:"Crédité automatiquement sur votre compte"},
         ].map((s,i)=>(
           <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:9, display:"flex", gap:12, alignItems:"center" }}>
             <div style={{ width:42, height:42, borderRadius:12, background:`${C.accentGold}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{s.i}</div>
@@ -8918,7 +8925,7 @@ export default function App() {
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12, letterSpacing:0.3 }}>Gestion</div>
             {[
               { icon:"📄", label:"Mes factures",      sub:"Télécharger mes justificatifs",    action:"invoice"       },
-              { icon:"🎁", label:"Parrainage",         sub:"50€ pour vous et votre filleul",  action:"referral"      },
+              { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
               { icon:"⚙️", label:"Paramètres",         sub:"Compte, sécurité, paiement",      action:"settings"      },
