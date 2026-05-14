@@ -1065,6 +1065,11 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
+      await fetch("/api/notify-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
+      }).catch(() => {});
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -1406,6 +1411,11 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
+      await fetch("/api/notify-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
+      }).catch(() => {});
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -1626,6 +1636,11 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
+      await fetch("/api/notify-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role }),
+      }).catch(() => {});
       await supabase.auth.signOut();
     }
     setLoading(false);
