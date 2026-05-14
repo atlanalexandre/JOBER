@@ -5278,6 +5278,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       const u=data?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
+      setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
       if(prof) setUserStatus(prof.status);
@@ -5306,6 +5307,21 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
             </div>
           ))}
         </div>
+        {/* Toggle disponibilité rapide */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px", marginTop:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ width:8, height:8, borderRadius:"50%", background:dispoRapide?C.success:"rgba(255,255,255,0.3)" }} />
+            <span style={{ color:C.text, fontSize:12, fontWeight:600 }}>
+              {dispoRapide ? "Disponible maintenant" : "Non disponible"}
+            </span>
+          </div>
+          <button onClick={()=>{ const v=!dispoRapide; setDispoRapide(v); supabase.auth.updateUser({data:{dispo_immediat:v}}); }}
+            style={{ width:44, height:24, borderRadius:12, border:"none", cursor:"pointer", position:"relative",
+              background:dispoRapide?C.success:"rgba(255,255,255,0.15)", transition:"background 0.2s" }}>
+            <div style={{ position:"absolute", top:3, left:dispoRapide?21:3, width:18, height:18, borderRadius:"50%",
+              background:C.white, transition:"left 0.2s" }} />
+          </button>
+        </div>
         {(() => {
           const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
           return (
@@ -5330,6 +5346,15 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
         {tab==="missions" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <UpgradeNudge onNavigate={onNavigate} />
+          {(planActuel==="premium"||planActuel==="elite") && (
+            <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:16 }}>⚡</span>
+              <div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Missions urgentes activées</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les missions urgentes de votre secteur.</div>
+              </div>
+            </div>
+          )}
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
