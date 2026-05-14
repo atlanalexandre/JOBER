@@ -240,6 +240,33 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "send_global_comm") {
+      const message = req.body.message || "";
+      if (!message.trim()) return res.status(400).json({ error: "Message requis" });
+
+      // Récupérer tous les prestataires approuvés
+      const [profilesRes, authRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+      ]);
+      const profiles = await profilesRes.json();
+      const authData = await authRes.json();
+      const authUsers = authData.users || [];
+      const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
+      const emails = authUsers.filter(u => ids.has(u.id)).map(u => u.email).filter(Boolean);
+
+      let sent = 0;
+      for (const email of emails) {
+        await sendEmail({
+          to: email,
+          subject: "📢 Communication de l'équipe ALANE",
+          html: emailHtml(`<p>Bonjour,</p><p>${message.replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
+        });
+        sent++;
+      }
+      return res.status(200).json({ success: true, sent });
+    }
+
     if (action === "send_test_email") {
       const adminEmail = process.env.ADMIN_EMAIL || "direction@alane.fr";
       await sendEmail({

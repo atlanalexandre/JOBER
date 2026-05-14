@@ -89,7 +89,7 @@ export default async function handler(req, res) {
               </table>`).join("")}
 
               <div style="text-align:center;margin-top:28px;">
-                <a href="https://alane-delta.vercel.app" style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">
+                <a href="https://www.alane.fr" style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">
                   Suivre ma mission →
                 </a>
               </div>
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
           <!-- Footer -->
           <tr>
             <td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;">
-              <p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="https://alane-delta.vercel.app" style="color:#7C6FE0;text-decoration:none;">alane-delta.vercel.app</a></p>
+              <p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </td>
           </tr>
         </table>
