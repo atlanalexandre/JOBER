@@ -1,4 +1,34 @@
-async function sendEmail({ to, subject, text }) {
+function emailHtml(content) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,Helvetica Neue,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
+        <tr>
+          <td style="background:#050E20;padding:28px 36px;text-align:center;">
+            <span style="font-size:28px;font-weight:800;letter-spacing:2px;">
+              <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
+            ${content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+async function sendEmail({ to, subject, html }) {
   const key  = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
   if (!key) return;
@@ -6,7 +36,7 @@ async function sendEmail({ to, subject, text }) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, text }),
+      body: JSON.stringify({ from, to: [to], subject, html }),
     });
     console.log("Resend bo-action:", await r.text());
   } catch (e) {
@@ -72,16 +102,24 @@ export default async function handler(req, res) {
       const userEmail = userData.email;
       if (userEmail) {
         if (status === "approved") {
+          const prenom = userData.user_metadata?.prenom || "";
           await sendEmail({
             to: userEmail,
-            subject: "Votre compte ALANE est activé !",
-            text: `Bonjour,\n\nVotre compte ALANE a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://www.alane.fr\n\nBienvenue sur ALANE !\nL'équipe ALANE`,
+            subject: "Bienvenue sur ALANE — Votre compte est activé ! 🎉",
+            html: emailHtml(`
+              <p>Bonjour${prenom ? ` <strong>${prenom}</strong>` : ""},</p>
+              <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
+              <p>Nous sommes ravis de vous accueillir sur la plateforme. Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
+              <p>Si vous avez la moindre question ou besoin d'aide pour démarrer, n'hésitez pas à contacter notre support directement depuis l'application — nous sommes là pour vous accompagner.</p>
+              <p style="text-align:center;margin:28px 0;"><a href="https://www.alane.fr" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
+            `),
           });
         } else {
           await sendEmail({
             to: userEmail,
             subject: "Votre demande de compte ALANE",
-            text: `Bonjour,\n\nNous avons examiné votre demande d'inscription mais ne pouvons pas l'activer pour le moment.\n\nPour plus d'informations, contactez notre support depuis l'application.\n\nL'équipe ALANE`,
+            html: emailHtml(`<p>Bonjour,</p><p>Nous avons examiné votre demande d'inscription mais ne sommes pas en mesure de l'activer pour le moment.</p><p>Pour plus d'informations, n'hésitez pas à contacter notre support depuis l'application.</p>`),
           });
         }
       }
@@ -91,6 +129,21 @@ export default async function handler(req, res) {
 
     if (action === "delete") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const reason = req.body.reason || "";
+
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+
+      if (userEmail) {
+        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${reason}</p>` : "";
+        await sendEmail({
+          to: userEmail,
+          subject: "Votre compte ALANE a été supprimé",
+          html: emailHtml(`<p>Bonjour,</p><p>Nous vous informons que votre compte <strong>ALANE</strong> a été supprimé par notre équipe d'administration.</p>${reasonBlock}<p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support depuis l'application.</p>`),
+        });
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -101,6 +154,74 @@ export default async function handler(req, res) {
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur suppression compte auth" });
       return res.status(200).json({ success: true });
+    }
+
+    if (action === "stats") {
+      const [profilesRes, missionsRes, ticketsRes, recentRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=status`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,role,status,created_at&order=created_at.desc&limit=6`, { headers }),
+      ]);
+
+      const profiles  = await profilesRes.json();
+      const missions  = await missionsRes.json();
+      const tickets   = await ticketsRes.json();
+      const recent    = await recentRes.json();
+
+      const p = Array.isArray(profiles) ? profiles : [];
+      const m = Array.isArray(missions) ? missions : [];
+      const t = Array.isArray(tickets)  ? tickets  : [];
+      const r = Array.isArray(recent)   ? recent   : [];
+
+      const clients      = p.filter(x => x.role === "client").length;
+      const prestataires = p.filter(x => x.role === "prestataire").length;
+      const pending      = p.filter(x => x.status === "pending").length;
+
+      const mOpen      = m.filter(x => x.status === "open").length;
+      const mAssigned  = m.filter(x => x.status === "assigned").length;
+      const mCompleted = m.filter(x => x.status === "completed").length;
+      const mClosed    = m.filter(x => x.status === "closed").length;
+      const mTotal     = m.length;
+      const tauxCompletion = mTotal > 0 ? Math.round((mCompleted / mTotal) * 100) : 0;
+      const caTotal    = m.filter(x => x.status === "completed")
+        .reduce((acc, x) => acc + (Number(x.montant_total) || 0), 0);
+
+      const ticketsOpen = t.filter(x => x.status === "open").length;
+
+      // Missions par secteur
+      const sectorMap = {};
+      m.forEach(x => {
+        if (!x.sector) return;
+        sectorMap[x.sector] = (sectorMap[x.sector] || 0) + 1;
+      });
+      const sectorTotal = Object.values(sectorMap).reduce((a,b)=>a+b, 0) || 1;
+      const SECTOR_META = {
+        logistique:   { label:"Logistique",   icon:"📦", color:"#81C784" },
+        btp:          { label:"BTP",           icon:"🏗️", color:"#FF8A65" },
+        restauration: { label:"Restauration",  icon:"🍽️", color:"#F06292" },
+        proprete:     { label:"Propreté",      icon:"🧹", color:"#4FC3F7" },
+        commercial:   { label:"Commercial",    icon:"💼", color:"#BA68C8" },
+        hotellerie:   { label:"Hôtellerie",    icon:"🏨", color:"#FFB74D" },
+        distribution: { label:"Distribution",  icon:"🛒", color:"#4DB6AC" },
+        divers:       { label:"Divers",        icon:"✨", color:"#7986CB" },
+      };
+      const sectors = Object.entries(sectorMap)
+        .sort((a,b) => b[1]-a[1])
+        .map(([id, count]) => ({
+          id, ...SECTOR_META[id],
+          missions: count,
+          pct: Math.round((count / sectorTotal) * 100),
+        }));
+
+      return res.status(200).json({
+        users:        { clients, prestataires, total: clients + prestataires, pending },
+        missions:     { total: mTotal, open: mOpen, assigned: mAssigned, terminees: mCompleted, closed: mClosed, tauxCompletion },
+        finance:      { caTotal: Math.round(caTotal * 100) / 100 },
+        tickets:      { open: ticketsOpen, total: t.length },
+        sectors,
+        recentUsers:  r,
+      });
     }
 
     if (action === "list_tickets") {

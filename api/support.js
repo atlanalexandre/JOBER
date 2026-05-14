@@ -1,3 +1,33 @@
+function emailHtml(content) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,Helvetica Neue,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
+        <tr>
+          <td style="background:#050E20;padding:28px 36px;text-align:center;">
+            <span style="font-size:28px;font-weight:800;letter-spacing:2px;">
+              <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
+            ${content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -45,8 +75,15 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             from: RESEND_FROM,
             to: [ADMIN_EMAIL],
-            subject: `[ALANE Support] ${subject}`,
-            text: `Nouveau ticket support\n\nDe : ${userName||"Inconnu"} (${userEmail||"email inconnu"})\nSujet : ${subject}\n\nMessage :\n${message}`,
+            subject: `[Support] ${subject}`,
+            html: emailHtml(`
+              <p>Nouveau ticket support reçu.</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;width:120px;">De</td><td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600;">${userName||"Inconnu"} (${userEmail||"email inconnu"})</td></tr>
+                <tr><td style="padding:8px 0;color:#888;">Sujet</td><td style="padding:8px 0;font-weight:600;">${subject}</td></tr>
+              </table>
+              <div style="background:#f8f8fb;border-left:3px solid #7C6FE0;padding:14px 16px;border-radius:0 8px 8px 0;margin-top:16px;white-space:pre-wrap;">${message}</div>
+            `),
           }),
         });
         const emailData = await emailRes.json();

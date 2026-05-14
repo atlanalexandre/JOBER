@@ -46,6 +46,11 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
 }
 
+function travelTimeStr(km) {
+  const mins = Math.round((km / 30) * 60 / 5) * 5;
+  return mins < 60 ? `~${mins} min` : `~${Math.round(mins / 60)}h`;
+}
+
 // Table de correspondance CP → [lat, lng] pour les 20 premiers départements
 const CP_COORDS = {
   "75":[ 48.8566,  2.3522], "92":[ 48.8924,  2.2540], "93":[ 48.9156,  2.4825],
@@ -657,8 +662,8 @@ const Btn = ({ children, onClick, variant="primary", full, disabled, style:s, cl
   );
 };
 
-const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, disabled=false }) => (
-  <div style={{ marginBottom:16 }}>
+const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, disabled=false, autoComplete, name, inputMode }) => (
+  <div style={{ marginBottom:16, minWidth:0 }}>
     {label && (
       <label style={{
         display:"block", fontSize:11, color:C.textSub,
@@ -679,6 +684,9 @@ const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, d
         value={value||""}
         onChange={onChange}
         disabled={disabled}
+        autoComplete={autoComplete}
+        name={name}
+        inputMode={inputMode}
         style={{
           width:"100%",
           padding: icon ? "13px 14px 13px 44px" : "13px 16px",
@@ -1342,18 +1350,29 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [societeNom, setSocieteNom] = useState("");
   const [kbisNum, setKbisNum] = useState("");
   const [secteursBesoins, setSecteursBesoins] = useState([]);
+  const [metiersBesoins, setMetiersBesoins] = useState([]);
   const [frequence, setFrequence] = useState("");
   const [adresse, setAdresse] = useState("");
   const [codePostal, setCodePostal] = useState("");
   const [ville, setVille] = useState("");
+  const [lieuxIntervention, setLieuxIntervention] = useState([{ adresse:"", codePostal:"", ville:"" }]);
   const [volumeHoraire, setVolumeHoraire] = useState("");
   const [rib, setRib] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  const toggleSecteur = id =>
-    setSecteursBesoins(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  const toggleSecteur = id => {
+    setSecteursBesoins(prev => {
+      const next = prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id];
+      const metiersValides = next.flatMap(s => Object.keys(METIERS_TARIFS[s] || {}));
+      setMetiersBesoins(m => m.filter(x => metiersValides.includes(x)));
+      return next;
+    });
+  };
+
+  const toggleMetier = id =>
+    setMetiersBesoins(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
 
   const validateStep = () => {
     if (step === 1) {
@@ -1370,6 +1389,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!ville.trim())           return "Indiquez votre ville";
       if (!codePostal.trim())      return "Indiquez votre code postal";
       if (!volumeHoraire)          return "Indiquez votre volume horaire estimé";
+      if (lieuxIntervention.some(l => !l.adresse.trim() || !l.ville.trim())) return "Remplissez tous les lieux d'intervention (adresse et ville)";
     }
     if (step === 3) {
       if (!email || !password) return "Email et mot de passe requis";
@@ -1394,7 +1414,8 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         role: "client", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
         type_compte: typeCompte, societe_nom: societeNom||null, kbis: kbisNum||null,
-        secteurs_besoins: secteursBesoins, frequence_besoins: frequence,
+        secteurs_besoins: secteursBesoins, metiers_besoins: metiersBesoins, frequence_besoins: frequence,
+        lieux_intervention: lieuxIntervention.filter(l=>l.adresse.trim()||l.ville.trim()),
         adresse: adresse||null, code_postal: codePostal||null, ville,
         volume_horaire: volumeHoraire,
         rib: rib.replace(/\s/g,"") || null,
@@ -1479,6 +1500,27 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
+          {secteursBesoins.length > 0 && <>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Métiers recherchés <span style={{ color:C.textMuted, textTransform:"none", letterSpacing:0 }}>(plusieurs choix possibles)</span></label>
+            {secteursBesoins.map(sid => {
+              const s = SECTORS.find(x=>x.id===sid);
+              const metiers = Object.keys(METIERS_TARIFS[sid] || {});
+              if (!metiers.length) return null;
+              return (
+                <div key={sid} style={{ marginBottom:14 }}>
+                  <div style={{ color:s?.color||accentColor, fontSize:12, fontWeight:700, marginBottom:6 }}>{s?.icon} {s?.label}</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {metiers.map(m => (
+                      <button key={m} onClick={()=>toggleMetier(m)} style={{ padding:"8px 14px", borderRadius:20, border:`1.5px solid ${metiersBesoins.includes(m)?(s?.color||accentColor):C.border}`, background:metiersBesoins.includes(m)?`${s?.color||accentColor}20`:"rgba(255,255,255,0.03)", color:metiersBesoins.includes(m)?(s?.color||accentColor):C.textSub, fontWeight:metiersBesoins.includes(m)?700:400, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+                        {metiersBesoins.includes(m) && "✓ "}{m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ height:8 }} />
+          </>}
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
@@ -1495,10 +1537,10 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} />
+          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} autoComplete="off" />
           <div style={{ display:"flex", gap:10 }}>
-            <div style={{ flex:1 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} /></div>
-            <div style={{ flex:2 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} /></div>
+            <div style={{ flex:1, minWidth:0 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} autoComplete="off" inputMode="numeric" /></div>
+            <div style={{ flex:2, minWidth:0 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} autoComplete="off" /></div>
           </div>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Volume horaire estimé *</label>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -1515,6 +1557,27 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
+
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, marginTop:20, textTransform:"uppercase", letterSpacing:0.8 }}>Lieux d'intervention *</label>
+          <p style={{ color:C.textMuted, fontSize:12, margin:"0 0 12px" }}>Indiquez où le prestataire devra intervenir (plusieurs adresses possibles).</p>
+          {lieuxIntervention.map((lieu, i) => (
+            <div key={i} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:10, position:"relative" }}>
+              {lieuxIntervention.length > 1 && (
+                <button onClick={()=>setLieuxIntervention(prev=>prev.filter((_,j)=>j!==i))} style={{ position:"absolute", top:10, right:10, background:"transparent", border:"none", color:"rgba(242,94,94,0.7)", fontSize:16, cursor:"pointer", lineHeight:1 }}>✕</button>
+              )}
+              <Input label={`Adresse ${lieuxIntervention.length > 1 ? i+1 : ""}`} placeholder="12 rue de la Paix" icon="📍"
+                value={lieu.adresse} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:v}:l)); }} autoComplete="off" />
+              <div style={{ display:"flex", gap:10 }}>
+                <div style={{ flex:1, minWidth:0 }}><Input label="Code postal" placeholder="75001"
+                  value={lieu.codePostal} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,codePostal:v}:l)); }} autoComplete="off" inputMode="numeric" /></div>
+                <div style={{ flex:2, minWidth:0 }}><Input label="Ville" placeholder="Paris"
+                  value={lieu.ville} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,ville:v}:l)); }} autoComplete="off" /></div>
+              </div>
+            </div>
+          ))}
+          <button onClick={()=>setLieuxIntervention(prev=>[...prev,{adresse:"",codePostal:"",ville:""}])} style={{ width:"100%", padding:"11px", borderRadius:r, border:`1.5px dashed ${accentColor}60`, background:"transparent", color:accentColor, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:8 }}>
+            + Ajouter un lieu
+          </button>
         </>}
 
         {step === 3 && <>
@@ -2244,12 +2307,15 @@ function HomeScreen({ onNavigate }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
   const { isDesktop } = useResponsive();
-  const tier = getCashbackTier(INITIAL_WALLET.missionsThisMonth);
+  const { providers, loading: providersLoading } = useProviders();
+  const walletMissions = 0;
+  const walletBalance  = 0;
+  const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
-  const missionsToNext = nextTier ? nextTier.min - INITIAL_WALLET.missionsThisMonth : 0;
+  const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
   const tierProgress = nextTier
-    ? Math.min(100, Math.max(8, (INITIAL_WALLET.missionsThisMonth / nextTier.min) * 100))
-    : 100;
+    ? Math.min(100, Math.max(8, (walletMissions / nextTier.min) * 100))
+    : 8;
 
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{
@@ -2308,7 +2374,9 @@ function HomeScreen({ onNavigate }) {
           qu'il vous faut.
         </h1>
         <p style={{ marginTop:10, fontSize:13, color:C.textSub, lineHeight:1.5, maxWidth:300 }}>
-          Plus de {PROVIDERS.length} prestataires vérifiés, prêts à intervenir aujourd'hui.
+          {providers.length > 0
+            ? <>Plus de {providers.length} prestataire{providers.length > 1 ? "s" : ""} vérifié{providers.length > 1 ? "s" : ""}, prêt{providers.length > 1 ? "s" : ""} à intervenir.</>
+            : <>Rejoignez la plateforme ALANE et accédez aux meilleurs prestataires.</>}
         </p>
       </div>
 
@@ -2349,7 +2417,7 @@ function HomeScreen({ onNavigate }) {
 
           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:14 }}>
             <span style={{ fontFamily:font.display, fontSize:38, fontWeight:700, color:"#fff", letterSpacing:-1, lineHeight:1 }}>
-              {INITIAL_WALLET.balance.toFixed(2).replace(".", ",")}
+              {walletBalance.toFixed(2).replace(".", ",")}
             </span>
             <span style={{ fontSize:18, color:"rgba(255,255,255,0.7)", fontWeight:500 }}>€</span>
           </div>
@@ -2418,7 +2486,7 @@ function HomeScreen({ onNavigate }) {
               <div style={{ position:"absolute", top:0, left:0, right:0, height:34, background:`radial-gradient(60% 100% at 50% 0%, ${s.color}25 0%, transparent 100%)`, pointerEvents:"none" }} />
               <div style={{ fontSize:22, marginBottom:4, position:"relative" }}>{s.icon}</div>
               <div style={{ fontSize:9.5, fontWeight:600, color:C.text, letterSpacing:0.3, textTransform:"uppercase", lineHeight:1.2, position:"relative" }}>{s.label}</div>
-              <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>{s.count} pros</div>
+              <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>{providers.filter(p=>p.sector===s.id).length} pros</div>
             </div>
           ))}
         </div>
@@ -2434,49 +2502,59 @@ function HomeScreen({ onNavigate }) {
           <span onClick={()=>onNavigate("search_filters")} style={{ fontSize:12, color:violetLite, fontWeight:600, cursor:"pointer" }}>Voir tout ›</span>
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
-          {PROVIDERS.filter(p=>p.available).slice(0,3).map((p,i)=>(
-            <div key={p.id} onClick={()=>onNavigate("profile",p)}
-              className="card-hover"
-              style={{
-                background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`,
-                border:`1px solid ${C.border}`,
-                borderRadius:16, padding:13,
-                display:"flex", gap:12, alignItems:"center",
-                cursor:"pointer", position:"relative", overflow:"hidden",
-                animationDelay:`${i*0.08}s`,
-              }}>
-              <div style={{
-                width:54, height:54, borderRadius:r,
-                background:`linear-gradient(135deg, ${p.color}40, ${p.color}15)`,
-                border:`1px solid ${p.color}40`,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:26, flexShrink:0, position:"relative",
-              }}>
-                {p.avatar}
-                <div style={{ position:"absolute", bottom:-2, right:-2, width:14, height:14, borderRadius:"50%", background:C.success, border:`2.5px solid ${C.bgCard}`, boxShadow:`0 0 8px ${C.success}` }} />
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                  <span style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{p.name}</span>
-                  <span style={{ fontSize:11, color:violetLite }}>✓</span>
-                </div>
-                <div style={{ fontSize:11.5, color:C.textSub, marginBottom:5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.jobTitle||p.role}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:C.textMuted }}>
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
-                    <Stars rating={p.rating} size={10}/>
-                    <span style={{ color:C.text, fontWeight:600 }}>{p.rating}</span>
-                    <span>({p.reviews})</span>
-                  </span>
-                  <span>·</span>
-                  <span>{p.distance}</span>
-                </div>
-              </div>
-              <div style={{ textAlign:"right", flexShrink:0 }}>
-                <div style={{ fontFamily:font.display, fontWeight:700, fontSize:15, color:violetLite, lineHeight:1 }}>{p.hourlyRate}</div>
-                <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{p.responseTime}</div>
-              </div>
+          {providersLoading ? (
+            <div style={{ background:`${C.bgCard}`, border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
+              <div style={{ color:C.textMuted, fontSize:13 }}>Chargement…</div>
             </div>
-          ))}
+          ) : providers.filter(p=>p.available).length === 0 ? (
+            <div style={{ background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`, border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 20px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>👷</div>
+              <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:6 }}>Bientôt disponible</div>
+              <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>Les premiers prestataires ALANE arrivent très prochainement.</div>
+            </div>
+          ) : (
+            providers.filter(p=>p.available).slice(0,3).map((p,i)=>(
+              <div key={p.id} onClick={()=>onNavigate("profile",p)}
+                className="card-hover"
+                style={{
+                  background:`linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgCardAlt} 100%)`,
+                  border:`1px solid ${C.border}`,
+                  borderRadius:16, padding:13,
+                  display:"flex", gap:12, alignItems:"center",
+                  cursor:"pointer", position:"relative", overflow:"hidden",
+                  animationDelay:`${i*0.08}s`,
+                }}>
+                <div style={{
+                  width:54, height:54, borderRadius:r,
+                  background:`linear-gradient(135deg, ${p.color}40, ${p.color}15)`,
+                  border:`1px solid ${p.color}40`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:26, flexShrink:0, position:"relative",
+                }}>
+                  {p.avatar}
+                  <div style={{ position:"absolute", bottom:-2, right:-2, width:14, height:14, borderRadius:"50%", background:C.success, border:`2.5px solid ${C.bgCard}`, boxShadow:`0 0 8px ${C.success}` }} />
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                    <span style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{p.name}</span>
+                    <span style={{ fontSize:11, color:violetLite }}>✓</span>
+                  </div>
+                  <div style={{ fontSize:11.5, color:C.textSub, marginBottom:5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.jobTitle}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:C.textMuted }}>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
+                      <Stars rating={p.rating} size={10}/>
+                      <span style={{ color:C.text, fontWeight:600 }}>{p.rating || "—"}</span>
+                    </span>
+                    {p.code_postal && <><span>·</span><span>📍 {p.code_postal}</span></>}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <div style={{ fontFamily:font.display, fontWeight:700, fontSize:15, color:violetLite, lineHeight:1 }}>{p.hourlyRate}</div>
+                  <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>HT/h</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -2537,7 +2615,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
       {/* Sections par secteur */}
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
-          const sectorProviders = PROVIDERS.filter(p=>p.sector===sector.id);
+          const sectorProviders = realProviders.length > 0 ? realProviders.filter(p=>p.sector===sector.id) : PROVIDERS.filter(p=>p.sector===sector.id);
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
               {/* Bannière secteur cliquable uniquement */}
@@ -2545,7 +2623,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
                 <div style={{ position:"absolute", right:-10, top:-10, fontSize:64, opacity:0.25 }}>{sector.banner}</div>
                 <div style={{ position:"absolute", right:14, bottom:14, fontSize:36 }}>{sector.icon}</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:18 }}>{sector.label}</div>
-                <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sector.count} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
+                <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sectorProviders.length} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
                 <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les prestataires →</Badge></div>
               </div>
             </div>
@@ -2558,9 +2636,42 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
 function useProviders() {
-  // Prestataires fictifs uniquement pour la présentation
-  // Repasser sur /api/prestataires après la démo pour charger les vrais inscrits
-  return { providers: PROVIDERS, loading: false };
+  const [providers, setProviders] = useState([]);
+  const [loading, setLoading]     = useState(true);
+  useEffect(() => {
+    fetch("/api/prestataires")
+      .then(r => r.json())
+      .then(({ prestataires = [] }) => {
+        const mapped = prestataires.map(p => {
+          const sectorInfo = SECTORS.find(s => s.id === p.secteur);
+          const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
+          return {
+            id:           p.id,
+            name:         p.name,
+            prenom:       p.prenom,
+            nom:          p.nom,
+            sector:       p.secteur,
+            jobTitle:     p.metier,
+            rateNum,
+            hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
+            available:    p.dispo_immediat !== false,
+            dispon_jours: p.dispon_jours || [],
+            code_postal:  p.code_postal,
+            rating:       0,
+            reviews:      0,
+            distance:     "—",
+            responseTime: "—",
+            avatar:       sectorInfo?.icon || "👷",
+            color:        sectorInfo?.color || "#7C6FE0",
+            niveau:       p.niveau,
+          };
+        });
+        setProviders(mapped);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+  return { providers, loading };
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
@@ -2573,7 +2684,10 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
   const [filterNoteMin, setFilterNoteMin] = useState(0);
   const [sortBy, setSortBy] = useState("rating");
   const [showFilters, setShowFilters] = useState(false);
+  const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
+  const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
   const { providers } = useProviders();
 
   const allServices = (METIERS[s.id]||[]).map(name => {
@@ -2588,6 +2702,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
   const filteredProviders = providers
     .filter(p => p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob))
     .filter(p => !filterDispo || p.available)
+    .filter(p => !selectedDay || (p.dispon_jours||[]).includes(selectedDay))
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
     .sort((a,b) => {
@@ -2722,6 +2837,12 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
             </div>
             {showFilters && (
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la mission</div>
+                  <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)}
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
+                  {selectedDay && <div style={{ color:s.color, fontSize:11, fontWeight:700, marginTop:4 }}>📅 {selectedDay} — uniquement les prestataires disponibles ce jour</div>}
+                </div>
                 <div onClick={()=>setFilterDispo(!filterDispo)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, cursor:"pointer" }}>
                   <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>Disponible maintenant uniquement</span>
                   <div style={{ width:40, height:22, borderRadius:11, background:filterDispo?s.color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
@@ -2743,8 +2864,8 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
                     ))}
                   </div>
                 </div>
-                {(filterDispo||filterNoteMin>0||filterTarifMax<50) && (
-                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate) && (
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
                 )}
               </div>
             )}
@@ -2839,7 +2960,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                           <Stars rating={p.rating} size={12}/>
-                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords) return haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1])+" km"; } return p.distance||"—"; })()} · {p.responseTime}</span>
+                          <span style={{ color:C.textSub, fontSize:11 }}>{(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords){ const km=haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1]); return `🚗 ${travelTimeStr(km)} · ${km} km`; } } return p.distance||"—"; })()}</span>
                         </div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -5281,6 +5402,173 @@ function UpgradeNudge({ onNavigate }) {
   );
 }
 
+// ── PRESTA MISSIONS FEED ─────────────────────────────────────────
+function PMissionsTab({ onNavigate }) {
+  const [tab, setTab]             = useState("disponibles");
+  const [missions, setMissions]   = useState([]);
+  const [candidatures, setCandidatures] = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [userId, setUserId]       = useState(null);
+  const [userMeta, setUserMeta]   = useState({});
+  const [applying, setApplying]   = useState(null);
+  const [applied, setApplied]     = useState(new Set());
+  const [message, setMessage]     = useState("");
+  const [showMsg, setShowMsg]     = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if (!u) return;
+      setUserId(u.id);
+      const meta = u.user_metadata || {};
+      setUserMeta(meta);
+      const sector = meta.secteur || meta.sector || null;
+      const [r1, r2] = await Promise.all([
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"list_open", sector }) }),
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"mes_candidatures", prestataire_id: u.id }) }),
+      ]);
+      const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+      setMissions(Array.isArray(d1) ? d1 : []);
+      const cands = Array.isArray(d2) ? d2 : [];
+      setCandidatures(cands);
+      // pré-remplir applied avec les missions déjà postulées
+      setApplied(new Set(cands.map(c => c.mission_id)));
+      setLoading(false);
+    });
+  }, []);
+
+  const handleApply = async (missionId) => {
+    if (!userId) return;
+    setApplying(missionId);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "apply", mission_id: missionId, prestataire_id: userId, message: message.trim() || null }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setApplied(prev => new Set([...prev, missionId]));
+      setShowMsg(null);
+      setMessage("");
+    }
+    setApplying(null);
+  };
+
+  const metier = userMeta.metier || userMeta.job_title || null;
+  const matched = missions.filter(m => !metier || !m.metier || m.metier === metier);
+
+  const candStatusLabel = { pending:"En attente", accepted:"Acceptée ✅", rejected:"Refusée ❌" };
+  const candStatusColor = { pending:C.accentGold, accepted:C.success, rejected:"#F25E5E" };
+  const missionStatusLabel = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
+
+  if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
+
+  return (
+    <div>
+      {/* Onglets */}
+      <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
+        {[{id:"disponibles",l:"Missions disponibles"},{id:"candidatures",l:`Mes candidatures${candidatures.length>0?` (${candidatures.length})`:""}`}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
+        ))}
+      </div>
+
+      {/* Missions disponibles */}
+      {tab === "disponibles" && (
+        matched.length === 0 ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil.</div>
+          </div>
+        ) : matched.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const isApplied = applied.has(m.id);
+          return (
+            <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>
+                  {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
+                </div>
+              </div>
+              {showMsg === m.id && !isApplied && (
+                <div style={{ marginBottom:10 }}>
+                  <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Message de candidature (optionnel)…"
+                    style={{ width:"100%", minHeight:60, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", color:C.text, fontSize:12, fontFamily:"inherit", resize:"none", boxSizing:"border-box" }} />
+                </div>
+              )}
+              <div style={{ display:"flex", gap:8 }}>
+                {!isApplied && showMsg !== m.id && (
+                  <button onClick={()=>setShowMsg(m.id)} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.violet}22`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ✉️ Postuler
+                  </button>
+                )}
+                {showMsg === m.id && !isApplied && (
+                  <>
+                    <button onClick={()=>{ setShowMsg(null); setMessage(""); }} style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button onClick={()=>handleApply(m.id)} disabled={applying===m.id} style={{ flex:2, padding:"9px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      {applying===m.id ? "…" : "Envoyer ma candidature"}
+                    </button>
+                  </>
+                )}
+                {isApplied && (
+                  <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>✅ Candidature envoyée</div>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Mes candidatures */}
+      {tab === "candidatures" && (
+        candidatures.length === 0 ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📝</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune candidature</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Vos candidatures apparaîtront ici.</div>
+          </div>
+        ) : candidatures.map(c => {
+          const m = c.mission;
+          const sector = SECTORS.find(s => s.id === m?.sector);
+          return (
+            <div key={c.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${candStatusColor[c.status]||C.border}30` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m?.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m?.date} · {m?.hours}h</div>
+                  {m?.tarif_horaire > 0 && <div style={{ color:C.textSub, fontSize:12 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>Mission : <span style={{ color:C.textSub }}>{missionStatusLabel[m?.status]||m?.status}</span></div>
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <span style={{ color:candStatusColor[c.status]||C.textMuted, fontWeight:700, fontSize:12 }}>{candStatusLabel[c.status]||c.status}</span>
+                  <div style={{ color:C.textMuted, fontSize:10, marginTop:2 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+                </div>
+              </div>
+              {c.message && <div style={{ color:C.textMuted, fontSize:12, marginTop:8, fontStyle:"italic", borderTop:`1px solid ${C.border}`, paddingTop:8 }}>"{c.message}"</div>}
+              {c.status === "accepted" && m?.status === "assigned" && (
+                <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>🎉 Vous avez été sélectionné !</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Préparez-vous pour la mission le {m?.date}.</div>
+                </div>
+              )}
+              {c.status === "accepted" && m?.status === "completed" && (
+                <div style={{ marginTop:10, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}30`, borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>✅ Mission terminée</div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
@@ -5382,16 +5670,8 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
             </div>
           )}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions proposées</p>
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil et votre secteur.</div>
-          </div>
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"20px 16px", textAlign:"center" }}>
-            <div style={{ color:C.textMuted, fontSize:12 }}>Aucune mission en cours</div>
-          </div>
+          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions disponibles</p>
+          <PMissionsTab onNavigate={onNavigate} />
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="docs" && <>
@@ -6165,46 +6445,23 @@ function LitigeRow({ l }) {
 const BO_PIN = "1234";
 
 // Données simulées backoffice
-const BO_DATA = {
-  users:        { clients:142, prestataires:89, total:231, newThisWeek:14 },
-  missions:     { total:387, enCours:23, terminees:341, annulees:23, tauxCompletion:88 },
-  finance:      { caTotal:48320, commissionAlane:8920, escrowEnAttente:3240, litiges:3 },
-  abonnements:  { free:54, premium:28, elite:7, newThisWeek:6, churnThisMonth:2 },
-  noteMoyenne:  4.7,
-  tauxReponse:  94,
-  sectors: [
-    { id:"logistique",   label:"Logistique",   icon:"📦", missions:98,  color:"#81C784", pct:25 },
-    { id:"btp",          label:"BTP",           icon:"🏗️", missions:87,  color:"#FF8A65", pct:22 },
-    { id:"restauration", label:"Restauration",  icon:"🍽️", missions:72,  color:"#F06292", pct:19 },
-    { id:"proprete",     label:"Propreté",      icon:"🧹", missions:58,  color:"#4FC3F7", pct:15 },
-    { id:"commercial",   label:"Commercial",    icon:"💼", missions:34,  color:"#BA68C8", pct:9  },
-    { id:"hotellerie",   label:"Hôtellerie",    icon:"🏨", missions:21,  color:"#FFB74D", pct:5  },
-    { id:"distribution", label:"Distribution",  icon:"🛒", missions:12,  color:"#4DB6AC", pct:3  },
-    { id:"divers",       label:"Divers",        icon:"✨", missions:5,   color:"#7986CB", pct:2  },
-  ],
-  pendingDocs: [
-    { name:"Sophie Martin",   role:"Agent de propreté",   sector:"Propreté",    docs:6, missing:1, avatar:"👩" },
-    { name:"Karim Benali",    role:"Cariste CACES 1",     sector:"Logistique",  docs:5, missing:2, avatar:"👨" },
-    { name:"Lucie Fontaine",  role:"Serveuse",            sector:"Restauration",docs:7, missing:0, avatar:"👩" },
-    { name:"Marc Dubois",     role:"Électricien N2",      sector:"BTP",         docs:4, missing:3, avatar:"👨" },
-  ],
-  recentUsers: [
-    { name:"Entreprise ABC",   type:"client",      date:"Aujourd’hui",  status:"actif" },
-    { name:"Thomas Saumur",    type:"prestataire", date:"Aujourd’hui",  status:"validé" },
-    { name:"Marie Leclerc",    type:"client",      date:"Hier",         status:"actif" },
-    { name:"Karim Benali",     type:"prestataire", date:"Hier",         status:"en attente" },
-    { name:"Société XYZ",      type:"client",      date:"Il y a 2j",    status:"actif" },
-    { name:"Julie Evan",       type:"prestataire", date:"Il y a 2j",    status:"validé" },
-  ],
-  alerts: [
-    { icon:"⚠️", text:"3 litiges en attente de traitement",      color:"#E74C3C", urgent:true  },
-    { icon:"📋", text:"4 dossiers prestataires à valider",        color:"#F39C12", urgent:true  },
-    { icon:"💶", text:"2 paiements escrow bloqués depuis >48h",   color:"#F39C12", urgent:true  },
-    { icon:"🚨", text:"1 signalement utilisateur à examiner",     color:"#E74C3C", urgent:false },
-  ],
-  weeklyCA: [12400, 8900, 11200, 9800, 13400, 10200, 14800],
-  weeklyMissions: [42, 31, 38, 29, 45, 36, 52],
-};
+function useBoData() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/bo-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stats" }),
+    })
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return { data, loading };
+}
 
 // Mini bar chart component
 const MiniBar = ({ data, color, height=40 }) => {
@@ -6239,7 +6496,7 @@ const DonutChart = ({ sectors, size=120 }) => {
         offset += dash;
         return el;
       })}
-      <text x={cx} y={cy-6}  textAnchor="middle" fontSize="14" fontWeight="900" fill="#1A1F36">{BO_DATA.missions.total}</text>
+      <text x={cx} y={cy-6}  textAnchor="middle" fontSize="14" fontWeight="900" fill="#1A1F36">{sectors.reduce((a,s)=>a+s.missions,0)||""}</text>
       <text x={cx} y={cy+10} textAnchor="middle" fontSize="9"  fill="#8A93A8">missions</text>
     </svg>
   );
@@ -6309,6 +6566,8 @@ function BOComptes() {
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
   const [verifying, setVerifying] = useState(null);
+  const [deleteModal, setDeleteModal] = useState(null); // { profileId, name, email }
+  const [deleteReason, setDeleteReason] = useState("");
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -6338,11 +6597,18 @@ function BOComptes() {
 
   useEffect(()=>{ load(); },[]);
 
-  const handleAction = async (profileId, action) => {
+  const handleAction = async (profileId, action, reason) => {
     setActioning(profileId+action);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId }) });
+    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId, reason }) });
     setActioning(null);
     load();
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal) return;
+    await handleAction(deleteModal.profileId, "delete", deleteReason.trim());
+    setDeleteModal(null);
+    setDeleteReason("");
   };
 
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
@@ -6453,12 +6719,36 @@ function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
-            <button onClick={()=>{ if(window.confirm(`Supprimer définitivement le compte de ${(p.prenom||""+" "+p.nom||"").trim()||p.email} ?`)) handleAction(p.id,"delete"); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+            <button onClick={()=>{ setDeleteReason(""); setDeleteModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               {actioning===p.id+"delete" ? "…" : "🗑️"}
             </button>
           </div>
         </div>
       ))}
+
+      {deleteModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:400, border:"1px solid rgba(242,94,94,0.3)" }}>
+            <h3 style={{ color:"#F25E5E", fontSize:15, fontWeight:800, margin:"0 0 8px" }}>Supprimer le compte</h3>
+            <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:"0 0 16px" }}>
+              Vous allez supprimer définitivement le compte de <strong style={{ color:"#fff" }}>{deleteModal.name}</strong>. Un email sera envoyé à cette personne.
+            </p>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>RAISON (optionnelle)</label>
+            <textarea
+              value={deleteReason}
+              onChange={e=>setDeleteReason(e.target.value)}
+              placeholder="Ex : documents non conformes, comportement inapproprié..."
+              style={{ width:"100%", minHeight:80, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }}
+            />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={()=>setDeleteModal(null)} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button onClick={handleDeleteConfirm} disabled={!!actioning} style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+                {actioning ? "…" : "Supprimer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6528,9 +6818,88 @@ function BOSupport() {
   );
 }
 
-function BackofficeDashboard({ onBack }) {
+function BOTest({ onNavigate }) {
+  const clientScreens = [
+    { id:"home",             label:"Accueil client",        icon:"🏠" },
+    { id:"catalogue",        label:"Catalogue secteurs",    icon:"🗂️" },
+    { id:"search_filters",   label:"Recherche filtres",     icon:"🔍" },
+    { id:"dashboard",        label:"Dashboard client",      icon:"📊" },
+    { id:"mission_history",  label:"Historique missions",   icon:"📋" },
+    { id:"cashback",         label:"Wallet cashback",       icon:"💰" },
+    { id:"notifications",    label:"Notifications",         icon:"🔔" },
+    { id:"favorites",        label:"Favoris",               icon:"❤️" },
+    { id:"mission_request",  label:"Créer mission",         icon:"➕" },
+    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
+  ];
+  const prestaScreens = [
+    { id:"p_home",           label:"Accueil prestataire",   icon:"🏠" },
+    { id:"p_missions",       label:"Missions dispo",        icon:"📦" },
+    { id:"p_dashboard",      label:"Dashboard presta",      icon:"📊" },
+    { id:"calendar",         label:"Calendrier",            icon:"📅" },
+    { id:"abonnement_presta",label:"Abonnement",            icon:"💳" },
+    { id:"doc_upload",       label:"Documents",             icon:"📎" },
+    { id:"presta_profile_edit",label:"Modifier profil",     icon:"✏️" },
+    { id:"presta_pointage",  label:"Pointage",              icon:"⏱️" },
+  ];
+  const sharedScreens = [
+    { id:"faq",              label:"FAQ",                   icon:"❓" },
+    { id:"legal",            label:"Mentions légales",      icon:"📜" },
+    { id:"contact_support",  label:"Support",               icon:"🎧" },
+    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
+  ];
+
+  const Btn = ({ s, role }) => (
+    <button onClick={()=>onNavigate(s.id, role)} style={{
+      display:"flex", alignItems:"center", gap:8, padding:"10px 12px",
+      background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10,
+      color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit",
+      fontWeight:500, textAlign:"left", width:"100%",
+    }}>
+      <span style={{ fontSize:16 }}>{s.icon}</span>
+      <span>{s.label}</span>
+      <span style={{ marginLeft:"auto", fontSize:10, color:C.textMuted, fontFamily:"monospace" }}>{s.id}</span>
+    </button>
+  );
+
+  const Section = ({ title, color, screens, role }) => (
+    <div style={{ marginBottom:22 }}>
+      <div style={{ fontWeight:700, fontSize:13, color, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
+        <div style={{ width:3, height:14, background:color, borderRadius:2 }} />
+        {title}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {screens.map(s => <Btn key={s.id} s={s} role={role} />)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
+        <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>Mode test</div>
+        <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>
+          Navigue vers n'importe quel écran sans compte. Le rôle est automatiquement simulé.
+          Utilise "← Retour app" dans le header pour revenir au BO.
+        </div>
+      </div>
+      <Section title="Écrans Client" color="#F0B429" screens={clientScreens} role="client" />
+      <Section title="Écrans Prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
+      <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role={null} />
+    </div>
+  );
+}
+
+function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
-  const d = BO_DATA;
+  const { data: boData, loading: boLoading } = useBoData();
+  const d = boData || {
+    users:    { clients:0, prestataires:0, total:0, pending:0 },
+    missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
+    finance:  { caTotal:0 },
+    tickets:  { open:0, total:0 },
+    sectors:  [],
+    recentUsers: [],
+  };
 
   const KPICard = ({ icon, label, value, sub, color=C.violet, onClick }) => (
     <div onClick={onClick} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px 14px", boxShadow:"0 4px 16px rgba(0,0,0,0.5)", cursor:onClick?"pointer":"default" }}>
@@ -6554,21 +6923,41 @@ function BackofficeDashboard({ onBack }) {
             <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 2px", fontFamily:font.display }}>⚙️ Backoffice ALANE</h2>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>Tableau de bord · Temps réel</p>
           </div>
-          <div style={{ textAlign:"right" }}>
-            <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Plateforme active</div>
-          </div>
+          <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Actif</div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:"flex", gap:0, overflowX:"auto", padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"comptes",l:"✅ Comptes"},{id:"support",l:"🎧 Support"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"9px 14px", border:"none", borderBottom:`3px solid ${tab===t.id?C.violet:"transparent"}`, background:"transparent", color:tab===t.id?C.violet:C.gray, fontWeight:tab===t.id?800:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.2s" }}>{t.l}</button>
-        ))}
-      </div>
-      <div style={{ height:1, background:"#162547", margin:"0 18px" }} />
+      {/* Layout : sidebar gauche + contenu */}
+      <div style={{ display:"flex", gap:0, padding:"18px 14px", alignItems:"flex-start" }}>
 
-      <div style={{ padding:"18px 18px" }}>
+        {/* Sidebar onglets */}
+        <div style={{ width:130, flexShrink:0, display:"flex", flexDirection:"column", gap:4, marginRight:14, position:"sticky", top:18 }}>
+          {[
+            {id:"dashboard",  l:"📊 KPIs"},
+            {id:"comptes",    l:"✅ Comptes"},
+            {id:"support",    l:"🎧 Support"},
+            {id:"sectors",    l:"🗂️ Secteurs"},
+            {id:"users",      l:"👥 Utilisateurs"},
+            {id:"finance",    l:"💶 Finance"},
+            {id:"moderation", l:"⚠️ Modération"},
+            {id:"test",       l:"🧪 Test"},
+          ].map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              padding:"10px 10px", border:"none",
+              borderRadius:10,
+              borderLeft:`3px solid ${tab===t.id?C.violet:"transparent"}`,
+              background: tab===t.id ? `${C.violet}18` : "transparent",
+              color: tab===t.id ? C.violet : C.gray,
+              fontWeight: tab===t.id ? 700 : 500,
+              fontSize:12, cursor:"pointer", fontFamily:"inherit",
+              textAlign:"left", transition:"all 0.15s",
+              whiteSpace:"nowrap",
+            }}>{t.l}</button>
+          ))}
+        </div>
+
+        {/* Contenu */}
+        <div style={{ flex:1, minWidth:0 }}>
 
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
@@ -6576,123 +6965,68 @@ function BackofficeDashboard({ onBack }) {
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
 
+        {/* ── TEST ── */}
+        {tab==="test" && <BOTest onNavigate={onNavigate} />}
+
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
-          {/* Alertes */}
-          {d.alerts.filter(a=>a.urgent).map((a,i) => (
-            <div key={i} style={{ background:`${a.color}15`, border:`1px solid ${a.color}44`, borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontSize:18 }}>{a.icon}</span>
-              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{a.text}</span>
-              <span style={{ color:a.color, fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>alert(`Action en cours : "${a.text}"`)}>Traiter →</span>
+          {boLoading && <div style={{ textAlign:"center", color:C.textSub, fontSize:13, padding:"30px 0" }}>Chargement des données…</div>}
+
+          {/* Alertes dynamiques */}
+          {d.users.pending > 0 && (
+            <div style={{ background:"#F39C1215", border:"1px solid #F39C1244", borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:18 }}>📋</span>
+              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{d.users.pending} compte{d.users.pending>1?"s":""} en attente de validation</span>
+              <span style={{ color:"#F39C12", fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>setTab("comptes")}>Traiter →</span>
             </div>
-          ))}
+          )}
+          {d.tickets?.open > 0 && (
+            <div style={{ background:"#E74C3C15", border:"1px solid #E74C3C44", borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:18 }}>🎧</span>
+              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{d.tickets.open} ticket{d.tickets.open>1?"s":""} support ouverts</span>
+              <span style={{ color:"#E74C3C", fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>setTab("support")}>Traiter →</span>
+            </div>
+          )}
 
           {/* KPIs grid */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"14px 0" }}>
-            <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`+${d.users.newThisWeek} cette semaine`} color={C.violet} />
+            <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`${d.users.pending} en attente`} color={C.violet} />
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
-            <KPICard icon="💶" label="CA total (€)" value={`${(d.finance.caTotal/1000).toFixed(0)}k`} sub="Depuis le lancement" color={C.accentGold} />
-            <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
-          </div>
-
-          {/* Bloc abonnements — hybride */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>⚡ Abonnements prestataires</div>
-              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                <span style={{ fontSize:11, color:C.success, fontWeight:700 }}>+{d.abonnements.newThisWeek} cette sem.</span>
-                <span style={{ fontSize:11, color:C.accent, fontWeight:600 }}>-{d.abonnements.churnThisMonth} churn</span>
-              </div>
-            </div>
-            {/* Plans */}
-            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-              {[
-                { plan: ABONNEMENTS_PRESTA[0], count: d.abonnements.free    },
-                { plan: ABONNEMENTS_PRESTA[1], count: d.abonnements.premium },
-                { plan: ABONNEMENTS_PRESTA[2], count: d.abonnements.elite   },
-              ].map(({ plan, count }) => {
-                const total = d.abonnements.free + d.abonnements.premium + d.abonnements.elite;
-                const pct = Math.round((count / total) * 100);
-                return (
-                  <div key={plan.id} style={{ flex:1, background:`${plan.color}12`, border:`1px solid ${plan.color}33`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
-                    <div style={{ fontSize:20, marginBottom:4 }}>{plan.icon}</div>
-                    <div style={{ fontWeight:800, color:plan.color, fontSize:22 }}>{count}</div>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:11, marginTop:2 }}>{plan.label}</div>
-                    <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>
-                      {plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}
-                    </div>
-                    <div style={{ marginTop:6, height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background:plan.color, borderRadius:2 }} />
-                    </div>
-                    <div style={{ color:C.textSub, fontSize:10, marginTop:3 }}>{pct}%</div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* MRR total */}
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(124,111,224,0.10)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 14px" }}>
-              <div>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>MRR total</div>
-                <div style={{ fontSize:20, fontWeight:800, color:"#7C6FE0" }}>
-                  {(d.abonnements.premium*29 + d.abonnements.elite*59).toLocaleString()} €/mois
-                </div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>Abonnés payants</div>
-                <div style={{ fontSize:20, fontWeight:800, color:C.text }}>
-                  {d.abonnements.premium + d.abonnements.elite}
-                </div>
-              </div>
-            </div>
+            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Missions complétées" color={C.accentGold} />
+            <KPICard icon="📦" label="Missions actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
           </div>
 
           {/* Missions par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des missions</div>
-            <div style={{ display:"flex", gap:10, marginBottom:14 }}>
-              {[{l:"En cours",v:d.missions.enCours,c:C.accentGold},{l:"Terminées",v:d.missions.terminees,c:C.success},{l:"Annulées",v:d.missions.annulees,c:C.danger}].map(s=>(
-                <div key={s.l} style={{ flex:1, textAlign:"center", background:`${s.c}12`, borderRadius:12, padding:"10px 6px" }}>
+            <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+              {[
+                {l:"Ouvertes",  v:d.missions.open,      c:"#F0B429"},
+                {l:"Assignées", v:d.missions.assigned,   c:C.violet},
+                {l:"Terminées", v:d.missions.terminees,  c:C.success},
+                {l:"Fermées",   v:d.missions.closed,     c:C.textMuted},
+              ].map(s=>(
+                <div key={s.l} style={{ flex:1, minWidth:60, textAlign:"center", background:`${s.c}12`, borderRadius:12, padding:"10px 6px" }}>
                   <div style={{ fontWeight:800, color:s.c, fontSize:20 }}>{s.v}</div>
                   <div style={{ color:C.textSub, fontSize:10, marginTop:2 }}>{s.l}</div>
                 </div>
               ))}
             </div>
-            {/* Progress bar taux completion */}
             <div style={{ fontSize:12, color:C.textSub, marginBottom:6 }}>Taux de complétion : <strong style={{ color:C.success }}>{d.missions.tauxCompletion}%</strong></div>
             <div style={{ height:8, background:"#162547", borderRadius:4, overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${d.missions.tauxCompletion}%`, background:`linear-gradient(90deg,${C.success},#1e8449)`, borderRadius:4, transition:"width 1s" }} />
             </div>
           </div>
 
-          {/* Évolution CA semaine */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>📈 CA des 7 derniers jours</div>
-              <div style={{ fontWeight:800, color:C.violet, fontSize:14 }}>{d.weeklyCA[d.weeklyCA.length-1].toLocaleString()} €</div>
-            </div>
-            <MiniBar data={d.weeklyCA} color={C.violet} height={50} />
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-              {["L","M","M","J","V","S","D"].map((j,i)=><span key={i} style={{ fontSize:9, color:C.textSub, flex:1, textAlign:"center" }}>{j}</span>)}
-            </div>
-          </div>
-
-          {/* Missions / semaine */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🗓️ Missions / semaine</div>
-              <div style={{ fontWeight:800, color:C.success, fontSize:14 }}>{d.weeklyMissions[d.weeklyMissions.length-1]} missions</div>
-            </div>
-            <MiniBar data={d.weeklyMissions} color={C.success} height={50} />
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-              {["L","M","M","J","V","S","D"].map((j,i)=><span key={i} style={{ fontSize:9, color:C.textSub, flex:1, textAlign:"center" }}>{j}</span>)}
-            </div>
-          </div>
-
-          {/* Stats rapides */}
+          {/* Répartition utilisateurs */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-            {[{l:"Note moy.",v:`${d.noteMoyenne}★`,c:C.accentGold},{l:"Taux réponse",v:`${d.tauxReponse}%`,c:C.success},{l:"Escrow",v:`${(d.finance.escrowEnAttente/1000).toFixed(1)}k€`,c:C.violet}].map(s=>(
+            {[
+              {l:"Total",        v:d.users.total,        c:C.violet},
+              {l:"Clients",      v:d.users.clients,      c:C.accentGold},
+              {l:"Prestataires", v:d.users.prestataires, c:C.success},
+            ].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"12px 10px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-                <div style={{ fontWeight:800, color:s.c, fontSize:16 }}>{s.v}</div>
+                <div style={{ fontWeight:800, color:s.c, fontSize:20 }}>{s.v}</div>
                 <div style={{ color:C.textSub, fontSize:10, marginTop:2 }}>{s.l}</div>
               </div>
             ))}
@@ -6702,14 +7036,15 @@ function BackofficeDashboard({ onBack }) {
         {/* ── SECTEURS ── */}
         {tab==="sectors" && <>
           <div style={{ display:"flex", gap:16, alignItems:"center", marginBottom:20 }}>
-            <DonutChart sectors={d.sectors} />
+            <DonutChart sectors={d.sectors.length > 0 ? d.sectors : [{pct:100,color:"#162547"}]} />
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des missions</div>
               <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} missions</div>
-              <div style={{ marginTop:8 }}>
+              {d.sectors[0] && <div style={{ marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textSub }}>Secteur #1</div>
-                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>📦 Logistique (25%)</div>
-              </div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{d.sectors[0].icon} {d.sectors[0].label} ({d.sectors[0].pct}%)</div>
+              </div>}
+              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune mission pour l'instant</div>}
             </div>
           </div>
           {d.sectors.map((s,i) => (
@@ -6742,21 +7077,23 @@ function BackofficeDashboard({ onBack }) {
             ))}
           </div>
 
-          <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>📋 Dossiers en attente de validation</div>
-          {d.pendingDocs.map((u,i) => (
-            <PendingDocRow key={i} u={u} />
-          ))}
-<div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕐 Dernières inscriptions</div>
-          {d.recentUsers.map((u,i) => (
-            <div key={i} style={{ background:"#0D1B3E", borderRadius:13, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:`${u.type==="client"?C.violet:C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{u.type==="client"?"🏢":"👷"}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{u.name}</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>{u.type==="client"?"Client":"Prestataire"} · {u.date}</div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕐 Dernières inscriptions</div>
+          {d.recentUsers.length === 0 && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucun utilisateur inscrit</div>}
+          {d.recentUsers.map((u,i) => {
+            const statusColor = u.status==="approved"?C.success : u.status==="rejected"?C.danger : C.accentGold;
+            const statusLabel = u.status==="approved"?"Approuvé" : u.status==="rejected"?"Refusé" : "En attente";
+            const dateStr = new Date(u.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"short" });
+            return (
+              <div key={i} style={{ background:"#0D1B3E", borderRadius:13, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:`${u.role==="client"?C.violet:C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{u.role==="client"?"🏢":"👷"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{u.prenom} {u.nom}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{u.role==="client"?"Client":"Prestataire"} · {dateStr}</div>
+                </div>
+                <Badge color={statusColor} small>{statusLabel}</Badge>
               </div>
-              <Badge color={u.status==="validé"?C.success:u.status==="actif"?C.violet:C.accentGold} small>{u.status}</Badge>
-            </div>
-          ))}
+            );
+          })}
         </>}
 
         {/* ── FINANCE ── */}
@@ -6764,11 +7101,11 @@ function BackofficeDashboard({ onBack }) {
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>dont <strong style={{ color:C.accentGold }}>{d.finance.commissionAlane.toLocaleString()} €</strong> de commission ALANE</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Missions complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"Commission ALANE",v:`${d.finance.commissionAlane.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Escrow en attente",v:`${d.finance.escrowEnAttente.toLocaleString()} €`,c:C.violet,i:"🔒"},{l:"Taux de commission moy.",v:"18,4%",c:C.success,i:"📊"},{l:"Litiges en cours",v:d.finance.litiges,c:C.danger,i:"⚠️"}].map(s=>(
+            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:C.violet,i:"📦"},{l:"Tickets support",v:d.tickets?.open||0,c:C.danger,i:"🎧"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -6805,17 +7142,9 @@ function BackofficeDashboard({ onBack }) {
         {/* ── MODÉRATION ── */}
         {tab==="moderation" && <>
           <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🚨 Alertes actives</div>
-          {d.alerts.map((a,i) => (
-            <AlertRow key={i} a={a} />
-          ))}
-<div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>📋 Litiges en cours</div>
-          {[
-            { client:"Société ABC",  presta:"Thomas Saumur",  montant:"96 €",  motif:"Heures non effectuées",  date:"Il y a 2h" },
-            { client:"Hôtel Lumière",presta:"Karim Benali",   montant:"78 €",  motif:"Qualité insuffisante",   date:"Il y a 1j" },
-            { client:"LogiPro",      presta:"Julie Evan",     montant:"120 €", motif:"Annulation tardive",     date:"Il y a 2j" },
-          ].map((l,i) => (
-            <LitigeRow key={i} l={l} />
-          ))}
+          {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
+          {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
+          {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucune alerte active</div>}
 <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>🔧 Actions rapides</div>
           {[
             { icon:"📧", label:"Envoyer une communication globale", color:C.violet,
@@ -6837,7 +7166,8 @@ function BackofficeDashboard({ onBack }) {
             </div>
           ))}
         </>}
-      </div>
+        </div>{/* fin contenu */}
+      </div>{/* fin layout */}
     </div>
   );
 }
@@ -7516,56 +7846,218 @@ function PayslipScreen({ provider, mission, onBack }) {
 
 // ── HISTORIQUE MISSIONS CLIENT ────────────────────────────────────
 function MissionHistoryScreen({ onNavigate, onBack }) {
-  const [tab, setTab] = useState("all");
+  const [tab, setTab]             = useState("all");
+  const [missions, setMissions]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState(null);
+  const [candidatures, setCandidatures] = useState([]);
+  const [actioning, setActioning] = useState(null);
+  const [completing, setCompleting] = useState(false);
+  const [completedResult, setCompletedResult] = useState(null);
+  const [userId, setUserId]       = useState(null);
 
-  const missions = [
-    { id:1, presta:PROVIDERS[0], date:"12 Mai 2025", hours:8,  amount:131.6, status:"terminée",  role:"Cariste CACES 1"    },
-    { id:2, presta:PROVIDERS[1], date:"08 Mai 2025", hours:6,  amount:108.0, status:"terminée",  role:"Chef de rang"        },
-    { id:3, presta:PROVIDERS[3], date:"03 Mai 2025", hours:4,  amount:97.6,  status:"annulée",   role:"Resp. commerciale"   },
-    { id:4, presta:PROVIDERS[4], date:"28 Avr 2025", hours:8,  amount:86.4,  status:"terminée",  role:"Agent de propreté"   },
-    { id:5, presta:PROVIDERS[0], date:"20 Avr 2025", hours:10, amount:164.5, status:"terminée",  role:"Logisticien Senior"  },
-  ];
+  useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
-  const filtered = tab==="all" ? missions : missions.filter(m=>m.status===tab);
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data?.user; if (!user) return;
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list_client", client_id: user.id }),
+      });
+      const data2 = await res.json();
+      setMissions(Array.isArray(data2) ? data2 : []);
+      setLoading(false);
+    });
+  }, []);
 
-  return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
-        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes missions</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} missions au total</p>
-      </div>
+  const openCandidatures = async (mission) => {
+    setSelected(mission);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
+    });
+    const data = await res.json();
+    setCandidatures(Array.isArray(data) ? data : []);
+  };
 
-      <div style={{ padding:"16px 18px 0" }}>
-        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-          {[{id:"all",l:"Toutes"},{id:"terminée",l:"Terminées"},{id:"annulée",l:"Annulées"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:12, fontFamily:"inherit", transition:"all 0.2s" }}>{t.l}</button>
-          ))}
+  const handleAccept = async (c) => {
+    setActioning(c.id);
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
+    });
+    setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
+    setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
+    setSelected(s => s ? { ...s, status: "assigned" } : s);
+    setActioning(null);
+  };
+
+  const handleComplete = async () => {
+    if (!selected || !userId) return;
+    setCompleting(true);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete", mission_id: selected.id, client_id: userId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
+      setSelected(s => s ? { ...s, status: "completed" } : s);
+      setCompletedResult(data);
+    }
+    setCompleting(false);
+  };
+
+  const handleReject = async (c) => {
+    setActioning(c.id);
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reject", candidature_id: c.id }),
+    });
+    setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
+    setActioning(null);
+  };
+
+  const handleClose = async (missionId) => {
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "close", mission_id: missionId }),
+    });
+    setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
+  };
+
+  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
+  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted };
+  const filtered = tab === "all" ? missions : missions.filter(m => m.status === tab);
+
+  if (selected) {
+    const sector = SECTORS.find(s => s.id === selected.sector);
+    return (
+      <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
+        <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+          <button onClick={()=>setSelected(null)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+          <div style={{ fontSize:28, marginBottom:6 }}>{sector?.icon||"📋"}</div>
+          <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 2px" }}>{selected.metier || sector?.label}</h2>
+          <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>📅 {selected.date} · {selected.hours}h · {selected.ville}</p>
         </div>
-
-        {filtered.map(m=>(
-          <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-            <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10 }}>
-              <div style={{ width:48, height:48, borderRadius:r, background:`${m.presta.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>{m.presta.avatar}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.presta.name}</div>
-                <div style={{ color:C.textSub, fontSize:12 }}>{m.role}</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>📅 {m.date} · {m.hours}h</div>
+        <div style={{ padding:"18px" }}>
+          <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
+            {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
+          </p>
+          {candidatures.map(c => (
+            <div key={c.id} style={{ background:"#0D1B3E", borderRadius:14, padding:"14px", marginBottom:10, border:`1px solid ${c.status==="accepted"?C.success:c.status==="rejected"?"rgba(242,94,94,0.3)":C.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:c.message?8:0 }}>
+                <div>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{c.prenom} {c.nom}</div>
+                  <div style={{ color:C.textMuted, fontSize:11 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+                </div>
+                {c.status === "accepted" && <span style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Accepté</span>}
+                {c.status === "rejected" && <span style={{ color:"#F25E5E", fontWeight:700, fontSize:12 }}>❌ Refusé</span>}
               </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:C.violet, fontSize:14 }}>{m.amount.toFixed(0)} €</div>
-                <Badge color={m.status==="terminée"?C.success:C.accent} small>{m.status}</Badge>
+              {c.message && <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px", fontStyle:"italic" }}>"{c.message}"</p>}
+              {c.status === "pending" && selected.status === "open" && (
+                <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                  <button onClick={()=>handleReject(c)} disabled={!!actioning} style={{ flex:1, padding:"9px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {actioning===c.id?"…":"❌ Refuser"}
+                  </button>
+                  <button onClick={()=>handleAccept(c)} disabled={!!actioning} style={{ flex:2, padding:"9px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {actioning===c.id?"…":"✅ Accepter"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {candidatures.length === 0 && (
+            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+              <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
+            </div>
+          )}
+          {selected.status === "assigned" && !completedResult && (
+            <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
+              <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+              </div>
+              <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                {completing ? "Validation…" : "✅ Valider la mission"}
+              </button>
+            </div>
+          )}
+
+          {completedResult && (
+            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+              <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
+                Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+              </div>
+              <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
+                <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
               </div>
             </div>
-            {m.status==="terminée" && (
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>onNavigate("profile",m.presta)} style={{ flex:1, padding:"8px", borderRadius:11, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>👤 Profil</button>
-                <button onClick={()=>onNavigate("payslip",{provider:m.presta})} style={{ flex:1, padding:"8px", borderRadius:11, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📄 Facture</button>
-                <button onClick={()=>onNavigate("booking",m.presta)} style={{ flex:2, padding:"8px", borderRadius:11, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>🔄 Re-réserver</button>
-              </div>
-            )}
+          )}
+
+          {selected.status === "completed" && !completedResult && (
+            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center" }}>
+              <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
+              {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
+            </div>
+          )}
+
+          {selected.status === "open" && (
+            <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              Clôturer la mission
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes missions</h2>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} mission{missions.length!==1?"s":""} au total</p>
+      </div>
+      <div style={{ padding:"16px 18px 0" }}>
+        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
+          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"closed",l:"Fermées"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
+          ))}
+        </div>
+        {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
+        {!loading && filtered.length === 0 && (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune mission</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première mission depuis un secteur.</div>
           </div>
-        ))}
+        )}
+        {filtered.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
+          return (
+            <div key={m.id} onClick={()=>openCandidatures(m)} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, cursor:"pointer", border:`1px solid ${pending>0?C.violet+"55":C.border}` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                <div style={{ width:46, height:46, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h · {m.ville}</div>
+                  {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:2 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:700 }}>{statusLabel[m.status]||m.status}</span>
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>›</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -7790,10 +8282,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
 // Paliers de fidélité
 const CASHBACK_TIERS = [
-  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.03, color:"#8B8FA8", icon:"⭐"  },
-  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.05, color:"#C0C0C0", icon:"🥈"  },
-  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.07, color:"#F0B429", icon:"🥇"  },
-  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.10, color:"#A89DF5", icon:"💎"  },
+  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.005,  color:"#8B8FA8", icon:"⭐"  },
+  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.0075, color:"#C0C0C0", icon:"🥈"  },
+  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.01,   color:"#F0B429", icon:"🥇"  },
+  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.015,  color:"#A89DF5", icon:"💎"  },
 ];
 
 const getCashbackTier = (missionsThisMonth) => {
@@ -7823,12 +8315,51 @@ const INITIAL_WALLET = {
 };
 
 function CashbackWalletScreen({ onBack, onNavigate }) {
-  const w = INITIAL_WALLET;
+  const [walletData, setWalletData] = useState({ balance: 0, missionsThisMonth: 0 });
+  const [history, setHistory]       = useState([]);
+  const [wLoading, setWLoading]     = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data?.user;
+      if (!user) { setWLoading(false); return; }
+
+      const [{ data: profile }, { data: completedMissions }] = await Promise.all([
+        supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", user.id).single(),
+        supabase.from("missions").select("id,metier,sector,date,hours,tarif_horaire,montant_total,status")
+          .eq("client_id", user.id).eq("status", "completed").order("created_at", { ascending: false }),
+      ]);
+
+      setWalletData({
+        balance: profile?.cashback_balance || 0,
+        missionsThisMonth: profile?.missions_completed_month || 0,
+      });
+
+      if (Array.isArray(completedMissions)) {
+        setHistory(completedMissions.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const montant = m.montant_total || ((m.hours||0) * (m.tarif_horaire||0));
+          const rate = getCashbackTier(profile?.missions_completed_month || 0).rate;
+          const cashback = Math.round(montant * rate * 100) / 100;
+          return {
+            mission: m.metier || sector?.label || "Mission",
+            date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
+            amount: montant,
+            cashback,
+            status: "disponible",
+          };
+        }));
+      }
+      setWLoading(false);
+    });
+  }, []);
+
+  const w = walletData;
   const tier = getCashbackTier(w.missionsThisMonth);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - w.missionsThisMonth : 0;
   const progressPct = nextTier
-    ? ((w.missionsThisMonth - tier.min) / (nextTier.min - tier.min)) * 100
+    ? Math.min(100, ((w.missionsThisMonth - tier.min) / (nextTier.min - tier.min)) * 100)
     : 100;
 
   return (
@@ -7856,10 +8387,10 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
           <div style={{ position:"absolute", top:-30, right:-30, width:140, height:140, borderRadius:"50%", background:`${C.violet}12`, pointerEvents:"none" }} />
           <p style={{ color:C.textSub, fontSize:11, letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>Solde disponible</p>
           <div style={{ fontSize:44, fontWeight:800, color:C.text, fontFamily:font.display, letterSpacing:-1, marginBottom:4 }}>
-            {w.balance.toFixed(2)} <span style={{ fontSize:22, color:C.textSub }}>€</span>
+            {wLoading ? "—" : Number(w.balance).toFixed(2)} <span style={{ fontSize:22, color:C.textSub }}>€</span>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, margin:"0 0 16px" }}>
-            + <span style={{ color:C.accentGold }}>{w.pending.toFixed(2)} €</span> en attente de validation
+            {w.balance >= 10 ? <span style={{ color:C.accentGold }}>Disponible à l'utilisation</span> : "Minimum 10 € pour utiliser votre cashback"}
           </p>
           <Btn onClick={()=>onNavigate("search_filters")} style={{ fontSize:13, padding:"10px 20px" }}>
             Utiliser mon cashback →
@@ -7869,8 +8400,8 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
         {/* Stats rapides */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
-            { label:"Total gagné", value:`${w.totalEarned.toFixed(2)} €`, color:C.success,  icon:"💰" },
-            { label:"Ce mois",     value:`${w.missionsThisMonth} missions`, color:C.violet, icon:"📋" },
+            { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
+            { label:"Ce mois",       value:`${w.missionsThisMonth} mission${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:`${s.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17 }}>{s.icon}</div>
@@ -7921,7 +8452,13 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
 
         {/* Historique */}
         <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:12 }}>Historique des gains</div>
-        {w.history.map((h,i)=>(
+        {!wLoading && history.length === 0 && (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"24px", textAlign:"center", marginBottom:12 }}>
+            <div style={{ fontSize:28, marginBottom:8 }}>💸</div>
+            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première mission pour gagner du cashback.</div>
+          </div>
+        )}
+        {history.map((h,i)=>(
           <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12, opacity:h.status==="expiré"?0.5:1 }}>
             <div style={{ width:38, height:38, borderRadius:10, background:h.status==="disponible"?`${C.success}15`:h.status==="utilisé"?`${C.violet}15`:`${C.textMuted}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
               {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
@@ -8449,7 +8986,7 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
       if(user){
         const { data } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
-          ville, description, status: "broadcast",
+          ville, adresse, description, status: "open",
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -8675,6 +9212,7 @@ export default function App() {
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
   const [boUnlocked,setBoUnlocked]=useState(false);
+  const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
   const [payslipData,setPayslipData]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
@@ -8848,7 +9386,7 @@ export default function App() {
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
-      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
+      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={()=>setScreen("mission_history")} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
@@ -8884,7 +9422,13 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s); }} />}
+      {boTestMode && screen!=="bo_dashboard" && (
+        <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
+          onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
+          <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>← Retour BO</span>
+        </div>
+      )}
 
       {screen==="dashboard" && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:90 }}>
@@ -8906,12 +9450,12 @@ export default function App() {
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:1 }}>
                   <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Cashback disponible</span>
-                  <Badge color={getCashbackTier(INITIAL_WALLET.missionsThisMonth).color} small>
-                    {getCashbackTier(INITIAL_WALLET.missionsThisMonth).icon} {getCashbackTier(INITIAL_WALLET.missionsThisMonth).label}
+                  <Badge color={getCashbackTier(0).color} small>
+                    {getCashbackTier(0).icon} {getCashbackTier(0).label}
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{INITIAL_WALLET.balance.toFixed(2)} €</strong> · {(getCashbackTier(INITIAL_WALLET.missionsThisMonth).rate*100).toFixed(0)}% sur chaque mission
+                  <strong style={{ color:C.success }}>0,00 €</strong> · {(getCashbackTier(0).rate*100).toFixed(0)}% sur chaque mission
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
