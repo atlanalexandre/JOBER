@@ -5269,35 +5269,14 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
           ))}
         </>}
         {tab==="revenus" && <>
-          <div style={{ background:`linear-gradient(135deg,${C.accent},#c0392b)`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
-            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Revenus nets du mois</p>
-            <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>1 534 €</div>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"4px 0 0" }}>Avril 2025 · 12 missions</p>
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucun revenu pour le moment</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières missions complétées.</div>
           </div>
-          <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:12, color:C.text }}>
-            💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
+          <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text }}>
+            💡 Ces montants correspondront à votre taux horaire net encaissé à chaque mission.
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"Cette semaine",v:"270 €"},{l:"Ce trimestre",v:"4 370 €"},{l:"Cette année",v:"12 340 €"},{l:"En attente",v:"234 €"}].map(s=>(
-              <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"center" }}>
-                <div style={{ fontWeight:800, color:C.accent, fontSize:16 }}>{s.v}</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-          {[{m:"Cariste CACES 1",d:"28 Avr.",v:"+112 €",s:"payé",h:"8h"},{m:"Agent propreté",d:"26 Avr.",v:"+72 €",s:"payé",h:"6h"},{m:"Réceptionniste",d:"22 Avr.",v:"+104 €",s:"en attente",h:"8h"}].map((t,i)=>(
-            <div key={i} style={{ background:"#0D1B3E", borderRadius:13, padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>💶</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{t.m}</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>{t.d} · {t.h}</div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:t.s==="payé"?C.success:C.accentGold, fontSize:14 }}>{t.v}</div>
-                <div style={{ color:C.textSub, fontSize:10 }}>{t.s}</div>
-              </div>
-            </div>
-          ))}
         </>}
       </div>
     </div>
