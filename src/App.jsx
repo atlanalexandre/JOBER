@@ -2108,6 +2108,12 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [cpFrequence, setCpFrequence] = useState("");
   const [cpSaving, setCpSaving]       = useState(false);
   const [cpSaved, setCpSaved]         = useState(false);
+  const [editingIdentite, setEditingIdentite] = useState(false);
+  const [editPrenom, setEditPrenom]   = useState("");
+  const [editNom, setEditNom]         = useState("");
+  const [editTelephone, setEditTelephone] = useState("");
+  const [identiteSaving, setIdentiteSaving] = useState(false);
+  const [identiteSaved, setIdentiteSaved]   = useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{
@@ -2124,7 +2130,8 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         setCpFrequence(m.frequence_besoins||"");
       }
       supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
-        .then(({ data:p })=>{ if(p) setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); });
+        .then(({ data:p })=>{ if(p){ setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); setEditPrenom(p.prenom||""); setEditNom(p.nom||""); } });
+      setEditTelephone(m.telephone||"");
     });
   },[]);
 
@@ -2136,6 +2143,21 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     }});
     setCpSaving(false); setCpSaved(true);
     setTimeout(()=>{ setCpSaved(false); setEditingProfile(false); }, 1200);
+  };
+
+  const handleSaveIdentite = async () => {
+    setIdentiteSaving(true);
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id;
+    if(uid) {
+      await Promise.all([
+        supabase.from("profiles").update({ prenom:editPrenom, nom:editNom }).eq("id",uid),
+        supabase.auth.updateUser({ data:{ prenom:editPrenom, nom:editNom, telephone:editTelephone } }),
+      ]);
+      setUserName(`${editPrenom} ${editNom}`.trim());
+    }
+    setIdentiteSaving(false); setIdentiteSaved(true);
+    setTimeout(()=>{ setIdentiteSaved(false); setEditingIdentite(false); }, 1200);
   };
 
   const sections = [
@@ -2185,6 +2207,32 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         </div>
 
         {/* Profil client éditable */}
+        {/* Édition identité */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Mes informations</div>
+            <button onClick={()=>setEditingIdentite(!editingIdentite)} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{editingIdentite?"Annuler":"✏️ Modifier"}</button>
+          </div>
+          {!editingIdentite ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>👤</span><span style={{ color:C.textSub, fontSize:13 }}>{userName||"—"}</span></div>
+              <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>✉️</span><span style={{ color:C.textSub, fontSize:13 }}>{userEmail||"—"}</span></div>
+              {editTelephone && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>📱</span><span style={{ color:C.textSub, fontSize:13 }}>{editTelephone}</span></div>}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display:"flex", gap:10 }}>
+                <div style={{ flex:1 }}><Input label="Prénom" placeholder="Prénom" icon="👤" value={editPrenom} onChange={e=>setEditPrenom(e.target.value)} /></div>
+                <div style={{ flex:1 }}><Input label="Nom" placeholder="Nom" value={editNom} onChange={e=>setEditNom(e.target.value)} /></div>
+              </div>
+              <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={editTelephone} onChange={e=>setEditTelephone(e.target.value)} />
+              <Btn full onClick={handleSaveIdentite} disabled={identiteSaving} style={{ background:C.violet, padding:"13px" }}>
+                {identiteSaving?"Enregistrement…":identiteSaved?"✅ Sauvegardé !":"Enregistrer"}
+              </Btn>
+            </div>
+          )}
+        </div>
+
         {role === "client" && (
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
@@ -2303,7 +2351,7 @@ function ResetPasswordScreen({ onDone }) {
 
 // ── HOME ─────────────────────────────────────────────────────────
 // Refonte hi-fi v12 — Playfair Display + DM Sans, palette navy/violet
-function HomeScreen({ onNavigate }) {
+function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
   const { isDesktop } = useResponsive();
@@ -2357,7 +2405,9 @@ function HomeScreen({ onNavigate }) {
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={()=>onNavigate("notifications")} style={{ width:38, height:38, borderRadius:12, background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, cursor:"pointer", position:"relative", color:C.text }}>
             🔔
-            <div style={{ position:"absolute", top:7, right:7, width:8, height:8, borderRadius:"50%", background:C.accent, boxShadow:`0 0 6px ${C.accent}`, border:`2px solid ${C.bg}` }} />
+            {notifCount > 0 && (
+              <div style={{ position:"absolute", top:-4, right:-4, background:"#E74C3C", borderRadius:"50%", minWidth:18, height:18, fontSize:10, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1 }}>{notifCount > 9 ? "9+" : notifCount}</div>
+            )}
           </button>
           <button onClick={()=>onNavigate("favorites")} style={{ width:38, height:38, borderRadius:12, background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, cursor:"pointer", color:C.text }}>❤️</button>
           <button onClick={()=>onNavigate("bo_login")} style={{ width:30, height:30, borderRadius:8, background:"transparent", border:"none", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, cursor:"pointer", opacity:0.25, marginTop:4 }}>⚙️</button>
@@ -5068,6 +5118,8 @@ function PrestaProfileEditScreen({ onBack }) {
   const [rayon, setRayon] = useState(20);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [telephone, setTelephone] = useState("");
+  const [iban, setIban]           = useState("");
 
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
@@ -5081,6 +5133,8 @@ function PrestaProfileEditScreen({ onBack }) {
       setCompetences(m.competences || []);
       setStatutPro(m.statut_pro || "auto-entrepreneur");
       setRayon(m.zone_km || 20);
+      setTelephone(m.telephone||"");
+      setIban(m.rib||"");
     });
   },[]);
 
@@ -5092,6 +5146,7 @@ function PrestaProfileEditScreen({ onBack }) {
     await supabase.auth.updateUser({ data: {
       dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
       tarif_net: tarifNet, langues, competences, statut_pro: statutPro, zone_km: rayon,
+      telephone, rib: iban,
     }});
     setSaving(false); setSaved(true);
     setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
@@ -5197,6 +5252,13 @@ function PrestaProfileEditScreen({ onBack }) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Coordonnées */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement</div>
+          <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+          <Input label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" icon="💳" value={iban} onChange={e=>setIban(e.target.value)} />
         </div>
 
         <Btn full onClick={handleSave} disabled={saving} style={{ background:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
@@ -6818,6 +6880,28 @@ function BOSupport() {
   );
 }
 
+function EmailTestButton() {
+  const [status, setStatus] = useState("idle"); // idle | sending | ok | error
+  const send = async () => {
+    setStatus("sending");
+    try {
+      const r = await fetch("/api/bo-action", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"send_test_email" }),
+      });
+      const j = await r.json();
+      setStatus(j.success ? "ok" : "error");
+    } catch { setStatus("error"); }
+    setTimeout(()=>setStatus("idle"), 4000);
+  };
+  return (
+    <button onClick={send} disabled={status==="sending"} style={{ padding:"10px 20px", borderRadius:r, border:"none", background:status==="ok"?C.success:status==="error"?"#E74C3C":C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:status==="sending"?0.7:1 }}>
+      {status==="sending"?"Envoi…":status==="ok"?"✅ Envoyé !":status==="error"?"❌ Erreur":"Envoyer email test"}
+    </button>
+  );
+}
+
 function BOTest({ onNavigate }) {
   const clientScreens = [
     { id:"home",             label:"Accueil client",        icon:"🏠" },
@@ -6885,6 +6969,12 @@ function BOTest({ onNavigate }) {
       <Section title="Écrans Client" color="#F0B429" screens={clientScreens} role="client" />
       <Section title="Écrans Prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
       <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role={null} />
+      {/* Email test */}
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:20 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:8 }}>📧 Test email</div>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Envoie un email de test à direction@alane.fr pour vérifier la configuration Resend.</p>
+        <EmailTestButton />
+      </div>
     </div>
   );
 }
@@ -9219,6 +9309,7 @@ export default function App() {
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
   const [unreadCount,setUnreadCount]=useState(0);
+  const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
   const [realProviders,setRealProviders]=useState([]);
 
@@ -9257,6 +9348,7 @@ export default function App() {
       localStorage.setItem("alane_msg_last_seen", new Date().toISOString());
       setUnreadCount(0);
     }
+    if(screen==="notifications") setNotifCount(0);
   },[screen]);
 
   // Géolocalisation au montage
@@ -9286,6 +9378,18 @@ export default function App() {
     poll();
     const interval = setInterval(poll, 10000);
     return ()=>clearInterval(interval);
+  },[supaUser]);
+
+  // Poll notifications non lues toutes les 30 secondes
+  useEffect(()=>{
+    if(!supaUser) return;
+    const fetch = async()=>{
+      const { count } = await supabase.from("notifications").select("id",{count:"exact",head:true}).eq("user_id",supaUser.id).eq("read",false);
+      setNotifCount(count||0);
+    };
+    fetch();
+    const iv = setInterval(fetch,30000);
+    return ()=>clearInterval(iv);
   },[supaUser]);
 
   // Écouter les changements de session (déconnexion, reset password)
@@ -9383,7 +9487,7 @@ export default function App() {
       {/* Onboarding complet — uniquement pour les nouveaux */}
       {screen==="client_onboarding" && <ClientOnboarding onComplete={()=>setScreen("home")} onBack={()=>setScreen("how_client")} />}
       {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
-      {screen==="home"              && <HomeScreen onNavigate={navigate} />}
+      {screen==="home"              && <HomeScreen onNavigate={navigate} notifCount={notifCount} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={()=>setScreen("mission_history")} />}

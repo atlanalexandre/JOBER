@@ -240,6 +240,21 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "send_test_email") {
+      const adminEmail = process.env.ADMIN_EMAIL || "direction@alane.fr";
+      await sendEmail({
+        to: adminEmail,
+        subject: "✅ Test email ALANE — configuration Resend OK",
+        html: emailHtml(`
+          <p>Bonjour,</p>
+          <p>Ceci est un email de test envoyé depuis le backoffice <strong>ALANE</strong>.</p>
+          <p>Si vous recevez cet email, la configuration Resend est correctement opérationnelle.</p>
+          <p style="color:#888;font-size:13px;">Envoyé le ${new Date().toLocaleString("fr-FR")} depuis le BO ALANE.</p>
+        `),
+      });
+      return res.status(200).json({ success: true });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
