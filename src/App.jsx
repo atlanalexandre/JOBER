@@ -6841,7 +6841,78 @@ function BOSupport() {
   );
 }
 
-function BackofficeDashboard({ onBack }) {
+function BOTest({ onNavigate }) {
+  const clientScreens = [
+    { id:"home",             label:"Accueil client",        icon:"🏠" },
+    { id:"catalogue",        label:"Catalogue secteurs",    icon:"🗂️" },
+    { id:"search_filters",   label:"Recherche filtres",     icon:"🔍" },
+    { id:"dashboard",        label:"Dashboard client",      icon:"📊" },
+    { id:"mission_history",  label:"Historique missions",   icon:"📋" },
+    { id:"cashback",         label:"Wallet cashback",       icon:"💰" },
+    { id:"notifications",    label:"Notifications",         icon:"🔔" },
+    { id:"favorites",        label:"Favoris",               icon:"❤️" },
+    { id:"mission_request",  label:"Créer mission",         icon:"➕" },
+    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
+  ];
+  const prestaScreens = [
+    { id:"p_home",           label:"Accueil prestataire",   icon:"🏠" },
+    { id:"p_missions",       label:"Missions dispo",        icon:"📦" },
+    { id:"p_dashboard",      label:"Dashboard presta",      icon:"📊" },
+    { id:"calendar",         label:"Calendrier",            icon:"📅" },
+    { id:"abonnement_presta",label:"Abonnement",            icon:"💳" },
+    { id:"doc_upload",       label:"Documents",             icon:"📎" },
+    { id:"presta_profile_edit",label:"Modifier profil",     icon:"✏️" },
+    { id:"presta_pointage",  label:"Pointage",              icon:"⏱️" },
+  ];
+  const sharedScreens = [
+    { id:"faq",              label:"FAQ",                   icon:"❓" },
+    { id:"legal",            label:"Mentions légales",      icon:"📜" },
+    { id:"contact_support",  label:"Support",               icon:"🎧" },
+    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
+  ];
+
+  const Btn = ({ s, role }) => (
+    <button onClick={()=>onNavigate(s.id, role)} style={{
+      display:"flex", alignItems:"center", gap:8, padding:"10px 12px",
+      background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10,
+      color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit",
+      fontWeight:500, textAlign:"left", width:"100%",
+    }}>
+      <span style={{ fontSize:16 }}>{s.icon}</span>
+      <span>{s.label}</span>
+      <span style={{ marginLeft:"auto", fontSize:10, color:C.textMuted, fontFamily:"monospace" }}>{s.id}</span>
+    </button>
+  );
+
+  const Section = ({ title, color, screens, role }) => (
+    <div style={{ marginBottom:22 }}>
+      <div style={{ fontWeight:700, fontSize:13, color, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
+        <div style={{ width:3, height:14, background:color, borderRadius:2 }} />
+        {title}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {screens.map(s => <Btn key={s.id} s={s} role={role} />)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
+        <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>Mode test</div>
+        <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>
+          Navigue vers n'importe quel écran sans compte. Le rôle est automatiquement simulé.
+          Utilise "← Retour app" dans le header pour revenir au BO.
+        </div>
+      </div>
+      <Section title="Écrans Client" color="#F0B429" screens={clientScreens} role="client" />
+      <Section title="Écrans Prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
+      <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role={null} />
+    </div>
+  );
+}
+
+function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
   const d = BO_DATA;
 
@@ -6875,7 +6946,7 @@ function BackofficeDashboard({ onBack }) {
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:0, overflowX:"auto", padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"comptes",l:"✅ Comptes"},{id:"support",l:"🎧 Support"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"}].map(t => (
+        {[{id:"comptes",l:"✅ Comptes"},{id:"support",l:"🎧 Support"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"},{id:"test",l:"🧪 Test"}].map(t => (
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"9px 14px", border:"none", borderBottom:`3px solid ${tab===t.id?C.violet:"transparent"}`, background:"transparent", color:tab===t.id?C.violet:C.gray, fontWeight:tab===t.id?800:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.2s" }}>{t.l}</button>
         ))}
       </div>
@@ -6888,6 +6959,9 @@ function BackofficeDashboard({ onBack }) {
 
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
+
+        {/* ── TEST ── */}
+        {tab==="test" && <BOTest onNavigate={onNavigate} />}
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
@@ -9404,7 +9478,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r)=>{ if(r) setRole(r); navigate(s); }} />}
 
       {screen==="dashboard" && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:90 }}>
