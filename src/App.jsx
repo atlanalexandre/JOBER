@@ -6880,6 +6880,28 @@ function BOSupport() {
   );
 }
 
+function EmailTestButton() {
+  const [status, setStatus] = useState("idle"); // idle | sending | ok | error
+  const send = async () => {
+    setStatus("sending");
+    try {
+      const r = await fetch("/api/bo-action", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"send_test_email" }),
+      });
+      const j = await r.json();
+      setStatus(j.success ? "ok" : "error");
+    } catch { setStatus("error"); }
+    setTimeout(()=>setStatus("idle"), 4000);
+  };
+  return (
+    <button onClick={send} disabled={status==="sending"} style={{ padding:"10px 20px", borderRadius:r, border:"none", background:status==="ok"?C.success:status==="error"?"#E74C3C":C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:status==="sending"?0.7:1 }}>
+      {status==="sending"?"Envoi…":status==="ok"?"✅ Envoyé !":status==="error"?"❌ Erreur":"Envoyer email test"}
+    </button>
+  );
+}
+
 function BOTest({ onNavigate }) {
   const clientScreens = [
     { id:"home",             label:"Accueil client",        icon:"🏠" },
@@ -6947,6 +6969,12 @@ function BOTest({ onNavigate }) {
       <Section title="Écrans Client" color="#F0B429" screens={clientScreens} role="client" />
       <Section title="Écrans Prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
       <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role={null} />
+      {/* Email test */}
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:20 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:8 }}>📧 Test email</div>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Envoie un email de test à direction@alane.fr pour vérifier la configuration Resend.</p>
+        <EmailTestButton />
+      </div>
     </div>
   );
 }
