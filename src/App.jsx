@@ -5162,6 +5162,7 @@ function UpgradeNudge({ onNavigate }) {
       setPlan(data?.user?.user_metadata?.plan_abonnement||"free");
     });
   },[]);
+  if(plan === null) return null;
   if(plan !== "free") return null;
   return (
     <div onClick={()=>onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -5181,14 +5182,20 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
   const [planActuel,setPlanActuel]=useState("free");
+  const [userName,setUserName]=useState("");
+  const [userStatus,setUserStatus]=useState(null);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
   },[activeScreen]);
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{
-      setUserRib(data?.user?.user_metadata?.rib||null);
-      setPlanActuel(data?.user?.user_metadata?.plan_abonnement||"free");
+    supabase.auth.getUser().then(async ({data})=>{
+      const u=data?.user; if(!u) return;
+      setUserRib(u.user_metadata?.rib||null);
+      setPlanActuel(u.user_metadata?.plan_abonnement||"free");
+      setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
+      const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
+      if(prof) setUserStatus(prof.status);
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
@@ -5200,12 +5207,15 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
           <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)" }}>👨‍💼</div>
           <div style={{ flex:1 }}>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>Espace prestataire</p>
-            <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"2px 0 5px" }}>Alexandre Ali BA</h2>
-            <div style={{ display:"flex", gap:6 }}><div style={{ width:8, height:8, borderRadius:"50%", background:C.accentGold }} /><span style={{ color:C.accentGold, fontSize:11, fontWeight:700 }}>En attente de validation</span></div>
+            <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"2px 0 5px" }}>{userName||"Mon espace"}</h2>
+            <div style={{ display:"flex", gap:6 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:C.accentGold }} />
+              <span style={{ color:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:C.accentGold, fontSize:11, fontWeight:700 }}>{userStatus==="approved"?"Compte validé":userStatus==="rejected"?"Compte refusé":"En attente de validation"}</span>
+            </div>
           </div>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[{l:"Missions",v:"47",i:"✅"},{l:"Ce mois",v:"1840€",i:"💶"},{l:"Note",v:"4.8★",i:"⭐"},{l:"Taux",v:"98%",i:"📈"}].map(s=>(
+          {[{l:"Missions",v:"—",i:"✅"},{l:"Ce mois",v:"—",i:"💶"},{l:"Note",v:"—",i:"⭐"},{l:"Taux",v:"—",i:"📈"}].map(s=>(
             <div key={s.l} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center" }}>
               <div style={{ fontSize:16 }}>{s.i}</div><div style={{ color:C.white, fontWeight:800, fontSize:12 }}>{s.v}</div><div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
             </div>
@@ -5241,62 +5251,15 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
             </div>
           )}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions proposées</p>
-          {[{titre:"Préparateur de commandes",client:"LogiPro",date:"Lun 05 Mai",time:"08h-16h",tarif:"12,50 €/h",urgent:true},{titre:"Agent de propreté",client:"Centre Nord",date:"Mar 06 Mai",time:"06h-13h",tarif:"13,00 €/h",urgent:false}].map((m,i)=>(
-            <div key={i} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:12, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}><div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{m.titre}<div style={{ color:C.textSub, fontSize:12, fontWeight:400 }}>{m.client}</div></div>{m.urgent&&<Badge color={C.accent} small>Urgent</Badge>}</div>
-              <div style={{ display:"flex", gap:6, marginBottom:10 }}><Badge color={C.indigo} small>📅 {m.date}</Badge><Badge color={C.gray} small>{m.time}</Badge><Badge color={C.success} small>{m.tarif}</Badge></div>
-              <div style={{ display:"flex", gap:8 }}>
-                <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>{
-          alert("Mission refusée. ALANE va proposer un remplaçant au client.");
-        }}>Refuser</Btn>
-        <Btn variant="success" style={{ flex:2, padding:"9px", fontSize:12 }} onClick={()=>{
-          if(!userRib){ setRibMissionError(true); return; }
-          alert("✅ Mission acceptée ! Le contrat va vous être envoyé pour signature.");
-        }}>✓ Accepter</Btn>
-              </div>
-            </div>
-          ))}
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil et votre secteur.</div>
+          </div>
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
-          {(()=>{
-            const todayKey = `alane_pointage_${PROVIDERS[0].id}_${new Date().toISOString().slice(0,10)}`;
-            const pointageStatus = localStorage.getItem(todayKey); // null | "checkin" | "checkout"
-            return (
-              <div style={{ background:`linear-gradient(135deg,${C.violet}15,${C.indigo}08)`, border:`2px solid ${C.violet}33`, borderRadius:16, padding:"14px", marginBottom:12 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                  <div style={{ fontWeight:800, color:C.text }}>Cariste CACES 1</div>
-                  <Badge color={C.accentGold} small>En cours</Badge>
-                </div>
-                <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>Entrepôt XYZ · Mer 12 Mai · 09h-17h</div>
-                {/* Statut pointage */}
-                <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-                  <div style={{ fontSize:11, padding:"4px 10px", borderRadius:99, fontWeight:700,
-                    background: pointageStatus ? `${C.success}22` : "rgba(255,255,255,0.05)",
-                    color: pointageStatus ? C.success : C.textMuted,
-                    border: `1px solid ${pointageStatus ? C.success+"44" : C.border}` }}>
-                    {pointageStatus ? "✓ Arrivée pointée" : "○ Arrivée non pointée"}
-                  </div>
-                  <div style={{ fontSize:11, padding:"4px 10px", borderRadius:99, fontWeight:700,
-                    background: pointageStatus==="checkout" ? `${C.accentGold}22` : "rgba(255,255,255,0.05)",
-                    color: pointageStatus==="checkout" ? C.accentGold : C.textMuted,
-                    border: `1px solid ${pointageStatus==="checkout" ? C.accentGold+"44" : C.border}` }}>
-                    {pointageStatus==="checkout" ? "✓ Départ pointé" : "○ Départ non pointé"}
-                  </div>
-                </div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {!pointageStatus && (
-                    <Btn variant="success" style={{ flex:2, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("presta_pointage",{...PROVIDERS[0], _pointageType:"in"})}>📍 Pointer arrivée</Btn>
-                  )}
-                  {pointageStatus==="checkin" && (
-                    <Btn style={{ flex:2, padding:"9px", fontSize:12, background:C.accentGold, boxShadow:"none" }} onClick={()=>onNavigate("presta_pointage",{...PROVIDERS[0], _pointageType:"out"})}>🏁 Pointer départ</Btn>
-                  )}
-                  <Btn variant="ghost" style={{ flex:1, padding:"9px", fontSize:12 }} onClick={()=>onNavigate("chat",PROVIDERS[0])}>💬</Btn>
-                  {pointageStatus==="checkout" && (
-                    <Btn variant="gold" style={{ flex:2, padding:"9px", fontSize:13 }} onClick={()=>onNavigate("validation",PROVIDERS[0])}>✅ Valider</Btn>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"20px 16px", textAlign:"center" }}>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Aucune mission en cours</div>
+          </div>
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="docs" && <>
@@ -8250,17 +8213,16 @@ function AbonnementPrestaScreen({ onBack }) {
   const [missionsUsed,setMissionsUsed]=useState(0);
 
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{
-      const plan = data?.user?.user_metadata?.plan_abonnement || "free";
-      setCurrent(plan);
+    supabase.auth.getUser().then(async ({data})=>{
+      const u=data?.user; if(!u) return;
+      setCurrent(u.user_metadata?.plan_abonnement||"free");
       setLoaded(true);
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      supabase.from("missions").select("id",{count:"exact",head:true})
+        .eq("user_id",u.id).gte("created_at",startOfMonth)
+        .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
     });
-    // Compter les missions du mois
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    supabase.from("missions").select("id", {count:"exact", head:true})
-      .gte("created_at", startOfMonth)
-      .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
   },[]);
 
   const handleChangePlan = async (planId) => {
