@@ -5404,7 +5404,9 @@ function UpgradeNudge({ onNavigate }) {
 
 // ── PRESTA MISSIONS FEED ─────────────────────────────────────────
 function PMissionsTab({ onNavigate }) {
+  const [tab, setTab]             = useState("disponibles");
   const [missions, setMissions]   = useState([]);
+  const [candidatures, setCandidatures] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [userId, setUserId]       = useState(null);
   const [userMeta, setUserMeta]   = useState({});
@@ -5420,12 +5422,18 @@ function PMissionsTab({ onNavigate }) {
       const meta = u.user_metadata || {};
       setUserMeta(meta);
       const sector = meta.secteur || meta.sector || null;
-      const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_open", sector }),
-      });
-      const data2 = await res.json();
-      setMissions(Array.isArray(data2) ? data2 : []);
+      const [r1, r2] = await Promise.all([
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"list_open", sector }) }),
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"mes_candidatures", prestataire_id: u.id }) }),
+      ]);
+      const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+      setMissions(Array.isArray(d1) ? d1 : []);
+      const cands = Array.isArray(d2) ? d2 : [];
+      setCandidatures(cands);
+      // pré-remplir applied avec les missions déjà postulées
+      setApplied(new Set(cands.map(c => c.mission_id)));
       setLoading(false);
     });
   }, []);
@@ -5449,18 +5457,30 @@ function PMissionsTab({ onNavigate }) {
   const metier = userMeta.metier || userMeta.job_title || null;
   const matched = missions.filter(m => !metier || !m.metier || m.metier === metier);
 
+  const candStatusLabel = { pending:"En attente", accepted:"Acceptée ✅", rejected:"Refusée ❌" };
+  const candStatusColor = { pending:C.accentGold, accepted:C.success, rejected:"#F25E5E" };
+  const missionStatusLabel = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
+
   if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
 
   return (
     <div>
-      {matched.length === 0 ? (
-        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
-          <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
-          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil.</div>
-        </div>
-      ) : (
-        matched.map(m => {
+      {/* Onglets */}
+      <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
+        {[{id:"disponibles",l:"Missions disponibles"},{id:"candidatures",l:`Mes candidatures${candidatures.length>0?` (${candidatures.length})`:""}`}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
+        ))}
+      </div>
+
+      {/* Missions disponibles */}
+      {tab === "disponibles" && (
+        matched.length === 0 ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil.</div>
+          </div>
+        ) : matched.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const isApplied = applied.has(m.id);
           return (
@@ -5498,6 +5518,49 @@ function PMissionsTab({ onNavigate }) {
                   <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>✅ Candidature envoyée</div>
                 )}
               </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* Mes candidatures */}
+      {tab === "candidatures" && (
+        candidatures.length === 0 ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📝</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune candidature</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Vos candidatures apparaîtront ici.</div>
+          </div>
+        ) : candidatures.map(c => {
+          const m = c.mission;
+          const sector = SECTORS.find(s => s.id === m?.sector);
+          return (
+            <div key={c.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${candStatusColor[c.status]||C.border}30` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m?.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m?.date} · {m?.hours}h</div>
+                  {m?.tarif_horaire > 0 && <div style={{ color:C.textSub, fontSize:12 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>Mission : <span style={{ color:C.textSub }}>{missionStatusLabel[m?.status]||m?.status}</span></div>
+                </div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <span style={{ color:candStatusColor[c.status]||C.textMuted, fontWeight:700, fontSize:12 }}>{candStatusLabel[c.status]||c.status}</span>
+                  <div style={{ color:C.textMuted, fontSize:10, marginTop:2 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+                </div>
+              </div>
+              {c.message && <div style={{ color:C.textMuted, fontSize:12, marginTop:8, fontStyle:"italic", borderTop:`1px solid ${C.border}`, paddingTop:8 }}>"{c.message}"</div>}
+              {c.status === "accepted" && m?.status === "assigned" && (
+                <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>🎉 Vous avez été sélectionné !</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Préparez-vous pour la mission le {m?.date}.</div>
+                </div>
+              )}
+              {c.status === "accepted" && m?.status === "completed" && (
+                <div style={{ marginTop:10, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}30`, borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>✅ Mission terminée</div>
+                </div>
+              )}
             </div>
           );
         })
