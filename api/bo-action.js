@@ -156,6 +156,74 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "stats") {
+      const [profilesRes, missionsRes, ticketsRes, recentRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=status`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,role,status,created_at&order=created_at.desc&limit=6`, { headers }),
+      ]);
+
+      const profiles  = await profilesRes.json();
+      const missions  = await missionsRes.json();
+      const tickets   = await ticketsRes.json();
+      const recent    = await recentRes.json();
+
+      const p = Array.isArray(profiles) ? profiles : [];
+      const m = Array.isArray(missions) ? missions : [];
+      const t = Array.isArray(tickets)  ? tickets  : [];
+      const r = Array.isArray(recent)   ? recent   : [];
+
+      const clients      = p.filter(x => x.role === "client").length;
+      const prestataires = p.filter(x => x.role === "prestataire").length;
+      const pending      = p.filter(x => x.status === "pending").length;
+
+      const mOpen      = m.filter(x => x.status === "open").length;
+      const mAssigned  = m.filter(x => x.status === "assigned").length;
+      const mCompleted = m.filter(x => x.status === "completed").length;
+      const mClosed    = m.filter(x => x.status === "closed").length;
+      const mTotal     = m.length;
+      const tauxCompletion = mTotal > 0 ? Math.round((mCompleted / mTotal) * 100) : 0;
+      const caTotal    = m.filter(x => x.status === "completed")
+        .reduce((acc, x) => acc + (Number(x.montant_total) || 0), 0);
+
+      const ticketsOpen = t.filter(x => x.status === "open").length;
+
+      // Missions par secteur
+      const sectorMap = {};
+      m.forEach(x => {
+        if (!x.sector) return;
+        sectorMap[x.sector] = (sectorMap[x.sector] || 0) + 1;
+      });
+      const sectorTotal = Object.values(sectorMap).reduce((a,b)=>a+b, 0) || 1;
+      const SECTOR_META = {
+        logistique:   { label:"Logistique",   icon:"📦", color:"#81C784" },
+        btp:          { label:"BTP",           icon:"🏗️", color:"#FF8A65" },
+        restauration: { label:"Restauration",  icon:"🍽️", color:"#F06292" },
+        proprete:     { label:"Propreté",      icon:"🧹", color:"#4FC3F7" },
+        commercial:   { label:"Commercial",    icon:"💼", color:"#BA68C8" },
+        hotellerie:   { label:"Hôtellerie",    icon:"🏨", color:"#FFB74D" },
+        distribution: { label:"Distribution",  icon:"🛒", color:"#4DB6AC" },
+        divers:       { label:"Divers",        icon:"✨", color:"#7986CB" },
+      };
+      const sectors = Object.entries(sectorMap)
+        .sort((a,b) => b[1]-a[1])
+        .map(([id, count]) => ({
+          id, ...SECTOR_META[id],
+          missions: count,
+          pct: Math.round((count / sectorTotal) * 100),
+        }));
+
+      return res.status(200).json({
+        users:        { clients, prestataires, total: clients + prestataires, pending },
+        missions:     { total: mTotal, open: mOpen, assigned: mAssigned, terminees: mCompleted, closed: mClosed, tauxCompletion },
+        finance:      { caTotal: Math.round(caTotal * 100) / 100 },
+        tickets:      { open: ticketsOpen, total: t.length },
+        sectors,
+        recentUsers:  r,
+      });
+    }
+
     if (action === "list_tickets") {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc`, { headers });
       const data = await r.json();

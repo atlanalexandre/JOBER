@@ -6445,46 +6445,23 @@ function LitigeRow({ l }) {
 const BO_PIN = "1234";
 
 // Données simulées backoffice
-const BO_DATA = {
-  users:        { clients:142, prestataires:89, total:231, newThisWeek:14 },
-  missions:     { total:387, enCours:23, terminees:341, annulees:23, tauxCompletion:88 },
-  finance:      { caTotal:48320, commissionAlane:8920, escrowEnAttente:3240, litiges:3 },
-  abonnements:  { free:54, premium:28, elite:7, newThisWeek:6, churnThisMonth:2 },
-  noteMoyenne:  4.7,
-  tauxReponse:  94,
-  sectors: [
-    { id:"logistique",   label:"Logistique",   icon:"📦", missions:98,  color:"#81C784", pct:25 },
-    { id:"btp",          label:"BTP",           icon:"🏗️", missions:87,  color:"#FF8A65", pct:22 },
-    { id:"restauration", label:"Restauration",  icon:"🍽️", missions:72,  color:"#F06292", pct:19 },
-    { id:"proprete",     label:"Propreté",      icon:"🧹", missions:58,  color:"#4FC3F7", pct:15 },
-    { id:"commercial",   label:"Commercial",    icon:"💼", missions:34,  color:"#BA68C8", pct:9  },
-    { id:"hotellerie",   label:"Hôtellerie",    icon:"🏨", missions:21,  color:"#FFB74D", pct:5  },
-    { id:"distribution", label:"Distribution",  icon:"🛒", missions:12,  color:"#4DB6AC", pct:3  },
-    { id:"divers",       label:"Divers",        icon:"✨", missions:5,   color:"#7986CB", pct:2  },
-  ],
-  pendingDocs: [
-    { name:"Sophie Martin",   role:"Agent de propreté",   sector:"Propreté",    docs:6, missing:1, avatar:"👩" },
-    { name:"Karim Benali",    role:"Cariste CACES 1",     sector:"Logistique",  docs:5, missing:2, avatar:"👨" },
-    { name:"Lucie Fontaine",  role:"Serveuse",            sector:"Restauration",docs:7, missing:0, avatar:"👩" },
-    { name:"Marc Dubois",     role:"Électricien N2",      sector:"BTP",         docs:4, missing:3, avatar:"👨" },
-  ],
-  recentUsers: [
-    { name:"Entreprise ABC",   type:"client",      date:"Aujourd’hui",  status:"actif" },
-    { name:"Thomas Saumur",    type:"prestataire", date:"Aujourd’hui",  status:"validé" },
-    { name:"Marie Leclerc",    type:"client",      date:"Hier",         status:"actif" },
-    { name:"Karim Benali",     type:"prestataire", date:"Hier",         status:"en attente" },
-    { name:"Société XYZ",      type:"client",      date:"Il y a 2j",    status:"actif" },
-    { name:"Julie Evan",       type:"prestataire", date:"Il y a 2j",    status:"validé" },
-  ],
-  alerts: [
-    { icon:"⚠️", text:"3 litiges en attente de traitement",      color:"#E74C3C", urgent:true  },
-    { icon:"📋", text:"4 dossiers prestataires à valider",        color:"#F39C12", urgent:true  },
-    { icon:"💶", text:"2 paiements escrow bloqués depuis >48h",   color:"#F39C12", urgent:true  },
-    { icon:"🚨", text:"1 signalement utilisateur à examiner",     color:"#E74C3C", urgent:false },
-  ],
-  weeklyCA: [12400, 8900, 11200, 9800, 13400, 10200, 14800],
-  weeklyMissions: [42, 31, 38, 29, 45, 36, 52],
-};
+function useBoData() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/bo-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stats" }),
+    })
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return { data, loading };
+}
 
 // Mini bar chart component
 const MiniBar = ({ data, color, height=40 }) => {
@@ -6519,7 +6496,7 @@ const DonutChart = ({ sectors, size=120 }) => {
         offset += dash;
         return el;
       })}
-      <text x={cx} y={cy-6}  textAnchor="middle" fontSize="14" fontWeight="900" fill="#1A1F36">{BO_DATA.missions.total}</text>
+      <text x={cx} y={cy-6}  textAnchor="middle" fontSize="14" fontWeight="900" fill="#1A1F36">{sectors.reduce((a,s)=>a+s.missions,0)||""}</text>
       <text x={cx} y={cy+10} textAnchor="middle" fontSize="9"  fill="#8A93A8">missions</text>
     </svg>
   );
@@ -6914,7 +6891,15 @@ function BOTest({ onNavigate }) {
 
 function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
-  const d = BO_DATA;
+  const { data: boData, loading: boLoading } = useBoData();
+  const d = boData || {
+    users:    { clients:0, prestataires:0, total:0, pending:0 },
+    missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
+    finance:  { caTotal:0 },
+    tickets:  { open:0, total:0 },
+    sectors:  [],
+    recentUsers: [],
+  };
 
   const KPICard = ({ icon, label, value, sub, color=C.violet, onClick }) => (
     <div onClick={onClick} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px 14px", boxShadow:"0 4px 16px rgba(0,0,0,0.5)", cursor:onClick?"pointer":"default" }}>
@@ -6965,121 +6950,63 @@ function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
-          {/* Alertes */}
-          {d.alerts.filter(a=>a.urgent).map((a,i) => (
-            <div key={i} style={{ background:`${a.color}15`, border:`1px solid ${a.color}44`, borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontSize:18 }}>{a.icon}</span>
-              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{a.text}</span>
-              <span style={{ color:a.color, fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>alert(`Action en cours : "${a.text}"`)}>Traiter →</span>
+          {boLoading && <div style={{ textAlign:"center", color:C.textSub, fontSize:13, padding:"30px 0" }}>Chargement des données…</div>}
+
+          {/* Alertes dynamiques */}
+          {d.users.pending > 0 && (
+            <div style={{ background:"#F39C1215", border:"1px solid #F39C1244", borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:18 }}>📋</span>
+              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{d.users.pending} compte{d.users.pending>1?"s":""} en attente de validation</span>
+              <span style={{ color:"#F39C12", fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>setTab("comptes")}>Traiter →</span>
             </div>
-          ))}
+          )}
+          {d.tickets?.open > 0 && (
+            <div style={{ background:"#E74C3C15", border:"1px solid #E74C3C44", borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:18 }}>🎧</span>
+              <span style={{ fontSize:12, color:C.text, fontWeight:600, flex:1 }}>{d.tickets.open} ticket{d.tickets.open>1?"s":""} support ouverts</span>
+              <span style={{ color:"#E74C3C", fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={()=>setTab("support")}>Traiter →</span>
+            </div>
+          )}
 
           {/* KPIs grid */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"14px 0" }}>
-            <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`+${d.users.newThisWeek} cette semaine`} color={C.violet} />
+            <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`${d.users.pending} en attente`} color={C.violet} />
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
-            <KPICard icon="💶" label="CA total (€)" value={`${(d.finance.caTotal/1000).toFixed(0)}k`} sub="Depuis le lancement" color={C.accentGold} />
-            <KPICard icon="⚡" label="MRR Abonnements" value={`${(d.abonnements.premium*29+d.abonnements.elite*59).toLocaleString()} €`} sub={`+${d.abonnements.newThisWeek} cette semaine`} color="#7C6FE0" />
-          </div>
-
-          {/* Bloc abonnements — hybride */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>⚡ Abonnements prestataires</div>
-              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                <span style={{ fontSize:11, color:C.success, fontWeight:700 }}>+{d.abonnements.newThisWeek} cette sem.</span>
-                <span style={{ fontSize:11, color:C.accent, fontWeight:600 }}>-{d.abonnements.churnThisMonth} churn</span>
-              </div>
-            </div>
-            {/* Plans */}
-            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-              {[
-                { plan: ABONNEMENTS_PRESTA[0], count: d.abonnements.free    },
-                { plan: ABONNEMENTS_PRESTA[1], count: d.abonnements.premium },
-                { plan: ABONNEMENTS_PRESTA[2], count: d.abonnements.elite   },
-              ].map(({ plan, count }) => {
-                const total = d.abonnements.free + d.abonnements.premium + d.abonnements.elite;
-                const pct = Math.round((count / total) * 100);
-                return (
-                  <div key={plan.id} style={{ flex:1, background:`${plan.color}12`, border:`1px solid ${plan.color}33`, borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
-                    <div style={{ fontSize:20, marginBottom:4 }}>{plan.icon}</div>
-                    <div style={{ fontWeight:800, color:plan.color, fontSize:22 }}>{count}</div>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:11, marginTop:2 }}>{plan.label}</div>
-                    <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>
-                      {plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}
-                    </div>
-                    <div style={{ marginTop:6, height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background:plan.color, borderRadius:2 }} />
-                    </div>
-                    <div style={{ color:C.textSub, fontSize:10, marginTop:3 }}>{pct}%</div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* MRR total */}
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(124,111,224,0.10)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 14px" }}>
-              <div>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>MRR total</div>
-                <div style={{ fontSize:20, fontWeight:800, color:"#7C6FE0" }}>
-                  {(d.abonnements.premium*29 + d.abonnements.elite*59).toLocaleString()} €/mois
-                </div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:600 }}>Abonnés payants</div>
-                <div style={{ fontSize:20, fontWeight:800, color:C.text }}>
-                  {d.abonnements.premium + d.abonnements.elite}
-                </div>
-              </div>
-            </div>
+            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Missions complétées" color={C.accentGold} />
+            <KPICard icon="📦" label="Missions actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
           </div>
 
           {/* Missions par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des missions</div>
-            <div style={{ display:"flex", gap:10, marginBottom:14 }}>
-              {[{l:"En cours",v:d.missions.enCours,c:C.accentGold},{l:"Terminées",v:d.missions.terminees,c:C.success},{l:"Annulées",v:d.missions.annulees,c:C.danger}].map(s=>(
-                <div key={s.l} style={{ flex:1, textAlign:"center", background:`${s.c}12`, borderRadius:12, padding:"10px 6px" }}>
+            <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+              {[
+                {l:"Ouvertes",  v:d.missions.open,      c:"#F0B429"},
+                {l:"Assignées", v:d.missions.assigned,   c:C.violet},
+                {l:"Terminées", v:d.missions.terminees,  c:C.success},
+                {l:"Fermées",   v:d.missions.closed,     c:C.textMuted},
+              ].map(s=>(
+                <div key={s.l} style={{ flex:1, minWidth:60, textAlign:"center", background:`${s.c}12`, borderRadius:12, padding:"10px 6px" }}>
                   <div style={{ fontWeight:800, color:s.c, fontSize:20 }}>{s.v}</div>
                   <div style={{ color:C.textSub, fontSize:10, marginTop:2 }}>{s.l}</div>
                 </div>
               ))}
             </div>
-            {/* Progress bar taux completion */}
             <div style={{ fontSize:12, color:C.textSub, marginBottom:6 }}>Taux de complétion : <strong style={{ color:C.success }}>{d.missions.tauxCompletion}%</strong></div>
             <div style={{ height:8, background:"#162547", borderRadius:4, overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${d.missions.tauxCompletion}%`, background:`linear-gradient(90deg,${C.success},#1e8449)`, borderRadius:4, transition:"width 1s" }} />
             </div>
           </div>
 
-          {/* Évolution CA semaine */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>📈 CA des 7 derniers jours</div>
-              <div style={{ fontWeight:800, color:C.violet, fontSize:14 }}>{d.weeklyCA[d.weeklyCA.length-1].toLocaleString()} €</div>
-            </div>
-            <MiniBar data={d.weeklyCA} color={C.violet} height={50} />
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-              {["L","M","M","J","V","S","D"].map((j,i)=><span key={i} style={{ fontSize:9, color:C.textSub, flex:1, textAlign:"center" }}>{j}</span>)}
-            </div>
-          </div>
-
-          {/* Missions / semaine */}
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🗓️ Missions / semaine</div>
-              <div style={{ fontWeight:800, color:C.success, fontSize:14 }}>{d.weeklyMissions[d.weeklyMissions.length-1]} missions</div>
-            </div>
-            <MiniBar data={d.weeklyMissions} color={C.success} height={50} />
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-              {["L","M","M","J","V","S","D"].map((j,i)=><span key={i} style={{ fontSize:9, color:C.textSub, flex:1, textAlign:"center" }}>{j}</span>)}
-            </div>
-          </div>
-
-          {/* Stats rapides */}
+          {/* Répartition utilisateurs */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-            {[{l:"Note moy.",v:`${d.noteMoyenne}★`,c:C.accentGold},{l:"Taux réponse",v:`${d.tauxReponse}%`,c:C.success},{l:"Escrow",v:`${(d.finance.escrowEnAttente/1000).toFixed(1)}k€`,c:C.violet}].map(s=>(
+            {[
+              {l:"Total",        v:d.users.total,        c:C.violet},
+              {l:"Clients",      v:d.users.clients,      c:C.accentGold},
+              {l:"Prestataires", v:d.users.prestataires, c:C.success},
+            ].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"12px 10px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-                <div style={{ fontWeight:800, color:s.c, fontSize:16 }}>{s.v}</div>
+                <div style={{ fontWeight:800, color:s.c, fontSize:20 }}>{s.v}</div>
                 <div style={{ color:C.textSub, fontSize:10, marginTop:2 }}>{s.l}</div>
               </div>
             ))}
@@ -7089,14 +7016,15 @@ function BackofficeDashboard({ onBack, onNavigate }) {
         {/* ── SECTEURS ── */}
         {tab==="sectors" && <>
           <div style={{ display:"flex", gap:16, alignItems:"center", marginBottom:20 }}>
-            <DonutChart sectors={d.sectors} />
+            <DonutChart sectors={d.sectors.length > 0 ? d.sectors : [{pct:100,color:"#162547"}]} />
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des missions</div>
               <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} missions</div>
-              <div style={{ marginTop:8 }}>
+              {d.sectors[0] && <div style={{ marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textSub }}>Secteur #1</div>
-                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>📦 Logistique (25%)</div>
-              </div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{d.sectors[0].icon} {d.sectors[0].label} ({d.sectors[0].pct}%)</div>
+              </div>}
+              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune mission pour l'instant</div>}
             </div>
           </div>
           {d.sectors.map((s,i) => (
@@ -7129,21 +7057,23 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             ))}
           </div>
 
-          <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>📋 Dossiers en attente de validation</div>
-          {d.pendingDocs.map((u,i) => (
-            <PendingDocRow key={i} u={u} />
-          ))}
-<div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕐 Dernières inscriptions</div>
-          {d.recentUsers.map((u,i) => (
-            <div key={i} style={{ background:"#0D1B3E", borderRadius:13, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:`${u.type==="client"?C.violet:C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{u.type==="client"?"🏢":"👷"}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{u.name}</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>{u.type==="client"?"Client":"Prestataire"} · {u.date}</div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕐 Dernières inscriptions</div>
+          {d.recentUsers.length === 0 && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucun utilisateur inscrit</div>}
+          {d.recentUsers.map((u,i) => {
+            const statusColor = u.status==="approved"?C.success : u.status==="rejected"?C.danger : C.accentGold;
+            const statusLabel = u.status==="approved"?"Approuvé" : u.status==="rejected"?"Refusé" : "En attente";
+            const dateStr = new Date(u.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"short" });
+            return (
+              <div key={i} style={{ background:"#0D1B3E", borderRadius:13, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:`${u.role==="client"?C.violet:C.accent}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{u.role==="client"?"🏢":"👷"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{u.prenom} {u.nom}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{u.role==="client"?"Client":"Prestataire"} · {dateStr}</div>
+                </div>
+                <Badge color={statusColor} small>{statusLabel}</Badge>
               </div>
-              <Badge color={u.status==="validé"?C.success:u.status==="actif"?C.violet:C.accentGold} small>{u.status}</Badge>
-            </div>
-          ))}
+            );
+          })}
         </>}
 
         {/* ── FINANCE ── */}
@@ -7151,11 +7081,11 @@ function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>dont <strong style={{ color:C.accentGold }}>{d.finance.commissionAlane.toLocaleString()} €</strong> de commission ALANE</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Missions complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"Commission ALANE",v:`${d.finance.commissionAlane.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Escrow en attente",v:`${d.finance.escrowEnAttente.toLocaleString()} €`,c:C.violet,i:"🔒"},{l:"Taux de commission moy.",v:"18,4%",c:C.success,i:"📊"},{l:"Litiges en cours",v:d.finance.litiges,c:C.danger,i:"⚠️"}].map(s=>(
+            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:C.violet,i:"📦"},{l:"Tickets support",v:d.tickets?.open||0,c:C.danger,i:"🎧"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -7192,9 +7122,9 @@ function BackofficeDashboard({ onBack, onNavigate }) {
         {/* ── MODÉRATION ── */}
         {tab==="moderation" && <>
           <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🚨 Alertes actives</div>
-          {d.alerts.map((a,i) => (
-            <AlertRow key={i} a={a} />
-          ))}
+          {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
+          {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
+          {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucune alerte active</div>}
 <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>📋 Litiges en cours</div>
           {[
             { client:"Société ABC",  presta:"Thomas Saumur",  montant:"96 €",  motif:"Heures non effectuées",  date:"Il y a 2h" },
