@@ -91,6 +91,21 @@ export default async function handler(req, res) {
 
     if (action === "delete") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const reason = req.body.reason || "";
+
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+
+      if (userEmail) {
+        const reasonBlock = reason ? `\n\nRaison communiquée : ${reason}` : "";
+        await sendEmail({
+          to: userEmail,
+          subject: "Votre compte ALANE a été supprimé",
+          text: `Bonjour,\n\nNous vous informons que votre compte ALANE a été supprimé par notre équipe d'administration.${reasonBlock}\n\nSi vous pensez qu'il s'agit d'une erreur, vous pouvez nous contacter via le formulaire de support.\n\nL'équipe ALANE`,
+        });
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
