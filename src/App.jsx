@@ -6923,21 +6923,41 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 2px", fontFamily:font.display }}>⚙️ Backoffice ALANE</h2>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>Tableau de bord · Temps réel</p>
           </div>
-          <div style={{ textAlign:"right" }}>
-            <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Plateforme active</div>
-          </div>
+          <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Actif</div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:"flex", gap:0, overflowX:"auto", padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"comptes",l:"✅ Comptes"},{id:"support",l:"🎧 Support"},{id:"dashboard",l:"📊 KPIs"},{id:"sectors",l:"🗂️ Secteurs"},{id:"users",l:"👥 Utilisateurs"},{id:"finance",l:"💶 Finance"},{id:"moderation",l:"⚠️ Modération"},{id:"test",l:"🧪 Test"}].map(t => (
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:"9px 14px", border:"none", borderBottom:`3px solid ${tab===t.id?C.violet:"transparent"}`, background:"transparent", color:tab===t.id?C.violet:C.gray, fontWeight:tab===t.id?800:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.2s" }}>{t.l}</button>
-        ))}
-      </div>
-      <div style={{ height:1, background:"#162547", margin:"0 18px" }} />
+      {/* Layout : sidebar gauche + contenu */}
+      <div style={{ display:"flex", gap:0, padding:"18px 14px", alignItems:"flex-start" }}>
 
-      <div style={{ padding:"18px 18px" }}>
+        {/* Sidebar onglets */}
+        <div style={{ width:130, flexShrink:0, display:"flex", flexDirection:"column", gap:4, marginRight:14, position:"sticky", top:18 }}>
+          {[
+            {id:"dashboard",  l:"📊 KPIs"},
+            {id:"comptes",    l:"✅ Comptes"},
+            {id:"support",    l:"🎧 Support"},
+            {id:"sectors",    l:"🗂️ Secteurs"},
+            {id:"users",      l:"👥 Utilisateurs"},
+            {id:"finance",    l:"💶 Finance"},
+            {id:"moderation", l:"⚠️ Modération"},
+            {id:"test",       l:"🧪 Test"},
+          ].map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              padding:"10px 10px", border:"none",
+              borderRadius:10,
+              borderLeft:`3px solid ${tab===t.id?C.violet:"transparent"}`,
+              background: tab===t.id ? `${C.violet}18` : "transparent",
+              color: tab===t.id ? C.violet : C.gray,
+              fontWeight: tab===t.id ? 700 : 500,
+              fontSize:12, cursor:"pointer", fontFamily:"inherit",
+              textAlign:"left", transition:"all 0.15s",
+              whiteSpace:"nowrap",
+            }}>{t.l}</button>
+          ))}
+        </div>
+
+        {/* Contenu */}
+        <div style={{ flex:1, minWidth:0 }}>
 
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
@@ -7146,7 +7166,8 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             </div>
           ))}
         </>}
-      </div>
+        </div>{/* fin contenu */}
+      </div>{/* fin layout */}
     </div>
   );
 }
