@@ -662,8 +662,8 @@ const Btn = ({ children, onClick, variant="primary", full, disabled, style:s, cl
   );
 };
 
-const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, disabled=false }) => (
-  <div style={{ marginBottom:16 }}>
+const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, disabled=false, autoComplete, name, inputMode }) => (
+  <div style={{ marginBottom:16, minWidth:0 }}>
     {label && (
       <label style={{
         display:"block", fontSize:11, color:C.textSub,
@@ -684,6 +684,9 @@ const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, d
         value={value||""}
         onChange={onChange}
         disabled={disabled}
+        autoComplete={autoComplete}
+        name={name}
+        inputMode={inputMode}
         style={{
           width:"100%",
           padding: icon ? "13px 14px 13px 44px" : "13px 16px",
@@ -1534,10 +1537,10 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} />
+          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} autoComplete="off" />
           <div style={{ display:"flex", gap:10 }}>
-            <div style={{ flex:1 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} /></div>
-            <div style={{ flex:2 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} /></div>
+            <div style={{ flex:1, minWidth:0 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} autoComplete="off" inputMode="numeric" /></div>
+            <div style={{ flex:2, minWidth:0 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} autoComplete="off" /></div>
           </div>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Volume horaire estimé *</label>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -1563,12 +1566,12 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
                 <button onClick={()=>setLieuxIntervention(prev=>prev.filter((_,j)=>j!==i))} style={{ position:"absolute", top:10, right:10, background:"transparent", border:"none", color:"rgba(242,94,94,0.7)", fontSize:16, cursor:"pointer", lineHeight:1 }}>✕</button>
               )}
               <Input label={`Adresse ${lieuxIntervention.length > 1 ? i+1 : ""}`} placeholder="12 rue de la Paix" icon="📍"
-                value={lieu.adresse} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:e.target.value}:l))} />
+                value={lieu.adresse} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:v}:l)); }} autoComplete="off" />
               <div style={{ display:"flex", gap:10 }}>
-                <div style={{ flex:1 }}><Input label="Code postal" placeholder="75001"
-                  value={lieu.codePostal} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,codePostal:e.target.value}:l))} /></div>
-                <div style={{ flex:2 }}><Input label="Ville" placeholder="Paris"
-                  value={lieu.ville} onChange={e=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,ville:e.target.value}:l))} /></div>
+                <div style={{ flex:1, minWidth:0 }}><Input label="Code postal" placeholder="75001"
+                  value={lieu.codePostal} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,codePostal:v}:l)); }} autoComplete="off" inputMode="numeric" /></div>
+                <div style={{ flex:2, minWidth:0 }}><Input label="Ville" placeholder="Paris"
+                  value={lieu.ville} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,ville:v}:l)); }} autoComplete="off" /></div>
               </div>
             </div>
           ))}
