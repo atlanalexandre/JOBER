@@ -6903,76 +6903,101 @@ function EmailTestButton() {
 }
 
 function BOTest({ onNavigate }) {
+  const MOCK_P = {
+    id:"bo-test-001", name:"Jean Demo", jobTitle:"Agent de démonstration", role:"Agent de démonstration",
+    avatar:"🧪", color:C.violet, rating:4.8, reviews:42, hourlyRate:"20 €/h HT", rateNum:20, tarifNet:15,
+    available:true, sector:"logistique", skills:["Test","Démo","Présentation"], experience:"5 ans",
+    distance:"0,5 km", responseTime:"~2 min", missions:42, bio:"Prestataire fictif pour les tests BO.",
+  };
+
   const clientScreens = [
-    { id:"home",             label:"Accueil client",        icon:"🏠" },
-    { id:"catalogue",        label:"Catalogue secteurs",    icon:"🗂️" },
-    { id:"search_filters",   label:"Recherche filtres",     icon:"🔍" },
-    { id:"dashboard",        label:"Dashboard client",      icon:"📊" },
-    { id:"mission_history",  label:"Historique missions",   icon:"📋" },
-    { id:"cashback",         label:"Wallet cashback",       icon:"💰" },
-    { id:"notifications",    label:"Notifications",         icon:"🔔" },
-    { id:"favorites",        label:"Favoris",               icon:"❤️" },
-    { id:"mission_request",  label:"Créer mission",         icon:"➕" },
-    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
-  ];
-  const prestaScreens = [
-    { id:"p_home",           label:"Accueil prestataire",   icon:"🏠" },
-    { id:"p_missions",       label:"Missions dispo",        icon:"📦" },
-    { id:"p_dashboard",      label:"Dashboard presta",      icon:"📊" },
-    { id:"calendar",         label:"Calendrier",            icon:"📅" },
-    { id:"abonnement_presta",label:"Abonnement",            icon:"💳" },
-    { id:"doc_upload",       label:"Documents",             icon:"📎" },
-    { id:"presta_profile_edit",label:"Modifier profil",     icon:"✏️" },
-    { id:"presta_pointage",  label:"Pointage",              icon:"⏱️" },
-  ];
-  const sharedScreens = [
-    { id:"faq",              label:"FAQ",                   icon:"❓" },
-    { id:"legal",            label:"Mentions légales",      icon:"📜" },
-    { id:"contact_support",  label:"Support",               icon:"🎧" },
-    { id:"settings",         label:"Paramètres",            icon:"⚙️" },
+    { id:"home",              label:"Accueil client",          icon:"🏠" },
+    { id:"catalogue",         label:"Catalogue secteurs",      icon:"🗂️" },
+    { id:"search_filters",    label:"Recherche / filtres",     icon:"🔍" },
+    { id:"dashboard",         label:"Dashboard client",        icon:"📊" },
+    { id:"mission_history",   label:"Historique missions",     icon:"📋" },
+    { id:"cashback",          label:"Wallet cashback",         icon:"💰" },
+    { id:"notifications",     label:"Notifications",           icon:"🔔" },
+    { id:"favorites",         label:"Favoris",                 icon:"❤️" },
+    { id:"mission_request",   label:"Créer une mission",       icon:"➕" },
+    { id:"team_booking",      label:"Réservation équipe",      icon:"👥" },
+    { id:"settings",          label:"Paramètres",              icon:"⚙️" },
   ];
 
-  const Btn = ({ s, role }) => (
-    <button onClick={()=>onNavigate(s.id, role)} style={{
+  const clientFlowScreens = [
+    { id:"profile",     label:"Profil prestataire",   icon:"👤", data:MOCK_P },
+    { id:"cv",          label:"CV prestataire",        icon:"📄", data:MOCK_P },
+    { id:"booking",     label:"Réservation",           icon:"📅", data:MOCK_P },
+    { id:"contract",    label:"Contrat",               icon:"✍️", data:MOCK_P },
+    { id:"tracking",    label:"Suivi mission",         icon:"📍", data:MOCK_P },
+    { id:"validation",  label:"Validation mission",    icon:"✅", data:MOCK_P },
+    { id:"rating",      label:"Noter le prestataire",  icon:"⭐", data:MOCK_P },
+    { id:"cancellation",label:"Annulation",            icon:"❌", data:MOCK_P },
+    { id:"invoice",     label:"Facture",               icon:"🧾", data:MOCK_P },
+    { id:"payslip",     label:"Fiche de paie",         icon:"💶", data:MOCK_P },
+  ];
+
+  const prestaScreens = [
+    { id:"p_home",              label:"Accueil prestataire",  icon:"🏠" },
+    { id:"p_missions",          label:"Missions disponibles", icon:"📦" },
+    { id:"p_dashboard",         label:"Dashboard presta",     icon:"📊" },
+    { id:"calendar",            label:"Calendrier",           icon:"📅" },
+    { id:"abonnement_presta",   label:"Abonnement",           icon:"💳" },
+    { id:"doc_upload",          label:"Documents",            icon:"📎" },
+    { id:"presta_profile_edit", label:"Modifier profil",      icon:"✏️" },
+  ];
+
+  const sharedScreens = [
+    { id:"faq",             label:"FAQ",                  icon:"❓" },
+    { id:"legal",           label:"Mentions légales",     icon:"📜" },
+    { id:"contact_support", label:"Support",              icon:"🎧" },
+    { id:"referral",        label:"Parrainage",           icon:"🎁" },
+    { id:"abonnement_presta",label:"Abonnement presta",  icon:"💎" },
+  ];
+
+  const NavBtn = ({ s, role }) => (
+    <button onClick={()=>onNavigate(s.id, role, s.data||null)} style={{
       display:"flex", alignItems:"center", gap:8, padding:"10px 12px",
       background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10,
       color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit",
       fontWeight:500, textAlign:"left", width:"100%",
     }}>
-      <span style={{ fontSize:16 }}>{s.icon}</span>
-      <span>{s.label}</span>
-      <span style={{ marginLeft:"auto", fontSize:10, color:C.textMuted, fontFamily:"monospace" }}>{s.id}</span>
+      <span style={{ fontSize:15 }}>{s.icon}</span>
+      <span style={{ flex:1 }}>{s.label}</span>
+      <span style={{ fontSize:10, color:C.textMuted, fontFamily:"monospace" }}>{s.id} →</span>
     </button>
   );
 
-  const Section = ({ title, color, screens, role }) => (
-    <div style={{ marginBottom:22 }}>
-      <div style={{ fontWeight:700, fontSize:13, color, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
-        <div style={{ width:3, height:14, background:color, borderRadius:2 }} />
+  const Section = ({ title, color, screens, role, note }) => (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ fontWeight:700, fontSize:12, color, marginBottom:6, display:"flex", alignItems:"center", gap:6, textTransform:"uppercase", letterSpacing:0.8 }}>
+        <div style={{ width:3, height:12, background:color, borderRadius:2 }} />
         {title}
+        {note && <span style={{ fontSize:10, color:C.textMuted, fontWeight:400, textTransform:"none", letterSpacing:0 }}>— {note}</span>}
       </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-        {screens.map(s => <Btn key={s.id} s={s} role={role} />)}
+      <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+        {screens.map(s => <NavBtn key={s.id+s.label} s={s} role={role} />)}
       </div>
     </div>
   );
 
   return (
     <div>
-      <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
-        <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>Mode test</div>
+      <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"12px 14px", marginBottom:18 }}>
+        <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>🧪 Mode test</div>
         <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>
-          Navigue vers n'importe quel écran sans compte. Le rôle est automatiquement simulé.
-          Utilise "← Retour app" dans le header pour revenir au BO.
+          Navigue vers n'importe quel écran sans compte. Les écrans du flux utilisent un prestataire fictif "Jean Demo".
         </div>
       </div>
-      <Section title="Écrans Client" color="#F0B429" screens={clientScreens} role="client" />
-      <Section title="Écrans Prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
-      <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role={null} />
-      {/* Email test */}
-      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:20 }}>
-        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:8 }}>📧 Test email</div>
-        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Envoie un email de test à direction@alane.fr pour vérifier la configuration Resend.</p>
+
+      <Section title="Écrans client — navigation" color="#F0B429" screens={clientScreens} role="client" />
+      <Section title="Flux client — avec prestataire" color="#F0B429" screens={clientFlowScreens} role="client" note="prestataire fictif injecté" />
+      <Section title="Écrans prestataire" color={C.violet} screens={prestaScreens} role="prestataire" />
+      <Section title="Écrans partagés" color={C.success} screens={sharedScreens} role="client" />
+
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:4 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>📧 Test email</div>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Envoie un email test à direction@alane.fr pour vérifier Resend.</p>
         <EmailTestButton />
       </div>
     </div>
@@ -9526,7 +9551,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
