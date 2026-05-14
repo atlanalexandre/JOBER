@@ -81,12 +81,44 @@ export default async function handler(req, res) {
         if (err.includes("unique")) return res.status(400).json({ error: "Vous avez déjà postulé à cette mission" });
         return res.status(500).json({ error: "Erreur candidature" });
       }
+
+      // Notifier le client qu'une candidature a été reçue
+      const missionRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,metier,sector`, { headers });
+      const missionData = await missionRes.json();
+      const missionRow = Array.isArray(missionData) && missionData[0];
+      const prestataireRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=prenom,nom`, { headers });
+      const prestataireData = await prestataireRes.json();
+      const presta = Array.isArray(prestataireData) && prestataireData[0];
+      if (missionRow?.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: missionRow.client_id,
+            type: "mission",
+            title: "Nouvelle candidature 📋",
+            body: `${presta ? `${presta.prenom} ${presta.nom}` : "Un prestataire"} a postulé à votre mission "${missionRow.metier || missionRow.sector}".`,
+            read: false,
+          }),
+        });
+      }
       return res.status(200).json({ success: true });
     }
 
     if (action === "accept") {
-      const { candidature_id, mission_id } = payload;
+      const { candidature_id, mission_id, prestataire_id } = payload;
       if (!candidature_id || !mission_id) return res.status(400).json({ error: "candidature_id et mission_id requis" });
+
+      // Récupérer le tarif_net du prestataire depuis user_metadata
+      let tarifHoraire = 0;
+      if (prestataire_id) {
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+          const ud = await ur.json();
+          tarifHoraire = Number(ud.user_metadata?.tarif_net) || 0;
+        } catch {}
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -97,12 +129,91 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
       });
+      const missionPatch = { status: "assigned" };
+      if (prestataire_id) missionPatch.prestataire_id = prestataire_id;
+      if (tarifHoraire)   missionPatch.tarif_horaire  = tarifHoraire;
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "assigned" }),
+        body: JSON.stringify(missionPatch),
       });
+
+      // Notification au prestataire
+      if (prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: prestataire_id,
+            type: "mission",
+            title: "Candidature acceptée ✅",
+            body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.",
+            read: false,
+          }),
+        });
+      }
       return res.status(200).json({ success: true });
+    }
+
+    if (action === "complete") {
+      const { mission_id, client_id } = payload;
+      if (!mission_id || !client_id) return res.status(400).json({ error: "mission_id et client_id requis" });
+
+      // Récupérer la mission pour avoir hours et tarif_horaire
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status`, { headers });
+      const missions = await mr.json();
+      const mission = Array.isArray(missions) && missions[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+
+      const hours        = mission.hours || 0;
+      const tarifHoraire = mission.tarif_horaire || 0;
+      const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
+
+      // Récupérer le palier cashback du client (missions_completed_month)
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
+      const profiles = await pr.json();
+      const profile = Array.isArray(profiles) && profiles[0];
+      const missionsThisMonth = (profile?.missions_completed_month || 0) + 1;
+
+      // Calcul du taux selon palier
+      let rate = 0.005;
+      if (missionsThisMonth >= 10) rate = 0.015;
+      else if (missionsThisMonth >= 6) rate = 0.01;
+      else if (missionsThisMonth >= 3) rate = 0.0075;
+      const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+      const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
+
+      // Marquer mission completed + montant total
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "completed", montant_total: montantTotal }),
+      });
+
+      // Mettre à jour le cashback du client
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+      });
+
+      // Notification cashback au client
+      if (cashbackEarned > 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: client_id,
+            type: "cashback",
+            title: "Cashback crédité 💰",
+            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${newBalance.toFixed(2)} €`,
+            read: false,
+          }),
+        });
+      }
+
+      return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
     }
 
     if (action === "reject") {
