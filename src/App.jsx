@@ -8144,10 +8144,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
 // Paliers de fidélité
 const CASHBACK_TIERS = [
-  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.03, color:"#8B8FA8", icon:"⭐"  },
-  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.05, color:"#C0C0C0", icon:"🥈"  },
-  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.07, color:"#F0B429", icon:"🥇"  },
-  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.10, color:"#A89DF5", icon:"💎"  },
+  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.005,  color:"#8B8FA8", icon:"⭐"  },
+  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.0075, color:"#C0C0C0", icon:"🥈"  },
+  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.01,   color:"#F0B429", icon:"🥇"  },
+  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.015,  color:"#A89DF5", icon:"💎"  },
 ];
 
 const getCashbackTier = (missionsThisMonth) => {
