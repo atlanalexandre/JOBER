@@ -75,7 +75,7 @@ export default async function handler(req, res) {
           await sendEmail({
             to: userEmail,
             subject: "Votre compte ALANE est activé !",
-            text: `Bonjour,\n\nVotre compte ALANE a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://alane-delta.vercel.app\n\nBienvenue sur ALANE !\nL'équipe ALANE`,
+            text: `Bonjour,\n\nVotre compte ALANE a été validé par notre équipe. Vous pouvez maintenant vous connecter.\n\nhttps://www.alane.fr\n\nBienvenue sur ALANE !\nL'équipe ALANE`,
           });
         } else {
           await sendEmail({
