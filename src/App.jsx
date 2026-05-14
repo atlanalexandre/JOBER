@@ -7769,9 +7769,14 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
   const [tab, setTab]             = useState("all");
   const [missions, setMissions]   = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [selected, setSelected]   = useState(null); // mission with candidatures open
+  const [selected, setSelected]   = useState(null);
   const [candidatures, setCandidatures] = useState([]);
   const [actioning, setActioning] = useState(null);
+  const [completing, setCompleting] = useState(false);
+  const [completedResult, setCompletedResult] = useState(null);
+  const [userId, setUserId]       = useState(null);
+
+  useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -7800,11 +7805,28 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
     setActioning(c.id);
     await fetch("/api/missions", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id }),
+      body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
     });
-    setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned" } : m));
+    setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
     setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
+    setSelected(s => s ? { ...s, status: "assigned" } : s);
     setActioning(null);
+  };
+
+  const handleComplete = async () => {
+    if (!selected || !userId) return;
+    setCompleting(true);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete", mission_id: selected.id, client_id: userId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
+      setSelected(s => s ? { ...s, status: "completed" } : s);
+      setCompletedResult(data);
+    }
+    setCompleting(false);
   };
 
   const handleReject = async (c) => {
@@ -7825,8 +7847,8 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
     setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
   };
 
-  const statusLabel  = { open:"Ouverte", assigned:"Assignée", closed:"Fermée" };
-  const statusColor  = { open:C.success, assigned:C.violet, closed:C.textMuted };
+  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
+  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted };
   const filtered = tab === "all" ? missions : missions.filter(m => m.status === tab);
 
   if (selected) {
@@ -7872,6 +7894,39 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
             </div>
           )}
+          {selected.status === "assigned" && !completedResult && (
+            <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
+              <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+              </div>
+              <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                {completing ? "Validation…" : "✅ Valider la mission"}
+              </button>
+            </div>
+          )}
+
+          {completedResult && (
+            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+              <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
+                Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+              </div>
+              <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
+                <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
+              </div>
+            </div>
+          )}
+
+          {selected.status === "completed" && !completedResult && (
+            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center" }}>
+              <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
+              {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
+            </div>
+          )}
+
           {selected.status === "open" && (
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
               Clôturer la mission
@@ -7891,7 +7946,7 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
       </div>
       <div style={{ padding:"16px 18px 0" }}>
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"closed",l:"Fermées"}].map(t=>(
+          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"closed",l:"Fermées"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
           ))}
         </div>
@@ -8180,12 +8235,51 @@ const INITIAL_WALLET = {
 };
 
 function CashbackWalletScreen({ onBack, onNavigate }) {
-  const w = INITIAL_WALLET;
+  const [walletData, setWalletData] = useState({ balance: 0, missionsThisMonth: 0 });
+  const [history, setHistory]       = useState([]);
+  const [wLoading, setWLoading]     = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data?.user;
+      if (!user) { setWLoading(false); return; }
+
+      const [{ data: profile }, { data: completedMissions }] = await Promise.all([
+        supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", user.id).single(),
+        supabase.from("missions").select("id,metier,sector,date,hours,tarif_horaire,montant_total,status")
+          .eq("client_id", user.id).eq("status", "completed").order("created_at", { ascending: false }),
+      ]);
+
+      setWalletData({
+        balance: profile?.cashback_balance || 0,
+        missionsThisMonth: profile?.missions_completed_month || 0,
+      });
+
+      if (Array.isArray(completedMissions)) {
+        setHistory(completedMissions.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const montant = m.montant_total || ((m.hours||0) * (m.tarif_horaire||0));
+          const rate = getCashbackTier(profile?.missions_completed_month || 0).rate;
+          const cashback = Math.round(montant * rate * 100) / 100;
+          return {
+            mission: m.metier || sector?.label || "Mission",
+            date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
+            amount: montant,
+            cashback,
+            status: "disponible",
+          };
+        }));
+      }
+      setWLoading(false);
+    });
+  }, []);
+
+  const w = walletData;
   const tier = getCashbackTier(w.missionsThisMonth);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - w.missionsThisMonth : 0;
   const progressPct = nextTier
-    ? ((w.missionsThisMonth - tier.min) / (nextTier.min - tier.min)) * 100
+    ? Math.min(100, ((w.missionsThisMonth - tier.min) / (nextTier.min - tier.min)) * 100)
     : 100;
 
   return (
@@ -8213,10 +8307,10 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
           <div style={{ position:"absolute", top:-30, right:-30, width:140, height:140, borderRadius:"50%", background:`${C.violet}12`, pointerEvents:"none" }} />
           <p style={{ color:C.textSub, fontSize:11, letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>Solde disponible</p>
           <div style={{ fontSize:44, fontWeight:800, color:C.text, fontFamily:font.display, letterSpacing:-1, marginBottom:4 }}>
-            {w.balance.toFixed(2)} <span style={{ fontSize:22, color:C.textSub }}>€</span>
+            {wLoading ? "—" : Number(w.balance).toFixed(2)} <span style={{ fontSize:22, color:C.textSub }}>€</span>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, margin:"0 0 16px" }}>
-            + <span style={{ color:C.accentGold }}>{w.pending.toFixed(2)} €</span> en attente de validation
+            {w.balance >= 10 ? <span style={{ color:C.accentGold }}>Disponible à l'utilisation</span> : "Minimum 10 € pour utiliser votre cashback"}
           </p>
           <Btn onClick={()=>onNavigate("search_filters")} style={{ fontSize:13, padding:"10px 20px" }}>
             Utiliser mon cashback →
@@ -8226,8 +8320,8 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
         {/* Stats rapides */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
-            { label:"Total gagné", value:`${w.totalEarned.toFixed(2)} €`, color:C.success,  icon:"💰" },
-            { label:"Ce mois",     value:`${w.missionsThisMonth} missions`, color:C.violet, icon:"📋" },
+            { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
+            { label:"Ce mois",       value:`${w.missionsThisMonth} mission${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:`${s.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17 }}>{s.icon}</div>
@@ -8278,7 +8372,13 @@ function CashbackWalletScreen({ onBack, onNavigate }) {
 
         {/* Historique */}
         <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:12 }}>Historique des gains</div>
-        {w.history.map((h,i)=>(
+        {!wLoading && history.length === 0 && (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"24px", textAlign:"center", marginBottom:12 }}>
+            <div style={{ fontSize:28, marginBottom:8 }}>💸</div>
+            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première mission pour gagner du cashback.</div>
+          </div>
+        )}
+        {history.map((h,i)=>(
           <div key={i} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:8, display:"flex", alignItems:"center", gap:12, opacity:h.status==="expiré"?0.5:1 }}>
             <div style={{ width:38, height:38, borderRadius:10, background:h.status==="disponible"?`${C.success}15`:h.status==="utilisé"?`${C.violet}15`:`${C.textMuted}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>
               {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
