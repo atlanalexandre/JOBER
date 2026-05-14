@@ -6707,17 +6707,22 @@ function LitigeRow({ l }) {
 // ── BACKOFFICE ────────────────────────────────────────────────────
 // PIN vérifié côté serveur via /api/bo-verify-pin
 
-// Données simulées backoffice
+// Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
+function boFetch(body) {
+  const token = sessionStorage.getItem("bo_token") || "";
+  return fetch("/api/bo-action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
 function useBoData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/bo-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stats" }),
-    })
+    boFetch({ action: "stats" })
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -6787,7 +6792,7 @@ function BackofficeLogin({ onLogin, onBack }) {
         .then(r => r.json())
         .then(j => {
           setChecking(false);
-          if(j.ok) { onLogin(); }
+          if(j.ok) { sessionStorage.setItem("bo_token", j.token || ""); onLogin(); }
           else { setError(true); setPin(""); setAttempts(a=>a+1); }
         })
         .catch(() => { setChecking(false); setError(true); setPin(""); setAttempts(a=>a+1); });
@@ -6862,7 +6867,7 @@ function BOComptes() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list" }) });
+      const res = await boFetch({ action:"list" });
       const data = await res.json();
       setProfiles(Array.isArray(data) ? data : []);
     } catch(e) { setProfiles([]); }
@@ -6873,7 +6878,7 @@ function BOComptes() {
 
   const handleAction = async (profileId, action, reason) => {
     setActioning(profileId+action);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId, reason }) });
+    await boFetch({ action, profileId, reason });
     setActioning(null);
     load();
   };
@@ -7036,7 +7041,7 @@ function BOSupport() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list_tickets" }) });
+      const res = await boFetch({ action:"list_tickets" });
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
     } catch { setTickets([]); }
@@ -7047,7 +7052,7 @@ function BOSupport() {
 
   const closeTicket = async (id) => {
     setActioning(id);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"close_ticket", profileId:id }) });
+    await boFetch({ action:"close_ticket", profileId:id });
     setActioning(null);
     load();
   };
@@ -7106,18 +7111,11 @@ function BOModerationTab({ d }) {
     if(!suspendEmail.trim()) return;
     setSuspending(true); setSuspendResult(null);
     try {
-      // Récupérer l'ID depuis la liste des comptes, puis rejeter
-      const r = await fetch("/api/bo-action", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"list" }),
-      });
+      const r = await boFetch({ action:"list" });
       const users = await r.json();
       const user = (Array.isArray(users)?users:[]).find(u=>u.email===suspendEmail.trim());
       if(!user) { setSuspendResult({ ok:false, msg:"Email introuvable" }); setSuspending(false); return; }
-      const r2 = await fetch("/api/bo-action", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"reject", profileId: user.id }),
-      });
+      const r2 = await boFetch({ action:"reject", profileId: user.id });
       const j = await r2.json();
       setSuspendResult(j.success ? { ok:true, msg:`Compte ${suspendEmail} suspendu.` } : { ok:false, msg:"Erreur lors de la suspension" });
       if(j.success) { setSuspendEmail(""); setSuspendReason(""); }
@@ -7129,10 +7127,7 @@ function BOModerationTab({ d }) {
     if(!commMsg.trim()) return;
     setCommSending(true); setCommResult(null);
     try {
-      const r = await fetch("/api/bo-action", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"send_global_comm", message: commMsg }),
-      });
+      const r = await boFetch({ action:"send_global_comm", message: commMsg });
       const j = await r.json();
       setCommResult(j.success ? { ok:true, msg:"Communication envoyée à tous les prestataires actifs." } : { ok:false, msg:"Erreur lors de l'envoi" });
       if(j.success) setCommMsg("");
@@ -7194,10 +7189,7 @@ function BOExportCSV({ d }) {
   const doExport = async () => {
     setExporting(true);
     try {
-      const r = await fetch("/api/bo-action", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"list" }),
-      });
+      const r = await boFetch({ action:"list" });
       const users = await r.json();
       const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Téléphone","IBAN","Type compte","Société","Créé le"]];
       (Array.isArray(users) ? users : []).forEach(u => {
@@ -7263,11 +7255,7 @@ function EmailTestButton() {
   const send = async () => {
     setStatus("sending");
     try {
-      const r = await fetch("/api/bo-action", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"send_test_email" }),
-      });
+      const r = await boFetch({ action:"send_test_email" });
       const j = await r.json();
       setStatus(j.success ? "ok" : "error");
     } catch { setStatus("error"); }
@@ -9952,7 +9940,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ sessionStorage.removeItem("bo_token"); setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>

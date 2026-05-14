@@ -1,3 +1,22 @@
+import crypto from "crypto";
+
+function verifyBoToken(authHeader) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  const secret = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const dot = token.indexOf(".");
+  if (dot === -1) return false;
+  const ts  = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const age = Math.floor(Date.now() / 1000) - parseInt(ts, 10);
+  if (isNaN(age) || age < 0 || age > 86400) return false; // expire après 24h
+  const expected = crypto.createHmac("sha256", secret).update(ts).digest("hex");
+  if (sig.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  } catch { return false; }
+}
+
 function emailHtml(content) {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/></head>
@@ -46,6 +65,11 @@ async function sendEmail({ to, subject, html }) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // Vérification du token BO signé
+  if (!verifyBoToken(req.headers["authorization"] || "")) {
+    return res.status(401).json({ error: "Non autorisé — token BO invalide ou expiré" });
+  }
 
   const { action, profileId } = req.body;
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
