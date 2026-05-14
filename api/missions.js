@@ -68,6 +68,28 @@ export default async function handler(req, res) {
       return res.status(200).json(enriched);
     }
 
+    if (action === "mes_candidatures") {
+      const { prestataire_id } = payload;
+      if (!prestataire_id) return res.status(400).json({ error: "prestataire_id requis" });
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${prestataire_id}&order=created_at.desc`,
+        { headers }
+      );
+      const candidatures = await r.json();
+      if (!Array.isArray(candidatures)) return res.status(200).json([]);
+
+      const enriched = await Promise.all(candidatures.map(async (c) => {
+        const mr = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?id=eq.${c.mission_id}&select=sector,metier,date,hours,ville,status,tarif_horaire`,
+          { headers }
+        );
+        const missions = await mr.json();
+        const mission = Array.isArray(missions) && missions[0];
+        return { ...c, mission: mission || null };
+      }));
+      return res.status(200).json(enriched);
+    }
+
     if (action === "apply") {
       const { mission_id, prestataire_id, message } = payload;
       if (!mission_id || !prestataire_id) return res.status(400).json({ error: "mission_id et prestataire_id requis" });
