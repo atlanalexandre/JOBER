@@ -5336,6 +5336,110 @@ function UpgradeNudge({ onNavigate }) {
   );
 }
 
+// ── PRESTA MISSIONS FEED ─────────────────────────────────────────
+function PMissionsTab({ onNavigate }) {
+  const [missions, setMissions]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [userId, setUserId]       = useState(null);
+  const [userMeta, setUserMeta]   = useState({});
+  const [applying, setApplying]   = useState(null);
+  const [applied, setApplied]     = useState(new Set());
+  const [message, setMessage]     = useState("");
+  const [showMsg, setShowMsg]     = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if (!u) return;
+      setUserId(u.id);
+      const meta = u.user_metadata || {};
+      setUserMeta(meta);
+      const sector = meta.secteur || meta.sector || null;
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list_open", sector }),
+      });
+      const data2 = await res.json();
+      setMissions(Array.isArray(data2) ? data2 : []);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleApply = async (missionId) => {
+    if (!userId) return;
+    setApplying(missionId);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "apply", mission_id: missionId, prestataire_id: userId, message: message.trim() || null }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setApplied(prev => new Set([...prev, missionId]));
+      setShowMsg(null);
+      setMessage("");
+    }
+    setApplying(null);
+  };
+
+  const metier = userMeta.metier || userMeta.job_title || null;
+  const matched = missions.filter(m => !metier || !m.metier || m.metier === metier);
+
+  if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
+
+  return (
+    <div>
+      {matched.length === 0 ? (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+          <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
+          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil.</div>
+        </div>
+      ) : (
+        matched.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const isApplied = applied.has(m.id);
+          return (
+            <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${C.border}` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>
+                  {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
+                </div>
+              </div>
+              {showMsg === m.id && !isApplied && (
+                <div style={{ marginBottom:10 }}>
+                  <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Message de candidature (optionnel)…"
+                    style={{ width:"100%", minHeight:60, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", color:C.text, fontSize:12, fontFamily:"inherit", resize:"none", boxSizing:"border-box" }} />
+                </div>
+              )}
+              <div style={{ display:"flex", gap:8 }}>
+                {!isApplied && showMsg !== m.id && (
+                  <button onClick={()=>setShowMsg(m.id)} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.violet}22`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ✉️ Postuler
+                  </button>
+                )}
+                {showMsg === m.id && !isApplied && (
+                  <>
+                    <button onClick={()=>{ setShowMsg(null); setMessage(""); }} style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button onClick={()=>handleApply(m.id)} disabled={applying===m.id} style={{ flex:2, padding:"9px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      {applying===m.id ? "…" : "Envoyer ma candidature"}
+                    </button>
+                  </>
+                )}
+                {isApplied && (
+                  <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>✅ Candidature envoyée</div>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
@@ -5437,16 +5541,8 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
             </div>
           )}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions proposées</p>
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil et votre secteur.</div>
-          </div>
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📋 Mission en cours</p>
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"20px 16px", textAlign:"center" }}>
-            <div style={{ color:C.textMuted, fontSize:12 }}>Aucune mission en cours</div>
-          </div>
+          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions disponibles</p>
+          <PMissionsTab onNavigate={onNavigate} />
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="docs" && <>
@@ -7604,56 +7700,163 @@ function PayslipScreen({ provider, mission, onBack }) {
 
 // ── HISTORIQUE MISSIONS CLIENT ────────────────────────────────────
 function MissionHistoryScreen({ onNavigate, onBack }) {
-  const [tab, setTab] = useState("all");
+  const [tab, setTab]             = useState("all");
+  const [missions, setMissions]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState(null); // mission with candidatures open
+  const [candidatures, setCandidatures] = useState([]);
+  const [actioning, setActioning] = useState(null);
 
-  const missions = [
-    { id:1, presta:PROVIDERS[0], date:"12 Mai 2025", hours:8,  amount:131.6, status:"terminée",  role:"Cariste CACES 1"    },
-    { id:2, presta:PROVIDERS[1], date:"08 Mai 2025", hours:6,  amount:108.0, status:"terminée",  role:"Chef de rang"        },
-    { id:3, presta:PROVIDERS[3], date:"03 Mai 2025", hours:4,  amount:97.6,  status:"annulée",   role:"Resp. commerciale"   },
-    { id:4, presta:PROVIDERS[4], date:"28 Avr 2025", hours:8,  amount:86.4,  status:"terminée",  role:"Agent de propreté"   },
-    { id:5, presta:PROVIDERS[0], date:"20 Avr 2025", hours:10, amount:164.5, status:"terminée",  role:"Logisticien Senior"  },
-  ];
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data?.user; if (!user) return;
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list_client", client_id: user.id }),
+      });
+      const data2 = await res.json();
+      setMissions(Array.isArray(data2) ? data2 : []);
+      setLoading(false);
+    });
+  }, []);
 
-  const filtered = tab==="all" ? missions : missions.filter(m=>m.status===tab);
+  const openCandidatures = async (mission) => {
+    setSelected(mission);
+    const res = await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
+    });
+    const data = await res.json();
+    setCandidatures(Array.isArray(data) ? data : []);
+  };
+
+  const handleAccept = async (c) => {
+    setActioning(c.id);
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id }),
+    });
+    setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned" } : m));
+    setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
+    setActioning(null);
+  };
+
+  const handleReject = async (c) => {
+    setActioning(c.id);
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reject", candidature_id: c.id }),
+    });
+    setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
+    setActioning(null);
+  };
+
+  const handleClose = async (missionId) => {
+    await fetch("/api/missions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "close", mission_id: missionId }),
+    });
+    setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
+  };
+
+  const statusLabel  = { open:"Ouverte", assigned:"Assignée", closed:"Fermée" };
+  const statusColor  = { open:C.success, assigned:C.violet, closed:C.textMuted };
+  const filtered = tab === "all" ? missions : missions.filter(m => m.status === tab);
+
+  if (selected) {
+    const sector = SECTORS.find(s => s.id === selected.sector);
+    return (
+      <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
+        <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+          <button onClick={()=>setSelected(null)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+          <div style={{ fontSize:28, marginBottom:6 }}>{sector?.icon||"📋"}</div>
+          <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 2px" }}>{selected.metier || sector?.label}</h2>
+          <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>📅 {selected.date} · {selected.hours}h · {selected.ville}</p>
+        </div>
+        <div style={{ padding:"18px" }}>
+          <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
+            {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
+          </p>
+          {candidatures.map(c => (
+            <div key={c.id} style={{ background:"#0D1B3E", borderRadius:14, padding:"14px", marginBottom:10, border:`1px solid ${c.status==="accepted"?C.success:c.status==="rejected"?"rgba(242,94,94,0.3)":C.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:c.message?8:0 }}>
+                <div>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{c.prenom} {c.nom}</div>
+                  <div style={{ color:C.textMuted, fontSize:11 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+                </div>
+                {c.status === "accepted" && <span style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Accepté</span>}
+                {c.status === "rejected" && <span style={{ color:"#F25E5E", fontWeight:700, fontSize:12 }}>❌ Refusé</span>}
+              </div>
+              {c.message && <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px", fontStyle:"italic" }}>"{c.message}"</p>}
+              {c.status === "pending" && selected.status === "open" && (
+                <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                  <button onClick={()=>handleReject(c)} disabled={!!actioning} style={{ flex:1, padding:"9px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {actioning===c.id?"…":"❌ Refuser"}
+                  </button>
+                  <button onClick={()=>handleAccept(c)} disabled={!!actioning} style={{ flex:2, padding:"9px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {actioning===c.id?"…":"✅ Accepter"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {candidatures.length === 0 && (
+            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+              <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
+            </div>
+          )}
+          {selected.status === "open" && (
+            <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              Clôturer la mission
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes missions</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} missions au total</p>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} mission{missions.length!==1?"s":""} au total</p>
       </div>
-
       <div style={{ padding:"16px 18px 0" }}>
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-          {[{id:"all",l:"Toutes"},{id:"terminée",l:"Terminées"},{id:"annulée",l:"Annulées"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:12, fontFamily:"inherit", transition:"all 0.2s" }}>{t.l}</button>
+          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"closed",l:"Fermées"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
           ))}
         </div>
-
-        {filtered.map(m=>(
-          <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-            <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10 }}>
-              <div style={{ width:48, height:48, borderRadius:r, background:`${m.presta.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>{m.presta.avatar}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.presta.name}</div>
-                <div style={{ color:C.textSub, fontSize:12 }}>{m.role}</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>📅 {m.date} · {m.hours}h</div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:C.violet, fontSize:14 }}>{m.amount.toFixed(0)} €</div>
-                <Badge color={m.status==="terminée"?C.success:C.accent} small>{m.status}</Badge>
+        {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
+        {!loading && filtered.length === 0 && (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune mission</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première mission depuis un secteur.</div>
+          </div>
+        )}
+        {filtered.map(m => {
+          const sector = SECTORS.find(s => s.id === m.sector);
+          const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
+          return (
+            <div key={m.id} onClick={()=>openCandidatures(m)} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, cursor:"pointer", border:`1px solid ${pending>0?C.violet+"55":C.border}` }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                <div style={{ width:46, height:46, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h · {m.ville}</div>
+                  {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:2 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:700 }}>{statusLabel[m.status]||m.status}</span>
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>›</div>
+                </div>
               </div>
             </div>
-            {m.status==="terminée" && (
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>onNavigate("profile",m.presta)} style={{ flex:1, padding:"8px", borderRadius:11, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>👤 Profil</button>
-                <button onClick={()=>onNavigate("payslip",{provider:m.presta})} style={{ flex:1, padding:"8px", borderRadius:11, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📄 Facture</button>
-                <button onClick={()=>onNavigate("booking",m.presta)} style={{ flex:2, padding:"8px", borderRadius:11, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>🔄 Re-réserver</button>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -8537,7 +8740,7 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
       if(user){
         const { data } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
-          ville, description, status: "broadcast",
+          ville, adresse, description, status: "open",
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -8936,7 +9139,7 @@ export default function App() {
       {screen==="home"              && <HomeScreen onNavigate={navigate} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
-      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={mission=>{ setPendingMission(mission); setScreen("mission_broadcast"); }} />}
+      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={()=>setScreen("mission_history")} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
