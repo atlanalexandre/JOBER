@@ -46,6 +46,11 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
 }
 
+function travelTimeStr(km) {
+  const mins = Math.round((km / 30) * 60 / 5) * 5;
+  return mins < 60 ? `~${mins} min` : `~${Math.round(mins / 60)}h`;
+}
+
 // Table de correspondance CP → [lat, lng] pour les 20 premiers départements
 const CP_COORDS = {
   "75":[ 48.8566,  2.3522], "92":[ 48.8924,  2.2540], "93":[ 48.9156,  2.4825],
@@ -2613,9 +2618,42 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
 function useProviders() {
-  // Prestataires fictifs uniquement pour la présentation
-  // Repasser sur /api/prestataires après la démo pour charger les vrais inscrits
-  return { providers: PROVIDERS, loading: false };
+  const [providers, setProviders] = useState([]);
+  const [loading, setLoading]     = useState(true);
+  useEffect(() => {
+    fetch("/api/prestataires")
+      .then(r => r.json())
+      .then(({ prestataires = [] }) => {
+        const mapped = prestataires.map(p => {
+          const sectorInfo = SECTORS.find(s => s.id === p.secteur);
+          const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
+          return {
+            id:           p.id,
+            name:         p.name,
+            prenom:       p.prenom,
+            nom:          p.nom,
+            sector:       p.secteur,
+            jobTitle:     p.metier,
+            rateNum,
+            hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
+            available:    p.dispo_immediat !== false,
+            dispon_jours: p.dispon_jours || [],
+            code_postal:  p.code_postal,
+            rating:       0,
+            reviews:      0,
+            distance:     "—",
+            responseTime: "—",
+            avatar:       sectorInfo?.icon || "👷",
+            color:        sectorInfo?.color || "#7C6FE0",
+            niveau:       p.niveau,
+          };
+        });
+        setProviders(mapped);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+  return { providers, loading };
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
@@ -2628,7 +2666,10 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
   const [filterNoteMin, setFilterNoteMin] = useState(0);
   const [sortBy, setSortBy] = useState("rating");
   const [showFilters, setShowFilters] = useState(false);
+  const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
+  const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
   const { providers } = useProviders();
 
   const allServices = (METIERS[s.id]||[]).map(name => {
@@ -2643,6 +2684,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
   const filteredProviders = providers
     .filter(p => p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob))
     .filter(p => !filterDispo || p.available)
+    .filter(p => !selectedDay || (p.dispon_jours||[]).includes(selectedDay))
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
     .sort((a,b) => {
@@ -2777,6 +2819,12 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
             </div>
             {showFilters && (
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la mission</div>
+                  <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)}
+                    style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
+                  {selectedDay && <div style={{ color:s.color, fontSize:11, fontWeight:700, marginTop:4 }}>📅 {selectedDay} — uniquement les prestataires disponibles ce jour</div>}
+                </div>
                 <div onClick={()=>setFilterDispo(!filterDispo)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, cursor:"pointer" }}>
                   <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>Disponible maintenant uniquement</span>
                   <div style={{ width:40, height:22, borderRadius:11, background:filterDispo?s.color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
@@ -2798,8 +2846,8 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
                     ))}
                   </div>
                 </div>
-                {(filterDispo||filterNoteMin>0||filterTarifMax<50) && (
-                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate) && (
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
                 )}
               </div>
             )}
@@ -2894,7 +2942,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                           <Stars rating={p.rating} size={12}/>
-                          <span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords) return haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1])+" km"; } return p.distance||"—"; })()} · {p.responseTime}</span>
+                          <span style={{ color:C.textSub, fontSize:11 }}>{(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords){ const km=haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1]); return `🚗 ${travelTimeStr(km)} · ${km} km`; } } return p.distance||"—"; })()}</span>
                         </div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
