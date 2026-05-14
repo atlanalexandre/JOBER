@@ -2486,7 +2486,7 @@ function HomeScreen({ onNavigate }) {
               <div style={{ position:"absolute", top:0, left:0, right:0, height:34, background:`radial-gradient(60% 100% at 50% 0%, ${s.color}25 0%, transparent 100%)`, pointerEvents:"none" }} />
               <div style={{ fontSize:22, marginBottom:4, position:"relative" }}>{s.icon}</div>
               <div style={{ fontSize:9.5, fontWeight:600, color:C.text, letterSpacing:0.3, textTransform:"uppercase", lineHeight:1.2, position:"relative" }}>{s.label}</div>
-              <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>{s.count} pros</div>
+              <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>{providers.filter(p=>p.sector===s.id).length} pros</div>
             </div>
           ))}
         </div>
@@ -2615,7 +2615,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
       {/* Sections par secteur */}
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
-          const sectorProviders = PROVIDERS.filter(p=>p.sector===sector.id);
+          const sectorProviders = realProviders.length > 0 ? realProviders.filter(p=>p.sector===sector.id) : PROVIDERS.filter(p=>p.sector===sector.id);
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
               {/* Bannière secteur cliquable uniquement */}
@@ -2623,7 +2623,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
                 <div style={{ position:"absolute", right:-10, top:-10, fontSize:64, opacity:0.25 }}>{sector.banner}</div>
                 <div style={{ position:"absolute", right:14, bottom:14, fontSize:36 }}>{sector.icon}</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:18 }}>{sector.label}</div>
-                <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sector.count} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
+                <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sectorProviders.length} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
                 <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les prestataires →</Badge></div>
               </div>
             </div>
