@@ -7611,10 +7611,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     }}>
       {/* Logo */}
       <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${C.violet},${C.violetLight})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, boxShadow:`0 4px 12px ${C.violet}55` }}>⚡</div>
-          <div style={{ fontSize:22, fontWeight:800, color:C.white, fontFamily:font.display, letterSpacing:-0.5 }}>ALANE</div>
-        </div>
+        <ALANELogo size="sm" />
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
