@@ -2381,11 +2381,82 @@ function ResetPasswordScreen({ onDone }) {
 
 // ── HOME ─────────────────────────────────────────────────────────
 // Refonte hi-fi v12 — Playfair Display + DM Sans, palette navy/violet
+const TOUR_STEPS = [
+  {
+    icon:"👋",
+    title:"Bienvenue sur ALANE !",
+    desc:"ALANE vous met en relation avec des prestataires qualifiés dans de nombreux secteurs. Voici comment ça marche en 4 étapes.",
+    color:"#7C6FE0",
+  },
+  {
+    icon:"🗂️",
+    title:"1. Trouvez votre prestataire",
+    desc:"Parcourez les secteurs (Logistique, BTP, Restauration…), filtrez par disponibilité, tarif ou note, et consultez les profils.",
+    color:"#4FC3F7",
+  },
+  {
+    icon:"📅",
+    title:"2. Réservez & payez",
+    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé en escrow — vous n'êtes pas débité tant que la mission n'est pas validée.",
+    color:"#F0B429",
+  },
+  {
+    icon:"⏳",
+    title:"3. Le prestataire confirme",
+    desc:"Il dispose d'un délai (1h si c'est aujourd'hui, 4h sinon) pour accepter ou refuser. Vous êtes notifié immédiatement de sa réponse.",
+    color:"#81C784",
+  },
+  {
+    icon:"✅",
+    title:"4. Validez la mission",
+    desc:"Une fois la mission terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
+    color:"#F06292",
+  },
+];
+
+function ClientTour({ onDone }) {
+  const [step, setStep] = useState(0);
+  const s = TOUR_STEPS[step];
+  const isLast = step === TOUR_STEPS.length - 1;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
+      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
+        {/* Progress dots */}
+        <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
+          {TOUR_STEPS.map((_,i) => (
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+        {/* Icon */}
+        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
+          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
+          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
+          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
+        </div>
+        {/* Actions */}
+        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+        {/* Skip */}
+        {!isLast && (
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
+  const [showTour, setShowTour] = useState(false);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const tier = getCashbackTier(walletMissions);
@@ -2400,6 +2471,8 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
     supabase.auth.getUser().then(({ data })=>{
       const user = data?.user;
       if (!user || !mounted) return;
+      const tourKey = `alane_tour_done_${user.id}`;
+      if (!localStorage.getItem(tourKey)) setShowTour(true);
       supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
@@ -2413,6 +2486,13 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
 
   const violetLite = "#A29BFE";
 
+  const dismissTour = async () => {
+    setShowTour(false);
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+    if (user) localStorage.setItem(`alane_tour_done_${user.id}`, "1");
+  };
+
   return (
     <div style={{
       minHeight:"100%",
@@ -2421,6 +2501,7 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
       position:"relative",
       overflow:"hidden",
     }}>
+      {showTour && <ClientTour onDone={dismissTour} />}
       {/* Halo violet ambiant */}
       <div style={{ position:"absolute", top:-120, right:-90, width:340, height:340, borderRadius:"50%", background:`radial-gradient(circle, ${C.violet}38 0%, transparent 65%)`, pointerEvents:"none" }} />
 
