@@ -919,6 +919,7 @@ function SplashScreen({ onNext, onBackoffice }) {
 
 function RoleScreen({ onSelect }) {
   const [hov,setHov]=useState(null);
+  const [showCGU,setShowCGU]=useState(false);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20 0%, #0A1628 50%, #162547 100%)`, display:"flex", flexDirection:"column", padding:"60px 24px 48px", position:"relative", overflow:"hidden" }}>
       <div style={{ position:"absolute", top:-80, right:-80, width:280, height:280, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.20) 0%, transparent 65%)`, pointerEvents:"none" }} />
@@ -985,8 +986,31 @@ function RoleScreen({ onSelect }) {
       )}
 
       <p style={{ color:C.textMuted, fontSize:11, textAlign:"center", marginTop:16 }}>
-        En continuant, vous acceptez nos <span style={{ color:C.violet, cursor:"pointer" }}>CGU</span>
+        En continuant, vous acceptez nos <span onClick={()=>setShowCGU(true)} style={{ color:C.violet, cursor:"pointer", textDecoration:"underline" }}>CGU</span>
       </p>
+      {showCGU && (
+        <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 Conditions Générales</div>
+              <button onClick={()=>setShowCGU(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+            </div>
+            {[
+              { title:"1. Objet", text:"ALANE est une plateforme de mise en relation entre clients professionnels et prestataires qualifiés. L'utilisation de la plateforme implique l'acceptation des présentes conditions." },
+              { title:"2. Inscription", text:"L'accès aux services nécessite la création d'un compte. Les informations fournies doivent être exactes et à jour. ALANE se réserve le droit de refuser ou suspendre tout compte." },
+              { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
+              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont placés en escrow jusqu'à validation de la mission par le client. Toute contestation doit être soumise sous 48h." },
+              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
+              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : legal@alane.fr" },
+            ].map((s,i)=>(
+              <div key={i} style={{ marginBottom:14 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.7 }}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1095,6 +1119,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
+      await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -1467,6 +1492,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
+      await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -2851,6 +2877,22 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
   const [filterTarifMax, setFilterTarifMax] = useState(50);
   const [filterNoteMin, setFilterNoteMin] = useState(0);
   const [sortBy, setSortBy] = useState("rating");
+  const filterKey = `alane_filters_${s.id}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(filterKey)||"{}");
+      if(saved.selectedJob!==undefined) setSelectedJob(saved.selectedJob);
+      if(saved.filterDispo!==undefined) setFilterDispo(saved.filterDispo);
+      if(saved.filterTarifMax!==undefined) setFilterTarifMax(saved.filterTarifMax);
+      if(saved.filterNoteMin!==undefined) setFilterNoteMin(saved.filterNoteMin);
+      if(saved.sortBy!==undefined) setSortBy(saved.sortBy);
+    } catch(_) {}
+  }, []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy }));
+    } catch(_) {}
+  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy]);
   const [showFilters, setShowFilters] = useState(false);
   const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
@@ -3981,6 +4023,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
 // En démo : compte à rebours accéléré (60 secondes = 1 heure)
 function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
   const p = provider || PROVIDERS[0];
+  const { providers: allProviders } = useProviders();
   const [secsLeft, setSecsLeft]     = useState(3600);
   const [totalSecs, setTotalSecs]   = useState(3600);
   const [phase, setPhase]           = useState("waiting");
@@ -4177,6 +4220,25 @@ function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, 
         <div style={{ background:C.accentGold+"10", border:"1px solid "+C.accentGold+"30", borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:13, color:C.textSub, lineHeight:1.6 }}>
           💡 Pas de panique — il y a <strong style={{ color:C.text }}>d’autres prestataires disponibles</strong> dans ce secteur. Choisissez-en un autre pour votre mission.
         </div>
+        {(()=>{
+          const alts = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0,3);
+          if(alts.length===0) return null;
+          return (
+            <div style={{ marginBottom:24, textAlign:"left" }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:10 }}>Disponibles dans ce secteur :</div>
+              {alts.map(alt=>(
+                <div key={alt.id} style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:12, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ fontSize:24 }}>{alt.avatar}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{alt.name}</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{alt.jobTitle} · {alt.hourlyRate}</div>
+                  </div>
+                  <div style={{ width:7, height:7, borderRadius:"50%", background:C.success }} />
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <Btn full onClick={onCancelled} style={{ fontSize:15, padding:"17px", marginBottom:12 }}>
           Choisir un autre prestataire →
         </Btn>
@@ -4202,6 +4264,25 @@ function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, 
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
           📧 Un email de confirmation vous a été envoyé. Le prestataire a été notifié de l’annulation automatique.
         </div>
+        {(()=>{
+          const alts = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0,3);
+          if(alts.length===0) return null;
+          return (
+            <div style={{ marginBottom:24, textAlign:"left" }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:10 }}>Disponibles dans ce secteur :</div>
+              {alts.map(alt=>(
+                <div key={alt.id} style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:12, padding:"11px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ fontSize:24 }}>{alt.avatar}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{alt.name}</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{alt.jobTitle} · {alt.hourlyRate}</div>
+                  </div>
+                  <div style={{ width:7, height:7, borderRadius:"50%", background:C.success }} />
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <Btn full onClick={onCancelled} style={{ fontSize:15, padding:"17px", marginBottom:12 }}>
           Choisir un autre prestataire →
         </Btn>
@@ -8814,6 +8895,19 @@ function PayslipScreen({ provider, mission, onBack }) {
   const [sendEmail, setSendEmail]   = useState("");
   const [sent, setSent]             = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
+  const [caReel, setCaReel] = useState(null);
+  const [caPlafond] = useState(77700);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      if(!data?.user) return;
+      supabase.from("missions").select("montant_total,tarif_horaire,nb_heures").eq("prestataire_id",data.user.id).eq("status","completed")
+        .then(({data:ms})=>{
+          if(!Array.isArray(ms)) return;
+          const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0)),0);
+          setCaReel(Math.round(total*100)/100);
+        });
+    });
+  },[]);
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:40 }}>
@@ -8889,11 +8983,11 @@ function PayslipScreen({ provider, mission, onBack }) {
           <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:6 }}>📊 Suivi plafond auto-entrepreneur</div>
           <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>Plafond annuel : <strong style={{ color:C.text }}>77 700 €</strong></div>
           <div style={{ height:8, background:"#162547", borderRadius:4, overflow:"hidden", marginBottom:6 }}>
-            <div style={{ height:"100%", width:"19%", background:`linear-gradient(90deg,${C.success},${C.accentGold})`, borderRadius:4 }} />
+            <div style={{ height:"100%", width:`${caReel!==null?Math.min(Math.round((caReel/caPlafond)*100),100):0}%`, background:`linear-gradient(90deg,${C.success},${C.accentGold})`, borderRadius:4, transition:"width 1s" }} />
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub }}>
-            <span>CA réalisé : <strong style={{ color:C.success }}>14 800 €</strong></span>
-            <span>Restant : <strong style={{ color:C.text }}>62 900 €</strong></span>
+            <span>CA réalisé : <strong style={{ color:C.success }}>{caReel!==null?caReel.toLocaleString("fr-FR")+"€":"—"}</strong></span>
+            <span>Restant : <strong style={{ color:C.text }}>{caReel!==null?(caPlafond-caReel).toLocaleString("fr-FR")+"€":"—"}</strong></span>
           </div>
         </div>
 
