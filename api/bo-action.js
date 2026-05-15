@@ -1,3 +1,22 @@
+import crypto from "crypto";
+
+function verifyBoToken(authHeader) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  const secret = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const dot = token.indexOf(".");
+  if (dot === -1) return false;
+  const ts  = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const age = Math.floor(Date.now() / 1000) - parseInt(ts, 10);
+  if (isNaN(age) || age < 0 || age > 86400) return false; // expire après 24h
+  const expected = crypto.createHmac("sha256", secret).update(ts).digest("hex");
+  if (sig.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  } catch { return false; }
+}
+
 function emailHtml(content) {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/></head>
@@ -46,6 +65,11 @@ async function sendEmail({ to, subject, html }) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // Vérification du token BO signé
+  if (!verifyBoToken(req.headers["authorization"] || "")) {
+    return res.status(401).json({ error: "Non autorisé — token BO invalide ou expiré" });
+  }
 
   const { action, profileId } = req.body;
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
@@ -238,6 +262,43 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "closed" }),
       });
       return res.status(200).json({ success: true });
+    }
+
+    if (action === "delete_ticket") {
+      if (!profileId) return res.status(400).json({ error: "ticketId requis" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      if (!r.ok) return res.status(500).json({ error: "Erreur suppression ticket" });
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "send_global_comm") {
+      const message = req.body.message || "";
+      if (!message.trim()) return res.status(400).json({ error: "Message requis" });
+
+      // Récupérer tous les prestataires approuvés
+      const [profilesRes, authRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+      ]);
+      const profiles = await profilesRes.json();
+      const authData = await authRes.json();
+      const authUsers = authData.users || [];
+      const ids = new Set((Array.isArray(profiles) ? profiles : []).map(p => p.id));
+      const emails = authUsers.filter(u => ids.has(u.id)).map(u => u.email).filter(Boolean);
+
+      let sent = 0;
+      for (const email of emails) {
+        await sendEmail({
+          to: email,
+          subject: "📢 Communication de l'équipe ALANE",
+          html: emailHtml(`<p>Bonjour,</p><p>${message.replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
+        });
+        sent++;
+      }
+      return res.status(200).json({ success: true, sent });
     }
 
     if (action === "send_test_email") {

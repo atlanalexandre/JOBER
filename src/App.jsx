@@ -1,5 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
+
+export class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError:false, error:null }; }
+  static getDerivedStateFromError(e) { return { hasError:true, error:e }; }
+  componentDidCatch(e, info) { console.error("ErrorBoundary:", e, info); }
+  render() {
+    if(!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ minHeight:"100vh", background:"#050E20", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
+        <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 10px" }}>Une erreur inattendue est survenue</h2>
+        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, marginBottom:24 }}>Rechargez la page pour continuer.</p>
+        <button onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", borderRadius:12, padding:"12px 28px", color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
+          Recharger
+        </button>
+      </div>
+    );
+  }
+}
 
 // ── Logo ALANE — Variation A : cercles pleins avec halo lumineux ─────
 function ALANELogo({ size = "md" }) {
@@ -4295,16 +4314,12 @@ function ValidationScreen({ provider, role, onNavigate }) {
 }
 
 // ── MESSAGERIE ────────────────────────────────────────────────────
-const MOCK_MSGS = [
-  { id:"m1", sender_tag:"presta", content:"Bonjour ! J’ai bien reçu votre demande. Je suis disponible au créneau indiqué.", created_at: new Date(Date.now()-3600000).toISOString() },
-  { id:"m2", sender_tag:"client", content:"Parfait ! Pouvez-vous confirmer votre arrivée à 8h00 précises ?", created_at: new Date(Date.now()-3540000).toISOString() },
-  { id:"m3", sender_tag:"presta", content:"Bien sûr, je serai là à 8h00. J’ai tout le matériel nécessaire.", created_at: new Date(Date.now()-3480000).toISOString() },
-];
 
 function ChatScreen({ provider, onBack }) {
   const p = provider || PROVIDERS[0];
   const [msg, setMsg] = useState("");
-  const [msgs, setMsgs] = useState(MOCK_MSGS);
+  const [msgs, setMsgs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
@@ -4324,7 +4339,8 @@ function ChatScreen({ provider, onBack }) {
       .select("*")
       .eq("conversation_key", key)
       .order("created_at", { ascending: true });
-    if (!error && data && data.length > 0) setMsgs(data);
+    if (!error) setMsgs(data || []);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -4364,6 +4380,14 @@ function ChatScreen({ provider, onBack }) {
         </div>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"16px 18px", minHeight:200 }}>
+        {loading && <div style={{ textAlign:"center", color:C.textMuted, fontSize:13, paddingTop:40 }}>Chargement…</div>}
+        {!loading && msgs.length === 0 && (
+          <div style={{ textAlign:"center", padding:"40px 20px" }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>💬</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Démarrez la conversation</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Envoyez un message à {p.name}</div>
+          </div>
+        )}
         {msgs.map((m, i) => {
           const mine = isClient(m);
           return (
@@ -5836,36 +5860,209 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
 }
 
 function CalendarScreen() {
-  const days=["L","M","M","J","V","S","D"], weeks=[[1,2,3,4,5,6,7],[8,9,10,11,12,13,14],[15,16,17,18,19,20,21],[22,23,24,25,26,27,28],[29,30,31,null,null,null,null]], booked=[5,12,13,19,26];
+  const DAYS_HEADER = ["L","M","M","J","V","S","D"];
+  const DAYS_FULL   = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+  // dow: 0=Lundi … 6=Dimanche pour correspondre à JOURS
+  const JOURS_TO_DOW = { "Lundi":0, "Mardi":1, "Mercredi":2, "Jeudi":3, "Vendredi":4, "Samedi":5, "Dimanche":6 };
+
+  const today = new Date();
+  const [viewYear,  setViewYear]  = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-based
+  const [meta, setMeta]           = useState(null);
+  const [missions, setMissions]   = useState([]);
+  const [selected, setSelected]   = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if (!u) return;
+      setMeta(u.user_metadata || {});
+      // Charger les missions depuis la DB
+      const { data: m } = await supabase
+        .from("missions")
+        .select("id,titre,client_nom,date_debut,date_fin,status,montant_total")
+        .eq("prestataire_id", u.id)
+        .in("status", ["assigned","open","completed"])
+        .order("date_debut", { ascending: true });
+      if (m) setMissions(m);
+    });
+  }, []);
+
+  const prevMonth = () => {
+    if(viewMonth === 0) { setViewMonth(11); setViewYear(y=>y-1); }
+    else setViewMonth(m=>m-1);
+  };
+  const nextMonth = () => {
+    if(viewMonth === 11) { setViewMonth(0); setViewYear(y=>y+1); }
+    else setViewMonth(m=>m+1);
+  };
+
+  // Construire la grille du mois
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay  = new Date(viewYear, viewMonth+1, 0);
+  const startDow = (firstDay.getDay() + 6) % 7; // 0=Lundi
+  const daysInMonth = lastDay.getDate();
+
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i+7));
+
+  // Jours disponibles selon profil (par day-of-week)
+  const availDow = new Set(
+    (meta?.dispon_jours || []).map(j => JOURS_TO_DOW[j]).filter(x => x !== undefined)
+  );
+
+  // Missions sur ce mois
+  const missionsByDay = {};
+  missions.forEach(m => {
+    if (!m.date_debut) return;
+    const d = new Date(m.date_debut);
+    if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
+      const day = d.getDate();
+      if (!missionsByDay[day]) missionsByDay[day] = [];
+      missionsByDay[day].push(m);
+    }
+  });
+
+  const isToday = (d) => d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+  const dow = (d) => (new Date(viewYear, viewMonth, d).getDay() + 6) % 7;
+
+  const MONTH_NAMES = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  const moisLabel = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
+
+  // Missions du mois sélectionné à afficher
+  const moisMissions = missions.filter(m => {
+    if (!m.date_debut) return false;
+    const d = new Date(m.date_debut);
+    return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
+  });
+
+  const selectedMissions = selected ? (missionsByDay[selected] || []) : [];
+
+  const statusColor = { assigned:C.violet, open:C.accentGold, completed:C.success };
+  const statusLabel = { assigned:"Confirmée", open:"En attente", completed:"Terminée" };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>Planning</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos missions programmées</p>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et missions</p>
       </div>
-      <div style={{ padding:"22px 18px" }}>
-        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:18, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-            <button style={{ background:"#162547", border:"none", borderRadius:8, padding:"5px 11px", cursor:"pointer" }}>‹</button>
-            <span style={{ fontWeight:800, color:C.text, fontSize:15 }}>Mai 2025</span>
-            <button style={{ background:"#162547", border:"none", borderRadius:8, padding:"5px 11px", cursor:"pointer" }}>›</button>
+
+      <div style={{ padding:"18px 18px 0" }}>
+        {/* Légende disponibilités */}
+        {meta && (
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", gap:16, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:10, height:10, borderRadius:3, background:`${C.violet}60` }} />
+              <span style={{ color:C.textSub, fontSize:11 }}>Disponible</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:10, height:10, borderRadius:3, background:C.violet }} />
+              <span style={{ color:C.textSub, fontSize:11 }}>Mission</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold }} />
+              <span style={{ color:C.textSub, fontSize:11 }}>Aujourd'hui</span>
+            </div>
+            {availDow.size === 0 && (
+              <span style={{ color:C.accent, fontSize:11 }}>⚠️ Configurez vos disponibilités dans votre profil</span>
+            )}
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, textAlign:"center", marginBottom:6 }}>
-            {days.map(d=><div key={d} style={{ color:C.textSub, fontSize:11, fontWeight:700 }}>{d}</div>)}
+        )}
+
+        {/* Calendrier */}
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:16, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+            <button onClick={prevMonth} style={{ background:"#162547", border:"none", borderRadius:8, padding:"5px 14px", cursor:"pointer", color:C.text, fontSize:16 }}>‹</button>
+            <span style={{ fontWeight:800, color:C.text, fontSize:15 }}>{moisLabel}</span>
+            <button onClick={nextMonth} style={{ background:"#162547", border:"none", borderRadius:8, padding:"5px 14px", cursor:"pointer", color:C.text, fontSize:16 }}>›</button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, textAlign:"center", marginBottom:8 }}>
+            {DAYS_HEADER.map((d,i)=><div key={i} style={{ color:C.textMuted, fontSize:11, fontWeight:700, paddingBottom:4 }}>{d}</div>)}
           </div>
           {weeks.map((week,wi)=>(
             <div key={wi} style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:3 }}>
-              {week.map((day,di)=><div key={di} style={{ aspectRatio:"1", borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:day===12?900:500, background:day===12?C.violet:booked.includes(day)?`${C.violet}18`:"transparent", color:day===12?C.white:booked.includes(day)?C.violet:day?C.text:"transparent", cursor:day?"pointer":"default" }}>{day}</div>)}
+              {week.map((day,di)=>{
+                if (!day) return <div key={di} />;
+                const hasMission = !!missionsByDay[day];
+                const isAvail = availDow.has(dow(day));
+                const isTod = isToday(day);
+                const isSel = selected === day;
+                let bg = "transparent";
+                if (hasMission) bg = C.violet;
+                else if (isTod) bg = C.accentGold;
+                else if (isAvail) bg = `${C.violet}28`;
+                return (
+                  <div key={di} onClick={()=>setSelected(isSel ? null : day)}
+                    style={{ aspectRatio:"1", borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:isTod||hasMission?800:500,
+                      background: isSel ? `${C.violet}88` : bg,
+                      color: hasMission||isTod ? C.white : isAvail ? C.violet : C.textSub,
+                      cursor:"pointer", border: isSel ? `2px solid ${C.violet}` : "2px solid transparent",
+                      position:"relative" }}>
+                    {day}
+                    {hasMission && <div style={{ position:"absolute", bottom:2, right:2, width:4, height:4, borderRadius:"50%", background:C.accentGold }} />}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
-        {[{role:"Cariste CACES 1",client:"Entrepôt XYZ",date:"Mer 12 Mai",time:"09:00-17:00",color:C.violet},{role:"Réceptionniste",client:"Hôtel Lumière",date:"Jeu 13 Mai",time:"14:00-22:00",color:C.accentGold}].map((m,i)=>(
-          <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
-            <div style={{ width:4, height:44, borderRadius:2, background:m.color, flexShrink:0 }} />
-            <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.role}</div><div style={{ color:C.textSub, fontSize:11 }}>{m.client}</div></div>
-            <div style={{ textAlign:"right" }}><div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{m.date}</div><div style={{ color:C.textSub, fontSize:11 }}>{m.time}</div></div>
+
+        {/* Détail jour sélectionné */}
+        {selected && (
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.violet}44`, borderRadius:14, padding:"14px", marginBottom:14 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>
+              {DAYS_FULL[dow(selected)]} {selected} {MONTH_NAMES[viewMonth]}
+            </div>
+            {selectedMissions.length > 0 ? selectedMissions.map((m,i) => (
+              <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderTop:i>0?`1px solid ${C.border}`:"none" }}>
+                <div style={{ width:4, height:36, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
+                </div>
+                <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
+              </div>
+            )) : (
+              <div style={{ color:C.textMuted, fontSize:12 }}>
+                {availDow.has(dow(selected)) ? "✅ Disponible — aucune mission prévue" : "❌ Non disponible selon vos préférences"}
+              </div>
+            )}
           </div>
-        ))}
+        )}
+
+        {/* Missions du mois */}
+        {moisMissions.length > 0 ? (
+          <>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Missions de {MONTH_NAMES[viewMonth]}</div>
+            {moisMissions.map((m,i) => {
+              const d = new Date(m.date_debut);
+              const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+              return (
+                <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
+                  <div style={{ width:4, height:44, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Mission"}</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{label}</div>
+                    <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:14, padding:"28px", textAlign:"center" }}>
+            <div style={{ fontSize:32, marginBottom:10 }}>📅</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucune mission ce mois</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos missions confirmées apparaîtront ici une fois planifiées.</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6508,19 +6705,24 @@ function LitigeRow({ l }) {
 }
 
 // ── BACKOFFICE ────────────────────────────────────────────────────
-const BO_PIN = "1234";
+// PIN vérifié côté serveur via /api/bo-verify-pin
 
-// Données simulées backoffice
+// Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
+function boFetch(body) {
+  const token = sessionStorage.getItem("bo_token") || "";
+  return fetch("/api/bo-action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
 function useBoData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/bo-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stats" }),
-    })
+    boFetch({ action: "stats" })
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -6571,22 +6773,33 @@ const DonutChart = ({ sectors, size=120 }) => {
 function BackofficeLogin({ onLogin, onBack }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const locked = attempts >= 5;
 
   const handleDigit = (d) => {
-    if(pin.length >= 4) return;
+    if(pin.length >= 4 || checking || locked) return;
     const newPin = pin + d;
     setPin(newPin);
     setError(false);
     if(newPin.length === 4) {
-      setTimeout(() => {
-        if(newPin === BO_PIN) { onLogin(); }
-        else { setError(true); setPin(""); setAttempts(a=>a+1); }
-      }, 300);
+      setChecking(true);
+      fetch("/api/bo-verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: newPin }),
+      })
+        .then(r => r.json())
+        .then(j => {
+          setChecking(false);
+          if(j.ok) { sessionStorage.setItem("bo_token", j.token || ""); onLogin(); }
+          else { setError(true); setPin(""); setAttempts(a=>a+1); }
+        })
+        .catch(() => { setChecking(false); setError(true); setPin(""); setAttempts(a=>a+1); });
     }
   };
 
-  const handleDel = () => { setPin(p=>p.slice(0,-1)); setError(false); };
+  const handleDel = () => { if(checking) return; setPin(p=>p.slice(0,-1)); setError(false); };
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#1E3A7B)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, position:"relative" }}>
@@ -6599,26 +6812,26 @@ function BackofficeLogin({ onLogin, onBack }) {
       {/* PIN display */}
       <div style={{ display:"flex", gap:14, marginBottom:10 }}>
         {[0,1,2,3].map(i => (
-          <div key={i} style={{ width:16, height:16, borderRadius:"50%", background: pin.length>i ? (error?C.danger:C.violetLight) : "rgba(255,255,255,0.2)", transition:"background 0.2s", border:"2px solid rgba(255,255,255,0.3)" }} />
+          <div key={i} style={{ width:16, height:16, borderRadius:"50%", background: checking?"rgba(240,180,41,0.8)": pin.length>i ? (error?C.danger:C.violetLight) : "rgba(255,255,255,0.2)", transition:"background 0.2s", border:"2px solid rgba(255,255,255,0.3)" }} />
         ))}
       </div>
-      {error && <p style={{ color:C.accent, fontSize:13, marginBottom:10, fontWeight:600 }}>Code incorrect {attempts>=3?"— Trop de tentatives":"— Réessayez"}</p>}
-      {!error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:10 }}>Entrez votre code PIN</p>}
+      {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:10, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
+      {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:10, fontWeight:600 }}>Code incorrect — Réessayez</p>}
+      {!locked && !error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:10 }}>{checking?"Vérification…":"Entrez votre code PIN"}</p>}
 
       {/* Keypad */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, width:240, marginTop:10 }}>
         {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((d,i) => (
           <button key={i} onClick={()=>d==="⌫"?handleDel():d!==""&&handleDigit(String(d))}
-            style={{ width:72, height:72, borderRadius:22, border:"none", cursor:d===""?"default":"pointer",
+            style={{ width:72, height:72, borderRadius:22, border:"none", cursor:(d===""||locked||checking)?"default":"pointer",
               background: d===""?"transparent": d==="⌫"?"rgba(255,255,255,0.1)":`rgba(255,255,255,${d===0?0.08:0.12})`,
               color:C.white, fontSize:d==="⌫"?20:22, fontWeight:700, fontFamily:"inherit",
-              transition:"all 0.15s", opacity: attempts>=3 && d!=="" ? 0.4 : 1,
+              transition:"all 0.15s", opacity: (locked||checking) && d!=="" ? 0.4 : 1,
             }}>
             {d}
           </button>
         ))}
       </div>
-      <p style={{ color:"rgba(255,255,255,0.25)", fontSize:11, marginTop:24 }}>Code par défaut : 1234</p>
     </div>
   );
 }
@@ -6654,7 +6867,7 @@ function BOComptes() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list" }) });
+      const res = await boFetch({ action:"list" });
       const data = await res.json();
       setProfiles(Array.isArray(data) ? data : []);
     } catch(e) { setProfiles([]); }
@@ -6665,7 +6878,7 @@ function BOComptes() {
 
   const handleAction = async (profileId, action, reason) => {
     setActioning(profileId+action);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action, profileId, reason }) });
+    await boFetch({ action, profileId, reason });
     setActioning(null);
     load();
   };
@@ -6828,7 +7041,7 @@ function BOSupport() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"list_tickets" }) });
+      const res = await boFetch({ action:"list_tickets" });
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
     } catch { setTickets([]); }
@@ -6839,7 +7052,14 @@ function BOSupport() {
 
   const closeTicket = async (id) => {
     setActioning(id);
-    await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"close_ticket", profileId:id }) });
+    await boFetch({ action:"close_ticket", profileId:id });
+    setActioning(null);
+    load();
+  };
+
+  const deleteTicket = async (id) => {
+    setActioning(id + "_del");
+    await boFetch({ action:"delete_ticket", profileId:id });
     setActioning(null);
     load();
   };
@@ -6873,14 +7093,172 @@ function BOSupport() {
           <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:t.status==="open"?10:0, background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px" }}>
             {t.message}
           </div>
-          {t.status==="open" && (
-            <button onClick={()=>closeTicket(t.id)} disabled={actioning===t.id} style={{ marginTop:2, padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>
-              {actioning===t.id?"…":"✅ Marquer résolu"}
+          <div style={{ display:"flex", gap:8, marginTop:2 }}>
+            {t.status==="open" && (
+              <button onClick={()=>closeTicket(t.id)} disabled={!!actioning} style={{ padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>
+                {actioning===t.id?"…":"✅ Marquer résolu"}
+              </button>
+            )}
+            <button onClick={()=>deleteTicket(t.id)} disabled={!!actioning} style={{ padding:"8px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id+"_del"?0.5:1 }}>
+              {actioning===t.id+"_del"?"…":"🗑 Supprimer"}
             </button>
-          )}
+          </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function BOModerationTab({ d }) {
+  const [suspendEmail, setSuspendEmail]   = useState("");
+  const [suspendReason, setSuspendReason] = useState("");
+  const [suspending, setSuspending]       = useState(false);
+  const [suspendResult, setSuspendResult] = useState(null);
+  const [commMsg, setCommMsg]             = useState("");
+  const [commSending, setCommSending]     = useState(false);
+  const [commResult, setCommResult]       = useState(null);
+  const [lastSync, setLastSync]           = useState(null);
+
+  const handleSuspend = async () => {
+    if(!suspendEmail.trim()) return;
+    setSuspending(true); setSuspendResult(null);
+    try {
+      const r = await boFetch({ action:"list" });
+      const users = await r.json();
+      const user = (Array.isArray(users)?users:[]).find(u=>u.email===suspendEmail.trim());
+      if(!user) { setSuspendResult({ ok:false, msg:"Email introuvable" }); setSuspending(false); return; }
+      const r2 = await boFetch({ action:"reject", profileId: user.id });
+      const j = await r2.json();
+      setSuspendResult(j.success ? { ok:true, msg:`Compte ${suspendEmail} suspendu.` } : { ok:false, msg:"Erreur lors de la suspension" });
+      if(j.success) { setSuspendEmail(""); setSuspendReason(""); }
+    } catch(e) { setSuspendResult({ ok:false, msg:"Erreur réseau" }); }
+    setSuspending(false);
+  };
+
+  const handleComm = async () => {
+    if(!commMsg.trim()) return;
+    setCommSending(true); setCommResult(null);
+    try {
+      const r = await boFetch({ action:"send_global_comm", message: commMsg });
+      const j = await r.json();
+      setCommResult(j.success ? { ok:true, msg:"Communication envoyée à tous les prestataires actifs." } : { ok:false, msg:"Erreur lors de l'envoi" });
+      if(j.success) setCommMsg("");
+    } catch { setCommResult({ ok:false, msg:"Erreur réseau" }); }
+    setCommSending(false);
+    setTimeout(()=>setCommResult(null), 4000);
+  };
+
+  const handleSync = () => setLastSync(new Date().toLocaleTimeString("fr-FR"));
+
+  return (
+    <>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🚨 Alertes actives</div>
+      {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
+      {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
+      {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"12px 0" }}>✅ Aucune alerte active</div>}
+
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🔒 Suspendre un compte</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <input value={suspendEmail} onChange={e=>setSuspendEmail(e.target.value)} placeholder="Email du compte à suspendre"
+          style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }} />
+        <input value={suspendReason} onChange={e=>setSuspendReason(e.target.value)} placeholder="Raison (optionnel)"
+          style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:10 }} />
+        <button onClick={handleSuspend} disabled={suspending||!suspendEmail.trim()}
+          style={{ padding:"10px 20px", borderRadius:10, border:"none", background:C.danger, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:suspending||!suspendEmail.trim()?0.5:1 }}>
+          {suspending?"Suspension…":"🔒 Suspendre"}
+        </button>
+        {suspendResult && <div style={{ marginTop:8, fontSize:12, color:suspendResult.ok?C.success:C.accent, fontWeight:600 }}>{suspendResult.ok?"✅":"❌"} {suspendResult.msg}</div>}
+      </div>
+
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📧 Communication globale</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <textarea value={commMsg} onChange={e=>setCommMsg(e.target.value)} placeholder="Message à envoyer à tous les prestataires actifs…" rows={3}
+          style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical", marginBottom:10 }} />
+        <button onClick={handleComm} disabled={commSending||!commMsg.trim()}
+          style={{ padding:"10px 20px", borderRadius:10, border:"none", background:C.violet, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:commSending||!commMsg.trim()?0.5:1 }}>
+          {commSending?"Envoi…":"📧 Envoyer"}
+        </button>
+        {commResult && <div style={{ marginTop:8, fontSize:12, color:commResult.ok?C.success:C.accent, fontWeight:600 }}>{commResult.ok?"✅":"❌"} {commResult.msg}</div>}
+      </div>
+
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🔧 Outils</div>
+      <div onClick={handleSync} style={{ background:"#0D1B3E", borderRadius:13, padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}
+        onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}>
+        <div style={{ width:38, height:38, borderRadius:11, background:`${C.indigo}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔄</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>Synchroniser les données</div>
+          {lastSync && <div style={{ color:C.textMuted, fontSize:11 }}>Dernier sync : {lastSync}</div>}
+        </div>
+        <span style={{ color:C.textSub, fontSize:16 }}>›</span>
+      </div>
+    </>
+  );
+}
+
+function BOExportCSV({ d }) {
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const r = await boFetch({ action:"list" });
+      const users = await r.json();
+      const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Téléphone","IBAN","Type compte","Société","Créé le"]];
+      (Array.isArray(users) ? users : []).forEach(u => {
+        rows.push([u.id,u.prenom||"",u.nom||"",u.email||"",u.role||"",u.status||"",u.telephone||"",u.rib||"",u.type_compte||"",u.societe_nom||"",u.created_at?.slice(0,10)||""]);
+      });
+      const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `alane-comptes-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+    } catch(_) {}
+    setExporting(false);
+  };
+  return (
+    <button onClick={doExport} disabled={exporting} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:exporting?0.7:1 }}>
+      {exporting?"⏳ Export…":"📊 Export CSV"}
+    </button>
+  );
+}
+
+function BOExportPDF({ d }) {
+  const doPDF = () => {
+    const lines = [
+      "RAPPORT FINANCIER ALANE",
+      `Généré le : ${new Date().toLocaleDateString("fr-FR")}`,
+      "",
+      "── UTILISATEURS ──",
+      `Clients : ${d.users?.clients || 0}`,
+      `Prestataires : ${d.users?.prestataires || 0}`,
+      `Total : ${d.users?.total || 0}`,
+      `En attente validation : ${d.users?.pending || 0}`,
+      "",
+      "── MISSIONS ──",
+      `Total : ${d.missions?.total || 0}`,
+      `Ouvertes : ${d.missions?.open || 0}`,
+      `Assignées : ${d.missions?.assigned || 0}`,
+      `Terminées : ${d.missions?.terminees || 0}`,
+      `Taux completion : ${d.missions?.tauxCompletion || 0}%`,
+      "",
+      "── FINANCE ──",
+      `CA Total (missions terminées) : ${d.finance?.caTotal || 0} €`,
+      "",
+      "── TICKETS SUPPORT ──",
+      `Ouverts : ${d.tickets?.open || 0}`,
+      `Total : ${d.tickets?.total || 0}`,
+    ];
+    const blob = new Blob([lines.join("\n")], { type:"text/plain;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `alane-rapport-${new Date().toISOString().slice(0,10)}.txt`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+  return (
+    <button onClick={doPDF} style={{ flex:1, padding:"13px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+      📄 Rapport
+    </button>
   );
 }
 
@@ -6889,11 +7267,7 @@ function EmailTestButton() {
   const send = async () => {
     setStatus("sending");
     try {
-      const r = await fetch("/api/bo-action", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"send_test_email" }),
-      });
+      const r = await boFetch({ action:"send_test_email" });
       const j = await r.json();
       setStatus(j.success ? "ok" : "error");
     } catch { setStatus("error"); }
@@ -7253,38 +7627,13 @@ function BackofficeDashboard({ onBack, onNavigate }) {
           </div>
 
           <div style={{ display:"flex", gap:10 }}>
-            <button onClick={()=>alert("📊 Export CSV\n\nLe fichier CSV contenant toutes les transactions est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@alane.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📊 Export CSV</button>
-            <button onClick={()=>alert("📄 Rapport PDF\n\nLe rapport financier mensuel est en cours de génération.\n\nVous le recevrez par email dans quelques instants à : admin@alane.fr")} style={{ flex:1, padding:"13px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📄 Rapport PDF</button>
+            <BOExportCSV d={d} />
+            <BOExportPDF d={d} />
           </div>
         </>}
 
         {/* ── MODÉRATION ── */}
-        {tab==="moderation" && <>
-          <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🚨 Alertes actives</div>
-          {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
-          {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
-          {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucune alerte active</div>}
-<div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 12px" }}>🔧 Actions rapides</div>
-          {[
-            { icon:"📧", label:"Envoyer une communication globale", color:C.violet,
-              action:()=>{ const msg = prompt("📧 Communication globale\n\nEntrez votre message pour tous les utilisateurs :"); if(msg) alert(`✅ Communication envoyée à tous les utilisateurs !\n\n"${msg}"\n\nNotifications push et emails envoyés.`); }},
-            { icon:"🔒", label:"Suspendre un compte", color:C.danger,
-              action:()=>{ const email = prompt("🔒 Suspendre un compte\n\nEntrez l’email du compte à suspendre :"); if(email) alert(`⚠️ Compte suspendu\n\nLe compte ${email} a été suspendu. L'utilisateur a été notifié par email.`); }},
-            { icon:"📊", label:"Générer rapport hebdomadaire", color:C.success,
-              action:()=>alert("📊 Rapport hebdomadaire\n\nGénération en cours...\n\nLe rapport sera envoyé à admin@alane.fr dans quelques minutes.")},
-            { icon:"🔄", label:"Synchroniser les données", color:C.indigo,
-              action:()=>alert("🔄 Synchronisation\n\nToutes les données ont été synchronisées avec succès.\n\nDernier sync : " + new Date().toLocaleTimeString("fr-FR"))},
-          ].map((a,i) => (
-            <div key={i} onClick={a.action} style={{ background:"#0D1B3E", borderRadius:13, padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, cursor:"pointer", boxShadow:"0 2px 6px rgba(0,0,0,0.04)", transition:"transform 0.15s" }}
-              onMouseEnter={e=>e.currentTarget.style.transform="translateX(4px)"}
-              onMouseLeave={e=>e.currentTarget.style.transform="translateX(0)"}
-            >
-              <div style={{ width:38, height:38, borderRadius:11, background:`${a.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>{a.icon}</div>
-              <span style={{ flex:1, fontWeight:600, color:C.text, fontSize:13 }}>{a.label}</span>
-              <span style={{ color:C.textSub, fontSize:16 }}>›</span>
-            </div>
-          ))}
-        </>}
+        {tab==="moderation" && <BOModerationTab d={d} />}
         </div>{/* fin contenu */}
       </div>{/* fin layout */}
     </div>
@@ -8874,23 +9223,66 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
 
 // ── UPLOAD DOCUMENTS ─────────────────────────────────────────────
 function DocUploadScreen({ onBack }) {
-  const [docs, setDocs] = useState([
-    { id:"kbis",    label:"Extrait KBIS / Avis INSEE",     icon:"📋", status:"valid",   expires:"01/2026", info:"Validé le 15/01/2025" },
-    { id:"urssaf",  label:"Attestation URSSAF",            icon:"🏛️", status:"expiring",expires:"06/2025", info:"Expire dans 3 semaines" },
-    { id:"cni",     label:"Pièce d’identité",              icon:"🪪", status:"valid",   expires:"09/2029", info:"Validé le 15/01/2025" },
-    { id:"vitale",  label:"Carte Vitale",                  icon:"💊", status:"valid",   expires:"—",       info:"Validé le 15/01/2025" },
-    { id:"domicile",label:"Justificatif de domicile",      icon:"🏠", status:"missing", expires:"—",       info:"Document requis"       },
-    { id:"rib",     label:"RIB / IBAN",                    icon:"💳", status:"valid",   expires:"—",       info:"Validé le 15/01/2025" },
-    { id:"rcpro",   label:"Attestation RC Pro",            icon:"🛡️", status:"missing", expires:"—",       info:"Recommandé"            },
-  ]);
+  const DOC_DEFS = [
+    { id:"kbis",     label:"Extrait KBIS / Avis INSEE",  icon:"📋", required:true  },
+    { id:"urssaf",   label:"Attestation URSSAF",          icon:"🏛️", required:true  },
+    { id:"cni",      label:"Pièce d’identité",            icon:"🪪", required:true  },
+    { id:"vitale",   label:"Carte Vitale",                icon:"💊", required:false },
+    { id:"domicile", label:"Justificatif de domicile",    icon:"🏠", required:false },
+    { id:"rib",      label:"RIB / IBAN",                  icon:"💳", required:true  },
+    { id:"rcpro",    label:"Attestation RC Pro",          icon:"🛡️", required:false },
+  ];
 
-  const statusColors = { valid:C.success, expiring:C.accentGold, missing:C.accent };
-  const statusLabels = { valid:"✓ Valide", expiring:"⚠️ Expire bientôt", missing:"Manquant" };
+  const [userId, setUserId]   = useState(null);
+  const [dbDocs, setDbDocs]   = useState([]);  // [{type, storage_path, created_at}]
+  const [uploading, setUploading] = useState(null);
+  const [uploadOk, setUploadOk]   = useState(null);
+  const fileRefs = useRef({});
 
-  const handleUpload = (id) => {
-    setDocs(ds => ds.map(d => d.id===id ? {...d, status:"valid", info:"Validé à l’instant"} : d));
-    alert(`📤 Document "${docs.find(d=>d.id===id)?.label}" envoyé !\n\nNos équipes le vérifieront sous 24h ouvrées.`);
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if(!u) return;
+      setUserId(u.id);
+      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
+      setDbDocs(rows || []);
+    });
+  }, []);
+
+  const handleUpload = async (docId) => {
+    const input = fileRefs.current[docId];
+    if(!input) return;
+    input.click();
   };
+
+  const handleFileChange = async (docId, e) => {
+    const file = e.target.files?.[0]; if(!file||!userId) return;
+    setUploading(docId); setUploadOk(null);
+    const ext = file.name.split(".").pop();
+    const path = `${userId}/${docId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+    if(!error) {
+      await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
+      setDbDocs(prev => { const filtered = prev.filter(d=>d.type!==docId); return [...filtered, { type:docId, storage_path:path, created_at:new Date().toISOString() }]; });
+      setUploadOk(docId);
+      setTimeout(()=>setUploadOk(null), 3000);
+    }
+    setUploading(null);
+    e.target.value = "";
+  };
+
+  const docs = DOC_DEFS.map(def => {
+    const saved = dbDocs.find(d=>d.type===def.id);
+    return {
+      ...def,
+      status: saved ? "valid" : "missing",
+      info:   saved ? `Envoyé le ${new Date(saved.created_at).toLocaleDateString("fr-FR")}` : (def.required ? "Document requis" : "Recommandé"),
+    };
+  });
+
+  const statusColors = { valid:C.success, missing:C.accent };
+  const statusLabels = { valid:"✓ Envoyé", missing:"Manquant" };
+
+  const handleUploadLegacy = (id) => handleUpload(id);
 
   const valid   = docs.filter(d=>d.status==="valid").length;
   const total   = docs.length;
@@ -8917,21 +9309,26 @@ function DocUploadScreen({ onBack }) {
           <p style={{ color:C.textMuted, fontSize:11, marginTop:8 }}>{valid}/{total} documents validés</p>
         </div>
 
+        {/* Inputs fichiers cachés */}
+        {DOC_DEFS.map(def => (
+          <input key={def.id} type="file" accept=".pdf,.jpg,.jpeg,.png" ref={el=>fileRefs.current[def.id]=el}
+            onChange={e=>handleFileChange(def.id,e)} style={{ display:"none" }} />
+        ))}
+
         {/* Liste documents */}
         {docs.map((d,i) => (
           <div key={d.id} style={{ background:"#0D1B3E", border:`1px solid ${d.status==="valid" ? C.border : statusColors[d.status]+"40"}`, borderRadius:r, padding:"14px 15px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
             <div style={{ width:42, height:42, borderRadius:12, background:`${statusColors[d.status]}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{d.icon}</div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{d.label}</div>
-              <div style={{ color:C.textMuted, fontSize:11 }}>{d.info}{d.expires!=="—" ? ` · Expire : ${d.expires}` : ""}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{d.info}</div>
             </div>
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
-              <Badge color={statusColors[d.status]} small>{statusLabels[d.status]}</Badge>
-              {d.status !== "valid" && (
-                <button onClick={()=>handleUpload(d.id)} style={{ background:C.violet, border:"none", borderRadius:8, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-                  📤 Charger
-                </button>
-              )}
+              <Badge color={statusColors[d.status]} small>{uploadOk===d.id?"✅ Envoyé !":statusLabels[d.status]}</Badge>
+              <button onClick={()=>handleUploadLegacy(d.id)} disabled={uploading===d.id}
+                style={{ background:d.status==="valid"?"rgba(255,255,255,0.08)":C.violet, border:"none", borderRadius:8, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:uploading===d.id?0.6:1 }}>
+                {uploading===d.id?"⏳…":d.status==="valid"?"🔄 Remplacer":"📤 Charger"}
+              </button>
             </div>
           </div>
         ))}
@@ -9555,7 +9952,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>setScreen("splash")} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ sessionStorage.removeItem("bo_token"); setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
