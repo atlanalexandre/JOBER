@@ -3384,13 +3384,31 @@ function CVScreen({ provider, onBack, onNavigate }) {
 function ProfileScreen({ provider, onNavigate, onBack }) {
   const p = provider||PROVIDERS[0];
   const [fav,setFav]=useState(false);
+  const [userId,setUserId]=useState(null);
   const cv = CV_DATA[p.id];
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const uid=data?.user?.id;
+      if(!uid) return;
+      setUserId(uid);
+      const favs=JSON.parse(localStorage.getItem(`alane_favs_${uid}`)||"[]");
+      setFav(favs.includes(p.id));
+    });
+  },[p.id]);
+  const toggleFav=()=>{
+    if(!userId) return;
+    const key=`alane_favs_${userId}`;
+    const favs=JSON.parse(localStorage.getItem(key)||"[]");
+    const next=fav?favs.filter(id=>id!==p.id):[...favs,p.id];
+    localStorage.setItem(key,JSON.stringify(next));
+    setFav(!fav);
+  };
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
       <div style={{ background:`linear-gradient(135deg, #0A1628, ${p.color}99)`, padding:"48px 22px 36px" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:22 }}>
           <button onClick={onBack} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", color:C.white, cursor:"pointer", fontSize:13 }}>← Retour</button>
-          <button onClick={()=>setFav(!fav)} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", cursor:"pointer", fontSize:18 }}>{fav?"❤️":"🤍"}</button>
+          <button onClick={toggleFav} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", cursor:"pointer", fontSize:18 }}>{fav?"❤️":"🤍"}</button>
         </div>
         <div style={{ display:"flex", gap:16, alignItems:"flex-end", marginBottom:18 }}>
           <div style={{ width:76, height:76, borderRadius:22, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:38, border:"3px solid rgba(255,255,255,0.25)", position:"relative" }}>
@@ -4643,18 +4661,58 @@ function ChatScreen({ provider, onBack, chatClientId }) {
 
 // ── FAVORIS ───────────────────────────────────────────────────────
 function FavoritesScreen({ onNavigate, onBack }) {
+  const { providers, loading } = useProviders();
+  const [favIds, setFavIds] = useState([]);
+  const [userId, setUserId] = useState(null);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const uid=data?.user?.id;
+      if(!uid) return;
+      setUserId(uid);
+      setFavIds(JSON.parse(localStorage.getItem(`alane_favs_${uid}`)||"[]"));
+    });
+  },[]);
+  const removeFav=(pid)=>{
+    if(!userId) return;
+    const key=`alane_favs_${userId}`;
+    const next=favIds.filter(id=>id!==pid);
+    localStorage.setItem(key,JSON.stringify(next));
+    setFavIds(next);
+  };
+  const favProviders=providers.filter(p=>favIds.includes(p.id));
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:0 }}>❤️ Mes favoris</h2>
+        {favProviders.length>0 && <p style={{ color:"rgba(255,255,255,0.6)", margin:"6px 0 0", fontSize:13 }}>{favProviders.length} prestataire{favProviders.length>1?"s":""} sauvegardé{favProviders.length>1?"s":""}</p>}
       </div>
       <div style={{ padding:"18px" }}>
-        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"36px 20px", textAlign:"center" }}>
-          <div style={{ fontSize:44, marginBottom:14 }}>❤️</div>
-          <div style={{ color:C.text, fontWeight:700, fontSize:15, marginBottom:8 }}>Aucun favori pour l'instant</div>
-          <div style={{ color:C.textMuted, fontSize:13, lineHeight:1.6 }}>Les prestataires que vous mettez en favoris apparaîtront ici.</div>
-        </div>
+        {loading ? (
+          <div style={{ textAlign:"center", color:C.textMuted, padding:40, fontSize:13 }}>Chargement…</div>
+        ) : favProviders.length===0 ? (
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"36px 20px", textAlign:"center" }}>
+            <div style={{ fontSize:44, marginBottom:14 }}>❤️</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:15, marginBottom:8 }}>Aucun favori pour l'instant</div>
+            <div style={{ color:C.textMuted, fontSize:13, lineHeight:1.6 }}>Les prestataires que vous mettez en favoris apparaîtront ici.</div>
+          </div>
+        ) : favProviders.map(p=>(
+          <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:16, padding:"14px 16px", marginBottom:10, display:"flex", alignItems:"center", gap:12 }}>
+            <div onClick={()=>onNavigate("profile",p)} style={{ width:46, height:46, borderRadius:13, background:`${p.color}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, cursor:"pointer", flexShrink:0 }}>{p.avatar}</div>
+            <div onClick={()=>onNavigate("profile",p)} style={{ flex:1, cursor:"pointer" }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{p.jobTitle||p.role} · {p.hourlyRate}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:4 }}>
+                <div style={{ width:7, height:7, borderRadius:"50%", background:p.available?C.success:"#666" }} />
+                <span style={{ fontSize:11, color:p.available?C.success:C.textMuted }}>{p.available?"Disponible":"Indisponible"}</span>
+              </div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
+              <Btn onClick={()=>onNavigate("profile",p)} style={{ padding:"7px 12px", fontSize:12 }}>Voir profil</Btn>
+              <button onClick={()=>removeFav(p.id)} style={{ background:"transparent", border:"none", color:"#E74C3C", fontSize:18, cursor:"pointer", padding:0, lineHeight:1 }}>❤️</button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -6066,6 +6124,8 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [userStatus,setUserStatus]=useState(null);
   const [dispoRapide,setDispoRapide]=useState(true);
   const [showTour,setShowTour]=useState(false);
+  const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
+  const [completedMissions,setCompletedMissions]=useState([]);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -6079,8 +6139,25 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       const tourKey=`alane_presta_tour_done_${u.id}`;
       if(!localStorage.getItem(tourKey)) setShowTour(true);
-      const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
+      const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
+        supabase.from("profiles").select("status").eq("id",u.id).single(),
+        supabase.from("missions").select("id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
+        supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
+      ]);
       if(prof) setUserStatus(prof.status);
+      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+      const allM=Array.isArray(mData)?mData:[];
+      const done=allM.filter(m=>m.status==="completed");
+      const refused=allM.filter(m=>m.status==="refused");
+      const som=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+      const doneMois=done.filter(m=>m.date&&new Date(m.date)>=som);
+      const revenuMois=doneMois.reduce((s,m)=>s+getAmt(m),0);
+      const rList=(Array.isArray(rData)?rData:[]).map(r=>r.rating).filter(Boolean);
+      const avgNote=rList.length?(rList.reduce((a,b)=>a+b,0)/rList.length):null;
+      const totalR=done.length+refused.length;
+      const taux=totalR>0?Math.round((done.length/totalR)*100):null;
+      setStatsData({missions:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
+      setCompletedMissions(done);
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
@@ -6109,7 +6186,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
           </div>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[{l:"Missions",v:"—",i:"✅"},{l:"Ce mois",v:"—",i:"💶"},{l:"Note",v:"—",i:"⭐"},{l:"Taux",v:"—",i:"📈"}].map(s=>(
+          {[{l:"Missions",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(
             <div key={s.l} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center" }}>
               <div style={{ fontSize:16 }}>{s.i}</div><div style={{ color:C.white, fontWeight:800, fontSize:12 }}>{s.v}</div><div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
             </div>
@@ -6178,16 +6255,50 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
             <DocRowItem key={i} doc={doc} isValid={i<4} />
           ))}
         </>}
-        {tab==="revenus" && <>
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
-            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucun revenu pour le moment</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières missions complétées.</div>
-          </div>
-          <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text }}>
-            💡 Ces montants correspondront à votre taux horaire net encaissé à chaque mission.
-          </div>
-        </>}
+        {tab==="revenus" && (()=>{
+          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+          const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
+          return <>
+            {completedMissions.length===0 ? (
+              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
+                <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucun revenu pour le moment</div>
+                <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières missions complétées.</div>
+              </div>
+            ) : <>
+              <div style={{ background:`linear-gradient(135deg,${C.success}22,${C.success}10)`, border:`1px solid ${C.success}44`, borderRadius:16, padding:"16px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Total gagné</div>
+                  <div style={{ color:C.success, fontWeight:800, fontSize:22 }}>{total.toFixed(2).replace(".",",")} €</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Missions</div>
+                  <div style={{ color:C.text, fontWeight:800, fontSize:18 }}>{completedMissions.length}</div>
+                </div>
+              </div>
+              {completedMissions.map(m=>{
+                const sector=SECTORS.find(s=>s.id===m.sector);
+                const amt=getAmt(m);
+                return (
+                  <div key={m.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
+                      <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
+                      <div style={{ color:C.textMuted, fontSize:10 }}>Versé</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>}
+            <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text }}>
+              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
+            </div>
+          </>;
+        })()}
       </div>
     </div>
   );
@@ -7082,7 +7193,7 @@ function DocRowItem({ doc, isValid }) {
           <button onClick={()=>{ if(window.confirm(`Charger "${doc.label}" ?`)) setRenewed(true); }} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>+ Charger</button>
         )}
         {isValid && (
-          <button onClick={()=>alert(`📋 ${doc.label}\n\nStatut : ✅ Validé\nDate : 01/01/2025`)} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>Voir</button>
+          <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
         )}
       </div>
     </div>
@@ -7108,10 +7219,10 @@ function PendingDocRow({ u }) {
       </div>
       {!validated && (
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={()=>alert(`Dossier de ${u.name}\nSecteur : ${u.sector}\nDocs : ${u.docs} chargés\nManquants : ${u.missing}`)} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>👁️ Voir</button>
+          <button onClick={()=>setValidated(false)} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"default", fontFamily:"inherit" }}>👁️ {u.docs} doc{u.docs>1?"s":""}</button>
           {u.missing===0
             ? <button onClick={()=>{ if(window.confirm(`Valider le compte de ${u.name} ?`)) setValidated(true); }} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:C.success, color:C.white, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Valider</button>
-            : <button onClick={()=>{ setDocRequested(true); alert(`Email envoyé à ${u.name}`); }} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:docRequested?`${C.success}22`:`${C.accentGold}22`, color:docRequested?C.success:C.warning, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{docRequested?"✓ Envoyé":"⚠️ Demander docs"}</button>}
+            : <button onClick={()=>setDocRequested(true)} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:docRequested?`${C.success}22`:`${C.accentGold}22`, color:docRequested?C.success:C.warning, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{docRequested?"✓ Envoyé":"⚠️ Demander docs"}</button>}
         </div>
       )}
       {validated && <div style={{ textAlign:"center", color:C.success, fontSize:12, fontWeight:700, padding:"4px 0" }}>✅ Compte activé</div>}
@@ -7130,7 +7241,7 @@ function AlertRow({ a }) {
         {!done && a.urgent && <Badge color={a.color} small>Urgent</Badge>}
         {done && <span style={{ fontSize:11, color:C.success, fontWeight:600 }}>Traité ✓</span>}
       </div>
-      {!done && <button onClick={()=>{ alert(`✅ Alerte traitée :\n"${a.text}"`); setDone(true); }} style={{ padding:"7px 12px", borderRadius:10, border:"none", background:`${a.color}18`, color:a.color, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Traiter</button>}
+      {!done && <button onClick={()=>setDone(true)} style={{ padding:"7px 12px", borderRadius:10, border:"none", background:`${a.color}18`, color:a.color, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Traiter</button>}
     </div>
   );
 }
@@ -7149,7 +7260,7 @@ function LitigeRow({ l }) {
       <div style={{ color:C.textSub, fontSize:12, marginBottom:10 }}>🏢 {l.client} ↔ 👷 {l.presta} · {l.date}</div>
       {status==="pending" && (
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={()=>alert(`Motif : ${l.motif}\nClient : ${l.client}\nPrestataire : ${l.presta}\nMontant : ${l.montant}`)} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.text, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>👁️ Détails</button>
+          <div style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:11, fontFamily:"inherit" }}>💶 {l.montant} · {l.client}</div>
           <button onClick={()=>{ if(window.confirm(`Résoudre "${l.motif}" ?`)) setStatus("resolved"); }} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.success}18`, color:C.success, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Résoudre</button>
           <button onClick={()=>{ if(window.confirm(`Rembourser ${l.montant} ?`)) setStatus("refunded"); }} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.danger}18`, color:C.danger, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>↩ Rembourser</button>
         </div>
@@ -8699,6 +8810,10 @@ function PayslipScreen({ provider, mission, onBack }) {
   const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
   const brut = m.tarifNet * m.hours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
+  const [downloaded, setDownloaded] = useState(false);
+  const [sendEmail, setSendEmail]   = useState("");
+  const [sent, setSent]             = useState(false);
+  const [showSendForm, setShowSendForm] = useState(false);
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:40 }}>
@@ -8783,9 +8898,21 @@ function PayslipScreen({ provider, mission, onBack }) {
         </div>
 
         <div style={{ display:"flex", gap:10 }}>
-          <Btn variant="ghost" onClick={()=>alert("⬇️ Téléchargement\n\nVotre attestation de mission est en cours de téléchargement.\n\n(En production, le PDF certifié serait généré et téléchargé automatiquement.)")} style={{ flex:1, padding:"13px", fontSize:13 }}>⬇️ Télécharger</Btn>
-          <Btn onClick={()=>{ const email = prompt("📧 Envoyer l’attestation\n\nEntrez l’adresse email :",`${p.name.toLowerCase().replace(" ",".")}@email.fr`); if(email) alert(`✅ Attestation envoyée à ${email}`); }} style={{ flex:1, padding:"13px", fontSize:13 }}>📧 Envoyer</Btn>
+          <Btn variant="ghost" onClick={()=>setDownloaded(true)} style={{ flex:1, padding:"13px", fontSize:13, color:downloaded?C.success:undefined }}>{downloaded?"✓ Téléchargé":"⬇️ Télécharger"}</Btn>
+          <Btn onClick={()=>setShowSendForm(v=>!v)} style={{ flex:1, padding:"13px", fontSize:13 }}>📧 Envoyer</Btn>
         </div>
+        {showSendForm && (
+          <div style={{ background:"#0D1B3E", borderRadius:12, padding:"14px", marginTop:10, border:`1px solid ${C.border}` }}>
+            {sent ? (
+              <div style={{ textAlign:"center", color:C.success, fontWeight:700, fontSize:13, padding:"6px 0" }}>✅ Attestation envoyée</div>
+            ) : (
+              <div style={{ display:"flex", gap:8 }}>
+                <input value={sendEmail} onChange={e=>setSendEmail(e.target.value)} placeholder="Adresse email" type="email" style={{ flex:1, background:"#162547", border:`1px solid ${C.border}`, borderRadius:8, padding:"9px 12px", color:C.text, fontSize:13, fontFamily:"inherit", outline:"none" }} />
+                <button onClick={()=>{ if(sendEmail.includes("@")){ setSent(true); setShowSendForm(false); } }} style={{ padding:"9px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Envoyer</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
