@@ -1539,7 +1539,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           </div>
           {typeCompte === "professionnel" && <>
             <Input label="Nom de société *" placeholder="ACME SARL" icon="🏢" value={societeNom} onChange={e=>setSocieteNom(e.target.value)} />
-            <Input label="N° SIRET / KBIS *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} />
+            <Input label="N° SIRET / KBIS *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} inputMode="numeric" />
           </>}
         </>}
 
@@ -1952,7 +1952,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
             {isClient && typeCompte === "professionnel" && (
               <>
                 <Input label="Nom de société *" placeholder="ACME SARL" icon="🏢" value={societeNom} onChange={e=>setSocieteNom(e.target.value)} />
-                <Input label="N° KBIS / SIRET *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} />
+                <Input label="N° KBIS / SIRET *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} inputMode="numeric" />
               </>
             )}
 
@@ -1989,11 +1989,6 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       </div>
     </div>
   );
-}
-
-// Ancien ClientAuthScreen — remplacé par AuthScreen
-function ClientAuthScreen({ onLogin, onBack }) {
-  return <AuthScreen role="client" onLogin={onLogin} onRegister={onLogin} onBack={onBack} />;
 }
 
 // ── CONTACT SUPPORT ───────────────────────────────────────────────
@@ -2829,41 +2824,48 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
 }
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
+let _providersCache = null;
+let _providersCachePromise = null;
+
 function useProviders() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading]     = useState(true);
   useEffect(() => {
-    fetch("/api/prestataires")
-      .then(r => r.json())
-      .then(({ prestataires = [] }) => {
-        const mapped = prestataires.map(p => {
-          const sectorInfo = SECTORS.find(s => s.id === p.secteur);
-          const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
-          return {
-            id:           p.id,
-            name:         p.name,
-            prenom:       p.prenom,
-            nom:          p.nom,
-            sector:       p.secteur,
-            jobTitle:     p.metier,
-            rateNum,
-            hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
-            available:    p.dispo_immediat !== false,
-            dispon_jours: p.dispon_jours || [],
-            code_postal:  p.code_postal,
-            rating:       0,
-            reviews:      0,
-            distance:     "—",
-            responseTime: "—",
-            avatar:       sectorInfo?.icon || "👷",
-            color:        sectorInfo?.color || "#7C6FE0",
-            niveau:       p.niveau,
-          };
-        });
-        setProviders(mapped);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    if (_providersCache) { setProviders(_providersCache); setLoading(false); return; }
+    if (!_providersCachePromise) {
+      _providersCachePromise = fetch("/api/prestataires")
+        .then(r => r.json())
+        .then(({ prestataires = [] }) => {
+          const mapped = prestataires.map(p => {
+            const sectorInfo = SECTORS.find(s => s.id === p.secteur);
+            const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
+            return {
+              id:           p.id,
+              name:         p.name,
+              prenom:       p.prenom,
+              nom:          p.nom,
+              sector:       p.secteur,
+              jobTitle:     p.metier,
+              rateNum,
+              hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
+              available:    p.dispo_immediat !== false,
+              dispon_jours: p.dispon_jours || [],
+              code_postal:  p.code_postal,
+              rating:       0,
+              reviews:      0,
+              distance:     "—",
+              responseTime: "—",
+              avatar:       sectorInfo?.icon || "👷",
+              color:        sectorInfo?.color || "#7C6FE0",
+              niveau:       p.niveau,
+            };
+          });
+          _providersCache = mapped;
+          return mapped;
+        })
+        .catch(() => { _providersCachePromise = null; return []; });
+    }
+    _providersCachePromise.then(mapped => { setProviders(mapped); setLoading(false); });
   }, []);
   return { providers, loading };
 }
@@ -3426,6 +3428,7 @@ function CVScreen({ provider, onBack, onNavigate }) {
 
 function ProfileScreen({ provider, onNavigate, onBack }) {
   const p = provider;
+  if (!p) return null;
   const [fav,setFav]=useState(false);
   const [userId,setUserId]=useState(null);
   const cv = CV_DATA[p.id];
@@ -3509,7 +3512,8 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
 
 // ── BOOKING ───────────────────────────────────────────────────────
 function BookingScreen({ provider, onNavigate, onBack }) {
-  const p = provider||PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const isUrgent = p.urgentMode || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
@@ -4296,7 +4300,8 @@ function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, 
 }
 
 function TrackingScreen({ provider, missionId, onNavigate }) {
-  const p = provider||PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const [timelineStatus, setTimelineStatus] = useState("enroute");
   const [eta, setEta] = useState(8);
   const statusMap = ["enroute","enroute","in_progress","done"];
@@ -4396,7 +4401,8 @@ function TrackingScreen({ provider, missionId, onNavigate }) {
 
 // ── DOUBLE VALIDATION ─────────────────────────────────────────────
 function ValidationScreen({ provider, role, missionId, onNavigate }) {
-  const p = provider||PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const [clientValidated,setClientValidated]=useState(false);
   const [prestaValidated,setPrestaValidated]=useState(false);
   const [clientRating,setClientRating]=useState(0);
@@ -8517,7 +8523,8 @@ function ClientOnboarding({ onComplete, onBack }) {
 
 // ── CONTRAT DE MISSION ────────────────────────────────────────────
 function ContractScreen({ provider, amount, hours, date, missionId, onSign, onBack }) {
-  const p = provider || PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const [clientSigned, setClientSigned] = useState(false);
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [finalised, setFinalised] = useState(false);
@@ -8885,7 +8892,8 @@ function LegalScreen({ type, onBack }) {
 
 // ── FICHE DE PAIE ─────────────────────────────────────────────────
 function PayslipScreen({ provider, mission, onBack }) {
-  const p = provider || PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
   const brut = m.tarifNet * m.hours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
