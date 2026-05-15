@@ -17,6 +17,7 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS presta_comment TEXT;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS date_debut TIMESTAMPTZ;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS date_fin TIMESTAMPTZ;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_nom TEXT;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS acceptance_deadline TIMESTAMPTZ;
 
 -- 2. Table profiles — colonnes cashback
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance DECIMAL(10,2) DEFAULT 0;

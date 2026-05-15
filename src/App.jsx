@@ -2381,11 +2381,82 @@ function ResetPasswordScreen({ onDone }) {
 
 // ── HOME ─────────────────────────────────────────────────────────
 // Refonte hi-fi v12 — Playfair Display + DM Sans, palette navy/violet
+const TOUR_STEPS = [
+  {
+    icon:"👋",
+    title:"Bienvenue sur ALANE !",
+    desc:"ALANE vous met en relation avec des prestataires qualifiés dans de nombreux secteurs. Voici comment ça marche en 4 étapes.",
+    color:"#7C6FE0",
+  },
+  {
+    icon:"🗂️",
+    title:"1. Trouvez votre prestataire",
+    desc:"Parcourez les secteurs (Logistique, BTP, Restauration…), filtrez par disponibilité, tarif ou note, et consultez les profils.",
+    color:"#4FC3F7",
+  },
+  {
+    icon:"📅",
+    title:"2. Réservez & payez",
+    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé en escrow — vous n'êtes pas débité tant que la mission n'est pas validée.",
+    color:"#F0B429",
+  },
+  {
+    icon:"⏳",
+    title:"3. Le prestataire confirme",
+    desc:"Il dispose d'un délai (1h si c'est aujourd'hui, 4h sinon) pour accepter ou refuser. Vous êtes notifié immédiatement de sa réponse.",
+    color:"#81C784",
+  },
+  {
+    icon:"✅",
+    title:"4. Validez la mission",
+    desc:"Une fois la mission terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
+    color:"#F06292",
+  },
+];
+
+function ClientTour({ onDone }) {
+  const [step, setStep] = useState(0);
+  const s = TOUR_STEPS[step];
+  const isLast = step === TOUR_STEPS.length - 1;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
+      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
+        {/* Progress dots */}
+        <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
+          {TOUR_STEPS.map((_,i) => (
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+        {/* Icon */}
+        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
+          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
+          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
+          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
+        </div>
+        {/* Actions */}
+        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+        {/* Skip */}
+        {!isLast && (
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
+  const [showTour, setShowTour] = useState(false);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const tier = getCashbackTier(walletMissions);
@@ -2400,6 +2471,8 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
     supabase.auth.getUser().then(({ data })=>{
       const user = data?.user;
       if (!user || !mounted) return;
+      const tourKey = `alane_tour_done_${user.id}`;
+      if (!localStorage.getItem(tourKey)) setShowTour(true);
       supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
@@ -2413,6 +2486,13 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
 
   const violetLite = "#A29BFE";
 
+  const dismissTour = async () => {
+    setShowTour(false);
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+    if (user) localStorage.setItem(`alane_tour_done_${user.id}`, "1");
+  };
+
   return (
     <div style={{
       minHeight:"100%",
@@ -2421,6 +2501,7 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
       position:"relative",
       overflow:"hidden",
     }}>
+      {showTour && <ClientTour onDone={dismissTour} />}
       {/* Halo violet ambiant */}
       <div style={{ position:"absolute", top:-120, right:-90, width:340, height:340, borderRadius:"50%", background:`radial-gradient(circle, ${C.violet}38 0%, transparent 65%)`, pointerEvents:"none" }} />
 
@@ -2702,7 +2783,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
       {/* Sections par secteur */}
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
-          const sectorProviders = realProviders.length > 0 ? realProviders.filter(p=>p.sector===sector.id) : PROVIDERS.filter(p=>p.sector===sector.id);
+          const sectorProviders = realProviders.filter(p=>p.sector===sector.id);
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
               {/* Bannière secteur cliquable uniquement */}
@@ -3822,7 +3903,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages pour passer une commande.
             </div>
           )}
-          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"" }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -3880,54 +3961,85 @@ function BookingScreen({ provider, onNavigate, onBack }) {
 // ── MISSION PENDING — Attente d'acceptation prestataire ──────────
 // Le client attend que le prestataire accepte ou refuse (max 1h)
 // En démo : compte à rebours accéléré (60 secondes = 1 heure)
-function MissionPendingScreen({ provider, amount, hours, onAccepted, onCancelled, onBack }) {
+function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
   const p = provider || PROVIDERS[0];
+  const [secsLeft, setSecsLeft]     = useState(3600);
+  const [totalSecs, setTotalSecs]   = useState(3600);
+  const [phase, setPhase]           = useState("waiting");
+  const [loaded, setLoaded]         = useState(!missionId);
+  const [clientId, setClientId]     = useState(null);
 
-  // Compte à rebours : 60s en démo = 1h en prod
-  const DEMO_SECONDS = 60;
-  const [secsLeft, setSecsLeft]   = useState(DEMO_SECONDS);
-  const [phase, setPhase]         = useState("waiting"); // waiting | accepted | refused | timeout
-  const [prestaAction, setPrestaAction] = useState(null); // simulate presta response after 8s
-
-  // Simuler la réponse du prestataire après 8 secondes (pour la démo)
+  // Charger le délai réel depuis Supabase
   useEffect(() => {
-    const autoAccept = setTimeout(() => {
-      // 80% de chance d'acceptation en démo
-      setPrestaAction("accept");
-    }, 8000);
-    return () => clearTimeout(autoAccept);
-  }, []);
-
-  // Compte à rebours 1h
-  useEffect(() => {
-    if (phase !== "waiting") return;
-    const t = setInterval(() => {
-      setSecsLeft(s => {
-        if (s <= 1) { setPhase("timeout"); clearInterval(t); return 0; }
-        return s - 1;
+    if (!missionId) { setLoaded(true); return; }
+    let mounted = true;
+    supabase.from("missions").select("status,acceptance_deadline,client_id").eq("id", missionId).single()
+      .then(({ data }) => {
+        if (!mounted || !data) return;
+        if (data.status === "assigned") { setPhase("accepted"); return; }
+        if (data.status === "refused")  { setPhase("refused");  return; }
+        setClientId(data.client_id || null);
+        if (data.acceptance_deadline) {
+          const secs = Math.max(0, Math.floor((new Date(data.acceptance_deadline).getTime() - Date.now()) / 1000));
+          setSecsLeft(secs);
+          setTotalSecs(secs > 0 ? secs : 3600);
+        }
+        setLoaded(true);
       });
+    return () => { mounted = false; };
+  }, [missionId]);
+
+  // Polling toutes les 5s pour détecter la réponse du prestataire
+  useEffect(() => {
+    if (!missionId || phase !== "waiting") return;
+    let mounted = true;
+    const poll = async () => {
+      const { data } = await supabase.from("missions").select("status").eq("id", missionId).single();
+      if (!mounted || !data) return;
+      if (data.status === "assigned") setPhase("accepted");
+      else if (data.status === "refused") setPhase("refused");
+    };
+    const interval = setInterval(poll, 5000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [missionId, phase]);
+
+  // Compte à rebours
+  useEffect(() => {
+    if (!loaded || phase !== "waiting") return;
+    const t = setInterval(() => {
+      setSecsLeft(s => (s <= 1 ? 0 : s - 1));
     }, 1000);
     return () => clearInterval(t);
-  }, [phase]);
+  }, [loaded, phase]);
 
-  // Appliquer la décision du prestataire dès qu'elle arrive
+  // Timeout : refus automatique
   useEffect(() => {
-    if (prestaAction === "accept" && phase === "waiting") setPhase("accepted");
-    if (prestaAction === "refuse" && phase === "waiting") setPhase("refused");
-  }, [prestaAction, phase]);
+    if (!loaded || secsLeft !== 0 || phase !== "waiting") return;
+    setPhase("timeout");
+    if (missionId) {
+      supabase.from("missions").update({ status: "refused" }).eq("id", missionId).then(()=>{});
+      if (clientId) {
+        supabase.from("notifications").insert({
+          user_id: clientId, type: "mission_refused",
+          title: "Mission non confirmée",
+          message: `${p.name} n'a pas répondu dans le délai imparti. Choisissez un autre prestataire.`,
+        }).then(()=>{});
+      }
+    }
+  }, [loaded, secsLeft, phase, missionId, clientId]);
 
-  // Formatage du compte à rebours (simule 1h → 0)
+
   const formatTimer = (secs) => {
-    const totalRealSecs = Math.round((secs / DEMO_SECONDS) * 3600);
-    const h = Math.floor(totalRealSecs / 3600);
-    const m = Math.floor((totalRealSecs % 3600) / 60);
-    const s = totalRealSecs % 60;
+    if (secs <= 0) return "0s";
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
     if (h > 0) return h + "h " + String(m).padStart(2,"0") + "min";
     if (m > 0) return String(m).padStart(2,"0") + "min " + String(s).padStart(2,"0") + "s";
     return String(s).padStart(2,"0") + "s";
   };
 
-  const pct = Math.round((secsLeft / DEMO_SECONDS) * 100);
+  const pct = totalSecs > 0 ? Math.round((secsLeft / totalSecs) * 100) : 0;
   const circumference = 2 * Math.PI * 54;
   const dash = (pct / 100) * circumference;
 
@@ -4000,23 +4112,6 @@ function MissionPendingScreen({ provider, amount, hours, onAccepted, onCancelled
           Annuler la demande
         </button>
 
-        {/* BOUTONS SIMULÉS PRESTATAIRE — démo uniquement */}
-        <div style={{ width:"100%", marginTop:20, padding:"16px", background:"rgba(255,165,0,0.06)", border:"1px dashed rgba(255,165,0,0.3)", borderRadius:r }}>
-          <div style={{ fontSize:11, color:C.accentGold, fontWeight:700, marginBottom:10, textAlign:"center", letterSpacing:0.5 }}>
-            🎭 SIMULATION — Vue prestataire
-          </div>
-          <div style={{ fontSize:11, color:C.textSub, textAlign:"center", marginBottom:12 }}>
-            Dans l’app réelle, {p.name} reçoit une notification push sur son téléphone
-          </div>
-          <div style={{ display:"flex", gap:10 }}>
-            <button onClick={()=>setPrestaAction("accept")} style={{ flex:1, padding:"12px", border:"none", borderRadius:r, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              ✅ Accepter (prestataire)
-            </button>
-            <button onClick={()=>setPrestaAction("refuse")} style={{ flex:1, padding:"12px", border:"1px solid "+C.accent+"44", borderRadius:r, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              ✗ Refuser (prestataire)
-            </button>
-          </div>
-        </div>
 
       </div>
     </div>
@@ -4498,20 +4593,11 @@ function FavoritesScreen({ onNavigate, onBack }) {
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:0 }}>❤️ Mes favoris</h2>
       </div>
       <div style={{ padding:"18px" }}>
-        {PROVIDERS.filter(p=>p.available).slice(0,2).map(p=>(
-          <div key={p.id} onClick={()=>onNavigate("profile",p)} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:11, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-            <div style={{ width:52, height:52, borderRadius:15, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{p.avatar}</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>{p.role}</div>
-              <Stars rating={p.rating} />
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ color:C.violet, fontWeight:800, fontSize:13 }}>{p.hourlyRate} HT</div>
-              <div style={{ fontSize:22 }}>❤️</div>
-            </div>
-          </div>
-        ))}
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"36px 20px", textAlign:"center" }}>
+          <div style={{ fontSize:44, marginBottom:14 }}>❤️</div>
+          <div style={{ color:C.text, fontWeight:700, fontSize:15, marginBottom:8 }}>Aucun favori pour l'instant</div>
+          <div style={{ color:C.textMuted, fontSize:13, lineHeight:1.6 }}>Les prestataires que vous mettez en favoris apparaîtront ici.</div>
+        </div>
       </div>
     </div>
   );
@@ -5583,13 +5669,23 @@ function PMissionsTab({ onNavigate }) {
   const [tab, setTab]             = useState("disponibles");
   const [missions, setMissions]   = useState([]);
   const [candidatures, setCandidatures] = useState([]);
+  const [pendingMissions, setPendingMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [userId, setUserId]       = useState(null);
+  const [userName, setUserName]   = useState("");
   const [userMeta, setUserMeta]   = useState({});
   const [applying, setApplying]   = useState(null);
   const [applied, setApplied]     = useState(new Set());
   const [message, setMessage]     = useState("");
   const [showMsg, setShowMsg]     = useState(null);
+  const [actioning, setActioning] = useState(null);
+
+  const loadPending = async (uid) => {
+    const { data } = await supabase.from("missions")
+      .select("id,sector,metier,date,hours,tarif_horaire,acceptance_deadline,client_id,titre")
+      .eq("prestataire_id", uid).eq("status", "pending_acceptance");
+    setPendingMissions(Array.isArray(data) ? data : []);
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -5597,6 +5693,7 @@ function PMissionsTab({ onNavigate }) {
       setUserId(u.id);
       const meta = u.user_metadata || {};
       setUserMeta(meta);
+      setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
       const sector = meta.secteur || meta.sector || null;
       const [r1, r2] = await Promise.all([
         fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -5608,11 +5705,49 @@ function PMissionsTab({ onNavigate }) {
       setMissions(Array.isArray(d1) ? d1 : []);
       const cands = Array.isArray(d2) ? d2 : [];
       setCandidatures(cands);
-      // pré-remplir applied avec les missions déjà postulées
       setApplied(new Set(cands.map(c => c.mission_id)));
+      await loadPending(u.id);
       setLoading(false);
     });
   }, []);
+
+  const handleAccept = async (m) => {
+    setActioning(m.id + "_acc");
+    await supabase.from("missions").update({ status: "assigned" }).eq("id", m.id);
+    if (m.client_id) {
+      await supabase.from("notifications").insert({
+        user_id: m.client_id, type: "mission_accepted",
+        title: "Mission acceptée ! 🎉",
+        message: `${userName || "Votre prestataire"} a accepté votre demande de mission.`,
+      });
+    }
+    setPendingMissions(prev => prev.filter(x => x.id !== m.id));
+    setActioning(null);
+  };
+
+  const handleRefuse = async (m) => {
+    setActioning(m.id + "_ref");
+    await supabase.from("missions").update({ status: "refused" }).eq("id", m.id);
+    if (m.client_id) {
+      await supabase.from("notifications").insert({
+        user_id: m.client_id, type: "mission_refused",
+        title: "Mission refusée",
+        message: `${userName || "Le prestataire"} a décliné votre demande. Choisissez un autre prestataire.`,
+      });
+    }
+    setPendingMissions(prev => prev.filter(x => x.id !== m.id));
+    setActioning(null);
+  };
+
+  const formatDeadline = (deadline) => {
+    if (!deadline) return null;
+    const secs = Math.floor((new Date(deadline).getTime() - Date.now()) / 1000);
+    if (secs <= 0) return "Délai dépassé";
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h > 0) return `${h}h ${String(m).padStart(2,"0")}min restant`;
+    return `${String(m).padStart(2,"0")}min restant`;
+  };
 
   const handleApply = async (missionId) => {
     if (!userId) return;
@@ -5641,6 +5776,51 @@ function PMissionsTab({ onNavigate }) {
 
   return (
     <div>
+      {/* Missions en attente de confirmation */}
+      {pendingMissions.length > 0 && (
+        <div style={{ marginBottom:18 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+            <div style={{ width:8, height:8, borderRadius:"50%", background:C.accent, boxShadow:`0 0 8px ${C.accent}`, animation:"pulse 1.5s ease-in-out infinite" }} />
+            <p style={{ fontWeight:800, color:C.accent, fontSize:13, margin:0 }}>🔔 En attente de votre réponse ({pendingMissions.length})</p>
+          </div>
+          {pendingMissions.map(m => {
+            const sector = SECTORS.find(s => s.id === m.sector);
+            const deadlineLabel = formatDeadline(m.acceptance_deadline);
+            const expired = deadlineLabel === "Délai dépassé";
+            const isAct = actioning === m.id+"_acc" || actioning === m.id+"_ref";
+            return (
+              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${expired ? C.textMuted : C.accent}55` }}>
+                <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
+                  <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                    {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
+                  </div>
+                  {deadlineLabel && (
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <span style={{ fontSize:11, color:expired?C.textMuted:C.accentGold, fontWeight:700 }}>⏱ {deadlineLabel}</span>
+                    </div>
+                  )}
+                </div>
+                {expired ? (
+                  <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette mission a été annulée automatiquement</div>
+                ) : (
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>handleRefuse(m)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      {actioning===m.id+"_ref" ? "…" : "✗ Refuser"}
+                    </button>
+                    <button onClick={()=>handleAccept(m)} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Onglets */}
       <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
         {[{id:"disponibles",l:"Missions disponibles"},{id:"candidatures",l:`Mes candidatures${candidatures.length>0?` (${candidatures.length})`:""}`}].map(t=>(
@@ -5745,6 +5925,73 @@ function PMissionsTab({ onNavigate }) {
   );
 }
 
+// ── PRESTA TOUR ───────────────────────────────────────────────────
+const PRESTA_TOUR_STEPS = [
+  {
+    icon:"👷",
+    title:"Bienvenue sur ALANE !",
+    desc:"ALANE vous connecte directement avec des clients qui ont besoin de vos compétences. Voici comment ça fonctionne.",
+    color:"#7C6FE0",
+  },
+  {
+    icon:"📋",
+    title:"1. Complétez votre profil",
+    desc:"Renseignez votre secteur, votre métier, vos disponibilités et votre IBAN. Un profil complet vous rend visible et rassure les clients.",
+    color:"#4FC3F7",
+  },
+  {
+    icon:"🔔",
+    title:"2. Recevez des demandes",
+    desc:"Un client vous choisit directement et vous envoie une demande de mission. Vous recevez une notification immédiate sur votre téléphone.",
+    color:"#F0B429",
+  },
+  {
+    icon:"⏱️",
+    title:"3. Acceptez ou refusez",
+    desc:"Vous avez 1 heure (mission du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la mission est automatiquement annulée.",
+    color:"#F06292",
+  },
+  {
+    icon:"💶",
+    title:"4. Réalisez & soyez payé",
+    desc:"Effectuez la mission, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
+    color:"#81C784",
+  },
+];
+
+function PrestaTour({ onDone }) {
+  const [step, setStep] = useState(0);
+  const s = PRESTA_TOUR_STEPS[step];
+  const isLast = step === PRESTA_TOUR_STEPS.length - 1;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
+      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
+        <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
+          {PRESTA_TOUR_STEPS.map((_,i) => (
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
+          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
+          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
+          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
+        </div>
+        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+        {!isLast && (
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
@@ -5755,6 +6002,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [userName,setUserName]=useState("");
   const [userStatus,setUserStatus]=useState(null);
   const [dispoRapide,setDispoRapide]=useState(true);
+  const [showTour,setShowTour]=useState(false);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -5766,14 +6014,25 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
+      const tourKey=`alane_presta_tour_done_${u.id}`;
+      if(!localStorage.getItem(tourKey)) setShowTour(true);
       const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
       if(prof) setUserStatus(prof.status);
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
   },[]);
+
+  const dismissTour = async () => {
+    setShowTour(false);
+    const {data} = await supabase.auth.getUser();
+    const u = data?.user;
+    if(u) localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1");
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {showTour && <PrestaTour onDone={dismissTour} />}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
           <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)" }}>👨‍💼</div>
@@ -6444,9 +6703,7 @@ function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBa
   const p = provider || PROVIDERS[0];
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
-  const [replacements, setReplacements] = useState(
-    PROVIDERS.filter(x => x.id !== p.id && x.available && x.sector === p.sector)
-  );
+  const [replacements, setReplacements] = useState([]);
   const [chosen, setChosen] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
@@ -6590,8 +6847,9 @@ function TeamBookingScreen({ onNavigate, onBack }) {
   const [hours, setHours] = useState(8);
   const [basket, setBasket] = useState([]);
   const [step, setStep] = useState("select"); // select | configure | payment
+  const { providers: allRealProviders, loading: teamLoading } = useProviders();
 
-  const filteredProviders = PROVIDERS.filter(p =>
+  const filteredProviders = allRealProviders.filter(p =>
     p.available && (!sector || p.sector === sector)
   );
 
@@ -6638,7 +6896,15 @@ function TeamBookingScreen({ onNavigate, onBack }) {
             {basket.length > 0 && <Badge color={C.violet} small>{basket.length} sélectionné{basket.length>1?"s":""}</Badge>}
           </div>
 
-          {filteredProviders.map(p => {
+          {teamLoading ? (
+            <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>
+          ) : filteredProviders.length === 0 ? (
+            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 20px", textAlign:"center" }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>👷</div>
+              <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucun prestataire disponible</div>
+              <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Des prestataires rejoignent la plateforme chaque semaine. Revenez bientôt !</div>
+            </div>
+          ) : filteredProviders.map(p => {
             const inBasket = basket.find(x=>x.id===p.id);
             return (
               <div key={p.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`2px solid ${inBasket?C.violet:C.grayLight}`, transition:"border 0.2s" }}>
@@ -9881,6 +10147,7 @@ export default function App() {
   const [selectedMissionId,setSelectedMissionId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
+  const [paymentDate,setPaymentDate]=useState("");
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -10032,7 +10299,7 @@ export default function App() {
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage") setSelectedProvider(data);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
-    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); }
+    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
@@ -10085,11 +10352,23 @@ export default function App() {
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
-      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} onSuccess={()=>{ setPendingProvider(selectedProvider); setScreen("mission_pending"); }} onBack={()=>setScreen("booking")} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
+      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} onSuccess={async()=>{
+        setPendingProvider(selectedProvider);
+        if(selectedMissionId && selectedProvider?.id){
+          const today=new Date().toDateString();
+          const mDay=paymentDate?new Date(paymentDate).toDateString():null;
+          const isSameDay=!mDay||mDay===today;
+          const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
+          await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",selectedMissionId);
+          await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission_request", title:"Nouvelle demande de mission", message:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.` });
+        }
+        setScreen("mission_pending");
+      }} onBack={()=>setScreen("booking")} />}
       {screen==="mission_pending"   && <MissionPendingScreen
         provider={pendingProvider||selectedProvider}
         amount={paymentAmount}
+        missionId={selectedMissionId}
         hours={paymentHours}
         onAccepted={()=>setScreen("contract")}
         onCancelled={()=>{ setScreen("sector_detail"); }}
