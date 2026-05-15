@@ -2384,10 +2384,10 @@ function ResetPasswordScreen({ onDone }) {
 function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [userName, setUserName] = useState("");
+  const [walletMissions, setWalletMissions] = useState(0);
+  const [walletBalance,  setWalletBalance]  = useState(0);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
-  const walletMissions = 0;
-  const walletBalance  = 0;
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
@@ -2396,12 +2396,19 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
     : 8;
 
   useEffect(()=>{
+    let mounted = true;
     supabase.auth.getUser().then(({ data })=>{
       const user = data?.user;
-      if (!user) return;
-      supabase.from("profiles").select("prenom").eq("id", user.id).single()
-        .then(({ data: p }) => { if (p?.prenom) setUserName(p.prenom); });
+      if (!user || !mounted) return;
+      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
+        .then(({ data: p }) => {
+          if (!p || !mounted) return;
+          if (p.prenom) setUserName(p.prenom);
+          setWalletBalance(p.cashback_balance || 0);
+          setWalletMissions(p.missions_completed_month || 0);
+        });
     });
+    return ()=>{ mounted=false; };
   }, []);
 
   const violetLite = "#A29BFE";
@@ -4093,14 +4100,26 @@ function MissionPendingScreen({ provider, amount, hours, onAccepted, onCancelled
   );
 }
 
-function TrackingScreen({ provider, onNavigate }) {
+function TrackingScreen({ provider, missionId, onNavigate }) {
   const p = provider||PROVIDERS[0];
   const [timelineStatus, setTimelineStatus] = useState("enroute");
   const [eta, setEta] = useState(8);
-
   const statusMap = ["enroute","enroute","in_progress","done"];
   const [step, setStep] = useState(0);
 
+  // Charger le statut réel depuis Supabase si missionId disponible
+  useEffect(()=>{
+    if(!missionId) return;
+    let mounted = true;
+    supabase.from("missions").select("status").eq("id",missionId).single().then(({data})=>{
+      if(!mounted || !data) return;
+      if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+      else if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+    });
+    return ()=>{ mounted=false; };
+  },[missionId]);
+
+  // Simulation visuelle (progress auto toutes les 4s)
   useEffect(()=>{
     const t = setInterval(()=>{
       setStep(s => {
@@ -4181,7 +4200,7 @@ function TrackingScreen({ provider, onNavigate }) {
 
 
 // ── DOUBLE VALIDATION ─────────────────────────────────────────────
-function ValidationScreen({ provider, role, onNavigate }) {
+function ValidationScreen({ provider, role, missionId, onNavigate }) {
   const p = provider||PROVIDERS[0];
   const [clientValidated,setClientValidated]=useState(false);
   const [prestaValidated,setPrestaValidated]=useState(false);
@@ -4194,11 +4213,44 @@ function ValidationScreen({ provider, role, onNavigate }) {
   const [paid,setPaid]=useState(false);
 
   const bothValidated = clientValidated && prestaValidated;
-  const totalClientPrice = (p.rateNum * hoursActual).toFixed(0);   // ce que le client paie
-  const totalNetPresta   = (p.tarifNet * hoursActual).toFixed(0);   // ce que le prestataire encaisse
+  const totalClientPrice = (p.rateNum * hoursActual).toFixed(0);
+  const totalNetPresta   = (p.tarifNet * hoursActual).toFixed(0);
+
+  const persistValidation = async (side, rating, comment) => {
+    if (!missionId) return;
+    const patch = side === "client"
+      ? { validation_client: true, client_rating: rating, client_comment: comment }
+      : { validation_prestataire: true, presta_rating: rating, presta_comment: comment };
+    await supabase.from("missions").update(patch).eq("id", missionId);
+  };
 
   useEffect(()=>{
-    if(bothValidated && !paid) { const t=setTimeout(()=>setPaid(true), 1500); return ()=>clearTimeout(t); }
+    if(!bothValidated || paid) return;
+    let mounted = true;
+    const finalize = async () => {
+      if (missionId) {
+        await supabase.from("missions").update({ status:"completed" }).eq("id", missionId);
+        const { data:{ user } } = await supabase.auth.getUser();
+        if (user && mounted) {
+          const montant = Number(totalClientPrice);
+          const { data:prof } = await supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id",user.id).single();
+          const currentBalance = prof?.cashback_balance || 0;
+          const currentMonth   = prof?.missions_completed_month || 0;
+          const cashback = calcCashback(montant, currentMonth);
+          await supabase.from("profiles").update({
+            cashback_balance: Math.round((currentBalance + cashback)*100)/100,
+            missions_completed_month: currentMonth + 1,
+          }).eq("id", user.id);
+          await supabase.from("notifications").insert({
+            user_id: user.id, type:"payment",
+            title:"Paiement libéré", message:`Mission validée — ${totalNetPresta} € versés à ${p.name}.`,
+          });
+        }
+      }
+      if (mounted) setPaid(true);
+    };
+    const t = setTimeout(finalize, 1500);
+    return ()=>{ mounted=false; clearTimeout(t); };
   },[bothValidated, paid]);
 
   if(paid) return (
@@ -4257,7 +4309,7 @@ function ValidationScreen({ provider, role, onNavigate }) {
             <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Signaler</button>
-              <Btn variant="success" disabled={clientRating===0} onClick={()=>setClientValidated(true)} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Valider</Btn>
+              <Btn variant="success" disabled={clientRating===0} onClick={()=>{ persistValidation("client",clientRating,clientComment); setClientValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Valider</Btn>
             </div>
           </> : (
             <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Mission validée — Note : {"★".repeat(clientRating)}</div>
@@ -4286,7 +4338,7 @@ function ValidationScreen({ provider, role, onNavigate }) {
             <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Litige</button>
-              <Btn variant="success" disabled={prestaRating===0} onClick={()=>setPrestaValidated(true)} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Confirmer</Btn>
+              <Btn variant="success" disabled={prestaRating===0} onClick={()=>{ persistValidation("presta",prestaRating,prestaComment); setPrestaValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Confirmer</Btn>
             </div>
           </> : (
             <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Confirmé — Note : {"★".repeat(prestaRating)}</div>
@@ -6272,9 +6324,11 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
 }
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
-function InvoiceScreen({ provider, amount, hours, onBack }) {
+function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
   const p = provider || PROVIDERS[0];
-  const invoiceNum = `ALANE-2025-${Math.floor(Math.random()*9000+1000)}`;
+  const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
   const date = new Date().toLocaleDateString("fr-FR");
   const ht = amount || 124;
   const tva = 0; // auto-entrepreneur → pas de TVA
@@ -6349,8 +6403,36 @@ function InvoiceScreen({ provider, amount, hours, onBack }) {
         </div>
 
         <div style={{ display:"flex", gap:10 }}>
-          <Btn variant="ghost" full onClick={()=>alert("⬇️ Téléchargement\n\nLa facture PDF est en cours de téléchargement sur votre appareil.\n\n(En production, le PDF serait généré automatiquement via notre serveur et téléchargé directement.)")} style={{ fontSize:13, padding:"13px" }}>⬇️ Télécharger PDF</Btn>
-          <Btn full onClick={()=>{ const email = prompt("📧 Envoyer la facture\n\nEntrez l’adresse email destinataire :","contact@societe.fr"); if(email) alert(`✅ Facture envoyée !\n\nLa facture a été envoyée à ${email}`); }} style={{ fontSize:13, padding:"13px" }}>📧 Envoyer par email</Btn>
+          <Btn variant="ghost" full onClick={()=>{
+            const content = [
+              `FACTURE ${invoiceNum}`,
+              `Émise le ${date}`,
+              ``,
+              `PRESTATAIRE : ${p.name} — ${p.role}`,
+              `MISSION : ${hours||8}h — Tarif ${p.hourlyRate} HT`,
+              `TOTAL TTC : ${ht} €`,
+              `STATUT : Paiement reçu via ALANE Escrow`,
+            ].join("\n");
+            const blob = new Blob([content], { type:"text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href=url; a.download=`${invoiceNum}.txt`; a.click();
+            URL.revokeObjectURL(url);
+          }} style={{ fontSize:13, padding:"13px" }}>⬇️ Télécharger</Btn>
+          <Btn full disabled={emailSending||emailSent} onClick={async()=>{
+            setEmailSending(true);
+            const { data:{ user } } = await supabase.auth.getUser();
+            if(user?.email) {
+              await fetch("/api/booking-confirm", {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({ clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
+              }).catch(()=>{});
+            }
+            setEmailSending(false); setEmailSent(true);
+          }} style={{ fontSize:13, padding:"13px" }}>
+            {emailSent ? "✅ Envoyé" : emailSending ? "…" : "📧 Envoyer par email"}
+          </Btn>
         </div>
       </div>
     </div>
@@ -6358,7 +6440,7 @@ function InvoiceScreen({ provider, amount, hours, onBack }) {
 }
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
-function CancellationScreen({ provider, missionDate, onNavigate, onBack }) {
+function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
   const p = provider || PROVIDERS[0];
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
@@ -6366,9 +6448,11 @@ function CancellationScreen({ provider, missionDate, onNavigate, onBack }) {
     PROVIDERS.filter(x => x.id !== p.id && x.available && x.sector === p.sector)
   );
   const [chosen, setChosen] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
 
-  // Délai simulé : < 24h → frais 100%, 24-48h → 50%, > 48h → gratuit
-  const hoursLeft = 18; // simulé
+  // Calcul réel du délai avant mission
+  const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
+  const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
   const penalty = hoursLeft < 24 ? 100 : hoursLeft < 48 ? 50 : 0;
   const penaltyAmount = (124 * penalty / 100).toFixed(0);
 
@@ -6482,8 +6566,15 @@ function CancellationScreen({ provider, missionDate, onNavigate, onBack }) {
 
         <div style={{ display:"flex", gap:10 }}>
           <Btn variant="secondary" onClick={onBack} style={{ flex:1, padding:"13px", fontSize:13 }}>Garder la mission</Btn>
-          <Btn variant="danger" disabled={!reason} onClick={()=>setStep("replacement")} style={{ flex:2, padding:"13px", fontSize:13 }}>
-            Annuler {penalty>0?`(−${penaltyAmount} €)`:""}
+          <Btn variant="danger" disabled={!reason||cancelling} onClick={async()=>{
+            setCancelling(true);
+            if (missionId) {
+              await supabase.from("missions").update({ status:"cancelled" }).eq("id", missionId).catch(()=>{});
+            }
+            setCancelling(false);
+            setStep("replacement");
+          }} style={{ flex:2, padding:"13px", fontSize:13 }}>
+            {cancelling ? "…" : `Annuler ${penalty>0?`(−${penaltyAmount} €)`:""}`}
           </Btn>
         </div>
       </div>
@@ -7906,24 +7997,48 @@ function ClientOnboarding({ onComplete, onBack }) {
 }
 
 // ── CONTRAT DE MISSION ────────────────────────────────────────────
-function ContractScreen({ provider, amount, hours, date, onSign, onBack }) {
+function ContractScreen({ provider, amount, hours, date, missionId, onSign, onBack }) {
   const p = provider || PROVIDERS[0];
   const [clientSigned, setClientSigned] = useState(false);
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [finalised, setFinalised] = useState(false);
   const [activeTab, setActiveTab] = useState("contrat");
   const bothSigned = clientSigned && prestaSigned;
-  const contractNum = `CTR-ALANE-2025-${Math.floor(Math.random()*90000+10000)}`;
+  const [contractNum] = useState(`CTR-ALANE-2025-${Math.floor(Math.random()*90000+10000)}`);
   const today = new Date().toLocaleDateString("fr-FR");
-  const missionDate = date || "05/05/2025";
+  const missionDate = date || today;
   const missionHours = hours || 8;
   const totalAmount = (typeof amount === 'object' ? amount?.amount : amount) || 124;
   const prestaNet = (p.tarifNet * missionHours).toFixed(2);
 
   useEffect(()=>{
     if(!bothSigned) return;
-    const t = setTimeout(()=>{ setFinalised(true); onSign && onSign(); }, 1800);
-    return ()=>clearTimeout(t);
+    let mounted = true;
+    const t = setTimeout(async ()=>{
+      if (mounted) {
+        try {
+          const { data:{ user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase.from("contracts").insert({
+              mission_id: missionId || null,
+              contract_number: contractNum,
+              client_id: user.id,
+              prestataire_name: p.name,
+              prestataire_role: p.role || p.jobTitle,
+              nb_heures: missionHours,
+              montant: totalAmount,
+              client_signed: true,
+              prestataire_signed: true,
+              client_signed_at: new Date().toISOString(),
+              prestataire_signed_at: new Date().toISOString(),
+            });
+          }
+        } catch(_) {}
+        setFinalised(true);
+        onSign && onSign();
+      }
+    }, 1800);
+    return ()=>{ mounted=false; clearTimeout(t); };
   },[bothSigned]);
 
   if(finalised) return (
@@ -9763,6 +9878,7 @@ export default function App() {
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
+  const [selectedMissionId,setSelectedMissionId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
   const [boUnlocked,setBoUnlocked]=useState(false);
@@ -9964,7 +10080,7 @@ export default function App() {
       {screen==="home"              && <HomeScreen onNavigate={navigate} notifCount={notifCount} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
-      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={()=>setScreen("mission_history")} />}
+      {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={(m)=>{ if(m?.id) setSelectedMissionId(m.id); setScreen("mission_broadcast"); setPendingMission(m); }} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
@@ -9979,11 +10095,11 @@ export default function App() {
         onCancelled={()=>{ setScreen("sector_detail"); }}
         onBack={()=>setScreen("home")}
       />}
-      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} onSign={()=>setTimeout(()=>setScreen("tracking"),1000)} onBack={()=>setScreen("stripe_pay")} />}
-      {screen==="tracking"          && <TrackingScreen provider={selectedProvider} onNavigate={navigate} />}
-      {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} onNavigate={navigate} />}
-      {screen==="invoice"           && <InvoiceScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} onBack={()=>setScreen("dashboard")} />}
-      {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
+      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setTimeout(()=>setScreen("tracking"),1000)} onBack={()=>setScreen("stripe_pay")} />}
+      {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} />}
+      {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
+      {screen==="invoice"           && <InvoiceScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onBack={()=>setScreen("dashboard")} />}
+      {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
