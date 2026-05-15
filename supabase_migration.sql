@@ -25,7 +25,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS missions_completed_month INTEGER D
 -- 3. Table ratings
 CREATE TABLE IF NOT EXISTS ratings (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  mission_id            UUID REFERENCES missions(id) ON DELETE SET NULL,
+  mission_id            BIGINT REFERENCES missions(id) ON DELETE SET NULL,
   reviewer_id           UUID REFERENCES auth.users(id),
   reviewee_provider_id  TEXT,
   reviewee_name         TEXT,
@@ -41,7 +41,7 @@ CREATE POLICY "ratings_select" ON ratings FOR SELECT TO authenticated USING (tru
 -- 4. Table contracts
 CREATE TABLE IF NOT EXISTS contracts (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  mission_id            UUID REFERENCES missions(id) ON DELETE SET NULL,
+  mission_id            BIGINT REFERENCES missions(id) ON DELETE SET NULL,
   contract_number       TEXT UNIQUE NOT NULL,
   client_id             UUID REFERENCES auth.users(id),
   prestataire_id        UUID REFERENCES auth.users(id),
