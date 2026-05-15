@@ -5925,6 +5925,73 @@ function PMissionsTab({ onNavigate }) {
   );
 }
 
+// ── PRESTA TOUR ───────────────────────────────────────────────────
+const PRESTA_TOUR_STEPS = [
+  {
+    icon:"👷",
+    title:"Bienvenue sur ALANE !",
+    desc:"ALANE vous connecte directement avec des clients qui ont besoin de vos compétences. Voici comment ça fonctionne.",
+    color:"#7C6FE0",
+  },
+  {
+    icon:"📋",
+    title:"1. Complétez votre profil",
+    desc:"Renseignez votre secteur, votre métier, vos disponibilités et votre IBAN. Un profil complet vous rend visible et rassure les clients.",
+    color:"#4FC3F7",
+  },
+  {
+    icon:"🔔",
+    title:"2. Recevez des demandes",
+    desc:"Un client vous choisit directement et vous envoie une demande de mission. Vous recevez une notification immédiate sur votre téléphone.",
+    color:"#F0B429",
+  },
+  {
+    icon:"⏱️",
+    title:"3. Acceptez ou refusez",
+    desc:"Vous avez 1 heure (mission du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la mission est automatiquement annulée.",
+    color:"#F06292",
+  },
+  {
+    icon:"💶",
+    title:"4. Réalisez & soyez payé",
+    desc:"Effectuez la mission, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
+    color:"#81C784",
+  },
+];
+
+function PrestaTour({ onDone }) {
+  const [step, setStep] = useState(0);
+  const s = PRESTA_TOUR_STEPS[step];
+  const isLast = step === PRESTA_TOUR_STEPS.length - 1;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
+      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
+        <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
+          {PRESTA_TOUR_STEPS.map((_,i) => (
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
+          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
+          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
+          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
+        </div>
+        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+        {!isLast && (
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
@@ -5935,6 +6002,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [userName,setUserName]=useState("");
   const [userStatus,setUserStatus]=useState(null);
   const [dispoRapide,setDispoRapide]=useState(true);
+  const [showTour,setShowTour]=useState(false);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -5946,14 +6014,25 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
+      const tourKey=`alane_presta_tour_done_${u.id}`;
+      if(!localStorage.getItem(tourKey)) setShowTour(true);
       const {data:prof}=await supabase.from("profiles").select("status").eq("id",u.id).single();
       if(prof) setUserStatus(prof.status);
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
   },[]);
+
+  const dismissTour = async () => {
+    setShowTour(false);
+    const {data} = await supabase.auth.getUser();
+    const u = data?.user;
+    if(u) localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1");
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {showTour && <PrestaTour onDone={dismissTour} />}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
           <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)" }}>👨‍💼</div>
