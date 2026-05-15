@@ -2702,7 +2702,7 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
       {/* Sections par secteur */}
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
-          const sectorProviders = realProviders.length > 0 ? realProviders.filter(p=>p.sector===sector.id) : PROVIDERS.filter(p=>p.sector===sector.id);
+          const sectorProviders = realProviders.filter(p=>p.sector===sector.id);
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
               {/* Bannière secteur cliquable uniquement */}
@@ -4512,20 +4512,11 @@ function FavoritesScreen({ onNavigate, onBack }) {
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:0 }}>❤️ Mes favoris</h2>
       </div>
       <div style={{ padding:"18px" }}>
-        {PROVIDERS.filter(p=>p.available).slice(0,2).map(p=>(
-          <div key={p.id} onClick={()=>onNavigate("profile",p)} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:11, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-            <div style={{ width:52, height:52, borderRadius:15, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{p.avatar}</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>{p.role}</div>
-              <Stars rating={p.rating} />
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ color:C.violet, fontWeight:800, fontSize:13 }}>{p.hourlyRate} HT</div>
-              <div style={{ fontSize:22 }}>❤️</div>
-            </div>
-          </div>
-        ))}
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"36px 20px", textAlign:"center" }}>
+          <div style={{ fontSize:44, marginBottom:14 }}>❤️</div>
+          <div style={{ color:C.text, fontWeight:700, fontSize:15, marginBottom:8 }}>Aucun favori pour l'instant</div>
+          <div style={{ color:C.textMuted, fontSize:13, lineHeight:1.6 }}>Les prestataires que vous mettez en favoris apparaîtront ici.</div>
+        </div>
       </div>
     </div>
   );
@@ -6552,9 +6543,7 @@ function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBa
   const p = provider || PROVIDERS[0];
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
-  const [replacements, setReplacements] = useState(
-    PROVIDERS.filter(x => x.id !== p.id && x.available && x.sector === p.sector)
-  );
+  const [replacements, setReplacements] = useState([]);
   const [chosen, setChosen] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
@@ -6698,8 +6687,9 @@ function TeamBookingScreen({ onNavigate, onBack }) {
   const [hours, setHours] = useState(8);
   const [basket, setBasket] = useState([]);
   const [step, setStep] = useState("select"); // select | configure | payment
+  const { providers: allRealProviders, loading: teamLoading } = useProviders();
 
-  const filteredProviders = PROVIDERS.filter(p =>
+  const filteredProviders = allRealProviders.filter(p =>
     p.available && (!sector || p.sector === sector)
   );
 
@@ -6746,7 +6736,15 @@ function TeamBookingScreen({ onNavigate, onBack }) {
             {basket.length > 0 && <Badge color={C.violet} small>{basket.length} sélectionné{basket.length>1?"s":""}</Badge>}
           </div>
 
-          {filteredProviders.map(p => {
+          {teamLoading ? (
+            <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>
+          ) : filteredProviders.length === 0 ? (
+            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px 20px", textAlign:"center" }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>👷</div>
+              <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucun prestataire disponible</div>
+              <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Des prestataires rejoignent la plateforme chaque semaine. Revenez bientôt !</div>
+            </div>
+          ) : filteredProviders.map(p => {
             const inBasket = basket.find(x=>x.id===p.id);
             return (
               <div key={p.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", border:`2px solid ${inBasket?C.violet:C.grayLight}`, transition:"border 0.2s" }}>
