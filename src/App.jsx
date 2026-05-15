@@ -7496,8 +7496,11 @@ function BOComptes() {
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
   const [verifying, setVerifying] = useState(null);
-  const [deleteModal, setDeleteModal] = useState(null); // { profileId, name, email }
+  const [deleteModal, setDeleteModal] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [docs, setDocs]           = useState({});   // { [profileId]: [] }
+  const [docsLoading, setDocsLoading] = useState({});
+  const [docVerifying, setDocVerifying] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -7513,6 +7516,24 @@ function BOComptes() {
       setVerifs(v => ({ ...v, [p.id]: { error: "Erreur réseau" } }));
     }
     setVerifying(null);
+  };
+
+  const loadDocs = async (profileId) => {
+    if (docs[profileId]) return;
+    setDocsLoading(l => ({ ...l, [profileId]: true }));
+    try {
+      const r = await boFetch({ action:"list_docs", profileId });
+      const data = await r.json();
+      setDocs(d => ({ ...d, [profileId]: Array.isArray(data) ? data : [] }));
+    } catch { setDocs(d => ({ ...d, [profileId]: [] })); }
+    setDocsLoading(l => ({ ...l, [profileId]: false }));
+  };
+
+  const handleVerifyDoc = async (profileId, docId) => {
+    setDocVerifying(docId);
+    await boFetch({ action:"verify_doc", profileId, docId });
+    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
+    setDocVerifying(null);
   };
 
   const load = async () => {
@@ -7604,7 +7625,26 @@ function BOComptes() {
               {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS/SIRET : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
               {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
 
-              {/* Bouton vérification */}
+              {/* Documents uploadés (prestataires uniquement) */}
+              {p.role === "prestataire" && (
+                <div style={{ marginTop:10 }}>
+                  <button onClick={()=>{ if(!docs[p.id]) loadDocs(p.id); }} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:"transparent", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:8 }}>
+                    {docsLoading[p.id] ? "Chargement…" : docs[p.id] ? `📂 ${docs[p.id].length} document(s)` : "📂 Voir les documents"}
+                  </button>
+                  {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
+                  {docs[p.id] && docs[p.id].map(doc => (
+                    <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5 }}>
+                      <span style={{ fontSize:14 }}>{doc.type==="kbis"?"🏢":doc.type==="urssaf"?"🏛️":doc.type==="cni"?"🪪":doc.type==="rib"?"💳":doc.type==="rcpro"?"🛡️":"📄"}</span>
+                      <span style={{ flex:1, fontSize:11, color:"rgba(255,255,255,0.7)", textTransform:"capitalize" }}>{doc.type}</span>
+                      <span style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700 }}>{doc.verified ? "✓ Vérifié" : "En attente"}</span>
+                      {doc.signedUrl && <a href={doc.signedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:C.violet, fontWeight:700, textDecoration:"none", padding:"3px 8px", border:`1px solid ${C.violet}44`, borderRadius:6 }}>Voir</a>}
+                      {!doc.verified && <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"3px 8px", cursor:"pointer", fontFamily:"inherit", opacity:docVerifying===doc.id?0.5:1 }}>✓ Valider</button>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Bouton vérification IBAN/SIRET */}
               {(p.rib || p.kbis) && (
                 <div style={{ marginTop:10 }}>
                   <button onClick={()=>handleVerify(p)} disabled={verifying===p.id} style={{ padding:"7px 14px", borderRadius:10, border:"1px solid rgba(124,111,224,0.4)", background:"rgba(124,111,224,0.1)", color:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:verifying===p.id?0.6:1 }}>
