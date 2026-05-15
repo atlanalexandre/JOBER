@@ -318,6 +318,36 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "list_docs") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}&select=*&order=created_at.desc`, { headers });
+      const docs = await r.json();
+      if (!Array.isArray(docs)) return res.status(200).json([]);
+      // Générer des URLs signées (1h) pour chaque doc
+      const withUrls = await Promise.all(docs.map(async (doc) => {
+        try {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/documents/${doc.storage_path}`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ expiresIn: 3600 }),
+          });
+          const sj = await sr.json();
+          return { ...doc, signedUrl: sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null };
+        } catch { return { ...doc, signedUrl: null }; }
+      }));
+      return res.status(200).json(withUrls);
+    }
+
+    if (action === "verify_doc") {
+      if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ verified: true }),
+      });
+      return res.status(200).json({ success: true });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
