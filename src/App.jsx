@@ -4305,6 +4305,9 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
   const [prestaComment,setPrestaComment]=useState("");
   const [hoursActual,setHoursActual]=useState(8);
   const [dispute,setDispute]=useState(false);
+  const [disputeMsg,setDisputeMsg]=useState("");
+  const [disputeSending,setDisputeSending]=useState(false);
+  const [disputeDone,setDisputeDone]=useState(false);
   const [paid,setPaid]=useState(false);
 
   const bothValidated = clientValidated && prestaValidated;
@@ -4461,9 +4464,49 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
         {/* Litige */}
         {dispute && (
           <div style={{ marginTop:16, background:`${C.accent}10`, border:`2px solid ${C.accent}44`, borderRadius:16, padding:"16px" }}>
-            <div style={{ fontWeight:800, color:C.danger, fontSize:14, marginBottom:8 }}>⚠️ Signalement de litige</div>
-            <textarea placeholder="Décrivez le problème rencontré…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`2px solid ${C.accent}44`, fontSize:13, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
-            <Btn full variant="danger" onClick={()=>alert("📞 Médiation ALANE\n\nVotre demande de médiation a été transmise à notre équipe.\n\n✅ Numéro de dossier : LIT-2025-" + Math.floor(Math.random()*9000+1000) + "\n\nNotre équipe vous contactera sous 24h ouvrées pour arbitrer le litige.\n\nEmail : mediation@alane.fr\nTél : +33 1 XX XX XX XX")} style={{ fontSize:13, padding:"12px" }}>📞 Contacter la médiation ALANE</Btn>
+            {disputeDone ? (
+              <div style={{ textAlign:"center", padding:"8px 0" }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>✅</div>
+                <div style={{ fontWeight:800, color:C.success, fontSize:15, marginBottom:6 }}>Litige transmis</div>
+                <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>Notre équipe de médiation vous contactera sous 24h ouvrées.</div>
+              </div>
+            ) : <>
+              <div style={{ fontWeight:800, color:C.danger, fontSize:14, marginBottom:8 }}>⚠️ Signalement de litige</div>
+              <textarea
+                value={disputeMsg}
+                onChange={e=>setDisputeMsg(e.target.value)}
+                placeholder="Décrivez le problème rencontré…"
+                style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`2px solid ${C.accent}44`, fontSize:13, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", marginBottom:12, background:"rgba(255,255,255,0.04)", color:C.text }}
+              />
+              <Btn full variant="danger" disabled={!disputeMsg.trim() || disputeSending}
+                onClick={async () => {
+                  if (!disputeMsg.trim()) return;
+                  setDisputeSending(true);
+                  const { data:authData } = await supabase.auth.getUser();
+                  const user = authData?.user;
+                  const refNum = "LIT-" + new Date().getFullYear() + "-" + Math.floor(Math.random()*9000+1000);
+                  await supabase.from("support_tickets").insert({
+                    subject: `Litige mission — ${refNum}`,
+                    message: `Mission avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
+                    user_id: user?.id || null,
+                    user_email: user?.email || null,
+                    user_name: user?.user_metadata?.prenom || null,
+                    status: "open",
+                  });
+                  try {
+                    await fetch("/api/support", {
+                      method:"POST", headers:{"Content-Type":"application/json"},
+                      body: JSON.stringify({ subject:`Litige ${refNum} — ${p.name}`, message: disputeMsg.trim(), userEmail: user?.email, userName: user?.user_metadata?.prenom }),
+                    });
+                  } catch(_) {}
+                  setDisputeSending(false);
+                  setDisputeDone(true);
+                }}
+                style={{ fontSize:13, padding:"12px" }}
+              >
+                {disputeSending ? "Envoi…" : "📞 Contacter la médiation ALANE"}
+              </Btn>
+            </>}
           </div>
         )}
       </div>
@@ -4473,25 +4516,36 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
 
 // ── MESSAGERIE ────────────────────────────────────────────────────
 
-function ChatScreen({ provider, onBack }) {
+function ChatScreen({ provider, onBack, chatClientId }) {
   const p = provider || PROVIDERS[0];
   const [msg, setMsg] = useState("");
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
+  const [senderTag, setSenderTag] = useState("client");
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
   const pollRef = useRef(null);
 
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString("fr", { hour:"2-digit", minute:"2-digit" });
-  const convKey = `prov${p.id}-user${userId||"anon"}`;
+
+  // convKey : identique des deux côtés — basé sur providerId + clientId
+  const buildKey = (uid) => {
+    const providerId = chatClientId ? uid : p.id; // si chatClientId fourni → user courant est le prestataire
+    const clientId   = chatClientId ? chatClientId : uid;
+    return `prov${providerId}-user${clientId}`;
+  };
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data?.user?.id || null));
-  }, []);
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data?.user?.id || null;
+      setUserId(uid);
+      setSenderTag(chatClientId ? "prestataire" : "client");
+    });
+  }, [chatClientId]);
 
   const loadMsgs = async (uid) => {
-    const key = `prov${p.id}-user${uid}`;
+    const key = buildKey(uid);
     const { data, error } = await supabase
       .from("messages")
       .select("*")
@@ -4511,19 +4565,22 @@ function ChatScreen({ provider, onBack }) {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
 
   const send = async () => {
-    if (!msg.trim() || sending) return;
+    if (!msg.trim() || sending || !userId) return;
     const content = msg.trim();
+    const key = buildKey(userId);
     setMsg("");
     setSending(true);
-    const optimistic = { id: `opt-${Date.now()}`, sender_tag:"client", sender_id:userId, conversation_key:convKey, content, created_at:new Date().toISOString() };
+    const optimistic = { id:`opt-${Date.now()}`, sender_tag:senderTag, sender_id:userId, conversation_key:key, content, created_at:new Date().toISOString() };
     setMsgs(m => [...m, optimistic]);
     try {
-      await supabase.from("messages").insert({ conversation_key:convKey, sender_id:userId, sender_tag:"client", content });
+      await supabase.from("messages").insert({ conversation_key:key, sender_id:userId, sender_tag:senderTag, content });
     } catch (_) {}
     setSending(false);
   };
 
   const isClient = (m) => m.sender_tag === "client" || m.from === "client";
+  // "mine" = le message vient de l'utilisateur courant
+  const isMine = (m) => m.sender_id === userId || (!m.sender_id && isClient(m) && senderTag === "client");
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, display:"flex", flexDirection:"column" }}>
@@ -4547,11 +4604,11 @@ function ChatScreen({ provider, onBack }) {
           </div>
         )}
         {msgs.map((m, i) => {
-          const mine = isClient(m);
+          const mine = isMine(m);
           return (
             <div key={m.id || i} style={{ display:"flex", justifyContent:mine?"flex-end":"flex-start", marginBottom:12 }}>
               {!mine && (
-                <div style={{ width:28, height:28, borderRadius:9, background:`${p.color}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, marginRight:8, flexShrink:0 }}>{p.avatar}</div>
+                <div style={{ width:28, height:28, borderRadius:9, background:`${p.color}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, marginRight:8, flexShrink:0 }}>{p.avatar||"👤"}</div>
               )}
               <div style={{ maxWidth:"75%" }}>
                 <div style={{ background:mine?`linear-gradient(135deg,${C.violet},${C.indigo})`:"#1a2d4a", color:C.white, borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px", padding:"10px 14px", fontSize:14 }}>
@@ -5910,6 +5967,12 @@ function PMissionsTab({ onNavigate }) {
                 <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 12px" }}>
                   <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>🎉 Vous avez été sélectionné !</div>
                   <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Préparez-vous pour la mission le {m?.date}.</div>
+                  {m?.client_id && (
+                    <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
+                      style={{ marginTop:8, width:"100%", padding:"8px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      💬 Contacter le client
+                    </button>
+                  )}
                 </div>
               )}
               {c.status === "accepted" && m?.status === "completed" && (
@@ -10145,6 +10208,7 @@ export default function App() {
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
   const [selectedMissionId,setSelectedMissionId]=useState(null);
+  const [chatClientId,setChatClientId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
   const [paymentDate,setPaymentDate]=useState("");
@@ -10296,7 +10360,8 @@ export default function App() {
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
-    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage") setSelectedProvider(data);
+    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage") setSelectedProvider(data?.provider||data);
+    if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); }
@@ -10381,7 +10446,7 @@ export default function App() {
       {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
-      {screen==="chat"              && <ChatScreen provider={selectedProvider} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
+      {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
       {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen("home")} onNavigate={navigate} />}
       {screen==="favorites"         && <FavoritesScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="referral"          && <ReferralScreen onBack={()=>setScreen("home")} />}
