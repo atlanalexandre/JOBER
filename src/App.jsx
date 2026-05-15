@@ -3297,7 +3297,8 @@ function SearchFiltersScreen({ onNavigate }) {
 // ── PROFILE ───────────────────────────────────────────────────────
 // ── CV PRESTATAIRE ────────────────────────────────────────────────
 function CVScreen({ provider, onBack, onNavigate }) {
-  const p = provider || PROVIDERS[0];
+  const p = provider;
+  if (!p) return null;
   const cv = CV_DATA[p.id];
 
   if(!cv) return (
@@ -3424,7 +3425,7 @@ function CVScreen({ provider, onBack, onNavigate }) {
 }
 
 function ProfileScreen({ provider, onNavigate, onBack }) {
-  const p = provider||PROVIDERS[0];
+  const p = provider;
   const [fav,setFav]=useState(false);
   const [userId,setUserId]=useState(null);
   const cv = CV_DATA[p.id];
@@ -7352,7 +7353,7 @@ function LitigeRow({ l }) {
 }
 
 // ── BACKOFFICE ────────────────────────────────────────────────────
-// PIN vérifié côté serveur via /api/bo-verify-pin
+// Mot de passe vérifié côté serveur via /api/bo-verify-pin (variable BO_PIN dans Vercel)
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 function boFetch(body) {
@@ -7418,35 +7419,29 @@ const DonutChart = ({ sectors, size=120 }) => {
 };
 
 function BackofficeLogin({ onLogin, onBack }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
+  const [pwd, setPwd]           = useState("");
+  const [show, setShow]         = useState(false);
+  const [error, setError]       = useState(false);
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
 
-  const handleDigit = (d) => {
-    if(pin.length >= 4 || checking || locked) return;
-    const newPin = pin + d;
-    setPin(newPin);
-    setError(false);
-    if(newPin.length === 4) {
-      setChecking(true);
-      fetch("/api/bo-verify-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: newPin }),
+  const handleSubmit = () => {
+    if (!pwd.trim() || checking || locked) return;
+    setChecking(true);
+    fetch("/api/bo-verify-pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: pwd }),
+    })
+      .then(r => r.json())
+      .then(j => {
+        setChecking(false);
+        if (j.ok) { sessionStorage.setItem("bo_token", j.token || ""); onLogin(); }
+        else { setError(true); setPwd(""); setAttempts(a => a + 1); }
       })
-        .then(r => r.json())
-        .then(j => {
-          setChecking(false);
-          if(j.ok) { sessionStorage.setItem("bo_token", j.token || ""); onLogin(); }
-          else { setError(true); setPin(""); setAttempts(a=>a+1); }
-        })
-        .catch(() => { setChecking(false); setError(true); setPin(""); setAttempts(a=>a+1); });
-    }
+      .catch(() => { setChecking(false); setError(true); setPwd(""); setAttempts(a => a + 1); });
   };
-
-  const handleDel = () => { if(checking) return; setPin(p=>p.slice(0,-1)); setError(false); };
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#1E3A7B)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, position:"relative" }}>
@@ -7456,29 +7451,32 @@ function BackofficeLogin({ onLogin, onBack }) {
       <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Backoffice ALANE</h2>
       <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, margin:"0 0 36px" }}>Accès administrateur uniquement</p>
 
-      {/* PIN display */}
-      <div style={{ display:"flex", gap:14, marginBottom:10 }}>
-        {[0,1,2,3].map(i => (
-          <div key={i} style={{ width:16, height:16, borderRadius:"50%", background: checking?"rgba(240,180,41,0.8)": pin.length>i ? (error?C.danger:C.violetLight) : "rgba(255,255,255,0.2)", transition:"background 0.2s", border:"2px solid rgba(255,255,255,0.3)" }} />
-        ))}
-      </div>
-      {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:10, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
-      {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:10, fontWeight:600 }}>Code incorrect — Réessayez</p>}
-      {!locked && !error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:10 }}>{checking?"Vérification…":"Entrez votre code PIN"}</p>}
+      {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
+      {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Mot de passe incorrect — Réessayez</p>}
+      {!locked && !error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
 
-      {/* Keypad */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, width:240, marginTop:10 }}>
-        {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((d,i) => (
-          <button key={i} onClick={()=>d==="⌫"?handleDel():d!==""&&handleDigit(String(d))}
-            style={{ width:72, height:72, borderRadius:22, border:"none", cursor:(d===""||locked||checking)?"default":"pointer",
-              background: d===""?"transparent": d==="⌫"?"rgba(255,255,255,0.1)":`rgba(255,255,255,${d===0?0.08:0.12})`,
-              color:C.white, fontSize:d==="⌫"?20:22, fontWeight:700, fontFamily:"inherit",
-              transition:"all 0.15s", opacity: (locked||checking) && d!=="" ? 0.4 : 1,
-            }}>
-            {d}
-          </button>
-        ))}
+      <div style={{ width:"100%", maxWidth:320, position:"relative", marginBottom:16 }}>
+        <input
+          type={show ? "text" : "password"}
+          value={pwd}
+          onChange={e => { setPwd(e.target.value); setError(false); }}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          disabled={locked || checking}
+          placeholder="Mot de passe administrateur"
+          autoComplete="current-password"
+          style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,0.08)", border:`2px solid ${error ? C.danger : "rgba(255,255,255,0.15)"}`, borderRadius:14, padding:"15px 48px 15px 18px", color:C.white, fontSize:16, fontFamily:"inherit", outline:"none", transition:"border-color 0.2s" }}
+        />
+        <button onClick={() => setShow(s => !s)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:18, lineHeight:1 }}>
+          {show ? "🙈" : "👁️"}
+        </button>
       </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={!pwd.trim() || locked || checking}
+        style={{ width:"100%", maxWidth:320, padding:"15px", borderRadius:14, border:"none", background: (!pwd.trim() || locked || checking) ? "rgba(124,111,224,0.3)" : C.violet, color:C.white, fontSize:16, fontWeight:800, cursor: (!pwd.trim() || locked || checking) ? "default" : "pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+        {checking ? "Vérification…" : "Accéder au backoffice →"}
+      </button>
     </div>
   );
 }
@@ -10800,7 +10798,6 @@ export default function App() {
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={()=>navigate("legal","cgu")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📋 CGU</button>
                 <button onClick={()=>navigate("legal","privacy")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>🔒 Confidentialité</button>
-                <button onClick={()=>navigate("payslip",{provider:PROVIDERS[0],role:"Cariste CACES 1",client:"Entrepôt XYZ",date:"12/05/2025",hours:8,tarifNet:14})} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📄 Fiche paie</button>
               </div>
             </div>
           )}

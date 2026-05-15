@@ -1,3 +1,5 @@
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
   const { email, prenom, nom, role } = req.body || {};
@@ -20,7 +22,7 @@ export default async function handler(req, res) {
           </span>
         </td></tr>
         <tr><td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
-          <p>Bonjour <strong>${prenom}</strong>,</p>
+          <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
           <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverrons un email dès validation de votre compte (généralement sous 24h)." : "Notre équipe va valider votre compte et vous enverrons un email dès approbation."}</p>
           <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
           <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>

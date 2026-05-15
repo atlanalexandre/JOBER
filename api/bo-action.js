@@ -1,5 +1,7 @@
 import crypto from "crypto";
 
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
+
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
@@ -131,7 +133,7 @@ export default async function handler(req, res) {
             to: userEmail,
             subject: "Bienvenue sur ALANE — Votre compte est activé ! 🎉",
             html: emailHtml(`
-              <p>Bonjour${prenom ? ` <strong>${prenom}</strong>` : ""},</p>
+              <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               <p>Nous sommes ravis de vous accueillir sur la plateforme. Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p>Si vous avez la moindre question ou besoin d'aide pour démarrer, n'hésitez pas à contacter notre support directement depuis l'application — nous sommes là pour vous accompagner.</p>
@@ -160,7 +162,7 @@ export default async function handler(req, res) {
       const userEmail = userData.email;
 
       if (userEmail) {
-        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${reason}</p>` : "";
+        const reasonBlock = reason ? `<p><strong>Raison communiquée :</strong> ${esc(reason)}</p>` : "";
         await sendEmail({
           to: userEmail,
           subject: "Votre compte ALANE a été supprimé",
@@ -294,7 +296,7 @@ export default async function handler(req, res) {
         await sendEmail({
           to: email,
           subject: "📢 Communication de l'équipe ALANE",
-          html: emailHtml(`<p>Bonjour,</p><p>${message.replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
+          html: emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
         });
         sent++;
       }
