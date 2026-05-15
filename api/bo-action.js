@@ -264,6 +264,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "delete_ticket") {
+      if (!profileId) return res.status(400).json({ error: "ticketId requis" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      if (!r.ok) return res.status(500).json({ error: "Erreur suppression ticket" });
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "send_global_comm") {
       const message = req.body.message || "";
       if (!message.trim()) return res.status(400).json({ error: "Message requis" });

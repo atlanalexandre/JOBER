@@ -7057,6 +7057,13 @@ function BOSupport() {
     load();
   };
 
+  const deleteTicket = async (id) => {
+    setActioning(id + "_del");
+    await boFetch({ action:"delete_ticket", profileId:id });
+    setActioning(null);
+    load();
+  };
+
   const filtered = tickets.filter(t => filter==="all" || t.status===filter);
 
   return (
@@ -7086,11 +7093,16 @@ function BOSupport() {
           <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:t.status==="open"?10:0, background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px" }}>
             {t.message}
           </div>
-          {t.status==="open" && (
-            <button onClick={()=>closeTicket(t.id)} disabled={actioning===t.id} style={{ marginTop:2, padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>
-              {actioning===t.id?"…":"✅ Marquer résolu"}
+          <div style={{ display:"flex", gap:8, marginTop:2 }}>
+            {t.status==="open" && (
+              <button onClick={()=>closeTicket(t.id)} disabled={!!actioning} style={{ padding:"8px 16px", borderRadius:10, border:"none", background:`${C.success}22`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id?0.5:1 }}>
+                {actioning===t.id?"…":"✅ Marquer résolu"}
+              </button>
+            )}
+            <button onClick={()=>deleteTicket(t.id)} disabled={!!actioning} style={{ padding:"8px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning===t.id+"_del"?0.5:1 }}>
+              {actioning===t.id+"_del"?"…":"🗑 Supprimer"}
             </button>
-          )}
+          </div>
         </div>
       ))}
     </div>
