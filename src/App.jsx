@@ -6115,11 +6115,12 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
 
   useEffect(() => {
     if (!processing) return;
-    const t1 = setTimeout(() => { setProcessing(false); setDone(true); }, 2200);
+    let mounted = true;
+    const t1 = setTimeout(() => { if(mounted){ setProcessing(false); setDone(true); } }, 2200);
     const t2 = setTimeout(async () => {
-      // Envoyer l'email de confirmation de réservation
       try {
         const { data: userData } = await supabase.auth.getUser();
+        if(!mounted) return;
         const clientEmail = userData?.user?.email || null;
         const clientName  = userData?.user?.user_metadata?.prenom || userData?.user?.user_metadata?.nom || null;
         const mainProvider = providers[0] || {};
@@ -6137,9 +6138,9 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
           }),
         });
       } catch (_) {}
-      onSuccess && onSuccess();
+      if(mounted) onSuccess && onSuccess();
     }, 3800);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    return () => { mounted=false; clearTimeout(t1); clearTimeout(t2); };
   }, [processing]);
 
   const handlePay = () => setProcessing(true);
@@ -9006,22 +9007,25 @@ function NotificationsScreen({ onBack, onNavigate }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
+    let mounted = true;
     let channel;
     (async()=>{
       const { data:authData, error:authErr } = await supabase.auth.getUser();
       const user = authData?.user;
+      if(!mounted){ return; }
       if(authErr || !user){ setLoading(false); return; }
 
       const { data:notifData } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at",{ascending:false}).limit(50);
+      if(!mounted) return;
       setNotifs(notifData||[]);
       setLoading(false);
 
       channel = supabase.channel("notifs_"+user.id)
         .on("postgres_changes",{ event:"INSERT", schema:"public", table:"notifications", filter:`user_id=eq.${user.id}` },
-          payload => setNotifs(prev=>[payload.new, ...prev])
+          payload => { if(mounted) setNotifs(prev=>[payload.new, ...prev]); }
         ).subscribe();
     })();
-    return ()=>{ if(channel) supabase.removeChannel(channel); };
+    return ()=>{ mounted=false; if(channel) supabase.removeChannel(channel); };
   },[]);
 
   const unread = notifs.filter(n=>!n.read).length;
@@ -9824,6 +9828,7 @@ export default function App() {
   // Poll messages non lus toutes les 10 secondes
   useEffect(()=>{
     if(!supaUser) return;
+    let mounted = true;
     const userId = supaUser.id;
     const poll = async()=>{
       const lastSeen = localStorage.getItem("alane_msg_last_seen") || new Date(0).toISOString();
@@ -9833,32 +9838,41 @@ export default function App() {
         .ilike("conversation_key", `%${userId}%`)
         .neq("sender_tag","client")
         .gt("created_at", lastSeen);
-      if(!error) setUnreadCount(data?.length || 0);
+      if(!error && mounted) setUnreadCount(data?.length || 0);
     };
     poll();
     const interval = setInterval(poll, 10000);
-    return ()=>clearInterval(interval);
+    return ()=>{ mounted=false; clearInterval(interval); };
   },[supaUser]);
 
   // Poll notifications non lues toutes les 30 secondes
   useEffect(()=>{
     if(!supaUser) return;
-    const fetch = async()=>{
+    let mounted = true;
+    const pollNotifs = async()=>{
       const { count } = await supabase.from("notifications").select("id",{count:"exact",head:true}).eq("user_id",supaUser.id).eq("read",false);
-      setNotifCount(count||0);
+      if(mounted) setNotifCount(count||0);
     };
-    fetch();
-    const iv = setInterval(fetch,30000);
-    return ()=>clearInterval(iv);
+    pollNotifs();
+    const iv = setInterval(pollNotifs,30000);
+    return ()=>{ mounted=false; clearInterval(iv); };
   },[supaUser]);
 
   // Écouter les changements de session (déconnexion, reset password)
   // Ne pas auto-naviguer au démarrage : l'utilisateur passe toujours par le splash
   useEffect(()=>{
+    let initialized = false;
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
+      // INITIAL_SESSION : on met à jour supaUser silencieusement, sans naviguer
+      if(event==="INITIAL_SESSION"){ setSupaUser(session?.user||null); initialized=true; return; }
+      // TOKEN_REFRESHED : simple mise à jour du user, jamais de navigation
+      if(event==="TOKEN_REFRESHED"){ setSupaUser(session?.user||null); return; }
+
       setSupaUser(session?.user||null);
       if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
       if(event==="SIGNED_OUT") {
+        // Ignorer le SIGNED_OUT si on est déjà sur un écran pre-login (évite les sauts au démarrage)
+        if(!initialized) return;
         localStorage.removeItem("alane_stay_logged_in");
         sessionStorage.removeItem("alane_session_active");
         setRole(null);
