@@ -76,3 +76,17 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "notifs_select" ON notifications FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "notifs_insert" ON notifications FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "notifs_update" ON notifications FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+
+-- 6. Table messages (chat client ↔ prestataire)
+CREATE TABLE IF NOT EXISTS messages (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_key TEXT NOT NULL,
+  sender_id        UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  sender_tag       TEXT NOT NULL CHECK (sender_tag IN ('client','prestataire')),
+  content          TEXT NOT NULL,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages (conversation_key, created_at);
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "messages_select" ON messages FOR SELECT TO authenticated USING (true);
+CREATE POLICY "messages_insert" ON messages FOR INSERT TO authenticated WITH CHECK (auth.uid() = sender_id);
