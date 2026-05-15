@@ -1019,8 +1019,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [experienceAns, setExperienceAns] = useState(2);
   const [competences, setCompetences] = useState([]);
   const [langues, setLangues] = useState(["Français"]);
-  const [disponJours, setDisponJours] = useState([]);
-  const [disponCreneaux, setDisponCreneaux] = useState([]);
+  const [dispos, setDispos] = useState({});
   const [dispoImmediat, setDispoImmediat] = useState(true);
   const [tarifNet, setTarifNet] = useState(13);
   const [ribIban, setRibIban] = useState("");
@@ -1050,8 +1049,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (step === 3) { if (!niveau) return "Sélectionnez votre niveau"; }
     if (step === 4) {
-      if (!disponJours.length)    return "Sélectionnez au moins un jour";
-      if (!disponCreneaux.length) return "Sélectionnez au moins un créneau horaire";
+      if (!Object.values(dispos).some(cr => cr?.length > 0)) return "Sélectionnez au moins un créneau";
     }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
@@ -1076,7 +1074,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
         secteur, metier, niveau, experience_ans: experienceAns, competences, langues,
-        dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
+        dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
         tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
         plan_abonnement: planChoisi,
       }},
@@ -1211,19 +1209,33 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 4 && <>
-          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Quels jours êtes-vous disponible ?</p>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
-            {JOURS.map(j => (
-              <button key={j} onClick={()=>toggleItem(disponJours,setDisponJours,j)} style={{ padding:"9px 13px", borderRadius:r, border:`2px solid ${disponJours.includes(j)?accentColor:C.border}`, background:disponJours.includes(j)?`${accentColor}20`:"transparent", color:disponJours.includes(j)?accentColor:C.textSub, fontSize:13, fontWeight:disponJours.includes(j)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{j.slice(0,3)}</button>
-            ))}
-          </div>
-          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Créneaux horaires</label>
-          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
-            {PLAGES.map(p => (
-              <button key={p} onClick={()=>toggleItem(disponCreneaux,setDisponCreneaux,p)} style={{ padding:"12px 16px", borderRadius:r, border:`2px solid ${disponCreneaux.includes(p)?accentColor:C.border}`, background:disponCreneaux.includes(p)?`${accentColor}20`:"transparent", color:disponCreneaux.includes(p)?accentColor:C.textSub, fontSize:13, fontWeight:disponCreneaux.includes(p)?700:400, cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all 0.2s" }}>{p}</button>
-            ))}
-          </div>
-          <div onClick={()=>setDispoImmediat(!dispoImmediat)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", cursor:"pointer" }}>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:14 }}>Indiquez vos créneaux disponibles jour par jour.</p>
+          {JOURS.map(jour => {
+            const sel = dispos[jour] || [];
+            const hasSel = sel.length > 0;
+            return (
+              <div key={jour} style={{ marginBottom:10, borderRadius:12, border:`2px solid ${hasSel?accentColor:C.border}`, overflow:"hidden", transition:"border-color 0.2s" }}>
+                <div style={{ padding:"10px 14px", background:hasSel?`${accentColor}10`:"rgba(255,255,255,0.03)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <span style={{ fontWeight:700, color:hasSel?accentColor:C.text, fontSize:14 }}>{jour}</span>
+                  {hasSel
+                    ? <span style={{ fontSize:11, color:accentColor, fontWeight:600 }}>{sel.map(c=>c.split(" ")[0]).join(" · ")}</span>
+                    : <span style={{ color:C.textSub, fontSize:11 }}>Non disponible</span>}
+                </div>
+                <div style={{ padding:"8px 14px", display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${C.border}`, background:"rgba(0,0,0,0.15)" }}>
+                  {PLAGES.map(plage => {
+                    const active = sel.includes(plage);
+                    return (
+                      <button key={plage} onClick={()=>setDispos(prev=>{ const cur=prev[jour]||[]; return {...prev,[jour]:active?cur.filter(x=>x!==plage):[...cur,plage]}; })}
+                        style={{ padding:"7px 13px", borderRadius:10, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:active?700:500, background:active?accentColor:"rgba(255,255,255,0.07)", color:active?C.white:C.textSub, transition:"all 0.15s" }}>
+                        {plage.split(" ")[0]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <div onClick={()=>setDispoImmediat(!dispoImmediat)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", cursor:"pointer", marginTop:6 }}>
             <div>
               <div style={{ color:C.text, fontWeight:600, fontSize:14 }}>Disponible immédiatement</div>
               <div style={{ color:C.textSub, fontSize:12 }}>Apparaissez dans les résultats urgents</div>
@@ -1322,8 +1334,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { l:"Métier",        v:metier },
               { l:"Niveau",        v:niveau },
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
-              { l:"Disponibilités",v:disponJours.map(j=>j.slice(0,3)).join(", ") },
-              { l:"Créneaux",      v:disponCreneaux.map(c=>c.split(" ")[0]).join(", ") },
+              { l:"Disponibilités",v:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j.slice(0,3)}: ${(dispos[j]||[]).map(c=>c.split(" ")[0]).join(", ")}`).join(" · ") || "—" },
               { l:"Langues",       v:langues.join(", ") },
               { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
               { l:"Statut",        v:statutPro },
@@ -5132,8 +5143,7 @@ function PrestaProfilTab({ onNavigate }) {
 // ── PRESTA PROFILE EDIT ────────────────────────────────────────────
 function PrestaProfileEditScreen({ onBack }) {
   const [meta, setMeta] = useState(null);
-  const [disponJours, setDisponJours] = useState([]);
-  const [disponCreneaux, setDisponCreneaux] = useState([]);
+  const [dispos, setDispos] = useState({});
   const [dispoImmediat, setDispoImmediat] = useState(true);
   const [tarifNet, setTarifNet] = useState(13);
   const [langues, setLangues] = useState(["Français"]);
@@ -5150,8 +5160,14 @@ function PrestaProfileEditScreen({ onBack }) {
     supabase.auth.getUser().then(({data})=>{
       const m = data?.user?.user_metadata || {};
       setMeta(m);
-      setDisponJours(m.dispon_jours || []);
-      setDisponCreneaux(m.dispon_creneaux || []);
+      // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
+      if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
+        setDispos(m.dispon_jours_creneaux);
+      } else if (m.dispon_jours?.length) {
+        const rebuilt = {};
+        (m.dispon_jours || []).forEach(j => { rebuilt[j] = m.dispon_creneaux || []; });
+        setDispos(rebuilt);
+      }
       setDispoImmediat(m.dispo_immediat !== false);
       setTarifNet(m.tarif_net || 13);
       setLangues(m.langues?.length ? m.langues : ["Français"]);
@@ -5169,7 +5185,9 @@ function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(false);
     const { error } = await supabase.auth.updateUser({ data: {
-      dispon_jours: disponJours, dispon_creneaux: disponCreneaux, dispo_immediat: dispoImmediat,
+      dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
+      dispon_jours_creneaux: dispos,
+      dispo_immediat: dispoImmediat,
       tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
       telephone, rib: iban,
     }});
@@ -5211,20 +5229,36 @@ function PrestaProfileEditScreen({ onBack }) {
           )}
         </div>
 
-        {/* Disponibilités jours */}
+        {/* Disponibilités par jour */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📅 Jours disponibles</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
-            {JOURS.map(j=>(
-              <button key={j} onClick={()=>toggle(disponJours,setDisponJours,j)} style={{ padding:"8px 12px", borderRadius:r, border:`2px solid ${disponJours.includes(j)?color:C.border}`, background:disponJours.includes(j)?`${color}20`:"transparent", color:disponJours.includes(j)?color:C.textSub, fontSize:12, fontWeight:disponJours.includes(j)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{j.slice(0,3)}</button>
-            ))}
-          </div>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Créneaux horaires</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
-            {PLAGES.map(p=>(
-              <button key={p} onClick={()=>toggle(disponCreneaux,setDisponCreneaux,p)} style={{ padding:"11px 14px", borderRadius:r, border:`2px solid ${disponCreneaux.includes(p)?color:C.border}`, background:disponCreneaux.includes(p)?`${color}20`:"transparent", color:disponCreneaux.includes(p)?color:C.textSub, fontSize:13, fontWeight:disponCreneaux.includes(p)?700:400, cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all 0.2s" }}>{p}</button>
-            ))}
-          </div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📅 Disponibilités</div>
+          <div style={{ color:C.textSub, fontSize:12, marginBottom:14 }}>Sélectionnez vos créneaux jour par jour</div>
+          {JOURS.map(jour => {
+            const sel = dispos[jour] || [];
+            const hasSel = sel.length > 0;
+            return (
+              <div key={jour} style={{ marginBottom:8, borderRadius:10, border:`2px solid ${hasSel?color:C.border}`, overflow:"hidden", transition:"border-color 0.2s" }}>
+                <div style={{ padding:"9px 13px", background:hasSel?`${color}10`:"transparent", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <span style={{ fontWeight:700, color:hasSel?color:C.text, fontSize:13 }}>{jour}</span>
+                  {hasSel
+                    ? <span style={{ fontSize:11, color:color, fontWeight:600 }}>{sel.map(c=>c.split(" ")[0]).join(" · ")}</span>
+                    : <span style={{ color:C.textSub, fontSize:11 }}>Non disponible</span>}
+                </div>
+                <div style={{ padding:"7px 13px", display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${C.border}`, background:"rgba(0,0,0,0.1)" }}>
+                  {PLAGES.map(plage => {
+                    const active = sel.includes(plage);
+                    return (
+                      <button key={plage} onClick={()=>setDispos(prev=>{ const cur=prev[jour]||[]; return {...prev,[jour]:active?cur.filter(x=>x!==plage):[...cur,plage]}; })}
+                        style={{ padding:"6px 12px", borderRadius:8, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:active?700:500, background:active?color:"rgba(255,255,255,0.07)", color:active?C.white:C.textSub, transition:"all 0.15s" }}>
+                        {plage.split(" ")[0]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ height:8 }} />
           <div onClick={()=>setDispoImmediat(!dispoImmediat)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
             <span style={{ color:C.text, fontSize:13 }}>Disponible immédiatement</span>
             <div style={{ width:40, height:22, borderRadius:11, background:dispoImmediat?color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s" }}>
