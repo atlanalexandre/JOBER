@@ -5946,9 +5946,10 @@ function PMissionsTab({ onNavigate }) {
     await supabase.from("missions").update({ status: "assigned" }).eq("id", m.id);
     if (m.client_id) {
       await supabase.from("notifications").insert({
-        user_id: m.client_id, type: "mission_accepted",
+        user_id: m.client_id, type: "mission",
         title: "Mission acceptée ! 🎉",
-        message: `${userName || "Votre prestataire"} a accepté votre demande de mission.`,
+        body: `${userName || "Votre prestataire"} a accepté votre demande de mission.`,
+        read: false,
       });
     }
     setPendingMissions(prev => prev.filter(x => x.id !== m.id));
@@ -5960,9 +5961,10 @@ function PMissionsTab({ onNavigate }) {
     await supabase.from("missions").update({ status: "refused" }).eq("id", m.id);
     if (m.client_id) {
       await supabase.from("notifications").insert({
-        user_id: m.client_id, type: "mission_refused",
+        user_id: m.client_id, type: "mission",
         title: "Mission refusée",
-        message: `${userName || "Le prestataire"} a décliné votre demande. Choisissez un autre prestataire.`,
+        body: `${userName || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
+        read: false,
       });
     }
     setPendingMissions(prev => prev.filter(x => x.id !== m.id));
@@ -6758,15 +6760,6 @@ function StripePaymentScreen({ amount, provider, description, teamMode, teamProv
         });
         if (error) { setStripeError(error.message); setProcessing(false); return; }
         if (paymentIntent?.status === "succeeded") {
-          try {
-            const { data: ud } = await supabase.auth.getUser();
-            const mainProvider = providers[0] || {};
-            await fetch("/api/booking-confirm", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ clientEmail: ud?.user?.email||null, clientName: ud?.user?.user_metadata?.prenom||null, prestaName: mainProvider.name||null, job: mainProvider.jobTitle||null, date:null, hours:null, total }),
-            });
-          } catch (_) {}
           setDone(true); setProcessing(false); onSuccess && onSuccess();
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
@@ -9599,22 +9592,6 @@ const calcCashback = (amount, missionsThisMonth) => {
   return Math.round(amount * tier.rate * 100) / 100;
 };
 
-// Wallet state simulé
-const INITIAL_WALLET = {
-  balance:    42.50,   // solde cashback disponible
-  pending:    12.80,   // en attente de validation
-  totalEarned:89.30,   // total gagné depuis l'inscription
-  missionsThisMonth: 4,
-  history: [
-    { id:1, date:"12/05/2025", mission:"Cariste CACES 1",     amount:132, cashback:6.60,  status:"disponible" },
-    { id:2, date:"08/05/2025", mission:"Chef de rang",        amount:108, cashback:5.40,  status:"disponible" },
-    { id:3, date:"03/05/2025", mission:"Agent de propreté",   amount:96,  cashback:4.80,  status:"disponible" },
-    { id:4, date:"28/04/2025", mission:"Réceptionniste",      amount:156, cashback:7.80,  status:"utilisé"    },
-    { id:5, date:"20/04/2025", mission:"Commercial terrain",  amount:180, cashback:9.00,  status:"disponible" },
-    { id:6, date:"15/04/2025", mission:"Technicien surface",  amount:112, cashback:5.60,  status:"expiré"     },
-    { id:7, date:"10/04/2025", mission:"Préparateur commandes",amount:96, cashback:4.80,  status:"utilisé"    },
-  ],
-};
 
 function CashbackWalletScreen({ onBack, onNavigate }) {
   const [walletData, setWalletData] = useState({ balance: 0, missionsThisMonth: 0 });
@@ -10832,6 +10809,18 @@ export default function App() {
             if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
           }
           await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+          fetch("/api/booking-confirm", {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+              clientEmail: ud?.user?.email||null,
+              clientName: ud?.user?.user_metadata?.prenom||null,
+              prestaName: selectedProvider.name||null,
+              job: selectedProvider.jobTitle||selectedProvider.role||null,
+              date: paymentDate||null,
+              hours: paymentHours||null,
+              total: paymentAmount,
+            }),
+          }).catch(()=>{});
         }
         setScreen("mission_pending");
       }} onBack={()=>setScreen("booking")} />}

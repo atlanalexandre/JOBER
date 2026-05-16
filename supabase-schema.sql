@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS missions (
   ville                 text,
   tarif_horaire         numeric,
   montant_total         numeric,
-  status                text DEFAULT 'open',   -- open | assigned | completed | closed | rejected
+  status                text DEFAULT 'open',   -- open | pending_acceptance | assigned | completed | closed | rejected | refused
   stripe_payment_intent text,
   created_at            timestamptz DEFAULT now()
 );
