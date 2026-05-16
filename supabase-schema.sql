@@ -142,6 +142,25 @@ CREATE POLICY "documents_presta_insert" ON documents
 
 -- Note : la lecture BO des documents se fait via service_role_key (bypass RLS) — OK
 
+-- ── TABLE visits (tracking visiteurs) ────────────────────────
+CREATE TABLE IF NOT EXISTS visits (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id text NOT NULL,
+  user_id    uuid,          -- null si visiteur anonyme
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS visits_created_at_idx ON visits (created_at);
+
+ALTER TABLE visits ENABLE ROW LEVEL SECURITY;
+
+-- Tout le monde peut insérer sa propre visite (anon inclus)
+DROP POLICY IF EXISTS "visits_insert" ON visits;
+CREATE POLICY "visits_insert" ON visits
+  FOR INSERT WITH CHECK (true);
+
+-- Lecture réservée au service role (BO uniquement via service_role_key)
+
 -- ── TABLE messages (chat client ↔ prestataire) ────────────────
 CREATE TABLE IF NOT EXISTS messages (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
