@@ -3540,6 +3540,11 @@ function BookingScreen({ provider, onNavigate, onBack }) {
   const [endDate, setEndDate] = useState("");
   const [startTime, setStartTime] = useState("08:00");
   const [description, setDescription] = useState("");
+  const [adresse, setAdresse]         = useState("");
+  const [ville, setVille]             = useState("");
+  const [cp, setCp]                   = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [adresseError, setAdresseError] = useState(false);
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
 
@@ -3888,11 +3893,12 @@ function BookingScreen({ provider, onNavigate, onBack }) {
             </div>
             <div style={{ padding:14 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div><div style={{ color:C.textSub, fontSize:12 }}>12 rue de Rivoli, 75001</div></div>
           </div>
-          <Input label="Adresse" placeholder="12 rue de Rivoli" icon="📍" />
-          <Input label="Ville" placeholder="Paris" />
-          <Input label="Code postal" placeholder="75001" />
-          <Input label="Informations complémentaires" placeholder="Digicode, étage, instructions…" />
-          <Btn full onClick={()=>setStep(3)}>Confirmer l'adresse →</Btn>
+          <Input label="Adresse *" placeholder="12 rue de Rivoli" icon="📍" value={adresse} onChange={e=>{setAdresse(e.target.value);setAdresseError(false);}} />
+          <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
+          <Input label="Code postal" placeholder="75001" value={cp} onChange={e=>setCp(e.target.value)} />
+          <Input label="Informations complémentaires" placeholder="Digicode, étage, instructions…" value={instructions} onChange={e=>setInstructions(e.target.value)} />
+          {adresseError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ L'adresse et la ville sont requises</div>}
+          <Btn full onClick={()=>{ if(!adresse.trim()||!ville.trim()){ setAdresseError(true); return; } setStep(3); }}>Confirmer l'adresse →</Btn>
         </>}
 
         {step===3 && <>
@@ -3979,7 +3985,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages pour passer une commande.
             </div>
           )}
-          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -10087,6 +10093,8 @@ function DocUploadScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
+    const allowed = ["application/pdf","image/jpeg","image/png"];
+    if(!allowed.includes(file.type)){ alert("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
@@ -10580,6 +10588,8 @@ export default function App() {
   const [paymentHours,setPaymentHours]=useState(8);
   const [paymentDate,setPaymentDate]=useState("");
   const [paymentDescription,setPaymentDescription]=useState("");
+  const [paymentAdresse,setPaymentAdresse]=useState("");
+  const [paymentVille,setPaymentVille]=useState("");
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -10740,7 +10750,7 @@ export default function App() {
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
-    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); }
+    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
@@ -10815,6 +10825,8 @@ export default function App() {
               date:paymentDate||null, hours:paymentHours,
               tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
               description:paymentDescription||null,
+              adresse:paymentAdresse||null,
+              ville:paymentVille||null,
               status:"pending_acceptance", acceptance_deadline:deadline,
             }).select().single();
             if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
