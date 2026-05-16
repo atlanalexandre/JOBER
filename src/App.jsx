@@ -4103,9 +4103,10 @@ function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, 
       supabase.from("missions").update({ status: "refused" }).eq("id", missionId).then(()=>{});
       if (clientId) {
         supabase.from("notifications").insert({
-          user_id: clientId, type: "mission_refused",
+          user_id: clientId, type: "mission",
           title: "Mission non confirmée",
-          message: `${p.name} n'a pas répondu dans le délai imparti. Choisissez un autre prestataire.`,
+          body: `${p.name} n'a pas répondu dans le délai imparti. Vous pouvez choisir un autre prestataire.`,
+          read: false,
         }).then(()=>{});
       }
     }
@@ -7315,7 +7316,7 @@ function DocRowItem({ doc, isValid }) {
       <div style={{ display:"flex", gap:6, alignItems:"center" }}>
         <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
         {!isValid && !renewed && (
-          <button onClick={()=>{ if(window.confirm(`Charger "${doc.label}" ?`)) setRenewed(true); }} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>+ Charger</button>
+          <button onClick={()=>setRenewed(true)} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>+ Charger</button>
         )}
         {isValid && (
           <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
@@ -7346,7 +7347,7 @@ function PendingDocRow({ u }) {
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={()=>setValidated(false)} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"default", fontFamily:"inherit" }}>👁️ {u.docs} doc{u.docs>1?"s":""}</button>
           {u.missing===0
-            ? <button onClick={()=>{ if(window.confirm(`Valider le compte de ${u.name} ?`)) setValidated(true); }} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:C.success, color:C.white, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Valider</button>
+            ? <button onClick={()=>setValidated(true)} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:C.success, color:C.white, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Valider</button>
             : <button onClick={()=>setDocRequested(true)} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:docRequested?`${C.success}22`:`${C.accentGold}22`, color:docRequested?C.success:C.warning, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{docRequested?"✓ Envoyé":"⚠️ Demander docs"}</button>}
         </div>
       )}
@@ -7386,8 +7387,8 @@ function LitigeRow({ l }) {
       {status==="pending" && (
         <div style={{ display:"flex", gap:8 }}>
           <div style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:11, fontFamily:"inherit" }}>💶 {l.montant} · {l.client}</div>
-          <button onClick={()=>{ if(window.confirm(`Résoudre "${l.motif}" ?`)) setStatus("resolved"); }} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.success}18`, color:C.success, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Résoudre</button>
-          <button onClick={()=>{ if(window.confirm(`Rembourser ${l.montant} ?`)) setStatus("refunded"); }} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.danger}18`, color:C.danger, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>↩ Rembourser</button>
+          <button onClick={()=>setStatus("resolved")} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.success}18`, color:C.success, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Résoudre</button>
+          <button onClick={()=>setStatus("refunded")} style={{ flex:1, padding:"8px", borderRadius:10, border:"none", background:`${C.danger}18`, color:C.danger, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>↩ Rembourser</button>
         </div>
       )}
       {status!=="pending" && <div style={{ textAlign:"center", fontSize:12, color:status==="resolved"?C.success:C.accentGold, fontWeight:700 }}>{status==="resolved"?"✅ Résolu":"↩ Remboursé"}</div>}
@@ -9178,48 +9179,59 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
 
   const handleAccept = async (c) => {
     setActioning(c.id);
-    await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
-    });
-    setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
-    setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
-    setSelected(s => s ? { ...s, status: "assigned" } : s);
+    try {
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
+      });
+      if (!res.ok) throw new Error();
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
+      setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
+      setSelected(s => s ? { ...s, status: "assigned" } : s);
+    } catch { alert("Erreur lors de l'acceptation. Réessayez."); }
     setActioning(null);
   };
 
   const handleComplete = async () => {
     if (!selected || !userId) return;
     setCompleting(true);
-    const res = await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "complete", mission_id: selected.id, client_id: userId }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
-      setSelected(s => s ? { ...s, status: "completed" } : s);
-      setCompletedResult(data);
-    }
+    try {
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete", mission_id: selected.id, client_id: userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
+        setSelected(s => s ? { ...s, status: "completed" } : s);
+        setCompletedResult(data);
+      }
+    } catch { alert("Erreur lors de la validation. Réessayez."); }
     setCompleting(false);
   };
 
   const handleReject = async (c) => {
     setActioning(c.id);
-    await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reject", candidature_id: c.id }),
-    });
-    setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
+    try {
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject", candidature_id: c.id }),
+      });
+      if (!res.ok) throw new Error();
+      setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
+    } catch { alert("Erreur lors du refus. Réessayez."); }
     setActioning(null);
   };
 
   const handleClose = async (missionId) => {
-    await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "close", mission_id: missionId }),
-    });
-    setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
+    try {
+      const res = await fetch("/api/missions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "close", mission_id: missionId }),
+      });
+      if (!res.ok) throw new Error();
+      setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
+    } catch { alert("Erreur lors de la fermeture. Réessayez."); }
   };
 
   const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
