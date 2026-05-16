@@ -19,8 +19,15 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `RESEND_API_KEY` | Clé API Resend pour les emails |
 | `RESEND_FROM` | Adresse d'envoi ex: `JOBER <no-reply@domaine.fr>` (ou `onboarding@resend.dev` pour tests) |
 | `ADMIN_EMAIL` | Email de l'admin pour recevoir les tickets support |
+| `VITE_STRIPE_PUBLIC_KEY` | Clé publique Stripe (`pk_test_...` ou `pk_live_...`) — exposée côté client |
+| `STRIPE_SECRET_KEY` | Clé secrète Stripe — fonctions serverless uniquement |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret du webhook Stripe (`whsec_...`) |
+| `BO_PASSWORD` | Mot de passe alphanumérique du backoffice admin |
+| `CRON_SECRET` | Secret optionnel pour protéger `/api/cron-reset-monthly` (header Authorization) |
 
 ## Base de données Supabase
+
+Le schéma SQL complet est dans `supabase-schema.sql` à la racine du projet.
 
 ### Table `profiles`
 | Colonne | Type | Notes |
@@ -30,6 +37,56 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `prenom` | text | |
 | `nom` | text | |
 | `status` | text | `"pending"`, `"approved"`, `"rejected"` |
+| `cashback_balance` | numeric | Solde cashback client, défaut 0 |
+| `missions_completed_month` | integer | Missions validées ce mois (reset le 1er via cron) |
+| `created_at` | timestamp | |
+
+### Table `missions`
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | uuid | |
+| `client_id` | uuid | FK auth.users |
+| `prestataire_id` | uuid | FK auth.users, nullable |
+| `sector` | text | |
+| `metier` | text | |
+| `date` | text | |
+| `hours` | numeric | |
+| `ville` | text | |
+| `tarif_horaire` | numeric | |
+| `montant_total` | numeric | Calculé à la validation |
+| `status` | text | `"open"`, `"assigned"`, `"completed"`, `"closed"`, `"rejected"` |
+| `stripe_payment_intent` | text | ID PaymentIntent Stripe |
+| `created_at` | timestamp | |
+
+### Table `candidatures`
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | uuid | |
+| `mission_id` | uuid | FK missions |
+| `prestataire_id` | uuid | FK auth.users |
+| `message` | text | nullable |
+| `status` | text | `"pending"`, `"accepted"`, `"rejected"` |
+| `created_at` | timestamp | |
+
+### Table `notifications`
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | uuid | |
+| `user_id` | uuid | FK auth.users |
+| `type` | text | `"mission"`, `"cashback"`, `"system"` |
+| `title` | text | |
+| `body` | text | |
+| `read` | boolean | défaut false |
+| `created_at` | timestamp | |
+
+### Table `documents`
+| Colonne | Type | Notes |
+|---|---|---|
+| `id` | uuid | |
+| `prestataire_id` | uuid | FK auth.users |
+| `type` | text | `"kbis"`, `"rib"`, `"cni"`, `"autre"` |
+| `storage_path` | text | Chemin dans le bucket Supabase Storage `documents` |
+| `verified` | boolean | Validé par le BO, défaut false |
 | `created_at` | timestamp | |
 
 ### Table `support_tickets`
@@ -108,6 +165,39 @@ Actions disponibles :
 - Sauvegarde le ticket dans `support_tickets` (Supabase)
 - Envoie email à `ADMIN_EMAIL` via Resend (fetch inliné)
 - Logs `console.log` présents pour diagnostic (visibles dans Vercel → Functions → Logs)
+
+### `api/missions.js`
+Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reject_candidature`, `complete`, `cancel`
+- Gère le cycle de vie complet des missions + candidatures + notifications + cashback
+
+### `api/stripe-intent.js`
+- Crée un `PaymentIntent` Stripe via REST, retourne `{ clientSecret, intentId }`
+- Montant en euros converti en centimes (× 100)
+
+### `api/stripe-webhook.js`
+- Vérifie la signature HMAC-SHA256 (`STRIPE_WEBHOOK_SECRET`)
+- Sur `payment_intent.succeeded` : PATCH `missions.stripe_payment_intent` + `status="assigned"`
+- `export const config = { api: { bodyParser: false } }` — obligatoire pour lire le raw body
+
+### `api/bo-verify-pin.js`
+- Vérifie le mot de passe BO contre `BO_PASSWORD` (env)
+- Retourne un token HMAC signé valable 8h
+- Remplace l'ancien pavé numérique PIN
+
+### `api/welcome-email.js`
+- Envoie un email de bienvenue après inscription via Resend
+- Appelé depuis le frontend juste avant `signOut()` post-inscription
+
+### `api/booking-confirm.js`
+- Envoie un email de confirmation de réservation au client via Resend
+
+### `api/cron-reset-monthly.js`
+- Remet `missions_completed_month` à 0 sur tous les profiles
+- Planifié le 1er de chaque mois à minuit via `vercel.json` (`"crons"`)
+- Protégé par header `Authorization: Bearer <CRON_SECRET>` si la variable est définie
+
+### `api/verify-docs.js`
+- Valide le format IBAN (algorithme MOD-97)
 
 ### `api/send-email.js`
 Fichier utilitaire présent mais **non utilisé** (les appels Resend sont inlinés). Ne pas réactiver les imports vers ce fichier.
