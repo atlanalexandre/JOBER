@@ -1,3 +1,7 @@
+function esc(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -34,7 +38,7 @@ export default async function handler(req, res) {
           <!-- Body -->
           <tr>
             <td style="padding:28px;">
-              <p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${clientName || "cher client"}</strong>,</p>
+              <p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName) || "cher client"}</strong>,</p>
               <p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 24px;">
                 Votre paiement a été sécurisé sur ALANE. Retrouvez ci-dessous le récapitulatif de votre mission.
               </p>
@@ -45,11 +49,11 @@ export default async function handler(req, res) {
                   <td style="padding:18px 20px;">
                     <p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la mission</p>
                     ${[
-                      ["👤 Prestataire", prestaName || "À confirmer"],
-                      ["💼 Poste",        job         || "—"],
-                      ["📅 Date",         date        || "—"],
-                      ["⏱️ Durée",        hours ? `${hours}h` : "—"],
-                      ["💶 Total bloqué", total ? `${total} €` : "—"],
+                      ["👤 Prestataire", esc(prestaName) || "À confirmer"],
+                      ["💼 Poste",        esc(job)         || "—"],
+                      ["📅 Date",         esc(date)        || "—"],
+                      ["⏱️ Durée",        hours ? `${esc(hours)}h` : "—"],
+                      ["💶 Total bloqué", total ? `${esc(total)} €` : "—"],
                     ].map(([label, value]) => `
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
                       <tr>
@@ -120,7 +124,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           from: RESEND_FROM,
           to: [clientEmail],
-          subject: `✅ Réservation confirmée — ${job || "Mission"} · ALANE`,
+          subject: `✅ Réservation confirmée — ${esc(job) || "Mission"} · ALANE`,
           html,
         }),
       });

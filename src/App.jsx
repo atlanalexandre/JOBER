@@ -174,9 +174,17 @@ const isLaunchPhase = () => IS_LAUNCH; // conservé pour compatibilité, sera ne
 const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, btp:0.15, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
 const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 const ABONNEMENTS_PRESTA = [
-  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false, features:["10 missions/mois *","Profil visible"],       locked:["Missions illimitées","Badge Vérifié","Missions urgentes"], note:"* 10 missions/mois réservé aux 100 premiers inscrits. 2 missions/mois ensuite." },
-  { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:999, popular:true,  features:["Missions illimitées","Badge Vérifié","Urgences"], locked:["Manager dédié"] },
-  { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false, features:["Missions illimitées","Badge Elite","Position #1 *","Manager dédié"], locked:[], note:"* Position #1 attribuée selon la notation et les commentaires positifs du prestataire." },
+  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
+    features:["2 missions/mois (10 pendant le lancement)","Profil visible par les clients"],
+    locked:["Missions illimitées","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
+    note:"* 10 missions/mois réservé aux 100 premiers inscrits. 2 missions/mois ensuite." },
+  { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:999, popular:true,
+    features:["Missions illimitées","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
+    locked:["Badge 👑 Elite et position prioritaire dans les résultats"] },
+  { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false,
+    features:["Missions illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats clients","Missions urgentes (tarif majoré de 30%)","Position prioritaire garantie dans les recherches"],
+    locked:[],
+    note:"La position en tête est attribuée parmi les membres Elite selon la note moyenne et les avis clients reçus." },
 ];
 const prixClient = (tarifNet, _sector) => tarifNet;
 const tarifInterim = (t) => Math.round(t*2.2*100)/100;
@@ -4044,7 +4052,8 @@ function BookingScreen({ provider, onNavigate, onBack }) {
 // Le client attend que le prestataire accepte ou refuse (max 1h)
 // En démo : compte à rebours accéléré (60 secondes = 1 heure)
 function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  const p = provider;
   const { providers: allProviders } = useProviders();
   const [secsLeft, setSecsLeft]     = useState(3600);
   const [totalSecs, setTotalSecs]   = useState(3600);
@@ -4651,7 +4660,8 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
 // ── MESSAGERIE ────────────────────────────────────────────────────
 
 function ChatScreen({ provider, onBack, chatClientId }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Conversation introuvable.</div>;
+  const p = provider;
   const [msg, setMsg] = useState("");
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5702,7 +5712,8 @@ function PrestaProfileEditScreen({ onBack }) {
 
 // ── PRESTA POINTAGE (check-in / check-out) ────────────────────────
 function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  const p = provider;
   const expectedCode = genMissionCode(p.id, type);
   const isIn = type === "in";
 
@@ -5926,11 +5937,14 @@ function PMissionsTab({ onNavigate }) {
       setUserMeta(meta);
       setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
       const sector = meta.secteur || meta.sector || null;
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const authH = token ? { "Authorization": `Bearer ${token}` } : {};
       const [r1, r2] = await Promise.all([
         fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ action:"list_open", sector }) }),
-        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ action:"mes_candidatures", prestataire_id: u.id }) }),
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json", ...authH},
+          body: JSON.stringify({ action:"mes_candidatures" }) }),
       ]);
       const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
       setMissions(Array.isArray(d1) ? d1 : []);
@@ -6717,7 +6731,8 @@ function StripePaymentScreen({ amount, provider, description, teamMode, teamProv
   const mountRef    = useRef(null);
 
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
-  const providers = teamMode ? teamProviders : [provider || PROVIDERS[0]];
+  const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
+  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
 
   useEffect(() => {
     if (method !== "card") return;
@@ -6883,7 +6898,8 @@ function StripePaymentScreen({ amount, provider, description, teamMode, teamProv
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
 function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Facture introuvable.</div>;
+  const p = provider;
   const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
@@ -6999,7 +7015,8 @@ function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
 function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  const p = provider;
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
   const [chosen, setChosen] = useState(null);
@@ -9155,11 +9172,13 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
       const user = data?.user; if (!user) return;
+      const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_client", client_id: user.id }),
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "list_client" }),
       });
       const data2 = await res.json();
       setMissions(Array.isArray(data2) ? data2 : []);
@@ -9196,9 +9215,12 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
     if (!selected || !userId) return;
     setCompleting(true);
     try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete", mission_id: selected.id, client_id: userId }),
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "complete", mission_id: selected.id }),
       });
       const data = await res.json();
       if (data.success) {
@@ -9926,7 +9948,8 @@ function MissionTimeline({ status="in_progress" }) {
 
 // ── ÉCRAN NOTATION ────────────────────────────────────────────────
 function RatingScreen({ provider, missionId, onSubmit, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  const p = provider;
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
@@ -10698,6 +10721,17 @@ export default function App() {
         localStorage.removeItem("alane_stay_logged_in");
         sessionStorage.removeItem("alane_session_active");
         setRole(null);
+        setSelectedProvider(null);
+        setSelectedSector(null);
+        setSelectedMissionId(null);
+        setChatClientId(null);
+        setPendingMission(null);
+        setPaymentAmount(0);
+        setPaymentHours(8);
+        setPaymentDate("");
+        setPaymentDescription("");
+        setPaymentAdresse("");
+        setPaymentVille("");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }
