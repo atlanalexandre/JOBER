@@ -6678,48 +6678,76 @@ function CalendarScreen() {
 // ── STRIPE PAYMENT ────────────────────────────────────────────────
 function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSuccess, onBack }) {
   const [method, setMethod] = useState("card");
-  const [card, setCard] = useState({ num:"", exp:"", cvv:"", name:"" });
+  const [cardName, setCardName] = useState("");
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
-  const [saveCard, setSaveCard] = useState(false);
+  const [stripeError, setStripeError] = useState(null);
+  const stripeRef   = useRef(null);
+  const cardElRef   = useRef(null);
+  const mountRef    = useRef(null);
 
   const total = (typeof amount === 'object' ? amount?.amount : amount) || 124;
   const providers = teamMode ? teamProviders : [provider || PROVIDERS[0]];
 
   useEffect(() => {
-    if (!processing) return;
-    let mounted = true;
-    const t1 = setTimeout(() => { if(mounted){ setProcessing(false); setDone(true); } }, 2200);
-    const t2 = setTimeout(async () => {
+    if (method !== "card") return;
+    let cardEl;
+    (async () => {
+      const { loadStripe } = await import("@stripe/stripe-js");
+      const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+      if (!pk || !mountRef.current) return;
+      const stripe = await loadStripe(pk);
+      if (!stripe) return;
+      stripeRef.current = stripe;
+      const elements = stripe.elements();
+      cardEl = elements.create("card", {
+        style: {
+          base: { color:"#e2e8f0", fontFamily:"inherit", fontSize:"15px", "::placeholder":{ color:"#64748b" } },
+          invalid: { color:"#f87171" },
+        },
+      });
+      cardElRef.current = cardEl;
+      if (mountRef.current) cardEl.mount(mountRef.current);
+    })();
+    return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
+  }, [method]);
+
+  const handlePay = async () => {
+    if (processing) return;
+    setStripeError(null);
+    if (method === "card") {
+      if (!stripeRef.current || !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+      setProcessing(true);
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if(!mounted) return;
-        const clientEmail = userData?.user?.email || null;
-        const clientName  = userData?.user?.user_metadata?.prenom || userData?.user?.user_metadata?.nom || null;
-        const mainProvider = providers[0] || {};
-        await fetch("/api/booking-confirm", {
+        const r = await fetch("/api/stripe-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clientEmail,
-            clientName,
-            prestaName: mainProvider.name || null,
-            job:        mainProvider.jobTitle || mainProvider.role || null,
-            date:       null,
-            hours:      null,
-            total,
-          }),
+          body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: providers[0]?.id || "" } }),
         });
-      } catch (_) {}
-      if(mounted) onSuccess && onSuccess();
-    }, 3800);
-    return () => { mounted=false; clearTimeout(t1); clearTimeout(t2); };
-  }, [processing]);
-
-  const handlePay = () => setProcessing(true);
-
-  const formatCard = (v) => v.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim();
-  const formatExp  = (v) => { const d=v.replace(/\D/g,"").slice(0,4); return d.length>2?d.slice(0,2)+"/"+d.slice(2):d; };
+        const { clientSecret, error: intentErr } = await r.json();
+        if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
+        const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, {
+          payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined },
+        });
+        if (error) { setStripeError(error.message); setProcessing(false); return; }
+        if (paymentIntent?.status === "succeeded") {
+          try {
+            const { data: ud } = await supabase.auth.getUser();
+            const mainProvider = providers[0] || {};
+            await fetch("/api/booking-confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ clientEmail: ud?.user?.email||null, clientName: ud?.user?.user_metadata?.prenom||null, prestaName: mainProvider.name||null, job: mainProvider.jobTitle||null, date:null, hours:null, total }),
+            });
+          } catch (_) {}
+          setDone(true); setProcessing(false); onSuccess && onSuccess();
+        }
+      } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
+    } else {
+      setProcessing(true);
+      setTimeout(() => { setDone(true); setProcessing(false); onSuccess && onSuccess(); }, 2200);
+    }
+  };
 
   if(done) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1a7a40)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
@@ -6782,29 +6810,17 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
             <div>
               <div style={{ marginBottom:12 }}>
                 <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Titulaire de la carte</label>
-                <input value={card.name} onChange={e=>setCard({...card,name:e.target.value})} placeholder="Jean Dupont" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
+                <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="Jean Dupont" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:C.text }} />
               </div>
               <div style={{ marginBottom:12 }}>
-                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Numéro de carte</label>
-                <div style={{ position:"relative" }}>
-                  <input value={card.num} onChange={e=>setCard({...card,num:formatCard(e.target.value)})} placeholder="4242 4242 4242 4242" maxLength={19} style={{ width:"100%", padding:"12px 50px 12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:15, fontFamily:"monospace", outline:"none", boxSizing:"border-box", letterSpacing:1 }} />
-                  <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:20 }}>💳</span>
-                </div>
+                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
+                <div ref={mountRef} style={{ padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", minHeight:44 }} />
               </div>
-              <div style={{ display:"flex", gap:10 }}>
-                <div style={{ flex:1 }}>
-                  <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Expiration</label>
-                  <input value={card.exp} onChange={e=>setCard({...card,exp:formatExp(e.target.value)})} placeholder="MM/AA" maxLength={5} style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:15, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }} />
+              {stripeError && (
+                <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginTop:8 }}>
+                  ⚠️ {stripeError}
                 </div>
-                <div style={{ flex:1 }}>
-                  <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>CVV</label>
-                  <input value={card.cvv} onChange={e=>setCard({...card,cvv:e.target.value.replace(/\D/g,"").slice(0,3)})} placeholder="•••" maxLength={3} style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:15, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }} />
-                </div>
-              </div>
-              <label style={{ display:"flex", gap:8, alignItems:"center", marginTop:12, cursor:"pointer" }}>
-                <input type="checkbox" checked={saveCard} onChange={e=>setSaveCard(e.target.checked)} style={{ accentColor:C.violet }} />
-                <span style={{ fontSize:12, color:C.textSub }}>Sauvegarder cette carte pour mes prochaines réservations</span>
-              </label>
+              )}
             </div>
           )}
           {method==="apple" && (
@@ -6834,7 +6850,7 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
           ))}
         </div>
 
-        <Btn full onClick={handlePay} disabled={processing || (method==="card" && (!card.num||!card.exp||!card.cvv||!card.name))}
+        <Btn full onClick={handlePay} disabled={processing}
           style={{ fontSize:16, padding:"18px", position:"relative" }}>
           {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
         </Btn>
