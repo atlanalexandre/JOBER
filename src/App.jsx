@@ -7412,15 +7412,20 @@ function boFetch(body) {
 function useBoData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [visits, setVisits] = useState(null);
 
   useEffect(() => {
-    boFetch({ action: "stats" })
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
+      boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
+    ]).then(([stats, vis]) => {
+      setData(stats);
+      setVisits(vis);
+      setLoading(false);
+    });
   }, []);
 
-  return { data, loading };
+  return { data, loading, visits };
 }
 
 // Mini bar chart component
@@ -8113,7 +8118,7 @@ function BOTest({ onNavigate }) {
 
 function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
-  const { data: boData, loading: boLoading } = useBoData();
+  const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
   const d = boData || {
     users:    { clients:0, prestataires:0, total:0, pending:0 },
     missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
@@ -8216,6 +8221,45 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
             <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Missions complétées" color={C.accentGold} />
             <KPICard icon="📦" label="Missions actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
+          </div>
+
+          {/* Visiteurs */}
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>👁️ Visiteurs</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginBottom:16 }}>
+              {[
+                { l:"Aujourd'hui", v: boVisits?.today ?? "—", c: C.violet },
+                { l:"7 jours",     v: boVisits?.week  ?? "—", c: "#7C6FE0" },
+                { l:"Ce mois",     v: boVisits?.month  ?? "—", c: C.indigo },
+                { l:"Total",       v: boVisits?.total  ?? "—", c: C.textSub },
+              ].map(s => (
+                <div key={s.l} style={{ textAlign:"center", background:`${s.c}12`, borderRadius:12, padding:"10px 4px" }}>
+                  <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
+                  <div style={{ color:C.textSub, fontSize:10, marginTop:2 }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            {boVisits?.byDay && (() => {
+              const days = Object.keys(boVisits.byDay).sort().slice(-14);
+              const vals = days.map(d => boVisits.byDay[d] || 0);
+              const max  = Math.max(...vals, 1);
+              return (
+                <div>
+                  <div style={{ fontSize:11, color:C.textSub, marginBottom:6 }}>Visites / jour (14 derniers jours)</div>
+                  <div style={{ display:"flex", gap:3, alignItems:"flex-end", height:48 }}>
+                    {vals.map((v,i) => (
+                      <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                        <div style={{ width:"100%", background: i===vals.length-1 ? C.violet : `${C.violet}55`, borderRadius:"3px 3px 0 0", height:`${(v/max)*44}px`, minHeight:3, transition:"height 0.3s" }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
+                    <span style={{ fontSize:9, color:C.textMuted }}>{days[0]?.slice(5)}</span>
+                    <span style={{ fontSize:9, color:C.textMuted }}>{days[days.length-1]?.slice(5)}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Missions par statut */}
@@ -10547,6 +10591,14 @@ export default function App() {
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
   const [realProviders,setRealProviders]=useState([]);
+
+  // Tracking visiteur — une seule fois par session
+  useEffect(()=>{
+    if(sessionStorage.getItem("visit_tracked")) return;
+    sessionStorage.setItem("visit_tracked","1");
+    const sessionId = Math.random().toString(36).slice(2)+Date.now().toString(36);
+    supabase.from("visits").insert({ session_id: sessionId }).then(()=>{}).catch(()=>{});
+  },[]);
 
   // Chargement des prestataires réels depuis Supabase
   useEffect(()=>{

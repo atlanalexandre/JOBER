@@ -348,6 +348,42 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "visits_stats") {
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const startWeek  = new Date(now.getTime() - 7 * 86400000).toISOString();
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+      const [todayR, weekR, monthR, totalR] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startToday}&select=id`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startWeek}&select=id`,  { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${startMonth}&select=id`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/visits?select=id`, { headers }),
+      ]);
+
+      const [today, week, month, total] = await Promise.all([
+        todayR.json(), weekR.json(), monthR.json(), totalR.json(),
+      ]);
+
+      // Visites par jour sur les 14 derniers jours
+      const start14 = new Date(now.getTime() - 13 * 86400000).toISOString();
+      const allR = await fetch(`${SUPABASE_URL}/rest/v1/visits?created_at=gte.${start14}&select=created_at&order=created_at.asc`, { headers });
+      const all  = await allR.json();
+      const byDay = {};
+      (Array.isArray(all) ? all : []).forEach(v => {
+        const d = v.created_at?.slice(0, 10);
+        if (d) byDay[d] = (byDay[d] || 0) + 1;
+      });
+
+      return res.status(200).json({
+        today: Array.isArray(today) ? today.length : 0,
+        week:  Array.isArray(week)  ? week.length  : 0,
+        month: Array.isArray(month) ? month.length : 0,
+        total: Array.isArray(total) ? total.length : 0,
+        byDay,
+      });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
