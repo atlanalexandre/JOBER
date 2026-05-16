@@ -4044,7 +4044,8 @@ function BookingScreen({ provider, onNavigate, onBack }) {
 // Le client attend que le prestataire accepte ou refuse (max 1h)
 // En démo : compte à rebours accéléré (60 secondes = 1 heure)
 function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  const p = provider;
   const { providers: allProviders } = useProviders();
   const [secsLeft, setSecsLeft]     = useState(3600);
   const [totalSecs, setTotalSecs]   = useState(3600);
@@ -4651,7 +4652,8 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
 // ── MESSAGERIE ────────────────────────────────────────────────────
 
 function ChatScreen({ provider, onBack, chatClientId }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Conversation introuvable.</div>;
+  const p = provider;
   const [msg, setMsg] = useState("");
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5702,7 +5704,8 @@ function PrestaProfileEditScreen({ onBack }) {
 
 // ── PRESTA POINTAGE (check-in / check-out) ────────────────────────
 function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  const p = provider;
   const expectedCode = genMissionCode(p.id, type);
   const isIn = type === "in";
 
@@ -6717,7 +6720,8 @@ function StripePaymentScreen({ amount, provider, description, teamMode, teamProv
   const mountRef    = useRef(null);
 
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
-  const providers = teamMode ? teamProviders : [provider || PROVIDERS[0]];
+  const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
+  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
 
   useEffect(() => {
     if (method !== "card") return;
@@ -6883,7 +6887,8 @@ function StripePaymentScreen({ amount, provider, description, teamMode, teamProv
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
 function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Facture introuvable.</div>;
+  const p = provider;
   const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
@@ -6999,7 +7004,8 @@ function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
 function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  const p = provider;
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
   const [chosen, setChosen] = useState(null);
@@ -9926,7 +9932,8 @@ function MissionTimeline({ status="in_progress" }) {
 
 // ── ÉCRAN NOTATION ────────────────────────────────────────────────
 function RatingScreen({ provider, missionId, onSubmit, onBack }) {
-  const p = provider || PROVIDERS[0];
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  const p = provider;
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
@@ -10698,6 +10705,17 @@ export default function App() {
         localStorage.removeItem("alane_stay_logged_in");
         sessionStorage.removeItem("alane_session_active");
         setRole(null);
+        setSelectedProvider(null);
+        setSelectedSector(null);
+        setSelectedMissionId(null);
+        setChatClientId(null);
+        setPendingMission(null);
+        setPaymentAmount(0);
+        setPaymentHours(8);
+        setPaymentDate("");
+        setPaymentDescription("");
+        setPaymentAdresse("");
+        setPaymentVille("");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }
