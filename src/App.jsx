@@ -1075,6 +1075,12 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 4) {
       if (!Object.values(dispos).some(cr => cr?.length > 0)) return "Sélectionnez au moins un créneau";
     }
+    if (step === 5) {
+      if (ribIban.trim()) {
+        const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
+        if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
+      }
+    }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
       if (password.length < 6)  return "Mot de passe minimum 6 caractères";
@@ -2825,13 +2831,17 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
 
 // ── HOOK : vrais prestataires depuis Supabase ─────────────────────
 let _providersCache = null;
+let _providersCacheTs = 0;
 let _providersCachePromise = null;
+const PROVIDERS_CACHE_TTL = 15 * 60 * 1000; // 15 min
 
 function useProviders() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading]     = useState(true);
   useEffect(() => {
-    if (_providersCache) { setProviders(_providersCache); setLoading(false); return; }
+    const cacheValid = _providersCache && (Date.now() - _providersCacheTs < PROVIDERS_CACHE_TTL);
+    if (cacheValid) { setProviders(_providersCache); setLoading(false); return; }
+    if (!cacheValid) { _providersCachePromise = null; }
     if (!_providersCachePromise) {
       _providersCachePromise = fetch("/api/prestataires")
         .then(r => r.json())
@@ -2861,6 +2871,7 @@ function useProviders() {
             };
           });
           _providersCache = mapped;
+          _providersCacheTs = Date.now();
           return mapped;
         })
         .catch(() => { _providersCachePromise = null; return []; });
@@ -3282,7 +3293,7 @@ function SearchFiltersScreen({ onNavigate }) {
               </div>
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
-              {p.skills.slice(0,3).map(sk=><Badge key={sk} color={p.color} small>{sk}</Badge>)}
+              {(p.skills||[]).slice(0,3).map(sk=><Badge key={sk} color={p.color} small>{sk}</Badge>)}
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setFavs(f=>f.includes(p.id)?f.filter(x=>x!==p.id):[...f,p.id])} style={{ padding:"9px 14px", borderRadius:12, border:`2px solid ${favs.includes(p.id)?C.accent:C.grayLight}`, background:favs.includes(p.id)?`${C.accent}15`:C.white, cursor:"pointer", fontSize:16 }}>{favs.includes(p.id)?"❤️":"🤍"}</button>
@@ -3413,7 +3424,7 @@ function CVScreen({ provider, onBack, onNavigate }) {
               <div>
                 <div style={{ fontSize:11, color:C.textMuted, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>Compétences clés</div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:4 }}>
-                  {p.skills.map(sk=><Badge key={sk} color={p.color} small>{sk}</Badge>)}
+                  {(p.skills||[]).map(sk=><Badge key={sk} color={p.color} small>{sk}</Badge>)}
                 </div>
               </div>
             </div>
@@ -3493,7 +3504,7 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
 
         {[
           { title:"À propos", content:<p style={{ color:C.textSub, lineHeight:1.7, margin:0, fontSize:14 }}>{p.bio}</p> },
-          { title:"Compétences", content:<div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{p.skills.map(sk=><Badge key={sk} color={p.color}>{sk}</Badge>)}</div> },
+          { title:"Compétences", content:<div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{(p.skills||[]).map(sk=><Badge key={sk} color={p.color}>{sk}</Badge>)}</div> },
           { title:"Tarif", content:<><div style={{ fontSize:30, fontWeight:800, color:C.violet }}>{p.hourlyRate} HT</div><div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Taux horaire · Auto-entrepreneur</div></> },
         ].map(card=>(
           <div key={card.title} style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
@@ -3968,7 +3979,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages pour passer une commande.
             </div>
           )}
-          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"" }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -4319,18 +4330,20 @@ function TrackingScreen({ provider, missionId, onNavigate }) {
     return ()=>{ mounted=false; };
   },[missionId]);
 
-  // Simulation visuelle (progress auto toutes les 4s)
+  // Simulation visuelle (progress auto toutes les 4s, stoppe à l'étape finale)
   useEffect(()=>{
+    if(step >= 3) return;
     const t = setInterval(()=>{
       setStep(s => {
-        const next = s < 3 ? s+1 : s;
+        if(s >= 3) return s;
+        const next = s + 1;
         setTimelineStatus(statusMap[next]);
         if(next===1) setEta(0);
         return next;
       });
     }, 4000);
     return ()=>clearInterval(t);
-  },[]);
+  },[step]);
 
   const statusLabels = ["En route vers vous","Arrivé sur place","Mission en cours","Mission terminée"];
 
@@ -4410,7 +4423,15 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
   const [clientComment,setClientComment]=useState("");
   const [prestaComment,setPrestaComment]=useState("");
   const [hoursActual,setHoursActual]=useState(8);
+  const [missionHours,setMissionHours]=useState(12); // plafond chargé depuis DB
   const [dispute,setDispute]=useState(false);
+
+  useEffect(()=>{
+    if(!missionId) return;
+    supabase.from("missions").select("hours").eq("id",missionId).single().then(({data})=>{
+      if(data?.hours) { setMissionHours(Number(data.hours)); setHoursActual(Number(data.hours)); }
+    });
+  },[missionId]);
   const [disputeMsg,setDisputeMsg]=useState("");
   const [disputeSending,setDisputeSending]=useState(false);
   const [disputeDone,setDisputeDone]=useState(false);
@@ -4483,8 +4504,8 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <div><div style={{ fontWeight:800, color:C.text }}>{p.name}</div><div style={{ color:C.textSub, fontSize:13 }}>{p.role}</div></div>
           </div>
           <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h</label>
-            <input type="range" min={1} max={12} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
+            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {missionHours}h prévues)</label>
+            <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
           </div>
           <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
             💳 Montant client : <strong>{totalClientPrice} €</strong>
@@ -6676,7 +6697,7 @@ function CalendarScreen() {
 }
 
 // ── STRIPE PAYMENT ────────────────────────────────────────────────
-function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSuccess, onBack }) {
+function StripePaymentScreen({ amount, provider, description, teamMode, teamProviders, onSuccess, onBack }) {
   const [method, setMethod] = useState("card");
   const [cardName, setCardName] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -6686,7 +6707,7 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
   const cardElRef   = useRef(null);
   const mountRef    = useRef(null);
 
-  const total = (typeof amount === 'object' ? amount?.amount : amount) || 124;
+  const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
   const providers = teamMode ? teamProviders : [provider || PROVIDERS[0]];
 
   useEffect(() => {
@@ -6722,7 +6743,7 @@ function StripePaymentScreen({ amount, provider, teamMode, teamProviders, onSucc
         const r = await fetch("/api/stripe-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: providers[0]?.id || "" } }),
+          body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
         });
         const { clientSecret, error: intentErr } = await r.json();
         if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
@@ -6981,9 +7002,10 @@ function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBa
   const p = provider || PROVIDERS[0];
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
-  const [replacements, setReplacements] = useState([]);
   const [chosen, setChosen] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const { providers: allProviders } = useProviders();
+  const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
 
   // Calcul réel du délai avant mission
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
@@ -10495,6 +10517,7 @@ export default function App() {
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
   const [paymentDate,setPaymentDate]=useState("");
+  const [paymentDescription,setPaymentDescription]=useState("");
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -10647,7 +10670,7 @@ export default function App() {
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
-    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); }
+    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
@@ -10701,7 +10724,7 @@ export default function App() {
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
       {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
-      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} onSuccess={async()=>{
+      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async()=>{
         setPendingProvider(selectedProvider);
         if(selectedMissionId && selectedProvider?.id){
           const today=new Date().toDateString();
