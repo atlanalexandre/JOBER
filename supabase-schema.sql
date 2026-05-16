@@ -1,0 +1,134 @@
+-- ============================================================
+-- JOBER — Schéma complet Supabase
+-- À exécuter dans Supabase → SQL Editor
+-- ============================================================
+
+-- ── TABLE missions ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS missions (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id             uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  prestataire_id        uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  sector                text,
+  metier                text,
+  date                  text,
+  hours                 numeric,
+  ville                 text,
+  tarif_horaire         numeric,
+  montant_total         numeric,
+  status                text DEFAULT 'open',   -- open | assigned | completed | closed | rejected
+  stripe_payment_intent text,
+  created_at            timestamptz DEFAULT now()
+);
+
+-- Colonne stripe_payment_intent si la table existe déjà sans elle
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS stripe_payment_intent text;
+
+-- ── TABLE candidatures ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS candidatures (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mission_id     uuid REFERENCES missions(id) ON DELETE CASCADE,
+  prestataire_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  message        text,
+  status         text DEFAULT 'pending',  -- pending | accepted | rejected
+  created_at     timestamptz DEFAULT now()
+);
+
+-- ── TABLE notifications ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  type       text,   -- mission | cashback | system
+  title      text,
+  body       text,
+  read       boolean DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+
+-- ── TABLE documents ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS documents (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  prestataire_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  type           text,          -- kbis | rib | cni | autre
+  storage_path   text NOT NULL, -- chemin dans le bucket "documents"
+  verified       boolean DEFAULT false,
+  created_at     timestamptz DEFAULT now()
+);
+
+-- ── COLONNES manquantes sur profiles ─────────────────────────
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance        numeric DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS missions_completed_month integer DEFAULT 0;
+
+-- ============================================================
+-- RLS — Row Level Security
+-- ============================================================
+
+ALTER TABLE missions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE candidatures  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents     ENABLE ROW LEVEL SECURITY;
+
+-- ── missions ─────────────────────────────────────────────────
+DROP POLICY IF EXISTS "missions_client_own"     ON missions;
+DROP POLICY IF EXISTS "missions_presta_assigned" ON missions;
+DROP POLICY IF EXISTS "missions_open_read"       ON missions;
+DROP POLICY IF EXISTS "missions_client_insert"   ON missions;
+DROP POLICY IF EXISTS "missions_client_update"   ON missions;
+
+-- Tout utilisateur connecté peut voir les missions ouvertes
+CREATE POLICY "missions_open_read" ON missions
+  FOR SELECT USING (status = 'open' OR client_id = auth.uid() OR prestataire_id = auth.uid());
+
+-- Un client peut créer ses propres missions
+CREATE POLICY "missions_client_insert" ON missions
+  FOR INSERT WITH CHECK (client_id = auth.uid());
+
+-- Client et prestataire assigné peuvent modifier
+CREATE POLICY "missions_client_update" ON missions
+  FOR UPDATE USING (client_id = auth.uid() OR prestataire_id = auth.uid());
+
+-- ── candidatures ─────────────────────────────────────────────
+DROP POLICY IF EXISTS "candidatures_presta_own"   ON candidatures;
+DROP POLICY IF EXISTS "candidatures_client_read"  ON candidatures;
+DROP POLICY IF EXISTS "candidatures_presta_insert" ON candidatures;
+DROP POLICY IF EXISTS "candidatures_update"       ON candidatures;
+
+-- Prestataire voit ses propres candidatures
+CREATE POLICY "candidatures_presta_own" ON candidatures
+  FOR SELECT USING (prestataire_id = auth.uid());
+
+-- Client voit les candidatures de ses missions
+CREATE POLICY "candidatures_client_read" ON candidatures
+  FOR SELECT USING (
+    mission_id IN (SELECT id FROM missions WHERE client_id = auth.uid())
+  );
+
+-- Prestataire peut postuler
+CREATE POLICY "candidatures_presta_insert" ON candidatures
+  FOR INSERT WITH CHECK (prestataire_id = auth.uid());
+
+-- Prestataire peut retirer, client peut accepter/refuser
+CREATE POLICY "candidatures_update" ON candidatures
+  FOR UPDATE USING (
+    prestataire_id = auth.uid() OR
+    mission_id IN (SELECT id FROM missions WHERE client_id = auth.uid())
+  );
+
+-- ── notifications ─────────────────────────────────────────────
+DROP POLICY IF EXISTS "notifications_own" ON notifications;
+
+CREATE POLICY "notifications_own" ON notifications
+  FOR ALL USING (user_id = auth.uid());
+
+-- ── documents ────────────────────────────────────────────────
+DROP POLICY IF EXISTS "documents_presta_own"   ON documents;
+DROP POLICY IF EXISTS "documents_presta_insert" ON documents;
+
+-- Prestataire voit ses propres documents
+CREATE POLICY "documents_presta_own" ON documents
+  FOR SELECT USING (prestataire_id = auth.uid());
+
+-- Prestataire peut uploader
+CREATE POLICY "documents_presta_insert" ON documents
+  FOR INSERT WITH CHECK (prestataire_id = auth.uid());
+
+-- Note : la lecture BO des documents se fait via service_role_key (bypass RLS) — OK
