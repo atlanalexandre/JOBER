@@ -20,8 +20,17 @@ CREATE TABLE IF NOT EXISTS missions (
   created_at            timestamptz DEFAULT now()
 );
 
--- Colonne stripe_payment_intent si la table existe déjà sans elle
+-- Colonnes ajoutées progressivement (idempotent)
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS stripe_payment_intent text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS adresse               text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS description           text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS acceptance_deadline   timestamptz;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS validation_client     boolean DEFAULT false;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS validation_prestataire boolean DEFAULT false;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_rating         integer;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS presta_rating         integer;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_comment        text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS presta_comment        text;
 
 -- ── TABLE candidatures ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS candidatures (
@@ -132,3 +141,25 @@ CREATE POLICY "documents_presta_insert" ON documents
   FOR INSERT WITH CHECK (prestataire_id = auth.uid());
 
 -- Note : la lecture BO des documents se fait via service_role_key (bypass RLS) — OK
+
+-- ── TABLE messages (chat client ↔ prestataire) ────────────────
+CREATE TABLE IF NOT EXISTS messages (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_key text NOT NULL,   -- format : "<userId1>_<userId2>"
+  sender_id        uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  sender_tag       text,            -- "client" | "prestataire"
+  content          text,
+  created_at       timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS messages_conversation_key_idx ON messages (conversation_key);
+CREATE INDEX IF NOT EXISTS messages_created_at_idx       ON messages (created_at);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "messages_participants" ON messages;
+CREATE POLICY "messages_participants" ON messages
+  FOR ALL USING (
+    sender_id = auth.uid() OR
+    conversation_key LIKE '%' || auth.uid()::text || '%'
+  );

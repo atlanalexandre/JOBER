@@ -2797,8 +2797,8 @@ function CatalogueScreen({ onNavigate, realProviders=[] }) {
       </div>
 
       {/* Sticky sector pills */}
-      <div style={{ position:"sticky", top:0, background:C.bg, zIndex:50, borderBottom:`1px solid ${C.border}`, padding:"10px 0" }}>
-        <div style={{ display:"flex", gap:8, overflowX:"auto", padding:"0 18px", scrollbarWidth:"none" }}>
+      <div style={{ position:"sticky", top:0, background:C.bg, zIndex:50, borderBottom:`1px solid ${C.border}`, padding:"10px 0", width:"100%", boxSizing:"border-box" }}>
+        <div style={{ display:"flex", gap:8, overflowX:"auto", padding:"0 18px", scrollbarWidth:"none", WebkitOverflowScrolling:"touch" }}>
           {SECTORS.map(s=>(
             <button key={s.id} onClick={()=>scrollToSector(s.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:20, border:"none", cursor:"pointer", whiteSpace:"nowrap", background:activeSector===s.id?`linear-gradient(135deg,${C.violet},${C.indigo})`:C.offWhite, color:activeSector===s.id?C.white:C.gray, fontWeight:activeSector===s.id?700:500, fontSize:12, fontFamily:"inherit", transition:"all 0.2s", flexShrink:0 }}>
               {s.icon} {s.label}
@@ -4468,7 +4468,7 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
           }).eq("id", user.id);
           await supabase.from("notifications").insert({
             user_id: user.id, type:"payment",
-            title:"Paiement libéré", message:`Mission validée — ${totalNetPresta} € versés à ${p.name}.`,
+            title:"Paiement libéré", body:`Mission validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
           });
         }
       }
@@ -10159,6 +10159,7 @@ function AbonnementPrestaScreen({ onBack }) {
   const [saving,setSaving]=useState(false);
   const [loaded,setLoaded]=useState(false);
   const [missionsUsed,setMissionsUsed]=useState(0);
+  const [pendingPlan,setPendingPlan]=useState(null);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -10175,15 +10176,32 @@ function AbonnementPrestaScreen({ onBack }) {
 
   const handleChangePlan = async (planId) => {
     if(planId === current) return;
-    if(!window.confirm(`Passer au plan ${ABONNEMENTS_PRESTA.find(p=>p.id===planId)?.label} ?`)) return;
+    setPendingPlan(planId);
+  };
+  const confirmChangePlan = async () => {
+    if(!pendingPlan) return;
     setSaving(true);
-    await supabase.auth.updateUser({ data: { plan_abonnement: planId } });
-    setCurrent(planId);
+    await supabase.auth.updateUser({ data: { plan_abonnement: pendingPlan } });
+    setCurrent(pendingPlan);
     setSaving(false);
+    setPendingPlan(null);
   };
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:40 }}>
+      {pendingPlan && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:320, width:"100%", textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>🔄</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:8 }}>Changer de plan ?</div>
+            <div style={{ color:C.textSub, fontSize:13, marginBottom:20 }}>Passer au plan <strong style={{ color:C.violet }}>{ABONNEMENTS_PRESTA.find(p=>p.id===pendingPlan)?.label}</strong> ?</div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={()=>setPendingPlan(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Annuler</button>
+              <Btn onClick={confirmChangePlan} disabled={saving} style={{ flex:2 }}>{saving?"…":"Confirmer"}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
@@ -10726,13 +10744,30 @@ export default function App() {
       {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async()=>{
         setPendingProvider(selectedProvider);
-        if(selectedMissionId && selectedProvider?.id){
+        const { data:ud } = await supabase.auth.getUser();
+        const userId = ud?.user?.id;
+        if(selectedProvider?.id && userId){
           const today=new Date().toDateString();
           const mDay=paymentDate?new Date(paymentDate).toDateString():null;
           const isSameDay=!mDay||mDay===today;
           const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
-          await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",selectedMissionId);
-          await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission_request", title:"Nouvelle demande de mission", message:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.` });
+          let missionId = selectedMissionId;
+          if(missionId){
+            // Flux broadcast : assigner le prestataire choisi
+            await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",missionId);
+          } else {
+            // Flux direct (profil → booking) : créer la mission
+            const { data:newM } = await supabase.from("missions").insert({
+              client_id:userId, prestataire_id:selectedProvider.id,
+              sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
+              date:paymentDate||null, hours:paymentHours,
+              tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
+              description:paymentDescription||null,
+              status:"pending_acceptance", acceptance_deadline:deadline,
+            }).select().single();
+            if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
+          }
+          await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
         }
         setScreen("mission_pending");
       }} onBack={()=>setScreen("booking")} />}
@@ -10852,7 +10887,7 @@ export default function App() {
             {/* Version / Sign out */}
             <div style={{ marginTop:20, textAlign:"center" }}>
               <div style={{ color:C.textMuted, fontSize:11, marginBottom:8 }}>ALANE v1.0 — Île-de-France</div>
-              <button onClick={async()=>{ if(window.confirm("Se déconnecter ?")) { await supabase.auth.signOut(); setRole(null); setScreen("role"); }}} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:r, padding:"10px 28px", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:r, padding:"10px 28px", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Se déconnecter
               </button>
             </div>
