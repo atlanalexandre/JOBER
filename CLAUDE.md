@@ -181,7 +181,7 @@ Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reje
 
 ### `api/bo-verify-pin.js`
 - Vérifie le mot de passe BO contre `BO_PASSWORD` (env)
-- Retourne un token HMAC signé valable 8h
+- Retourne un token HMAC signé valable 24h
 - Remplace l'ancien pavé numérique PIN
 
 ### `api/welcome-email.js`

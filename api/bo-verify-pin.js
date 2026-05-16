@@ -24,10 +24,10 @@ export default async function handler(req, res) {
   const { pin } = req.body || {};
   if (!pin || typeof pin !== "string") return res.status(400).json({ ok: false });
 
-  const BO_PIN    = process.env.BO_PIN    || "1234";
-  const BO_SECRET = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const BO_PASSWORD = process.env.BO_PASSWORD || "1234";
+  const BO_SECRET   = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
 
-  if (pin !== BO_PIN) return res.status(401).json({ ok: false });
+  if (pin !== BO_PASSWORD) return res.status(401).json({ ok: false });
 
   const token = genToken(BO_SECRET);
   return res.status(200).json({ ok: true, token });
