@@ -1,3 +1,16 @@
+async function verifyUser(req, supabaseUrl, serviceRoleKey) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -26,8 +39,9 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_client") {
-      const { client_id } = payload;
-      if (!client_id) return res.status(400).json({ error: "client_id requis" });
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const client_id = caller.id;
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?client_id=eq.${client_id}&order=created_at.desc`,
         { headers }
@@ -69,8 +83,9 @@ export default async function handler(req, res) {
     }
 
     if (action === "mes_candidatures") {
-      const { prestataire_id } = payload;
-      if (!prestataire_id) return res.status(400).json({ error: "prestataire_id requis" });
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const prestataire_id = caller.id;
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${prestataire_id}&order=created_at.desc`,
         { headers }
@@ -178,8 +193,11 @@ export default async function handler(req, res) {
     }
 
     if (action === "complete") {
-      const { mission_id, client_id } = payload;
-      if (!mission_id || !client_id) return res.status(400).json({ error: "mission_id et client_id requis" });
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      const client_id = caller.id;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours et tarif_horaire
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status`, { headers });
