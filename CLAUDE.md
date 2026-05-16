@@ -54,7 +54,7 @@ Le schéma SQL complet est dans `supabase-schema.sql` à la racine du projet.
 | `ville` | text | |
 | `tarif_horaire` | numeric | |
 | `montant_total` | numeric | Calculé à la validation |
-| `status` | text | `"open"`, `"assigned"`, `"completed"`, `"closed"`, `"rejected"` |
+| `status` | text | `"open"`, `"pending_acceptance"`, `"assigned"`, `"completed"`, `"closed"`, `"rejected"`, `"refused"` |
 | `stripe_payment_intent` | text | ID PaymentIntent Stripe |
 | `created_at` | timestamp | |
 
