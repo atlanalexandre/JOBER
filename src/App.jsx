@@ -3597,6 +3597,7 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
   const p = provider;
   if (!p) return null;
   const [fav,setFav]=useState(false);
+  const [copied,setCopied]=useState(false);
   const [userId,setUserId]=useState(null);
   const cv = p.cv || CV_DATA[p.id];
   useEffect(()=>{
@@ -3617,12 +3618,23 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
     }
     setFav(!fav);
   };
+  const handleShare=()=>{
+    const link=`${window.location.origin}?profil=${p.id}`;
+    if(navigator.share) {
+      navigator.share({ title:p.name, text:`Découvrez le profil de ${p.name} sur ALANE`, url:link });
+    } else {
+      navigator.clipboard.writeText(link).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); });
+    }
+  };
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
       <div style={{ background:`linear-gradient(135deg, #0A1628, ${p.color}99)`, padding:"48px 22px 36px" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:22 }}>
           <button onClick={onBack} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", color:C.white, cursor:"pointer", fontSize:13 }}>← Retour</button>
-          <button onClick={toggleFav} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", cursor:"pointer", fontSize:18 }}>{fav?"❤️":"🤍"}</button>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={handleShare} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", cursor:"pointer", fontSize:13, color:C.white, fontWeight:600 }}>{copied?"✓ Copié !":"🔗 Partager"}</button>
+            <button onClick={toggleFav} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:10, padding:"7px 13px", cursor:"pointer", fontSize:18 }}>{fav?"❤️":"🤍"}</button>
+          </div>
         </div>
         <div style={{ display:"flex", gap:16, alignItems:"flex-end", marginBottom:18 }}>
           <div style={{ width:76, height:76, borderRadius:22, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:38, border:"3px solid rgba(255,255,255,0.25)", position:"relative" }}>
@@ -7794,6 +7806,64 @@ const DonutChart = ({ sectors, size=120 }) => {
   );
 };
 
+function OnboardingScreen({ role, onDone }) {
+  const [step, setStep] = useState(0);
+
+  const clientSteps = [
+    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
+    { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé en escrow. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
+    { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
+  ];
+  const prestaSteps = [
+    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
+    { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
+    { icon:"📦", title:"Postulez aux missions", desc:"Consultez les missions ouvertes dans votre secteur et candidatez en un clic. Votre plan définit le nombre de candidatures mensuelles.", color:C.success },
+    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les missions proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
+  ];
+
+  const steps = role === "prestataire" ? prestaSteps : clientSteps;
+  const s = steps[step];
+  const isLast = step === steps.length - 1;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.97)", zIndex:9999, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
+      <div style={{ width:"100%", maxWidth:400 }}>
+        {/* Dots */}
+        <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:40 }}>
+          {steps.map((_,i)=>(
+            <div key={i} style={{ width: i===step?24:8, height:8, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+
+        {/* Content */}
+        <div style={{ textAlign:"center", marginBottom:40 }}>
+          <div style={{ fontSize:72, marginBottom:20, lineHeight:1 }}>{s.icon}</div>
+          <div style={{ width:56, height:4, borderRadius:2, background:s.color, margin:"0 auto 24px" }} />
+          <h2 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 14px", fontFamily:font.display, lineHeight:1.3 }}>{s.title}</h2>
+          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.75, margin:0, maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>{s.desc}</p>
+        </div>
+
+        {/* Navigation */}
+        <div style={{ display:"flex", gap:12 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+              ← Précédent
+            </button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"14px", borderRadius:r, border:"none", background:s.color, color:C.white, fontSize:15, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+
+        <button onClick={onDone} style={{ display:"block", margin:"16px auto 0", background:"none", border:"none", color:C.textMuted, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          Passer le tutoriel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BackofficeLogin({ onLogin, onBack }) {
   const [pwd, setPwd]           = useState("");
   const [show, setShow]         = useState(false);
@@ -8280,6 +8350,37 @@ function BOExportCSV({ d }) {
   return (
     <button onClick={doExport} disabled={exporting} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:exporting?0.7:1 }}>
       {exporting?"⏳ Export…":"📊 Export CSV"}
+    </button>
+  );
+}
+
+function BOExportMissions() {
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const r = await boFetch({ action: "list_missions_export" });
+      const missions = await r.json();
+      const COMMISSION = 0.20;
+      const rows = [["ID","Date création","Date mission","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
+      (Array.isArray(missions) ? missions : []).forEach(m => {
+        const montant = Number(m.montant_total) || 0;
+        const comm    = Math.round(montant * COMMISSION * 100) / 100;
+        const net     = Math.round((montant - comm) * 100) / 100;
+        rows.push([m.id, m.created_at?.slice(0,10)||"", m.date||"", m.sector||"", m.metier||"", m.hours||"", m.tarif_horaire||"", montant, comm, net, m.status||"", m.stripe_payment_intent||""]);
+      });
+      const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `alane-missions-comptable-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+    } catch(_) {}
+    setExporting(false);
+  };
+  return (
+    <button onClick={doExport} disabled={exporting} style={{ flex:1, padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:exporting?0.7:1 }}>
+      {exporting ? "⏳ Export…" : "🧾 Export comptable"}
     </button>
   );
 }
@@ -9117,6 +9218,7 @@ function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ display:"flex", gap:10, marginBottom:16 }}>
             <BOExportCSV d={d} />
             <BOExportPDF d={d} />
+            <BOExportMissions />
           </div>
 
           <BORefundSection />
@@ -11379,15 +11481,31 @@ export default function App() {
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
+  const [showOnboarding,setShowOnboarding]=useState(false);
 
-  // Capture ?ref= param for referral tracking
+  // Capture ?ref= et ?profil= URL params
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
     if(ref && ref.length > 10) {
       sessionStorage.setItem("alane_referrer", ref);
-      window.history.replaceState({}, "", window.location.pathname);
     }
+    const profil = params.get("profil");
+    if(profil && profil.length > 30) {
+      sessionStorage.setItem("alane_public_profil", profil);
+    }
+    if(ref || profil) window.history.replaceState({}, "", window.location.pathname);
+  },[]);
+
+  // Public profil navigation — déclenché après que l'app est chargée
+  useEffect(()=>{
+    const profilId = sessionStorage.getItem("alane_public_profil");
+    if(!profilId) return;
+    sessionStorage.removeItem("alane_public_profil");
+    fetch("/api/prestataires").then(r=>r.json()).then(d=>{
+      const prov = (d.prestataires||[]).find(p=>p.id===profilId);
+      if(prov) { setSelectedProvider(prov); setScreen("profile"); }
+    }).catch(()=>{});
   },[]);
 
   // Handle Stripe subscription return
@@ -11487,6 +11605,14 @@ export default function App() {
     return ()=>{ mounted=false; clearInterval(interval); };
   },[supaUser]);
 
+  // Onboarding : affiché une seule fois après le premier login
+  useEffect(()=>{
+    if(!supaUser) return;
+    if(screen !== "home" && screen !== "p_home") return;
+    const key = `alane_onboarded_${supaUser.id}`;
+    if(!localStorage.getItem(key)) setShowOnboarding(true);
+  },[screen, supaUser]);
+
   // Poll notifications non lues toutes les 30 secondes
   useEffect(()=>{
     if(!supaUser) return;
@@ -11584,6 +11710,16 @@ export default function App() {
   const showPrestaNav=role==="prestataire"&&prestaScreens.includes(screen);
 
   return (
+    <>
+    {showOnboarding && supaUser && (
+      <OnboardingScreen
+        role={role}
+        onDone={()=>{
+          localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1");
+          setShowOnboarding(false);
+        }}
+      />
+    )}
     <ResponsiveLayout
       screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
@@ -11823,5 +11959,6 @@ export default function App() {
         </div>
       )}
     </ResponsiveLayout>
+    </>
   );
 }
