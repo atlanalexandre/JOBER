@@ -3234,7 +3234,29 @@ function SearchFiltersScreen({ onNavigate }) {
   const [dispoNow,setDispoNow]=useState(false);
   const [showFilters,setShowFilters]=useState(false);
   const [favs,setFavs]=useState([]);
+  const [favUserId,setFavUserId]=useState(null);
   const { providers, loading } = useProviders();
+
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>{
+      const uid=data?.user?.id; if(!uid) return;
+      setFavUserId(uid);
+      supabase.from("favorites").select("provider_id").eq("user_id",uid)
+        .then(({data:fd})=>{ if(fd) setFavs(fd.map(f=>f.provider_id)); });
+    });
+  },[]);
+
+  const toggleFavSearch = async (pid) => {
+    if(!favUserId) return;
+    const isFav = favs.includes(pid);
+    if(isFav) {
+      await supabase.from("favorites").delete().eq("user_id",favUserId).eq("provider_id",pid);
+      setFavs(f=>f.filter(id=>id!==pid));
+    } else {
+      await supabase.from("favorites").upsert({user_id:favUserId,provider_id:pid});
+      setFavs(f=>[...f,pid]);
+    }
+  };
 
   const filtered = providers.filter(p=>{
     if(search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.role?.toLowerCase().includes(search.toLowerCase()) && !p.jobTitle?.toLowerCase().includes(search.toLowerCase())) return false;
@@ -3302,7 +3324,7 @@ function SearchFiltersScreen({ onNavigate }) {
               {(p.skills||[]).slice(0,3).map(sk=><Badge key={sk} color={p.color} small>{sk}</Badge>)}
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>setFavs(f=>f.includes(p.id)?f.filter(x=>x!==p.id):[...f,p.id])} style={{ padding:"9px 14px", borderRadius:12, border:`2px solid ${favs.includes(p.id)?C.accent:C.grayLight}`, background:favs.includes(p.id)?`${C.accent}15`:C.white, cursor:"pointer", fontSize:16 }}>{favs.includes(p.id)?"❤️":"🤍"}</button>
+              <button onClick={()=>toggleFavSearch(p.id)} style={{ padding:"9px 14px", borderRadius:12, border:`2px solid ${favs.includes(p.id)?C.accent:C.grayLight}`, background:favs.includes(p.id)?`${C.accent}15`:C.white, cursor:"pointer", fontSize:16 }}>{favs.includes(p.id)?"❤️":"🤍"}</button>
               <button onClick={()=>onNavigate("chat",p)} style={{ flex:1, padding:"9px", borderRadius:12, border:`2px solid ${C.violet}`, background:"transparent", color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>💬 Message</button>
               {p.available && <button onClick={()=>onNavigate("profile",p)} style={{ flex:2, padding:"9px", borderRadius:12, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Réserver →</button>}
             </div>
@@ -3454,16 +3476,17 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
       const uid=data?.user?.id;
       if(!uid) return;
       setUserId(uid);
-      const favs=JSON.parse(localStorage.getItem(`alane_favs_${uid}`)||"[]");
-      setFav(favs.includes(p.id));
+      supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",p.id).single()
+        .then(({data:fd})=>setFav(!!fd));
     });
   },[p.id]);
-  const toggleFav=()=>{
+  const toggleFav=async()=>{
     if(!userId) return;
-    const key=`alane_favs_${userId}`;
-    const favs=JSON.parse(localStorage.getItem(key)||"[]");
-    const next=fav?favs.filter(id=>id!==p.id):[...favs,p.id];
-    localStorage.setItem(key,JSON.stringify(next));
+    if(fav) {
+      await supabase.from("favorites").delete().eq("user_id",userId).eq("provider_id",p.id);
+    } else {
+      await supabase.from("favorites").upsert({user_id:userId,provider_id:p.id});
+    }
     setFav(!fav);
   };
   return (
@@ -4798,15 +4821,14 @@ function FavoritesScreen({ onNavigate, onBack }) {
       const uid=data?.user?.id;
       if(!uid) return;
       setUserId(uid);
-      setFavIds(JSON.parse(localStorage.getItem(`alane_favs_${uid}`)||"[]"));
+      supabase.from("favorites").select("provider_id").eq("user_id",uid)
+        .then(({data:fd})=>{ if(fd) setFavIds(fd.map(f=>f.provider_id)); });
     });
   },[]);
-  const removeFav=(pid)=>{
+  const removeFav=async(pid)=>{
     if(!userId) return;
-    const key=`alane_favs_${userId}`;
-    const next=favIds.filter(id=>id!==pid);
-    localStorage.setItem(key,JSON.stringify(next));
-    setFavIds(next);
+    await supabase.from("favorites").delete().eq("user_id",userId).eq("provider_id",pid);
+    setFavIds(ids=>ids.filter(id=>id!==pid));
   };
   const favProviders=providers.filter(p=>favIds.includes(p.id));
   return (
@@ -4898,11 +4920,16 @@ function FAQScreen({ onBack, role }) {
 function ReferralScreen({ onBack }) {
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState("ALANE-…");
+  const [filleuls, setFilleuls] = useState(0);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       const uid = data?.user?.id;
-      if(uid) setCode("ALANE-" + uid.slice(0,6).toUpperCase());
+      if(!uid) return;
+      const c = "ALANE-" + uid.slice(0,6).toUpperCase();
+      setCode(c);
+      supabase.from("profiles").select("referral_count").eq("id",uid).single()
+        .then(({data:pd})=>{ if(pd?.referral_count) setFilleuls(pd.referral_count); });
     });
   },[]);
 
@@ -4920,6 +4947,14 @@ function ReferralScreen({ onBack }) {
         <div style={{ fontSize:52, marginBottom:10 }}>🎁</div>
         <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 8px", fontFamily:font.display }}>Parrainez & gagnez</h2>
         <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, margin:0 }}>1 mois Premium offert pour 3 filleuls abonnés</p>
+        <div style={{ marginTop:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{ width:32, height:32, borderRadius:"50%", background:i<filleuls?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.25)", border:"2px solid rgba(255,255,255,0.5)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>
+              {i<filleuls?"✓":""}
+            </div>
+          ))}
+          <span style={{ color:"rgba(255,255,255,0.8)", fontSize:13, marginLeft:6 }}>{filleuls}/3 filleuls</span>
+        </div>
       </div>
       <div style={{ padding:"24px 18px" }}>
         {/* Récompense */}
@@ -6318,6 +6353,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [showTour,setShowTour]=useState(false);
   const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
+  const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -6350,6 +6386,8 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({missions:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
+      const assignedNow = allM.filter(m=>m.status==="assigned").length;
+      setMissionsUsedMonth(doneMois.length + assignedNow);
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
@@ -6437,6 +6475,26 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
             </div>
           )}
+          {(() => {
+            const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
+            const limit = plan.missions === 999 ? null : plan.missions;
+            if(!limit) return null;
+            const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
+            const remaining = Math.max(0, limit - missionsUsedMonth);
+            return (
+              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${remaining===0?"#F25E5E44":C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:12, color:C.textSub }}>Missions ce mois</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:remaining===0?"#F25E5E":C.text }}>{missionsUsedMonth}/{limit}</span>
+                </div>
+                <div style={{ height:5, borderRadius:99, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
+                  <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:remaining===0?"#F25E5E":C.violet, transition:"width .3s" }} />
+                </div>
+                {remaining===0 && <div style={{ marginTop:6, fontSize:11, color:"#F25E5E" }}>Limite atteinte — passez en {planActuel==="free"?"Premium":"Elite"} pour continuer</div>}
+                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} mission{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
+              </div>
+            );
+          })()}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions disponibles</p>
           <PMissionsTab onNavigate={onNavigate} />
         </>}
