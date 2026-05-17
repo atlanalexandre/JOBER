@@ -8413,6 +8413,151 @@ function BOLogs() {
   );
 }
 
+const SECTOR_LABELS = { proprete:"Propreté", logistique:"Logistique", hotellerie:"Hôtellerie", btp:"BTP", restauration:"Restauration", commercial:"Commercial", distribution:"Grande Distrib.", divers:"Divers" };
+
+function BOSettingsTab() {
+  // All hooks at top — no early returns before this block
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState({});
+  const [saved, setSaved]     = useState({});
+  const [localPl,  setLocalPl]  = useState({ free:2, premium:10, elite:999 });
+  const [localSp,  setLocalSp]  = useState({ premium:{ monthly:29, yearly:290 }, elite:{ monthly:79, yearly:790 } });
+  const [localCr,  setLocalCr]  = useState("20");
+  const [localUs,  setLocalUs]  = useState("5");
+  const [localDs,  setLocalDs]  = useState([]);
+  const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
+
+  useEffect(() => {
+    boFetch({ action: "get_settings" }).then(r => r.json()).then(s => {
+      if (s.plan_limits)             setLocalPl(s.plan_limits);
+      if (s.subscription_prices)     setLocalSp(s.subscription_prices);
+      if (s.commission_rate != null) setLocalCr(String(Math.round(s.commission_rate * 100)));
+      if (s.urgency_surcharge != null) setLocalUs(String(s.urgency_surcharge));
+      if (s.disabled_sectors)        setLocalDs(s.disabled_sectors);
+      if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 1000) / 10) })));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const save = async (key, value) => {
+    setSaving(p => ({ ...p, [key]: true }));
+    const r = await boFetch({ action: "save_settings", key, value });
+    const j = await r.json();
+    setSaving(p => ({ ...p, [key]: false }));
+    if (j.ok) { setSaved(p => ({ ...p, [key]: true })); setTimeout(() => setSaved(p => ({ ...p, [key]: false })), 2000); }
+    else alert("Erreur : " + (j.error || "inconnue"));
+  };
+
+  const SectionTitle = ({ children }) => (
+    <div style={{ fontWeight:800, color:C.text, fontSize:14, margin:"20px 0 10px", paddingBottom:6, borderBottom:`1px solid ${C.border}` }}>{children}</div>
+  );
+  const SaveBtn = ({ k, onClick }) => (
+    <button onClick={onClick} disabled={saving[k]} style={{ background:saved[k]?C.success:C.violet, border:"none", color:"#fff", borderRadius:8, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", minWidth:70, transition:"background 0.2s" }}>
+      {saving[k] ? "…" : saved[k] ? "✓ Sauvé" : "Sauvegarder"}
+    </button>
+  );
+
+  if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"30px 0", textAlign:"center" }}>Chargement des réglages…</div>;
+
+  return (
+    <div style={{ paddingBottom:40 }}>
+
+      {/* ── Plans & Limites ── */}
+      <SectionTitle>📦 Plans & Limites missions/mois</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        {[["free","🆓 Gratuit"],["premium","⭐ Premium"],["elite","👑 Elite"]].map(([plan, label]) => (
+          <div key={plan} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+            <span style={{ color:C.text, fontSize:13, fontWeight:600, width:120 }}>{label}</span>
+            <input type="number" min={1} max={9999} value={localPl[plan]} onChange={e => setLocalPl(p => ({ ...p, [plan]: Number(e.target.value) }))}
+              style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+            <span style={{ color:C.textSub, fontSize:12 }}>missions/mois</span>
+          </div>
+        ))}
+        <SaveBtn k="plan_limits" onClick={() => save("plan_limits", localPl)} />
+      </div>
+
+      {/* ── Prix abonnements ── */}
+      <SectionTitle>💳 Prix des abonnements (€)</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        {[["premium","⭐ Premium"],["elite","👑 Elite"]].map(([plan, label]) => (
+          <div key={plan} style={{ marginBottom:14 }}>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:8 }}>{label}</div>
+            <div style={{ display:"flex", gap:12 }}>
+              {[["monthly","Mensuel"],["yearly","Annuel"]].map(([period, plabel]) => (
+                <div key={period} style={{ flex:1 }}>
+                  <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>{plabel}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <input type="number" min={1} value={localSp[plan]?.[period] ?? ""} onChange={e => setLocalSp(p => ({ ...p, [plan]: { ...p[plan], [period]: Number(e.target.value) } }))}
+                      style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+                    <span style={{ color:C.textSub, fontSize:12 }}>€</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <SaveBtn k="subscription_prices" onClick={() => save("subscription_prices", localSp)} />
+      </div>
+
+      {/* ── Secteurs ── */}
+      <SectionTitle>🗂️ Secteurs d'activité</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>Les secteurs désactivés sont masqués pour les clients.</div>
+        {Object.entries(SECTOR_LABELS).map(([id, label]) => {
+          const disabled = localDs.includes(id);
+          return (
+            <div key={id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
+              <span style={{ color: disabled ? C.textMuted : C.text, fontSize:13, fontWeight:600 }}>{SECTORS.find(s => s.id === id)?.icon} {label}</span>
+              <div onClick={() => setLocalDs(prev => disabled ? prev.filter(x => x !== id) : [...prev, id])}
+                style={{ width:40, height:22, borderRadius:11, background:disabled?"rgba(242,94,94,0.4)":C.success, position:"relative", cursor:"pointer", transition:"background 0.2s", flexShrink:0 }}>
+                <div style={{ position:"absolute", top:2, left:disabled?2:20, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ marginTop:12 }}>
+          <SaveBtn k="disabled_sectors" onClick={() => save("disabled_sectors", localDs)} />
+        </div>
+      </div>
+
+      {/* ── Commission & Urgence ── */}
+      <SectionTitle>💶 Tarification plateforme</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+          <span style={{ color:C.text, fontSize:13, fontWeight:600, width:160 }}>Commission globale</span>
+          <input type="number" min={0} max={100} step={1} value={localCr} onChange={e => setLocalCr(e.target.value)}
+            style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+          <span style={{ color:C.textSub, fontSize:12 }}>%</span>
+          <SaveBtn k="commission_rate" onClick={() => save("commission_rate", Number(localCr) / 100)} />
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ color:C.text, fontSize:13, fontWeight:600, width:160 }}>Surcoût urgence</span>
+          <input type="number" min={0} max={50} step={1} value={localUs} onChange={e => setLocalUs(e.target.value)}
+            style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+          <span style={{ color:C.textSub, fontSize:12 }}>€/h</span>
+          <SaveBtn k="urgency_surcharge" onClick={() => save("urgency_surcharge", Number(localUs))} />
+        </div>
+      </div>
+
+      {/* ── Cashback ── */}
+      <SectionTitle>🎁 Taux de cashback par palier</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        {localCbr.map((tier, i) => (
+          <div key={tier.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+            <span style={{ color:C.text, fontSize:13, fontWeight:600, width:90 }}>{tier.id}</span>
+            <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} missions</span>
+            <input type="number" min={0} max={100} step={0.1} value={tier.rate} onChange={e => setLocalCbr(prev => prev.map((t, j) => j === i ? { ...t, rate: e.target.value } : t))}
+              style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+            <span style={{ color:C.textSub, fontSize:12 }}>%</span>
+          </div>
+        ))}
+        <SaveBtn k="cashback_rates" onClick={() => save("cashback_rates", localCbr.map(t => ({ ...t, rate: Number(t.rate) / 100 })))} />
+      </div>
+
+    </div>
+  );
+}
+
 function BOResetMonthly() {
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
@@ -8549,6 +8694,7 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"finance",    l:"💶 Finance"},
             {id:"moderation", l:"⚠️ Modération"},
             {id:"logs",       l:"📋 Logs"},
+            {id:"reglages",   l:"⚙️ Réglages"},
             {id:"test",       l:"🧪 Test"},
           ].map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
@@ -8798,6 +8944,9 @@ function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── MODÉRATION ── */}
         {tab==="moderation" && <BOModerationTab d={d} />}
+
+        {/* ── RÉGLAGES ── */}
+        {tab==="reglages" && <BOSettingsTab />}
         </div>{/* fin contenu */}
       </div>{/* fin layout */}
     </div>

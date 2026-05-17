@@ -310,3 +310,26 @@ CREATE TABLE IF NOT EXISTS bo_logs (
   created_at   timestamptz DEFAULT now()
 );
 ALTER TABLE bo_logs ENABLE ROW LEVEL SECURITY;
+
+-- ── TABLE platform_settings (réglages plateforme editables depuis le BO) ──
+CREATE TABLE IF NOT EXISTS platform_settings (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+
+-- Lecture publique (anon + authenticated)
+DROP POLICY IF EXISTS "settings_read" ON platform_settings;
+CREATE POLICY "settings_read" ON platform_settings FOR SELECT USING (true);
+
+-- Valeurs par défaut
+INSERT INTO platform_settings (key, value) VALUES
+  ('plan_limits',          '{"free": 2, "premium": 10, "elite": 999}'::jsonb),
+  ('subscription_prices',  '{"premium": {"monthly": 29, "yearly": 290}, "elite": {"monthly": 79, "yearly": 790}}'::jsonb),
+  ('commission_rate',      '0.20'::jsonb),
+  ('urgency_surcharge',    '5'::jsonb),
+  ('disabled_sectors',     '[]'::jsonb),
+  ('cashback_rates',       '[{"id":"standard","min":0,"max":2,"rate":0.005},{"id":"silver","min":3,"max":5,"rate":0.0075},{"id":"gold","min":6,"max":9,"rate":0.01},{"id":"platinum","min":10,"max":999,"rate":0.015}]'::jsonb)
+ON CONFLICT (key) DO NOTHING;

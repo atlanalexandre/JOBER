@@ -416,6 +416,28 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(data) ? data : []);
     }
 
+    if (action === "get_settings") {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?select=key,value`, { headers });
+      const rows = await r.json();
+      if (!Array.isArray(rows)) return res.status(200).json({});
+      const obj = {};
+      for (const row of rows) obj[row.key] = row.value;
+      return res.status(200).json(obj);
+    }
+
+    if (action === "save_settings") {
+      if (!verifyBoToken(req.headers["authorization"])) return res.status(401).json({ error: "Non autorisé" });
+      const { key, value } = payload;
+      if (!key || value === undefined) return res.status(400).json({ error: "key et value requis" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+      });
+      if (!r.ok) return res.status(500).json({ error: "Erreur sauvegarde" });
+      return res.status(200).json({ ok: true });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);

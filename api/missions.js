@@ -121,8 +121,18 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (message && (typeof message !== "string" || message.length > 1000)) return res.status(400).json({ error: "Message trop long (max 1000 caractères)" });
 
-      // Vérifier la limite mensuelle selon le plan
-      const PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+      // Vérifier la limite mensuelle selon le plan (lu depuis platform_settings)
+      let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+      try {
+        const settingsRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`,
+          { headers }
+        );
+        const settingsData = await settingsRes.json();
+        if (Array.isArray(settingsData) && settingsData[0]?.value) {
+          PLAN_LIMITS = settingsData[0].value;
+        }
+      } catch {}
       try {
         const [userRes, profileRes] = await Promise.all([
           fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
