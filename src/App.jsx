@@ -176,15 +176,15 @@ const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 const ABONNEMENTS_PRESTA = [
   { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
     features:["2 missions/mois (10 pendant le lancement)","Profil visible par les clients"],
-    locked:["Missions illimitées","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
+    locked:["10 missions/mois","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
     note:"* 10 missions/mois réservé aux 100 premiers inscrits. 2 missions/mois ensuite." },
-  { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:999, popular:true,
-    features:["Missions illimitées","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
-    locked:["Badge 👑 Elite et position prioritaire dans les résultats"] },
+  { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:10, popular:true,
+    features:["10 missions/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
+    locked:["Badge 👑 Elite et position #1 garantie dans les résultats"] },
   { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false,
-    features:["Missions illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats clients","Missions urgentes (tarif majoré de 30%)","Position prioritaire garantie dans les recherches"],
+    features:["Missions illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats","Missions urgentes (tarif majoré de 30%)","Position #1 dans les recherches (attribuée selon note moyenne et avis)"],
     locked:[],
-    note:"La position en tête est attribuée parmi les membres Elite selon la note moyenne et les avis clients reçus." },
+    note:"La position #1 est attribuée parmi les membres Elite selon la note moyenne et les avis clients." },
 ];
 const prixClient = (tarifNet, _sector) => tarifNet;
 const tarifInterim = (t) => Math.round(t*2.2*100)/100;
@@ -2814,8 +2814,8 @@ function useProviders() {
               available:    p.dispo_immediat !== false,
               dispon_jours: p.dispon_jours || [],
               code_postal:  p.code_postal,
-              rating:       0,
-              reviews:      0,
+              rating:       p.rating || 0,
+              reviews:      p.reviews || 0,
               distance:     "—",
               responseTime: "—",
               avatar:       sectorInfo?.icon || "👷",
@@ -2823,6 +2823,7 @@ function useProviders() {
               niveau:       p.niveau,
               plan:         p.plan_abonnement || "free",
               planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
+              cv:           p.cv || null,
             };
           });
           _providersCache = mapped;
@@ -3116,7 +3117,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <div style={{ color:C.textSub, fontSize:13 }}>Revenez plus tard ou activez le mode urgence</div>
                 </div>
               ) : filteredProviders.map(p => {
-                const hasCv = !!CV_DATA[p.id];
+                const hasCv = !!(p.cv || CV_DATA[p.id]);
                 return (
                   <div key={p.id} style={{
                     background:"#0D1B3E", borderRadius:r, marginBottom:11,
@@ -3278,7 +3279,7 @@ function SearchFiltersScreen({ onNavigate }) {
 function CVScreen({ provider, onBack, onNavigate }) {
   const p = provider;
   if (!p) return null;
-  const cv = CV_DATA[p.id];
+  const cv = p.cv || CV_DATA[p.id];
 
   if(!cv) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
@@ -3408,7 +3409,7 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
   if (!p) return null;
   const [fav,setFav]=useState(false);
   const [userId,setUserId]=useState(null);
-  const cv = CV_DATA[p.id];
+  const cv = p.cv || CV_DATA[p.id];
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       const uid=data?.user?.id;
@@ -3549,7 +3550,7 @@ function BookingScreen({ provider, onNavigate, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* Overlay CV */}
       {cvOpen && (() => {
-        const cv = CV_DATA[p.id];
+        const cv = p.cv || CV_DATA[p.id];
         return (
           <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40 }}>
             <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
@@ -4291,33 +4292,38 @@ function TrackingScreen({ provider, missionId, onNavigate }) {
   const [eta, setEta] = useState(8);
   const statusMap = ["enroute","enroute","in_progress","done"];
   const [step, setStep] = useState(0);
+  const [gpsPosition, setGpsPosition] = useState(null);
 
-  // Charger le statut réel depuis Supabase si missionId disponible
+  // Poll mission status + prestataire GPS every 20s
   useEffect(()=>{
     if(!missionId) return;
     let mounted = true;
-    supabase.from("missions").select("status").eq("id",missionId).single().then(({data})=>{
-      if(!mounted || !data) return;
-      if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
-      else if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
-    });
-    return ()=>{ mounted=false; };
-  },[missionId]);
 
-  // Simulation visuelle (progress auto toutes les 4s, stoppe à l'étape finale)
-  useEffect(()=>{
-    if(step >= 3) return;
-    const t = setInterval(()=>{
-      setStep(s => {
-        if(s >= 3) return s;
-        const next = s + 1;
-        setTimelineStatus(statusMap[next]);
-        if(next===1) setEta(0);
-        return next;
-      });
-    }, 4000);
-    return ()=>clearInterval(t);
-  },[step]);
+    const poll = async () => {
+      if(!mounted) return;
+      // Poll mission status
+      const { data } = await supabase.from("missions").select("status").eq("id",missionId).single();
+      if(!mounted || !data) return;
+      if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+      else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+      else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
+
+      // Poll GPS position
+      const posRes = await fetch("/api/missions", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"get_position", mission_id:missionId }),
+      }).then(r=>r.json()).catch(()=>null);
+      if(posRes?.lat != null && posRes?.lng != null && mounted) {
+        // Show "arrived" indicator if close
+        setGpsPosition({ lat:posRes.lat, lng:posRes.lng, updated_at:posRes.updated_at });
+      }
+    };
+
+    poll();
+    const iv = setInterval(poll, 20000);
+    return ()=>{ mounted=false; clearInterval(iv); };
+  },[missionId]);
 
   const statusLabels = ["En route vers vous","Arrivé sur place","Mission en cours","Mission terminée"];
 
@@ -4458,7 +4464,7 @@ function ValidationScreen({ provider, role, missionId, onNavigate }) {
       <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{totalNetPresta} €</strong> ont été virés sur le compte de {p.name}.</p>
       <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
-        {["✅ Mission validée par les deux parties","💶 Virement initié vers le prestataire","📄 Fiche de paie générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
+        {["✅ Mission validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
         ))}
       </div>
@@ -5477,6 +5483,49 @@ function PrestaProfilTab({ onNavigate }) {
   );
 }
 
+// ── CV EDITOR ─────────────────────────────────────────────────────
+function CvEditor({ cv, onChange, color }) {
+  const [titre,    setTitre]    = useState(cv?.titre    || "");
+  const [accroche, setAccroche] = useState(cv?.accroche || "");
+  const [exps,     setExps]     = useState(cv?.experiences || []);
+  const [forms,    setForms]    = useState(cv?.formations  || []);
+  const [permis,   setPermis]   = useState(cv?.permis   || "");
+
+  const notify = (updates) => onChange({ titre, accroche, experiences:exps, formations:forms, permis, ...updates, hasCV:true });
+
+  return (
+    <div>
+      <Input label="Titre professionnel" placeholder="Ex: Cariste CACES 1/3/5 — Logisticien" value={titre} onChange={e=>{ setTitre(e.target.value); notify({titre:e.target.value}); }} />
+      <div style={{ marginBottom:14 }}>
+        <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Accroche</label>
+        <textarea value={accroche} onChange={e=>{ setAccroche(e.target.value); notify({accroche:e.target.value}); }} placeholder="Décrivez votre profil en 2-3 phrases…" style={{ width:"100%", padding:"11px 13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"vertical", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.5 }} />
+      </div>
+      <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>💼 Expériences</div>
+      {exps.map((e,i) => (
+        <div key={i} style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 12px", marginBottom:8, position:"relative" }}>
+          <button onClick={()=>{ const n=[...exps]; n.splice(i,1); setExps(n); notify({experiences:n}); }} style={{ position:"absolute", top:8, right:8, background:"rgba(242,94,94,0.15)", border:"none", borderRadius:6, color:"#F25E5E", cursor:"pointer", fontSize:11, padding:"2px 7px", fontFamily:"inherit" }}>✕</button>
+          <Input label="Poste" value={e.poste||""} onChange={ev=>{ const n=[...exps]; n[i]={...n[i],poste:ev.target.value}; setExps(n); notify({experiences:n}); }} />
+          <Input label="Entreprise" value={e.entreprise||""} onChange={ev=>{ const n=[...exps]; n[i]={...n[i],entreprise:ev.target.value}; setExps(n); notify({experiences:n}); }} />
+          <Input label="Période" placeholder="2022 – 2025" value={e.periode||""} onChange={ev=>{ const n=[...exps]; n[i]={...n[i],periode:ev.target.value}; setExps(n); notify({experiences:n}); }} />
+          <Input label="Description" value={e.desc||""} onChange={ev=>{ const n=[...exps]; n[i]={...n[i],desc:ev.target.value}; setExps(n); notify({experiences:n}); }} />
+        </div>
+      ))}
+      <button onClick={()=>{ const n=[...exps,{poste:"",entreprise:"",periode:"",desc:""}]; setExps(n); notify({experiences:n}); }} style={{ width:"100%", padding:"9px", border:`1px dashed ${color}`, borderRadius:10, background:"transparent", color, cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit", marginBottom:14 }}>+ Ajouter une expérience</button>
+      <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>🎓 Formations</div>
+      {forms.map((f,i) => (
+        <div key={i} style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 12px", marginBottom:8, position:"relative" }}>
+          <button onClick={()=>{ const n=[...forms]; n.splice(i,1); setForms(n); notify({formations:n}); }} style={{ position:"absolute", top:8, right:8, background:"rgba(242,94,94,0.15)", border:"none", borderRadius:6, color:"#F25E5E", cursor:"pointer", fontSize:11, padding:"2px 7px", fontFamily:"inherit" }}>✕</button>
+          <Input label="Diplôme / Certification" value={f.diplome||""} onChange={ev=>{ const n=[...forms]; n[i]={...n[i],diplome:ev.target.value}; setForms(n); notify({formations:n}); }} />
+          <Input label="Établissement" value={f.etablissement||""} onChange={ev=>{ const n=[...forms]; n[i]={...n[i],etablissement:ev.target.value}; setForms(n); notify({formations:n}); }} />
+          <Input label="Année" placeholder="2023" value={f.annee||""} onChange={ev=>{ const n=[...forms]; n[i]={...n[i],annee:ev.target.value}; setForms(n); notify({formations:n}); }} />
+        </div>
+      ))}
+      <button onClick={()=>{ const n=[...forms,{diplome:"",etablissement:"",annee:""}]; setForms(n); notify({formations:n}); }} style={{ width:"100%", padding:"9px", border:`1px dashed ${color}`, borderRadius:10, background:"transparent", color, cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit", marginBottom:14 }}>+ Ajouter une formation</button>
+      <Input label="Permis / Mobilité" placeholder="Permis B — véhiculé" value={permis} onChange={e=>{ setPermis(e.target.value); notify({permis:e.target.value}); }} />
+    </div>
+  );
+}
+
 // ── PRESTA PROFILE EDIT ────────────────────────────────────────────
 function PrestaProfileEditScreen({ onBack }) {
   const [meta, setMeta] = useState(null);
@@ -5526,7 +5575,7 @@ function PrestaProfileEditScreen({ onBack }) {
       dispon_jours_creneaux: dispos,
       dispo_immediat: dispoImmediat,
       tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
-      telephone, rib: iban,
+      telephone, rib: iban, cv: meta?.cv || null,
     }});
     setSaving(false);
     if (error) { setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return; }
@@ -5657,6 +5706,13 @@ function PrestaProfileEditScreen({ onBack }) {
           <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement</div>
           <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
           <Input label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" icon="💳" value={iban} onChange={e=>setIban(e.target.value)} />
+        </div>
+
+        {/* CV */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📄 Mon CV</div>
+          <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.5 }}>Renseignez votre parcours pour qu'il soit visible par les clients sur votre profil.</div>
+          <CvEditor cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
 
         {saveError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#F25E5E", textAlign:"center" }}>❌ Erreur lors de l'enregistrement. Vérifiez votre connexion et réessayez.</div>}
@@ -8024,7 +8080,7 @@ function BOTest({ onNavigate }) {
     { id:"rating",      label:"Noter le prestataire",  icon:"⭐", data:MOCK_P },
     { id:"cancellation",label:"Annulation",            icon:"❌", data:MOCK_P },
     { id:"invoice",     label:"Facture",               icon:"🧾", data:MOCK_P },
-    { id:"payslip",     label:"Fiche de paie",         icon:"💶", data:MOCK_P },
+    { id:"payslip",     label:"Facture prestataire",   icon:"🧾", data:MOCK_P },
   ];
 
   const prestaScreens = [
@@ -10201,13 +10257,36 @@ function AbonnementPrestaScreen({ onBack }) {
 
   const handleChangePlan = async (planId) => {
     if(planId === current) return;
+    const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planId);
+    if(plan?.price === 0) {
+      // Downgrade to free: direct update
+      await supabase.auth.updateUser({ data: { plan_abonnement: planId } });
+      setCurrent(planId);
+      return;
+    }
     setPendingPlan(planId);
   };
   const confirmChangePlan = async () => {
     if(!pendingPlan) return;
     setSaving(true);
-    await supabase.auth.updateUser({ data: { plan_abonnement: pendingPlan } });
-    setCurrent(pendingPlan);
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/stripe-subscription", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ plan: pendingPlan, billing }),
+      });
+      const d = await r.json();
+      if(d.url) {
+        window.location.href = d.url;
+        return;
+      }
+      // Fallback if Stripe prices not configured
+      alert(d.error || "Erreur Stripe");
+    } catch(e) {
+      alert("Erreur lors de la redirection vers Stripe");
+    }
     setSaving(false);
     setPendingPlan(null);
   };
@@ -10395,9 +10474,10 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
 function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
   const m = mission || {};
   const { providers } = useProviders();
-  const matching = providers.filter(p=>p.sector===m.sector?.id && (!m.metier||p.jobTitle===m.metier) && p.available);
-  const [responses, setResponses] = useState([]);
-  const [tick, setTick]           = useState(0);
+  const [notifiedCount, setNotifiedCount] = useState(0);
+  const [candidatures, setCandidatures]   = useState([]);
+  const [broadcasted, setBroadcasted]     = useState(false);
+  const [loading, setLoading]             = useState(true);
 
   // Spinner CSS
   useEffect(()=>{
@@ -10410,21 +10490,48 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
     }
   },[]);
 
-  // Simulate prestataires responding one by one
+  // Broadcast real notifications on mount
   useEffect(()=>{
-    if(!matching.length) return;
-    setResponses([]);
-    const timers = matching.map((p,i)=>{
-      const delay = 2500 + i*1800 + Math.random()*1000;
-      const accepted = Math.random() < 0.72;
-      return setTimeout(()=>setResponses(prev=>[...prev,{provider:p, accepted}]), delay);
+    if(!m.id || broadcasted) return;
+    setBroadcasted(true);
+    supabase.auth.getSession().then(({ data:sd }) => {
+      const token = sd?.session?.access_token;
+      fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ action:"broadcast", mission_id:m.id, sector:m.sector?.id||m.sector }),
+      })
+      .then(r=>r.json())
+      .then(d=>{ if(d.notified) setNotifiedCount(d.notified); })
+      .catch(()=>{});
     });
-    return ()=>timers.forEach(clearTimeout);
-  },[m.sector?.id, m.metier]);
+  },[m.id]);
 
-  const accepted  = responses.filter(r=>r.accepted);
-  const declined  = responses.filter(r=>!r.accepted);
-  const waiting   = matching.length - responses.length;
+  // Poll real candidatures every 5s
+  useEffect(()=>{
+    if(!m.id) return;
+    const poll = async () => {
+      const { data } = await supabase.from("candidatures")
+        .select("id,prestataire_id,status,created_at")
+        .eq("mission_id", m.id)
+        .eq("status","pending");
+      if(Array.isArray(data)){
+        // Enrich with provider info from providers list
+        const enriched = data.map(c => {
+          const prov = providers.find(p=>p.id===c.prestataire_id);
+          return prov ? { provider:prov, candidature_id:c.id } : null;
+        }).filter(Boolean);
+        setCandidatures(enriched);
+      }
+      setLoading(false);
+    };
+    poll();
+    const iv = setInterval(poll, 5000);
+    return ()=>clearInterval(iv);
+  },[m.id, providers]);
+
+  const accepted = candidatures;
+  const waiting  = Math.max(0, notifiedCount - accepted.length);
   const tarifLabel = p => formatE(prixClient(p.tarifNet, p.sector));
 
   return (
@@ -10442,11 +10549,10 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 
       <div style={{ padding:"20px 18px" }}>
         {/* Compteurs */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginBottom:18 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:18 }}>
           {[
-            { label:"Notifiés",   value:matching.length, color:C.violet   },
-            { label:"Accepté",    value:accepted.length, color:C.success  },
-            { label:"Décliné",    value:declined.length, color:C.accent   },
+            { label:"Notifiés",   value:notifiedCount,   color:C.violet   },
+            { label:"Candidats",  value:accepted.length, color:C.success  },
             { label:"En attente", value:waiting,         color:C.textSub  },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 8px", textAlign:"center", border:`1px solid ${s.color}33` }}>
@@ -10461,8 +10567,8 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:16, display:"flex", gap:12, alignItems:"center", border:`1px solid ${C.border}` }}>
             <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.violet}`, borderTopColor:"transparent", animation:"alaneSpin 0.9s linear infinite", flexShrink:0 }} />
             <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>En attente de {waiting} prestataire{waiting>1?"s":""}</div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les réponses arrivent en temps réel…</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{loading ? "Diffusion en cours…" : `En attente de réponses (${notifiedCount} notifié${notifiedCount>1?"s":""})`}</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les candidatures apparaissent dès que des prestataires postulent.</div>
             </div>
           </div>
         )}
@@ -10471,7 +10577,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
         {accepted.length > 0 && (
           <>
             <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>
-              ✅ {accepted.length} prestataire{accepted.length>1?"s":""} disponible{accepted.length>1?"s":""}
+              ✅ {accepted.length} candidature{accepted.length>1?"s":""} reçue{accepted.length>1?"s":""}
               {waiting===0 && <span style={{ fontWeight:500, color:C.textSub, fontSize:12 }}> — choisissez maintenant</span>}
             </div>
             {accepted.map(({provider:p})=>(
@@ -10504,37 +10610,25 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
           </>
         )}
 
-        {/* Déclinés */}
-        {declined.length > 0 && (
-          <div style={{ marginTop:8, marginBottom:12 }}>
-            <div style={{ fontWeight:600, color:C.textSub, fontSize:12, marginBottom:8 }}>
-              {declined.length} prestataire{declined.length>1?"s":""} indisponible{declined.length>1?"s":""}
-            </div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-              {declined.map(({provider:p})=>(
-                <div key={p.id} style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"7px 12px", display:"flex", gap:8, alignItems:"center", opacity:0.45 }}>
-                  <span style={{ fontSize:16 }}>{p.avatar}</span>
-                  <span style={{ fontSize:12, color:C.textSub }}>{p.name.split(" ")[0]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* État vide initial */}
-        {responses.length===0 && (
+        {accepted.length===0 && (
           <div style={{ textAlign:"center", padding:"48px 20px" }}>
             <div style={{ fontSize:52, marginBottom:16 }}>📱</div>
-            <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Notifications envoyées</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>
+              {loading ? "Diffusion en cours…" : "En attente de candidatures"}
+            </div>
             <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7 }}>
-              {matching.length} prestataire{matching.length>1?"s":""} consulte{matching.length===1?"":"nt"} votre demande…<br/>
-              Les réponses apparaissent ici en temps réel.
+              {notifiedCount > 0
+                ? `${notifiedCount} prestataire${notifiedCount>1?"s":""} notifié${notifiedCount>1?"s":""}. Les candidatures apparaissent ici dès réception.`
+                : "Envoi des notifications aux prestataires disponibles…"
+              }
             </div>
           </div>
         )}
 
         {/* Plus personne en attente, aucun acceptant */}
-        {waiting===0 && accepted.length===0 && (
+        {!loading && waiting===0 && accepted.length===0 && notifiedCount > 0 && (
           <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}30`, borderRadius:r, padding:"14px 16px", marginTop:8, textAlign:"center" }}>
             <div style={{ fontSize:32, marginBottom:8 }}>😔</div>
             <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Aucun prestataire disponible</div>
@@ -10573,6 +10667,21 @@ export default function App() {
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
+  // Handle Stripe subscription return
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    const subSuccess = params.get("sub_success");
+    const plan = params.get("plan");
+    if(subSuccess === "1" && plan) {
+      supabase.auth.updateUser({ data: { plan_abonnement: plan } }).then(()=>{
+        window.history.replaceState({}, "", window.location.pathname);
+      });
+    }
+    if(params.get("sub_cancel") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  },[]);
+
   // Tracking visiteur — une seule fois par session
   useEffect(()=>{
     if(sessionStorage.getItem("visit_tracked")) return;
@@ -10599,6 +10708,35 @@ export default function App() {
       );
     }
   },[]);
+
+  // Tracking GPS prestataire — envoie la position toutes les 60s quand mission assignée
+  useEffect(()=>{
+    if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
+    let watchId = null;
+    let currentPos = null;
+    watchId = navigator.geolocation.watchPosition(
+      pos=>{ currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude }; },
+      ()=>{}, { enableHighAccuracy:true }
+    );
+    const sendPos = async () => {
+      if(!currentPos) return;
+      try {
+        const { data:ms } = await supabase.from("missions")
+          .select("id").eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1);
+        if(!Array.isArray(ms) || !ms.length) return;
+        const { data:sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        fetch("/api/missions", {
+          method:"POST",
+          headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
+          body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
+        }).catch(()=>{});
+      } catch {}
+    };
+    const iv = setInterval(sendPos, 60000);
+    sendPos();
+    return ()=>{ navigator.geolocation.clearWatch(watchId); clearInterval(iv); };
+  },[supaUser, role]);
 
   // Poll messages non lus toutes les 10 secondes
   useEffect(()=>{

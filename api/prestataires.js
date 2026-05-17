@@ -26,6 +26,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ prestataires: [] });
     }
 
+    // Fetch all ratings to compute averages
+    const ratingsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/ratings?select=reviewee_provider_id,rating`,
+      { headers }
+    );
+    const allRatings = await ratingsRes.json();
+    const ratingsByProvider = {};
+    if (Array.isArray(allRatings)) {
+      for (const r of allRatings) {
+        if (!ratingsByProvider[r.reviewee_provider_id]) ratingsByProvider[r.reviewee_provider_id] = [];
+        ratingsByProvider[r.reviewee_provider_id].push(r.rating);
+      }
+    }
+
     // Enrich each profile with user_metadata from auth admin
     const enriched = await Promise.all(
       profiles.map(async (p) => {
@@ -36,6 +50,10 @@ export default async function handler(req, res) {
           );
           const userData = await userRes.json();
           const meta = userData.user_metadata || {};
+          const provRatings = ratingsByProvider[p.id] || [];
+          const avgRating = provRatings.length
+            ? Math.round(provRatings.reduce((a, b) => a + b, 0) / provRatings.length * 10) / 10
+            : 0;
           return {
             id:            p.id,
             name:          `${p.prenom || ""} ${p.nom || ""}`.trim() || "Prestataire",
@@ -50,6 +68,9 @@ export default async function handler(req, res) {
             dispo_immediat:   meta.dispo_immediat   || false,
             code_postal:      meta.code_postal      || null,
             plan_abonnement:  meta.plan_abonnement  || "free",
+            rating:           avgRating,
+            reviews:          provRatings.length,
+            cv:               meta.cv || null,
             created_at:       p.created_at,
           };
         } catch {

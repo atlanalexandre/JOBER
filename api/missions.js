@@ -281,6 +281,86 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "broadcast") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, sector } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+
+      // Fetch mission details
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector,metier,date,hours,ville`,
+        { headers }
+      );
+      const missions = await mr.json();
+      const mission = Array.isArray(missions) && missions[0];
+
+      // Fetch all approved prestataires
+      const pr = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
+        { headers }
+      );
+      const profiles = await pr.json();
+
+      let notified = 0;
+      if (Array.isArray(profiles)) {
+        // Send notifications in parallel batches of 5
+        const chunks = [];
+        for (let i = 0; i < profiles.length; i += 5) chunks.push(profiles.slice(i, i + 5));
+        for (const chunk of chunks) {
+          await Promise.all(chunk.map(async (p) => {
+            try {
+              // Filter by sector using user_metadata
+              const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
+              const ud = await ur.json();
+              const meta = ud.user_metadata || {};
+              const presta_sector = meta.secteur || meta.sector;
+              if (sector && presta_sector && presta_sector !== sector) return;
+              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({
+                  user_id: p.id,
+                  type: "mission",
+                  title: "🔔 Nouvelle mission disponible",
+                  body: `Mission ${mission?.metier || sector || ""} le ${mission?.date || ""} à ${mission?.ville || ""} (${mission?.hours || ""}h). Postulez dans votre espace !`,
+                  read: false,
+                }),
+              });
+              notified++;
+            } catch {}
+          }));
+        }
+      }
+      return res.status(200).json({ success: true, notified });
+    }
+
+    if (action === "update_position") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, lat, lng } = payload;
+      if (!mission_id || lat == null || lng == null) return res.status(400).json({ error: "mission_id, lat, lng requis" });
+      const prestataire_id = caller.id;
+      // Upsert position (use mission_id as unique key per prestataire)
+      await fetch(`${SUPABASE_URL}/rest/v1/tracking_positions`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal", "on_conflict": "mission_id,prestataire_id" },
+        body: JSON.stringify({ mission_id, prestataire_id, lat, lng, updated_at: new Date().toISOString() }),
+      });
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "get_position") {
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/tracking_positions?mission_id=eq.${mission_id}&select=lat,lng,updated_at&order=updated_at.desc&limit=1`,
+        { headers }
+      );
+      const rows = await r.json();
+      return res.status(200).json(Array.isArray(rows) && rows[0] ? rows[0] : null);
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("missions error:", e);
