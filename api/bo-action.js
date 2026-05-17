@@ -428,6 +428,14 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === "reset_visits") {
+      await fetch(`${SUPABASE_URL}/rest/v1/visits?id=neq.00000000-0000-0000-0000-000000000000`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "list_logs") {
       const logsRes = await fetch(
         `${SUPABASE_URL}/rest/v1/bo_logs?order=created_at.desc&limit=200`,

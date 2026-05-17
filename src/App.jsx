@@ -8842,7 +8842,16 @@ function BackofficeDashboard({ onBack, onNavigate }) {
 
           {/* Visiteurs */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>👁️ Visiteurs</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>👁️ Visiteurs</div>
+              <button onClick={async ()=>{
+                if(!window.confirm("Remettre le compteur de visites à 0 ?")) return;
+                await boFetch({ action:"reset_visits" }).catch(()=>{});
+                window.location.reload();
+              }} style={{ background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.3)", color:"#E74C3C", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                🗑️ Remettre à 0
+              </button>
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginBottom:16 }}>
               {[
                 { l:"Aujourd'hui", v: boVisits?.today ?? "—", c: C.violet },
