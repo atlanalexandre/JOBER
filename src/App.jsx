@@ -1075,6 +1075,15 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
+      const referrerUUID = sessionStorage.getItem("alane_referrer");
+      if (referrerUUID && referrerUUID !== data.user.id) {
+        await fetch("/api/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
+        }).catch(() => {});
+        sessionStorage.removeItem("alane_referrer");
+      }
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -1448,6 +1457,15 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
+      const referrerUUID = sessionStorage.getItem("alane_referrer");
+      if (referrerUUID && referrerUUID !== data.user.id) {
+        await fetch("/api/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
+        }).catch(() => {});
+        sessionStorage.removeItem("alane_referrer");
+      }
       await supabase.auth.signOut();
     }
     setLoading(false);
@@ -5028,26 +5046,49 @@ function FAQScreen({ onBack, role }) {
 
 // ── PARRAINAGE ────────────────────────────────────────────────────
 function ReferralScreen({ onBack }) {
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [code, setCode] = useState("ALANE-…");
   const [filleuls, setFilleuls] = useState(0);
+  const [userId, setUserId] = useState(null);
+  const [filleulsList, setFilleulsList] = useState([]);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       const uid = data?.user?.id;
       if(!uid) return;
+      setUserId(uid);
       const c = "ALANE-" + uid.slice(0,6).toUpperCase();
       setCode(c);
       supabase.from("profiles").select("referral_count").eq("id",uid).single()
         .then(({data:pd})=>{ if(pd?.referral_count) setFilleuls(pd.referral_count); });
+      supabase.from("profiles").select("prenom,nom,created_at,plan_abonnement").eq("referred_by",uid).order("created_at",{ascending:false})
+        .then(({data:fl})=>{ if(Array.isArray(fl)) setFilleulsList(fl); });
     });
   },[]);
 
-  const handleCopy = () => {
+  const referralLink = userId ? `${window.location.origin}?ref=${userId}` : "";
+
+  const handleCopyCode = () => {
     navigator.clipboard.writeText(code).then(()=>{
-      setCopied(true);
-      setTimeout(()=>setCopied(false), 2000);
+      setCopiedCode(true);
+      setTimeout(()=>setCopiedCode(false), 2000);
     });
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(referralLink).then(()=>{
+      setCopiedLink(true);
+      setTimeout(()=>setCopiedLink(false), 2000);
+    });
+  };
+
+  const handleShare = () => {
+    if(navigator.share) {
+      navigator.share({ title:"Rejoignez ALANE", text:`Utilisez mon lien de parrainage et inscrivez-vous sur ALANE ! Code : ${code}`, url:referralLink });
+    } else {
+      handleCopyLink();
+    }
   };
 
   return (
@@ -5079,16 +5120,53 @@ function ReferralScreen({ onBack }) {
           <div style={{ background:`${C.accentGold}15`, border:`2px dashed ${C.accentGold}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
             <div style={{ fontSize:24, fontWeight:800, color:C.text, letterSpacing:3 }}>{code}</div>
           </div>
-          <Btn full variant="gold" onClick={handleCopy} style={{ fontSize:14 }}>
-            {copied ? "✓ Copié !" : "📋 Copier le code"}
+          <div style={{ display:"flex", gap:10, marginBottom:0 }}>
+            <Btn full variant="gold" onClick={handleCopyCode} style={{ fontSize:13 }}>
+              {copiedCode ? "✓ Copié !" : "📋 Copier le code"}
+            </Btn>
+            <Btn full onClick={handleShare} style={{ fontSize:13 }}>
+              📤 Partager
+            </Btn>
+          </div>
+        </div>
+        {/* Lien */}
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 20px", marginBottom:16 }}>
+          <p style={{ color:C.textSub, fontSize:13, margin:"0 0 10px" }}>Lien de parrainage</p>
+          <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:r, padding:"10px 12px", marginBottom:12, wordBreak:"break-all", fontSize:12, color:C.text, fontFamily:"monospace" }}>
+            {referralLink || "Chargement…"}
+          </div>
+          <Btn full onClick={handleCopyLink} style={{ fontSize:13 }}>
+            {copiedLink ? "✓ Lien copié !" : "🔗 Copier le lien"}
           </Btn>
         </div>
         <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          💡 Votre filleul renseigne votre code à l’inscription. Le mois offert est crédité dès que le 3ème filleul passe en Premium.
+          💡 Votre filleul utilise votre code ou votre lien à l’inscription. Le mois offert est crédité dès que le 3ème filleul passe en Premium.
         </div>
+        {/* Filleuls list */}
+        {filleulsList.length > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"16px 20px", marginBottom:16 }}>
+            <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", fontWeight:700 }}>Vos filleuls ({filleulsList.length})</p>
+            {filleulsList.map((f,i)=>(
+              <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom: i<filleulsList.length-1 ? `1px solid rgba(255,255,255,0.06)` : "none" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:34, height:34, borderRadius:"50%", background:`${C.accentGold}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:800, color:C.accentGold }}>
+                    {(f.prenom||"?")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{f.prenom} {f.nom}</div>
+                    <div style={{ fontSize:11, color:C.textSub }}>{new Date(f.created_at).toLocaleDateString("fr-FR")}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize:11, padding:"3px 8px", borderRadius:8, background: f.plan_abonnement==="premium"||f.plan_abonnement==="elite" ? `${C.accentGold}25` : "rgba(255,255,255,0.07)", color: f.plan_abonnement==="premium"||f.plan_abonnement==="elite" ? C.accentGold : C.textSub, fontWeight:700 }}>
+                  {f.plan_abonnement==="premium"?"Premium":f.plan_abonnement==="elite"?"Elite":"Gratuit"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {[
-          {i:"🔗", t:"Partagez votre code", s:"Via SMS, email ou réseaux sociaux"},
-          {i:"✅", t:"3 filleuls passent Premium", s:"Ils utilisent votre code à l’inscription"},
+          {i:"🔗", t:"Partagez votre lien", s:"Via SMS, email ou réseaux sociaux"},
+          {i:"✅", t:"3 filleuls passent Premium", s:"Ils utilisent votre code ou lien à l’inscription"},
           {i:"👑", t:"1 mois Premium offert", s:"Crédité automatiquement sur votre compte"},
         ].map((s,i)=>(
           <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:9, display:"flex", gap:12, alignItems:"center" }}>
@@ -11199,6 +11277,17 @@ export default function App() {
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
+
+  // Capture ?ref= param for referral tracking
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if(ref && ref.length > 10) {
+      sessionStorage.setItem("alane_referrer", ref);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  },[]);
+
   // Handle Stripe subscription return
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);

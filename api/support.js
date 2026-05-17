@@ -99,6 +99,61 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     return res.status(200).json({ ok: true });
   }
 
+  // ── track_referral: link new user to referrer ────────────────────
+  if (req.body?.action === "track_referral") {
+    const { newUserId, referrerUUID } = req.body;
+    if (!newUserId || !referrerUUID) return res.status(400).json({ error: "Missing fields" });
+
+    const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
+    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config missing" });
+
+    const hdrs = {
+      "apikey": SERVICE_ROLE_KEY,
+      "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+    };
+
+    try {
+      // Set referred_by on new user
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}`, {
+        method: "PATCH", headers: hdrs,
+        body: JSON.stringify({ referred_by: referrerUUID }),
+      });
+
+      // Increment referral_count on referrer and get updated count
+      const countRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerUUID}&select=referral_count`, { headers: hdrs });
+      const countData = await countRes.json();
+      const currentCount = countData?.[0]?.referral_count || 0;
+      const newCount = currentCount + 1;
+
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerUUID}`, {
+        method: "PATCH", headers: hdrs,
+        body: JSON.stringify({ referral_count: newCount }),
+      });
+
+      // If referrer reaches 3 filleuls, grant 1 month Premium
+      if (newCount >= 3 && newCount % 3 === 0) {
+        const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
+        await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${referrerUUID}`, {
+          method: "PUT",
+          headers: { ...hdrs, "Prefer": undefined },
+          body: JSON.stringify({ user_metadata: { plan_abonnement: "premium", subscription_end_date: endDate } }),
+        }).catch(() => {});
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: hdrs,
+          body: JSON.stringify({ user_id: referrerUUID, type: "system", title: "🎁 1 mois Premium offert !", body: "Bravo ! Vous avez parrainé 3 filleuls abonnés. Votre mois Premium est activé automatiquement.", read: false }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true, newCount });
+    } catch (e) {
+      console.error("track_referral error:", e);
+      return res.status(500).json({ error: "Erreur serveur" });
+    }
+  }
+
   // ── default: support ticket ───────────────────────────────────────
   const { subject, message, userEmail, userName, userId } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
