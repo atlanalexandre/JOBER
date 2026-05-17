@@ -8726,10 +8726,14 @@ function BackofficeDashboard({ onBack, onNavigate }) {
   const d = boData || {
     users:    { clients:0, prestataires:0, total:0, pending:0 },
     missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
-    finance:  { caTotal:0 },
+    finance:  { caTotal:0, caMoyen:0 },
     tickets:  { open:0, total:0 },
     sectors:  [],
     recentUsers: [],
+    signupsByMonth: {},
+    missionsByMonth: {},
+    caByMonth: {},
+    monthLabels: [],
   };
 
   const KPICard = ({ icon, label, value, sub, color=C.violet, onClick }) => (
@@ -8897,6 +8901,29 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             </div>
           </div>
 
+          {/* Missions créées par mois */}
+          {d.monthLabels.length > 0 && (() => {
+            const vals = d.monthLabels.map((_,i) => Object.values(d.missionsByMonth)[i] || 0);
+            const max = Math.max(...vals, 1);
+            return (
+              <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Missions créées par mois</div>
+                <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:48, marginBottom:6 }}>
+                  {vals.map((v,i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
+                      <div style={{ width:"100%", background: i===vals.length-1 ? C.success : `${C.success}55`, borderRadius:"3px 3px 0 0", height:`${Math.max((v/max)*44,3)}px`, transition:"height 0.3s" }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {d.monthLabels.map((l,i) => (
+                    <div key={i} style={{ flex:1, textAlign:"center", fontSize:9, color: i===d.monthLabels.length-1 ? C.success : C.textMuted }}>{l}</div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Répartition utilisateurs */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
             {[
@@ -8956,6 +8983,39 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             ))}
           </div>
 
+          {/* Croissance mensuelle */}
+          {d.monthLabels.length > 0 && (() => {
+            const vals = d.monthLabels.map((_,i) => Object.values(d.signupsByMonth)[i] || 0);
+            const max = Math.max(...vals, 1);
+            const thisMonth = vals[vals.length-1];
+            const lastMonth = vals[vals.length-2] || 0;
+            const delta = thisMonth - lastMonth;
+            return (
+              <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>📈 Inscriptions par mois</div>
+                  <div style={{ fontSize:12, fontWeight:700, color: delta>=0 ? C.success : C.danger }}>
+                    {delta>=0?"+":""}{delta} vs mois préc.
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:60, marginBottom:8 }}>
+                  {vals.map((v,i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                      <div style={{ width:"100%", background: i===vals.length-1 ? C.violet : `${C.violet}55`, borderRadius:"3px 3px 0 0", height:`${Math.max((v/max)*56,3)}px`, transition:"height 0.3s", position:"relative" }}>
+                        {v > 0 && <div style={{ position:"absolute", top:-16, left:"50%", transform:"translateX(-50%)", fontSize:9, color:C.text, fontWeight:700, whiteSpace:"nowrap" }}>{v}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {d.monthLabels.map((l,i) => (
+                    <div key={i} style={{ flex:1, textAlign:"center", fontSize:9, color: i===d.monthLabels.length-1 ? C.violet : C.textMuted, fontWeight: i===d.monthLabels.length-1 ? 700 : 400 }}>{l}</div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕐 Dernières inscriptions</div>
           {d.recentUsers.length === 0 && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"20px 0" }}>Aucun utilisateur inscrit</div>}
           {d.recentUsers.map((u,i) => {
@@ -8984,7 +9044,7 @@ function BackofficeDashboard({ onBack, onNavigate }) {
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:C.violet,i:"📦"},{l:"Tickets support",v:d.tickets?.open||0,c:C.danger,i:"🎧"}].map(s=>(
+            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -8992,6 +9052,39 @@ function BackofficeDashboard({ onBack, onNavigate }) {
               </div>
             ))}
           </div>
+
+          {/* CA par mois */}
+          {d.monthLabels.length > 0 && (() => {
+            const vals = d.monthLabels.map((_,i) => Math.round(Object.values(d.caByMonth)[i] || 0));
+            const max = Math.max(...vals, 1);
+            const thisMonth = vals[vals.length-1];
+            const lastMonth = vals[vals.length-2] || 0;
+            const delta = thisMonth - lastMonth;
+            return (
+              <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>💶 CA par mois</div>
+                  <div style={{ fontSize:12, fontWeight:700, color: delta>=0 ? C.success : C.danger }}>
+                    {delta>=0?"+":""}{delta.toLocaleString()} € vs mois préc.
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:64, marginBottom:8 }}>
+                  {vals.map((v,i) => (
+                    <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
+                      <div style={{ width:"100%", background: i===vals.length-1 ? C.accentGold : `${C.accentGold}55`, borderRadius:"3px 3px 0 0", height:`${Math.max((v/max)*60,3)}px`, transition:"height 0.3s", position:"relative" }}>
+                        {v > 0 && <div style={{ position:"absolute", top:-16, left:"50%", transform:"translateX(-50%)", fontSize:9, color:C.text, fontWeight:700, whiteSpace:"nowrap" }}>{v}€</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {d.monthLabels.map((l,i) => (
+                    <div key={i} style={{ flex:1, textAlign:"center", fontSize:9, color: i===d.monthLabels.length-1 ? C.accentGold : C.textMuted, fontWeight: i===d.monthLabels.length-1 ? 700 : 400 }}>{l}</div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Commission par secteur</div>

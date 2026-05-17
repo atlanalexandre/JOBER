@@ -198,8 +198,8 @@ export default async function handler(req, res) {
 
     if (action === "stats") {
       const [profilesRes, missionsRes, ticketsRes, recentRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status,created_at`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?select=status,sector,montant_total,created_at`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=status`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/profiles?select=prenom,nom,role,status,created_at&order=created_at.desc&limit=6`, { headers }),
       ]);
@@ -226,6 +226,7 @@ export default async function handler(req, res) {
       const tauxCompletion = mTotal > 0 ? Math.round((mCompleted / mTotal) * 100) : 0;
       const caTotal    = m.filter(x => x.status === "completed")
         .reduce((acc, x) => acc + (Number(x.montant_total) || 0), 0);
+      const caMoyen    = mCompleted > 0 ? Math.round((caTotal / mCompleted) * 100) / 100 : 0;
 
       const ticketsOpen = t.filter(x => x.status === "open").length;
 
@@ -254,13 +255,42 @@ export default async function handler(req, res) {
           pct: Math.round((count / sectorTotal) * 100),
         }));
 
+      // Monthly time-series (last 6 months)
+      const now = new Date();
+      const last6months = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+        return d.toISOString().slice(0, 7);
+      });
+      const signupsByMonth = Object.fromEntries(last6months.map(mo => [mo, 0]));
+      const missionsByMonth = Object.fromEntries(last6months.map(mo => [mo, 0]));
+      const caByMonth = Object.fromEntries(last6months.map(mo => [mo, 0]));
+      p.forEach(x => {
+        const mo = x.created_at?.slice(0, 7);
+        if (mo && signupsByMonth[mo] !== undefined) signupsByMonth[mo]++;
+      });
+      m.forEach(x => {
+        const mo = x.created_at?.slice(0, 7);
+        if (mo && missionsByMonth[mo] !== undefined) {
+          missionsByMonth[mo]++;
+          if (x.status === "completed") caByMonth[mo] = (caByMonth[mo] || 0) + (Number(x.montant_total) || 0);
+        }
+      });
+      const monthLabels = last6months.map(mo => {
+        const [y, mIdx] = mo.split("-");
+        return new Date(Number(y), Number(mIdx) - 1, 1).toLocaleDateString("fr-FR", { month:"short" });
+      });
+
       return res.status(200).json({
         users:        { clients, prestataires, total: clients + prestataires, pending },
         missions:     { total: mTotal, open: mOpen, assigned: mAssigned, terminees: mCompleted, closed: mClosed, tauxCompletion },
-        finance:      { caTotal: Math.round(caTotal * 100) / 100 },
+        finance:      { caTotal: Math.round(caTotal * 100) / 100, caMoyen },
         tickets:      { open: ticketsOpen, total: t.length },
         sectors,
         recentUsers:  r,
+        signupsByMonth,
+        missionsByMonth,
+        caByMonth,
+        monthLabels,
       });
     }
 
