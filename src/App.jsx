@@ -11483,7 +11483,7 @@ export default function App() {
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
 
-  // Capture ?ref= et ?profil= URL params
+  // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
@@ -11494,7 +11494,10 @@ export default function App() {
     if(profil && profil.length > 30) {
       sessionStorage.setItem("alane_public_profil", profil);
     }
-    if(ref || profil) window.history.replaceState({}, "", window.location.pathname);
+    if(params.get("bo") === "1") {
+      setScreen("bo_login");
+    }
+    if(ref || profil || params.get("bo")) window.history.replaceState({}, "", window.location.pathname);
   },[]);
 
   // Public profil navigation — déclenché après que l'app est chargée
