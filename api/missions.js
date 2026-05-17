@@ -111,6 +111,38 @@ export default async function handler(req, res) {
       const { mission_id, message } = payload;
       const prestataire_id = caller.id;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+
+      // Vérifier la limite mensuelle selon le plan
+      const PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+      try {
+        const [userRes, profileRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month`, { headers }),
+        ]);
+        const userData = await userRes.json();
+        const profileData = await profileRes.json();
+        const plan = userData.user_metadata?.plan_abonnement || "free";
+        const limit = PLAN_LIMITS[plan] ?? 2;
+        if (limit < 999) {
+          const completedThisMonth = (Array.isArray(profileData) && profileData[0]?.missions_completed_month) || 0;
+          const assignedRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=eq.assigned&select=id`,
+            { headers }
+          );
+          const assignedData = await assignedRes.json();
+          const currentlyAssigned = Array.isArray(assignedData) ? assignedData.length : 0;
+          const total = completedThisMonth + currentlyAssigned;
+          if (total >= limit) {
+            return res.status(403).json({
+              error: `Limite atteinte — votre plan ${plan === "free" ? "Gratuit" : plan === "premium" ? "Premium" : "Elite"} autorise ${limit} mission${limit > 1 ? "s" : ""}/mois. Passez à un plan supérieur pour continuer.`,
+              limit_reached: true,
+              plan,
+              limit,
+            });
+          }
+        }
+      } catch { /* si erreur, on laisse postuler */ }
+
       const r = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -202,8 +234,8 @@ export default async function handler(req, res) {
       const client_id = caller.id;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
-      // Récupérer la mission pour avoir hours et tarif_horaire
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status`, { headers });
+      // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -254,6 +286,50 @@ export default async function handler(req, res) {
             read: false,
           }),
         });
+      }
+
+      // Notification + email au prestataire
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "mission",
+            title: "Mission validée ✅",
+            body: `Votre mission "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`,
+            read: false,
+          }),
+        }).catch(() => {});
+
+        const RESEND_API_KEY = process.env.RESEND_API_KEY;
+        const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+        if (RESEND_API_KEY) {
+          try {
+            const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
+            const uData = await uRes.json();
+            const prestaEmail = uData.email;
+            const prestaName  = uData.user_metadata?.prenom || "Prestataire";
+            if (prestaEmail) {
+              await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  from: RESEND_FROM,
+                  to: prestaEmail,
+                  subject: "Mission validée — votre paiement est en cours 💰",
+                  html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+                    <h2 style="color:#A29BFE;margin:0 0 12px">Mission validée ✅</h2>
+                    <p>Bonjour ${prestaName},</p>
+                    <p>Le client a validé votre mission <strong>${mission.metier || mission.sector || ""}</strong>.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p>
+                    <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+                  </div>`,
+                }),
+              }).catch(() => {});
+            }
+          } catch {}
+        }
       }
 
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });

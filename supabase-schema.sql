@@ -272,4 +272,30 @@ CREATE POLICY "tracking_presta_write" ON tracking_positions
 
 DROP POLICY IF EXISTS "tracking_read" ON tracking_positions;
 CREATE POLICY "tracking_read" ON tracking_positions
-  FOR SELECT USING (true);
+  FOR SELECT USING (
+    prestataire_id = auth.uid() OR
+    EXISTS (
+      SELECT 1 FROM missions
+      WHERE missions.id::text = tracking_positions.mission_id
+      AND missions.client_id = auth.uid()
+    )
+  );
+
+-- ── TABLE favorites (prestataires mis en favoris par les clients) ─────
+CREATE TABLE IF NOT EXISTS favorites (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  provider_id uuid NOT NULL,
+  created_at  timestamptz DEFAULT now(),
+  UNIQUE (user_id, provider_id)
+);
+
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "favorites_own" ON favorites;
+CREATE POLICY "favorites_own" ON favorites
+  FOR ALL USING (user_id = auth.uid());
+
+-- ── Colonnes parrainage sur profiles ───────────────────────────────────
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by  text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count integer DEFAULT 0;
