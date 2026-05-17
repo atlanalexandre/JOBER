@@ -33,16 +33,46 @@ function emailHtml(content) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { subject, message, userEmail, userName, userId } = req.body;
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+  const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+
+  // ── notify_signup: notify admin of new registration ──────────────
+  if (req.body?.action === "notify_signup") {
+    const { prenom, nom, email, role } = req.body;
+    if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
+
+    if (!RESEND_API_KEY || !ADMIN_EMAIL || !RESEND_FROM) {
+      return res.status(200).json({ ok: true, warning: "email skipped, missing env vars" });
+    }
+
+    const roleLabel = role === "prestataire" ? "Prestataire" : "Client";
+    const html = emailHtml(`
+      <p>Un nouveau compte est en attente de validation.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;width:120px;">Nom</td><td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600;">${esc(prenom)} ${esc(nom)}</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;">Email</td><td style="padding:8px 0;border-bottom:1px solid #eee;">${esc(email)}</td></tr>
+        <tr><td style="padding:8px 0;color:#888;">Rôle</td><td style="padding:8px 0;"><span style="background:${role === "prestataire" ? "#7C6FE020" : "#F0B42920"};color:${role === "prestataire" ? "#7C6FE0" : "#F0B429"};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">${esc(roleLabel)}</span></td></tr>
+      </table>
+      <p style="text-align:center;margin:24px 0;"><a href="https://www.alane.fr" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
+    `);
+
+    try {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: RESEND_FROM, to: [ADMIN_EMAIL], subject: `Nouvelle inscription ${roleLabel} — ${prenom} ${nom}`, html }),
+      });
+    } catch {}
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── default: support ticket ───────────────────────────────────────
+  const { subject, message, userEmail, userName, userId } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const RESEND_API_KEY   = process.env.RESEND_API_KEY;
-  const ADMIN_EMAIL      = process.env.ADMIN_EMAIL;
-  const RESEND_FROM      = process.env.RESEND_FROM || "onboarding@resend.dev";
-
-  console.log("support.js — ADMIN_EMAIL:", ADMIN_EMAIL ? "set" : "missing", "| RESEND_API_KEY:", RESEND_API_KEY ? "set" : "missing");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
@@ -65,15 +95,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Impossible d'enregistrer le ticket" });
     }
 
-    // Notify admin by email via Resend
     if (RESEND_API_KEY && ADMIN_EMAIL) {
       try {
-        const emailRes = await fetch("https://api.resend.com/emails", {
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: {
-            "Authorization": `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: RESEND_FROM,
             to: [ADMIN_EMAIL],
@@ -88,11 +114,7 @@ export default async function handler(req, res) {
             `),
           }),
         });
-        const emailData = await emailRes.json();
-        console.log("Resend response:", JSON.stringify(emailData));
-      } catch (emailErr) {
-        console.error("Resend error:", emailErr);
-      }
+      } catch {}
     }
 
     return res.status(200).json({ success: true });

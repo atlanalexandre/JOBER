@@ -1069,10 +1069,10 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
       await supabase.auth.signOut();
@@ -1442,10 +1442,10 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
       await supabase.auth.signOut();
@@ -1650,7 +1650,13 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     setLoading(true); setError("");
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) { setLoading(false); setError(err.message); return; }
+    if (err) {
+      setLoading(false);
+      setError(err.message === "Email not confirmed"
+        ? "Email non confirmé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation avant de vous connecter."
+        : err.message);
+      return;
+    }
 
     const { data:{ user } } = await supabase.auth.getUser();
     const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
@@ -1710,10 +1716,10 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
       }).catch(() => {});
       await supabase.auth.signOut();
     }
@@ -9783,9 +9789,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {hybridBanner}
         {/* Desktop content wrapper */}
         <div style={{
-          maxWidth: showSidebar ? 900 : 480,
+          maxWidth: showSidebar ? 900 : screen === "bo_dashboard" ? "none" : 480,
           width:"100%",
-          margin: showSidebar ? "0 auto" : "0 auto",
+          margin: "0 auto",
           flex:1,
           padding: showSidebar ? "0 0 40px" : "0",
         }}>
