@@ -10396,6 +10396,74 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   // Desktop layout
   const showSidebar = isLoggedIn && !["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","bo_login","bo_dashboard","reset_password"].includes(screen);
 
+  const isPreLogin = !["bo_login","bo_dashboard"].includes(screen) && !showSidebar;
+
+  // Two-column layout for pre-login screens on desktop
+  if (isPreLogin) {
+    return (
+      <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
+        {/* Left panel — branding */}
+        <div style={{ width:"42%", minWidth:380, background:"linear-gradient(160deg,#050E20 0%,#0D1B3E 40%,#1E3A7B 100%)", display:"flex", flexDirection:"column", justifyContent:"space-between", padding:"52px 48px", position:"relative", overflow:"hidden", flexShrink:0 }}>
+          {/* Decorative circles */}
+          <div style={{ position:"absolute", top:-80, right:-80, width:320, height:320, borderRadius:"50%", background:"rgba(124,111,224,0.08)" }} />
+          <div style={{ position:"absolute", bottom:-60, left:-60, width:240, height:240, borderRadius:"50%", background:"rgba(240,180,41,0.06)" }} />
+
+          {/* Logo */}
+          <div>
+            <div style={{ fontSize:32, fontWeight:900, letterSpacing:2, marginBottom:8 }}>
+              <span style={{ color:C.violet }}>A</span>
+              <span style={{ color:C.white }}>LAN</span>
+              <span style={{ color:C.accentGold }}>E</span>
+            </div>
+            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, letterSpacing:2, textTransform:"uppercase", fontWeight:600 }}>Plateforme de services à la demande</div>
+          </div>
+
+          {/* Tagline */}
+          <div>
+            <h1 style={{ color:C.white, fontSize:38, fontWeight:900, lineHeight:1.2, margin:"0 0 20px", fontFamily:"’DM Sans’,system-ui,sans-serif" }}>
+              Le bon pro,<br/>
+              <span style={{ color:C.accentGold }}>au bon moment.</span>
+            </h1>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:15, lineHeight:1.7, margin:"0 0 36px", maxWidth:320 }}>
+              Trouvez des prestataires qualifiés et vérifiés pour vos missions ponctuelles — en quelques minutes.
+            </p>
+            {/* Value props */}
+            {[
+              { icon:"✅", text:"Prestataires vérifiés et approuvés" },
+              { icon:"🔒", text:"Paiement sécurisé en escrow" },
+              { icon:"⭐", text:"Notes et avis après chaque mission" },
+              { icon:"⚡", text:"Tarif transparent — prix affiché = prix réel" },
+            ].map((v,i) => (
+              <div key={i} style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
+                <div style={{ width:32, height:32, borderRadius:10, background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{v.icon}</div>
+                <span style={{ color:"rgba(255,255,255,0.75)", fontSize:13, fontWeight:500 }}>{v.text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Stats */}
+          <div style={{ display:"flex", gap:24 }}>
+            {[["88+","Prestataires"],["7","Secteurs"],["<10min","Réponse"]].map(([v,l])=>(
+              <div key={l}>
+                <div style={{ color:C.white, fontWeight:900, fontSize:22 }}>{v}</div>
+                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right panel — form */}
+        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column" }}>
+          {hybridBanner}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", maxWidth:560, width:"100%", margin:"0 auto", padding:"0 48px" }}>
+            {children}
+          </div>
+        </div>
+        {adminBtn}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, fontFamily:"’Segoe UI’,system-ui,sans-serif", position:"relative" }}>
       {showSidebar && (
@@ -11483,7 +11551,7 @@ export default function App() {
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
 
-  // Capture ?ref= et ?profil= URL params
+  // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
@@ -11494,7 +11562,10 @@ export default function App() {
     if(profil && profil.length > 30) {
       sessionStorage.setItem("alane_public_profil", profil);
     }
-    if(ref || profil) window.history.replaceState({}, "", window.location.pathname);
+    if(params.get("bo") === "1") {
+      setScreen("bo_login");
+    }
+    if(ref || profil || params.get("bo")) window.history.replaceState({}, "", window.location.pathname);
   },[]);
 
   // Public profil navigation — déclenché après que l'app est chargée

@@ -59,7 +59,7 @@ async function sendEmail({ to, subject, html }) {
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to: [to], subject, html }),
     });
-    if (!r.ok) console.error("Resend bo-action error:", r.status);
+    if (!r.ok) { const body = await r.text(); console.error("Resend bo-action error:", r.status, body); }
   } catch (e) {
     console.error("sendEmail error:", e);
   }
