@@ -6064,6 +6064,10 @@ function PMissionsTab({ onNavigate }) {
       setApplied(prev => new Set([...prev, missionId]));
       setShowMsg(null);
       setMessage("");
+    } else if (data.limit_reached) {
+      alert(data.error);
+    } else if (data.error) {
+      alert(data.error);
     }
     setApplying(null);
   };

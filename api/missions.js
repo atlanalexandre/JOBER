@@ -111,6 +111,38 @@ export default async function handler(req, res) {
       const { mission_id, message } = payload;
       const prestataire_id = caller.id;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+
+      // Vérifier la limite mensuelle selon le plan
+      const PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+      try {
+        const [userRes, profileRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month`, { headers }),
+        ]);
+        const userData = await userRes.json();
+        const profileData = await profileRes.json();
+        const plan = userData.user_metadata?.plan_abonnement || "free";
+        const limit = PLAN_LIMITS[plan] ?? 2;
+        if (limit < 999) {
+          const completedThisMonth = (Array.isArray(profileData) && profileData[0]?.missions_completed_month) || 0;
+          const assignedRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=eq.assigned&select=id`,
+            { headers }
+          );
+          const assignedData = await assignedRes.json();
+          const currentlyAssigned = Array.isArray(assignedData) ? assignedData.length : 0;
+          const total = completedThisMonth + currentlyAssigned;
+          if (total >= limit) {
+            return res.status(403).json({
+              error: `Limite atteinte — votre plan ${plan === "free" ? "Gratuit" : plan === "premium" ? "Premium" : "Elite"} autorise ${limit} mission${limit > 1 ? "s" : ""}/mois. Passez à un plan supérieur pour continuer.`,
+              limit_reached: true,
+              plan,
+              limit,
+            });
+          }
+        }
+      } catch { /* si erreur, on laisse postuler */ }
+
       const r = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
