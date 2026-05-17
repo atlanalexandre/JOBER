@@ -2433,6 +2433,7 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
   const [showTour, setShowTour] = useState(false);
+  const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const tier = getCashbackTier(walletMissions);
@@ -2459,6 +2460,22 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
     });
     return ()=>{ mounted=false; };
   }, []);
+
+  useEffect(()=>{
+    let mounted = true;
+    Promise.all([
+      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","open"),
+      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","completed"),
+    ]).then(([open, completed])=>{
+      if (!mounted) return;
+      setLiveStats({
+        openMissions: open.count ?? 0,
+        dispoNow: providers.filter(p => p.dispo_immediat).length,
+        completedMonth: completed.count ?? 0,
+      });
+    });
+    return ()=>{ mounted=false; };
+  }, [providers]);
 
   const violetLite = "#A29BFE";
 
@@ -2523,6 +2540,28 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
             : <>Rejoignez la plateforme ALANE et accédez aux meilleurs prestataires.</>}
         </p>
       </div>
+
+      {/* ── Live stats ── */}
+      {(liveStats.openMissions !== null) && (
+        <div style={{ padding:"0 22px 16px", position:"relative", zIndex:2 }}>
+          <div style={{ display:"flex", gap:8 }}>
+            {[
+              { icon:"📋", value: liveStats.openMissions, label:"missions ouvertes" },
+              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
+              { icon:"✅", value: liveStats.completedMonth, label:"missions réalisées" },
+            ].map((s,i)=>(
+              <div key={i} style={{
+                flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
+                borderRadius:12, padding:"10px 8px", textAlign:"center",
+              }}>
+                <div style={{ fontSize:14, marginBottom:2 }}>{s.icon}</div>
+                <div style={{ fontFamily:font.display, fontWeight:700, fontSize:16, color:C.text, lineHeight:1 }}>{s.value}</div>
+                <div style={{ fontSize:9, color:C.textMuted, marginTop:3, lineHeight:1.2, letterSpacing:0.2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Search bar ── */}
       <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
@@ -10250,7 +10289,7 @@ function AbonnementPrestaScreen({ onBack }) {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       supabase.from("missions").select("id",{count:"exact",head:true})
-        .eq("user_id",u.id).gte("created_at",startOfMonth)
+        .eq("prestataire_id",u.id).gte("created_at",startOfMonth)
         .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
     });
   },[]);
@@ -10532,7 +10571,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 
   const accepted = candidatures;
   const waiting  = Math.max(0, notifiedCount - accepted.length);
-  const tarifLabel = p => formatE(prixClient(p.tarifNet, p.sector));
+  const tarifLabel = p => formatE(p.rateNum || 0);
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
@@ -10597,7 +10636,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
                   </div>
                   <div>
                     <div style={{ fontWeight:800, color:C.success, fontSize:16 }}>{tarifLabel(p)}</div>
-                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {formatE(prixClient(p.tarifNet,p.sector)*m.hours).replace("/h","")}</div>
+                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {((p.rateNum||0)*m.hours).toFixed(2).replace(".",",")} €</div>
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
