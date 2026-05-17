@@ -23,6 +23,7 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `STRIPE_SECRET_KEY` | Clé secrète Stripe — fonctions serverless uniquement |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret du webhook Stripe (`whsec_...`) |
 | `BO_PASSWORD` | Mot de passe alphanumérique du backoffice admin |
+| `BO_SESSION_SECRET` | Secret HMAC pour signer les tokens de session BO (CRITIQUE — doit être aléatoire, ne pas laisser la valeur par défaut) |
 | `CRON_SECRET` | Secret optionnel pour protéger `/api/cron-reset-monthly` (header Authorization) |
 
 ## Base de données Supabase
@@ -107,7 +108,7 @@ Champs stockés dans `user_metadata` lors du signUp :
 
 ## Architecture App.jsx
 
-Fichier unique ~7100 lignes. Tous les composants sont dans ce fichier.
+Fichier unique ~11500 lignes. Tous les composants sont dans ce fichier.
 
 ### Composants clés et ce qu'ils font
 
@@ -167,7 +168,7 @@ Actions disponibles :
 - Logs `console.log` présents pour diagnostic (visibles dans Vercel → Functions → Logs)
 
 ### `api/missions.js`
-Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reject_candidature`, `complete`, `cancel`
+Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reject_candidature`, `complete`, `cancel`, `get_candidatures`
 - Gère le cycle de vie complet des missions + candidatures + notifications + cashback
 
 ### `api/stripe-intent.js`
@@ -181,26 +182,21 @@ Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reje
 
 ### `api/bo-verify-pin.js`
 - Vérifie le mot de passe BO contre `BO_PASSWORD` (env)
-- Retourne un token HMAC signé valable 24h
-- Remplace l'ancien pavé numérique PIN
+- Retourne un token HMAC signé valable 24h (signé avec `BO_SESSION_SECRET`)
+- **SECURITY** : `BO_SESSION_SECRET` doit être défini dans Vercel — la valeur par défaut est publique sur GitHub
 
 ### `api/welcome-email.js`
 - Envoie un email de bienvenue après inscription via Resend
 - Appelé depuis le frontend juste avant `signOut()` post-inscription
 
-### `api/booking-confirm.js`
-- Envoie un email de confirmation de réservation au client via Resend
-
 ### `api/cron-reset-monthly.js`
-- Remet `missions_completed_month` à 0 sur tous les profiles
-- Planifié le 1er de chaque mois à minuit via `vercel.json` (`"crons"`)
+- Mode par défaut : remet `missions_completed_month` à 0 sur tous les profiles (1er de chaque mois)
+- Mode `?action=reminders` : envoie des emails de rappel (via Resend) pour les missions assignées le lendemain
 - Protégé par header `Authorization: Bearer <CRON_SECRET>` si la variable est définie
+- **NOTE** : les crons Vercel nécessitent le plan Pro — sur Hobby, les crons ne s'exécutent pas automatiquement
 
 ### `api/verify-docs.js`
 - Valide le format IBAN (algorithme MOD-97)
-
-### `api/send-email.js`
-Fichier utilitaire présent mais **non utilisé** (les appels Resend sont inlinés). Ne pas réactiver les imports vers ce fichier.
 
 ## Règles importantes à ne pas casser
 
