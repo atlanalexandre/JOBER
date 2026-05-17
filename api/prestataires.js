@@ -67,6 +67,7 @@ export default async function handler(req, res) {
             dispon_jours:     meta.dispon_jours     || null,
             dispo_immediat:   meta.dispo_immediat   || false,
             code_postal:      meta.code_postal      || null,
+            ville:            meta.ville            || null,
             plan_abonnement:  meta.plan_abonnement  || "free",
             rating:           avgRating,
             reviews:          provRatings.length,

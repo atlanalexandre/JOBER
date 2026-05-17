@@ -52,23 +52,35 @@ export default async function handler(req, res) {
       };
       const patch = { stripe_payment_intent: intent.id, status: "assigned" };
       if (prestataireId) patch.prestataire_id = prestataireId;
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
-        method: "PATCH", headers, body: JSON.stringify(patch),
-      }).catch(() => {});
-      // Accepter la candidature + rejeter les autres
+
+      // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
+      let missionPatch;
+      try {
+        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+          method: "PATCH", headers, body: JSON.stringify(patch),
+        });
+      } catch (e) {
+        console.error("stripe-webhook: Supabase down, Stripe will retry", e);
+        return res.status(500).json({ error: "Supabase unavailable" });
+      }
+      if (!missionPatch.ok) {
+        console.error("stripe-webhook: mission PATCH failed", missionPatch.status, await missionPatch.text());
+        return res.status(500).json({ error: "Mission update failed" });
+      }
+
+      // Opérations secondaires : on ne bloque pas Stripe si elles échouent
       if (candidatureId) {
         await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}`, {
           method: "PATCH", headers, body: JSON.stringify({ status: "accepted" }),
-        }).catch(() => {});
+        }).catch(e => console.error("candidature accept failed:", e));
         await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${missionId}&id=neq.${candidatureId}`, {
           method: "PATCH", headers, body: JSON.stringify({ status: "rejected" }),
-        }).catch(() => {});
-        // Notifier le prestataire
+        }).catch(e => console.error("candidature reject failed:", e));
         if (prestataireId) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST", headers,
             body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée et le paiement confirmé. Préparez-vous pour la mission !", read: false }),
-          }).catch(() => {});
+          }).catch(e => console.error("notification failed:", e));
         }
       }
     }
@@ -87,11 +99,20 @@ export default async function handler(req, res) {
       };
       const daysToAdd = billing === "yearly" ? 365 : 30;
       const endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
-      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-        method: "PUT",
-        headers: hdrs,
-        body: JSON.stringify({ user_metadata: { plan_abonnement: plan, subscription_end_date: endDate } }),
-      }).catch(() => {});
+      try {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+          method: "PUT",
+          headers: hdrs,
+          body: JSON.stringify({ user_metadata: { plan_abonnement: plan, subscription_end_date: endDate } }),
+        });
+        if (!r.ok) {
+          console.error("stripe-webhook: user metadata update failed", r.status);
+          return res.status(500).json({ error: "User update failed" });
+        }
+      } catch (e) {
+        console.error("stripe-webhook: Supabase down on checkout.session.completed", e);
+        return res.status(500).json({ error: "Supabase unavailable" });
+      }
     }
   }
 
