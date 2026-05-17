@@ -2433,6 +2433,7 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
   const [showTour, setShowTour] = useState(false);
+  const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const tier = getCashbackTier(walletMissions);
@@ -2459,6 +2460,22 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
     });
     return ()=>{ mounted=false; };
   }, []);
+
+  useEffect(()=>{
+    let mounted = true;
+    Promise.all([
+      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","open"),
+      supabase.from("missions").select("id", { count:"exact", head:true }).eq("status","completed"),
+    ]).then(([open, completed])=>{
+      if (!mounted) return;
+      setLiveStats({
+        openMissions: open.count ?? 0,
+        dispoNow: providers.filter(p => p.dispo_immediat).length,
+        completedMonth: completed.count ?? 0,
+      });
+    });
+    return ()=>{ mounted=false; };
+  }, [providers]);
 
   const violetLite = "#A29BFE";
 
@@ -2523,6 +2540,28 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
             : <>Rejoignez la plateforme ALANE et accédez aux meilleurs prestataires.</>}
         </p>
       </div>
+
+      {/* ── Live stats ── */}
+      {(liveStats.openMissions !== null) && (
+        <div style={{ padding:"0 22px 16px", position:"relative", zIndex:2 }}>
+          <div style={{ display:"flex", gap:8 }}>
+            {[
+              { icon:"📋", value: liveStats.openMissions, label:"missions ouvertes" },
+              { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
+              { icon:"✅", value: liveStats.completedMonth, label:"missions réalisées" },
+            ].map((s,i)=>(
+              <div key={i} style={{
+                flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
+                borderRadius:12, padding:"10px 8px", textAlign:"center",
+              }}>
+                <div style={{ fontSize:14, marginBottom:2 }}>{s.icon}</div>
+                <div style={{ fontFamily:font.display, fontWeight:700, fontSize:16, color:C.text, lineHeight:1 }}>{s.value}</div>
+                <div style={{ fontSize:9, color:C.textMuted, marginTop:3, lineHeight:1.2, letterSpacing:0.2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Search bar ── */}
       <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
