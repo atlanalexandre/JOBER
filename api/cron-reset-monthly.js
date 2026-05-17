@@ -21,6 +21,7 @@ export default async function handler(req, res) {
   };
 
   try {
+    // Reset missions_completed_month pour tous les profils
     const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
@@ -33,8 +34,29 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    console.log("cron-reset-monthly: missions_completed_month reset to 0 for all profiles");
-    return res.status(200).json({ success: true });
+    // Downgrade des abonnements expirés
+    let downgrades = 0;
+    try {
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
+      const usersData = await usersRes.json();
+      const users = usersData.users || [];
+      const now = new Date();
+      await Promise.all(users.map(async u => {
+        const meta = u.user_metadata || {};
+        if (meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date) {
+          if (new Date(meta.subscription_end_date) < now) {
+            await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
+              method: "PUT", headers,
+              body: JSON.stringify({ user_metadata: { plan_abonnement: "free", subscription_end_date: null } }),
+            }).catch(() => {});
+            downgrades++;
+          }
+        }
+      }));
+    } catch {}
+
+    console.log(`cron-reset-monthly: missions reset, ${downgrades} abonnements expirés downgradés`);
+    return res.status(200).json({ success: true, downgrades });
   } catch (e) {
     console.error("cron-reset-monthly:", e);
     return res.status(500).json({ error: "Erreur serveur" });

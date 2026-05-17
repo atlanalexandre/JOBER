@@ -7558,15 +7558,19 @@ function useBoData() {
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState(null);
 
+  const fetchAll = () => Promise.all([
+    boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
+    boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
+  ]).then(([stats, vis]) => {
+    setData(stats);
+    setVisits(vis);
+    setLoading(false);
+  });
+
   useEffect(() => {
-    Promise.all([
-      boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
-      boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
-    ]).then(([stats, vis]) => {
-      setData(stats);
-      setVisits(vis);
-      setLoading(false);
-    });
+    fetchAll();
+    const iv = setInterval(fetchAll, 60000);
+    return () => clearInterval(iv);
   }, []);
 
   return { data, loading, visits };
@@ -8263,6 +8267,8 @@ function BOTest({ onNavigate }) {
 function BOLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterAction, setFilterAction] = useState("all");
+  const [search, setSearch] = useState("");
   useEffect(()=>{
     const token = sessionStorage.getItem("bo_token");
     fetch("/api/bo-action", {
@@ -8272,13 +8278,29 @@ function BOLogs() {
     }).then(r=>r.json()).then(d=>{ setLogs(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
   },[]);
   const ACTION_LABELS = { approve:"✅ Approuvé", reject:"❌ Refusé", delete:"🗑️ Supprimé" };
+  const ACTION_COLORS = { approve:C.success, reject:"#F25E5E", delete:"#E67E22" };
+  const filtered = logs.filter(l=>{
+    if(filterAction !== "all" && l.action !== filterAction) return false;
+    if(search && !(l.target_email||"").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
   return (
     <div>
-      <h3 style={{ color:C.text, fontSize:16, fontWeight:700, margin:"0 0 14px" }}>📋 Journal des actions BO</h3>
+      <h3 style={{ color:C.text, fontSize:16, fontWeight:700, margin:"0 0 12px" }}>📋 Journal des actions BO</h3>
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un email…" style={{ flex:1, padding:"8px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, fontFamily:"inherit", outline:"none" }} />
+        <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, fontFamily:"inherit" }}>
+          <option value="all">Toutes</option>
+          <option value="approve">Approuvés</option>
+          <option value="reject">Refusés</option>
+          <option value="delete">Supprimés</option>
+        </select>
+      </div>
       {loading ? <div style={{ color:C.textMuted, fontSize:13 }}>Chargement…</div> :
-      logs.length === 0 ? <div style={{ color:C.textMuted, fontSize:13 }}>Aucune action enregistrée.</div> :
-      logs.map(l=>(
+      filtered.length === 0 ? <div style={{ color:C.textMuted, fontSize:13 }}>Aucune action trouvée.</div> :
+      filtered.map(l=>(
         <div key={l.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:ACTION_COLORS[l.action]||C.textMuted, flexShrink:0 }} />
           <div style={{ flex:1 }}>
             <div style={{ color:C.text, fontSize:13, fontWeight:600 }}>{ACTION_LABELS[l.action]||l.action}</div>
             <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>{l.target_email||l.target_id||"—"}{l.reason?` · ${l.reason}`:""}</div>
@@ -10217,6 +10239,15 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
         <Btn full disabled={rating===0||saving} onClick={async()=>{
           setSaving(true);
           try {
+            // Vérifier qu'une mission complétée existe entre le client et ce prestataire
+            if(userId && p.id) {
+              const { data: mCheck } = await supabase.from("missions")
+                .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
+              if(!mCheck?.length) {
+                alert("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
+                setSaving(false); return;
+              }
+            }
             await supabase.from("ratings").insert({
               reviewer_id: userId,
               reviewee_provider_id: p.id,
@@ -10392,11 +10423,13 @@ function AbonnementPrestaScreen({ onBack }) {
   const [loaded,setLoaded]=useState(false);
   const [missionsUsed,setMissionsUsed]=useState(0);
   const [pendingPlan,setPendingPlan]=useState(null);
+  const [endDate,setEndDate]=useState(null);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
       const u=data?.user; if(!u) return;
       setCurrent(u.user_metadata?.plan_abonnement||"free");
+      setEndDate(u.user_metadata?.subscription_end_date||null);
       setLoaded(true);
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -10461,6 +10494,14 @@ function AbonnementPrestaScreen({ onBack }) {
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Tarif transparent · prix affiché = prix réel</p>
+        {endDate && current !== "free" && (
+          <div style={{ marginTop:10, display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
+            <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
+              {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
+              {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
+            </span>
+          </div>
+        )}
       </div>
       <div style={{ padding:"20px 18px" }}>
         {isLaunchPhase() && (

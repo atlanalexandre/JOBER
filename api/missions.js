@@ -130,7 +130,18 @@ export default async function handler(req, res) {
         ]);
         const userData = await userRes.json();
         const profileData = await profileRes.json();
-        const plan = userData.user_metadata?.plan_abonnement || "free";
+        let plan = userData.user_metadata?.plan_abonnement || "free";
+
+        // Vérifier l'expiry de l'abonnement — downgrade auto si expiré
+        const endDate = userData.user_metadata?.subscription_end_date;
+        if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
+          plan = "free";
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, {
+            method: "PUT", headers,
+            body: JSON.stringify({ user_metadata: { plan_abonnement: "free", subscription_end_date: null } }),
+          }).catch(() => {});
+        }
+
         const limit = PLAN_LIMITS[plan] ?? 2;
         if (limit < 999) {
           const completedThisMonth = (Array.isArray(profileData) && profileData[0]?.missions_completed_month) || 0;
