@@ -986,27 +986,21 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
-  const [secteur, setSecteur] = useState("");
-  const [metier, setMetier] = useState("");
-  const [niveau, setNiveau] = useState("");
+  const [metiers, setMetiers] = useState([]);
+  const [newMetier, setNewMetier] = useState({sector:"", metier:"", niveau:"Confirmé", tarifNet:12, certifs:""});
+  const [justAdded, setJustAdded] = useState(false);
+  const [niveau, setNiveau] = useState("Confirmé");
   const [experienceAns, setExperienceAns] = useState(2);
   const [competences, setCompetences] = useState([]);
   const [langues, setLangues] = useState(["Français"]);
   const [dispos, setDispos] = useState({});
   const [dispoImmediat, setDispoImmediat] = useState(true);
-  const [tarifNet, setTarifNet] = useState(13);
   const [ribIban, setRibIban] = useState("");
   const [statutPro, setStatutPro] = useState("auto-entrepreneur");
   const [planChoisi, setPlanChoisi] = useState("free");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
-
-  useEffect(() => {
-    if (secteur && metier && METIERS_TARIFS[secteur]?.[metier]) {
-      setTarifNet(METIERS_TARIFS[secteur][metier].default);
-    }
-  }, [secteur, metier]);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -1017,8 +1011,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
     }
     if (step === 2) {
-      if (!secteur) return "Choisissez un secteur d'activité";
-      if (!metier)  return "Choisissez votre métier";
+      if (metiers.length === 0) return "Ajoutez au moins un métier";
     }
     if (step === 3) { if (!niveau) return "Sélectionnez votre niveau"; }
     if (step === 4) {
@@ -1052,9 +1045,11 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
-        secteur, metier, niveau, experience_ans: experienceAns, competences, langues,
+        secteur: metiers[0]?.sector || "", metier: metiers[0]?.metier || "",
+        tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
+        niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
-        tarif_net: tarifNet, statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
+        statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
         plan_abonnement: planChoisi,
       }},
     });
@@ -1090,15 +1085,16 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     onRegister();
   };
 
-  const secteurInfo  = SECTORS.find(s => s.id === secteur);
-  const metiersListe = secteur ? Object.keys(METIERS_TARIFS[secteur] || {}) : [];
-  const compListe    = COMPETENCES_PAR_SECTEUR[secteur] || [];
-  const tarifInfo    = secteur && metier ? METIERS_TARIFS[secteur]?.[metier] : null;
-  const sliderMin    = 1;
-  const sliderMax    = 100;
-  const tarifClient  = prixClient(tarifNet, secteur || "divers");
+  const addMetier = () => {
+    if (!newMetier.sector || !newMetier.metier) return;
+    setMetiers(prev => [...prev, {...newMetier, id: Date.now()}]);
+    setNewMetier({sector:"", metier:"", niveau:"Confirmé", tarifNet:12, certifs:""});
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 1500);
+  };
+  const allCompListe = [...new Set((metiers).flatMap(m => COMPETENCES_PAR_SECTEUR[m.sector]||[]))];
 
-  const STEP_TITLES = ["Votre identité","Secteur & Métier","Expérience","Disponibilités","Rémunération & Statut","Votre abonnement","Récapitulatif"];
+  const STEP_TITLES = ["Votre identité","Vos métiers","Expérience","Disponibilités","Statut & Paiement","Votre abonnement","Récapitulatif"];
   const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","⚡","✅"];
 
   return (
@@ -1139,30 +1135,83 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 2 && <>
-          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Dans quel secteur exercez-vous votre activité ?</p>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-            {SECTORS.map(s => (
-              <button key={s.id} onClick={()=>{setSecteur(s.id); setMetier(""); setCompetences([]);}} style={{ padding:"14px 10px", borderRadius:r, border:`2px solid ${secteur===s.id?s.color:C.border}`, background:secteur===s.id?`${s.color}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
-                <div style={{ fontSize:26, marginBottom:6 }}>{s.icon}</div>
-                <div style={{ color:secteur===s.id?s.color:C.textSub, fontWeight:secteur===s.id?700:500, fontSize:12 }}>{s.label}</div>
-              </button>
-            ))}
-          </div>
-          {secteur && <>
-            <p style={{ color:C.textSub, fontSize:13, marginBottom:10 }}>Quel est votre métier principal ?</p>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {metiersListe.map(m => (
-                <button key={m} onClick={()=>setMetier(m)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${metier===m?(secteurInfo?.color||accentColor):C.border}`, background:metier===m?`${secteurInfo?.color||accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center", transition:"all 0.2s" }}>
-                  <span style={{ color:metier===m?(secteurInfo?.color||accentColor):C.text, fontWeight:metier===m?700:500, fontSize:14 }}>{m}</span>
-                  {METIERS_TARIFS[secteur]?.[m] && <span style={{ color:C.textSub, fontSize:12 }}>{METIERS_TARIFS[secteur][m].min}–{METIERS_TARIFS[secteur][m].max} €/h</span>}
-                </button>
+          {/* Liste des métiers ajoutés */}
+          {metiers.length > 0 && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:0 }}>Vos métiers ({metiers.length})</p>
+                <span style={{ background:`${C.success}20`, color:C.success, fontSize:11, fontWeight:700, borderRadius:8, padding:"3px 10px" }}>✓ {metiers.length} ajouté{metiers.length>1?"s":""}</span>
+              </div>
+              {metiers.map((m,i) => (
+                <div key={m.id} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px 14px", marginBottom:8, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:`${accentColor}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                    {SECTORS.find(s=>s.id===m.sector)?.icon||"💼"}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.metier}</div>
+                    <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{SECTORS.find(s=>s.id===m.sector)?.label} · {m.niveau}</div>
+                    <div style={{ display:"flex", gap:10, marginTop:4, alignItems:"center" }}>
+                      <span style={{ fontSize:13, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet)}</span>
+                      <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet, m.sector||"divers"))}</span>
+                    </div>
+                  </div>
+                  <button onClick={()=>setMetiers(prev=>prev.filter((_,j)=>j!==i))} style={{ background:"rgba(242,94,94,0.1)", border:"none", borderRadius:8, width:30, height:30, color:"#F25E5E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>×</button>
+                </div>
               ))}
             </div>
-          </>}
+          )}
+          {/* Formulaire ajout métier */}
+          <div style={{ background:"#0D1B3E", borderRadius:14, padding:"16px", marginBottom:8, border:`1px dashed ${C.border}` }}>
+            <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"0 0 2px" }}>
+              {metiers.length===0 ? "+ Ajouter un métier" : "+ Ajouter un autre métier"}
+            </p>
+            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 14px" }}>
+              {metiers.length===0 ? "Indiquez votre secteur et métier principal" : "Chaque métier peut avoir son propre taux horaire"}
+            </p>
+            <Select label="Secteur" options={SECTORS.map(s=>s.label)} value={SECTORS.find(s=>s.id===newMetier.sector)?.label||""} onChange={e=>{const s=SECTORS.find(x=>x.label===e.target.value);setNewMetier({...newMetier,sector:s?.id||"",metier:""});}} />
+            {newMetier.sector && <Select label="Métier" options={METIERS[newMetier.sector]||[]} value={newMetier.metier} onChange={e=>{
+              const tarif=METIERS_TARIFS[newMetier.sector]?.[e.target.value];
+              setNewMetier({...newMetier, metier:e.target.value, tarifNet:tarif?.default||tarif?.min||12});
+            }} />}
+            {newMetier.sector && newMetier.metier && (()=>{
+              const t=METIERS_TARIFS[newMetier.sector]?.[newMetier.metier];
+              const net=newMetier.tarifNet||t?.default||t?.min||12;
+              return (
+                <div style={{ background:`${accentColor}08`, border:`1px solid ${accentColor}22`, borderRadius:r, padding:"14px", marginBottom:14 }}>
+                  {t && <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:8, padding:"8px 12px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>💡 Fourchette marché</span>
+                    <span style={{ fontSize:13, color:C.accentGold, fontWeight:800 }}>{formatE(t.min)} — {formatE(t.max)}</span>
+                  </div>}
+                  <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Taux horaire souhaité</label>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                    <div style={{ flex:1, position:"relative" }}>
+                      <input type="number" min={1} step={0.5} value={net}
+                        onChange={e=>setNewMetier({...newMetier, tarifNet:Math.max(1,+e.target.value||1)})}
+                        style={{ width:"100%", padding:"12px 44px 12px 16px", borderRadius:10, border:`2px solid ${accentColor}`, fontSize:18, fontWeight:800, color:accentColor, fontFamily:"inherit", outline:"none", boxSizing:"border-box", textAlign:"center", background:"#162547" }} />
+                      <span style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", color:C.textSub, fontSize:13, fontWeight:600 }}>€/h</span>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.round((net+0.5)*10)/10})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>＋</button>
+                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.max(1,Math.round((net-0.5)*10)/10)})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>－</button>
+                    </div>
+                  </div>
+                  <div style={{ background:"#162547", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div><div style={{ fontSize:10, color:C.textSub }}>Vous encaissez</div><div style={{ fontSize:18, fontWeight:800, color:C.success }}>{formatE(net)}</div></div>
+                    <span style={{ color:C.grayLight }}>→</span>
+                    <div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:C.textSub }}>Affiché clients</div><div style={{ fontSize:18, fontWeight:800, color:C.text }}>{formatE(prixClient(net,newMetier.sector||"divers"))}</div></div>
+                  </div>
+                </div>
+              );
+            })()}
+            {newMetier.sector && newMetier.metier && <Select label="Niveau" options={["Débutant","Confirmé","Expert"]} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />}
+            <Btn full onClick={addMetier} disabled={!newMetier.sector||!newMetier.metier} variant={justAdded?"success":"primary"} style={{ padding:"12px", fontSize:14 }}>
+              {justAdded ? "✓ Métier ajouté !" : metiers.length===0 ? "+ Ajouter ce métier" : "+ Ajouter un autre métier"}
+            </Btn>
+          </div>
         </>}
 
         {step === 3 && <>
-          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Votre niveau pour le poste de <strong style={{ color:C.text }}>{metier}</strong> ?</p>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Quel est votre niveau général ?</p>
           <div style={{ display:"flex", gap:8, marginBottom:20 }}>
             {NIVEAUX.map(n => (
               <button key={n} onClick={()=>setNiveau(n)} style={{ flex:1, padding:"13px 8px", borderRadius:r, border:`2px solid ${niveau===n?accentColor:C.border}`, background:niveau===n?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
@@ -1175,10 +1224,10 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             Années d'expérience : <span style={{ color:accentColor, fontWeight:800 }}>{experienceAns} an{experienceAns>1?"s":""}</span>
           </label>
           <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
-          {compListe.length > 0 && <>
+          {allCompListe.length > 0 && <>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Compétences clés (optionnel)</label>
             <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
-              {compListe.map(c => (
+              {allCompListe.map(c => (
                 <button key={c} onClick={()=>toggleItem(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?accentColor:C.border}`, background:competences.includes(c)?`${accentColor}25`:"transparent", color:competences.includes(c)?accentColor:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
               ))}
             </div>
@@ -1236,26 +1285,6 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 5 && <>
-          <div style={{ marginBottom:20 }}>
-            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
-              Tarif horaire net souhaité : <span style={{ color:accentColor, fontWeight:800, fontSize:16 }}>{tarifNet.toFixed(2)} €/h</span>
-            </label>
-            <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:8 }} />
-            <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}>
-              <span>{sliderMin} €/h</span><span>{sliderMax} €/h</span>
-            </div>
-            {tarifInfo && (
-              <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"7px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
-                {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
-                {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
-                📊 Fourchette marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h net</strong>
-              </div>
-            )}
-            <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"12px 14px", marginTop:12, display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontSize:16 }}>ℹ️</span>
-              <span style={{ color:C.textSub, fontSize:12 }}>Le client verra <strong style={{ color:C.text }}>{tarifClient.toFixed(2)} €/h</strong> (frais inclus). Vous encaissez <strong style={{ color:accentColor }}>{tarifNet.toFixed(2)} €/h</strong>.</span>
-            </div>
-          </div>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Statut professionnel *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
@@ -1319,13 +1348,11 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             {[
               { l:"Nom",           v:`${prenom} ${nom}` },
               { l:"Téléphone",     v:telephone },
-              { l:"Secteur",       v:secteurInfo?.label || secteur },
-              { l:"Métier",        v:metier },
+              { l:"Métiers",       v:metiers.map(m=>`${m.metier} (${formatE(m.tarifNet)}/h)`).join(", ") || "—" },
               { l:"Niveau",        v:niveau },
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
               { l:"Disponibilités",v:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j.slice(0,3)}: ${(dispos[j]||[]).map(c=>c.split(" ")[0]).join(", ")}`).join(" · ") || "—" },
               { l:"Langues",       v:langues.join(", ") },
-              { l:"Tarif net",     v:`${tarifNet.toFixed(2)} €/h` },
               { l:"Statut",        v:statutPro },
               { l:"Abonnement",    v:(ABONNEMENTS_PRESTA.find(p=>p.id===planChoisi)||ABONNEMENTS_PRESTA[0]).label },
             ].map(({l,v}) => (
