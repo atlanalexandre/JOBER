@@ -33,16 +33,78 @@ function emailHtml(content) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { subject, message, userEmail, userName, userId } = req.body;
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+  const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+
+  // ── booking_confirm: send booking confirmation email to client ────
+  if (req.body?.action === "booking_confirm") {
+    const { clientEmail, clientName, prestaName, date, hours, total, job } = req.body;
+    if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
+    if (RESEND_API_KEY) {
+      const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#0A1628;font-family:'DM Sans',system-ui,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.10);">
+<tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:32px 28px 24px;text-align:center;">
+<div style="font-size:42px;margin-bottom:10px;">✅</div>
+<h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">Réservation confirmée !</h1>
+<p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Votre mission a bien été enregistrée</p></td></tr>
+<tr><td style="padding:28px;">
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName)||"cher client"}</strong>,</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#162547;border-radius:14px;overflow:hidden;margin-bottom:24px;border:1px solid rgba(124,111,224,0.25);"><tr><td style="padding:18px 20px;">
+<p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la mission</p>
+${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["💶 Total bloqué",total?`${esc(String(total))} €`:"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
+</td></tr></table>
+<p style="color:#10D98F;font-size:13px;font-weight:600;margin:0 0 20px;">🔒 Votre argent est sécurisé en escrow et ne sera libéré qu'après validation mutuelle.</p>
+<div style="text-align:center;margin-top:20px;"><a href="https://www.alane.fr" style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>
+</td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+</table></td></tr></table></body></html>`;
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `✅ Réservation confirmée — ${esc(job)||"Mission"} · ALANE`, html: bookingHtml }),
+      }).catch(() => {});
+    }
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── notify_signup: notify admin of new registration ──────────────
+  if (req.body?.action === "notify_signup") {
+    const { prenom, nom, email, role } = req.body;
+    if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
+
+    if (!RESEND_API_KEY || !ADMIN_EMAIL || !RESEND_FROM) {
+      return res.status(200).json({ ok: true, warning: "email skipped, missing env vars" });
+    }
+
+    const roleLabel = role === "prestataire" ? "Prestataire" : "Client";
+    const html = emailHtml(`
+      <p>Un nouveau compte est en attente de validation.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;width:120px;">Nom</td><td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600;">${esc(prenom)} ${esc(nom)}</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;">Email</td><td style="padding:8px 0;border-bottom:1px solid #eee;">${esc(email)}</td></tr>
+        <tr><td style="padding:8px 0;color:#888;">Rôle</td><td style="padding:8px 0;"><span style="background:${role === "prestataire" ? "#7C6FE020" : "#F0B42920"};color:${role === "prestataire" ? "#7C6FE0" : "#F0B429"};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">${esc(roleLabel)}</span></td></tr>
+      </table>
+      <p style="text-align:center;margin:24px 0;"><a href="https://www.alane.fr" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
+    `);
+
+    try {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: RESEND_FROM, to: [ADMIN_EMAIL], subject: `Nouvelle inscription ${roleLabel} — ${prenom} ${nom}`, html }),
+      });
+    } catch {}
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── default: support ticket ───────────────────────────────────────
+  const { subject, message, userEmail, userName, userId } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const RESEND_API_KEY   = process.env.RESEND_API_KEY;
-  const ADMIN_EMAIL      = process.env.ADMIN_EMAIL;
-  const RESEND_FROM      = process.env.RESEND_FROM || "onboarding@resend.dev";
-
-  console.log("support.js — ADMIN_EMAIL:", ADMIN_EMAIL ? "set" : "missing", "| RESEND_API_KEY:", RESEND_API_KEY ? "set" : "missing");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
@@ -65,15 +127,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Impossible d'enregistrer le ticket" });
     }
 
-    // Notify admin by email via Resend
     if (RESEND_API_KEY && ADMIN_EMAIL) {
       try {
-        const emailRes = await fetch("https://api.resend.com/emails", {
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: {
-            "Authorization": `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: RESEND_FROM,
             to: [ADMIN_EMAIL],
@@ -88,11 +146,7 @@ export default async function handler(req, res) {
             `),
           }),
         });
-        const emailData = await emailRes.json();
-        console.log("Resend response:", JSON.stringify(emailData));
-      } catch (emailErr) {
-        console.error("Resend error:", emailErr);
-      }
+      } catch {}
     }
 
     return res.status(200).json({ success: true });

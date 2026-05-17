@@ -1069,10 +1069,10 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
       await supabase.auth.signOut();
@@ -1442,10 +1442,10 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
       await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
       await supabase.auth.signOut();
@@ -1650,7 +1650,13 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     setLoading(true); setError("");
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) { setLoading(false); setError(err.message); return; }
+    if (err) {
+      setLoading(false);
+      setError(err.message === "Email not confirmed"
+        ? "Email non confirmé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation avant de vous connecter."
+        : err.message);
+      return;
+    }
 
     const { data:{ user } } = await supabase.auth.getUser();
     const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
@@ -1710,10 +1716,10 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
-      await fetch("/api/notify-admin", {
+      await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prenom: prenom.trim(), nom: nom.trim(), email, role }),
+        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
       }).catch(() => {});
       await supabase.auth.signOut();
     }
@@ -2876,6 +2882,87 @@ function useProviders() {
   return { providers, loading };
 }
 
+// ── LEAFLET MAP ───────────────────────────────────────────────────
+const FR_CITY_COORDS = {
+  "paris":[48.8566,2.3522],"lyon":[45.7640,4.8357],"marseille":[43.2965,5.3698],
+  "toulouse":[43.6047,1.4442],"nice":[43.7102,7.2620],"nantes":[47.2184,-1.5536],
+  "montpellier":[43.6119,3.8772],"strasbourg":[48.5734,7.7521],"bordeaux":[44.8378,-0.5792],
+  "lille":[50.6292,3.0573],"rennes":[48.1173,-1.6778],"reims":[49.2583,4.0317],
+  "toulon":[43.1242,5.9280],"saint-etienne":[45.4397,4.3872],"grenoble":[45.1885,5.7245],
+  "dijon":[47.3220,5.0415],"angers":[47.4784,-0.5632],"nimes":[43.8367,4.3601],
+  "villeurbanne":[45.7676,4.8796],"le mans":[48.0061,0.1996],"aix-en-provence":[43.5297,5.4474],
+  "clermont-ferrand":[45.7772,3.0870],"brest":[48.3905,-4.4860],"tours":[47.3941,0.6848],
+  "amiens":[49.8941,2.2958],"limoges":[45.8315,1.2578],"metz":[49.1193,6.1757],"nancy":[48.6921,6.1844],
+};
+
+function loadLeaflet() {
+  return new Promise(resolve => {
+    if (window.L) { resolve(window.L); return; }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => resolve(window.L);
+    document.head.appendChild(script);
+  });
+}
+
+function cityCoords(ville) {
+  if (!ville) return null;
+  const key = ville.toLowerCase().trim();
+  for (const [k, v] of Object.entries(FR_CITY_COORDS)) {
+    if (Array.isArray(v) && (key === k || key.startsWith(k))) return v;
+  }
+  return null;
+}
+
+function LeafletMap({ providers, onNavigate }) {
+  const mapRef = React.useRef(null);
+  const instanceRef = React.useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadLeaflet().then(L => {
+      if (cancelled || !mapRef.current || instanceRef.current) return;
+      const map = L.map(mapRef.current, { zoomControl: true }).setView([46.603354, 1.8883335], 6);
+      instanceRef.current = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 18,
+      }).addTo(map);
+
+      providers.forEach(p => {
+        const coords = cityCoords(p.ville || p.city);
+        if (!coords) return;
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="background:${p.available?"#10D98F":"#8B8FA8"};color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${p.avatar}</div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+        });
+        const marker = L.marker(coords, { icon }).addTo(map);
+        marker.bindPopup(`<div style="font-family:system-ui;min-width:140px"><strong>${p.name}</strong><br/><span style="color:#666;font-size:12px">${p.jobTitle||""}</span><br/><span style="color:#7C6FE0;font-weight:700">${p.hourlyRate}</span><br/><span style="color:${p.available?"#10D98F":"#888"};font-size:12px">${p.available?"● Disponible":"○ Occupé"}</span></div>`);
+        marker.on("click", () => { setTimeout(() => onNavigate("profile", p), 300); });
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (instanceRef.current) { instanceRef.current.remove(); instanceRef.current = null; }
+    };
+  }, []);
+
+  return (
+    <div style={{ borderRadius:14, overflow:"hidden", border:`1px solid ${C.border}`, marginBottom:12 }}>
+      <div ref={mapRef} style={{ height:400, width:"100%", background:"#0D1B3E" }} />
+      <div style={{ background:"#0D1B3E", padding:"8px 12px", fontSize:11, color:C.textSub }}>
+        ● Vert = disponible · ○ Gris = occupé · Cliquer sur un marqueur pour voir le profil
+      </div>
+    </div>
+  );
+}
+
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
 function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const s = sector || SECTORS[0];
@@ -2884,7 +2971,9 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [filterDispo, setFilterDispo] = useState(false);
   const [filterTarifMax, setFilterTarifMax] = useState(50);
   const [filterNoteMin, setFilterNoteMin] = useState(0);
+  const [filterCertified, setFilterCertified] = useState(false);
   const [sortBy, setSortBy] = useState("rating");
+  const [showMap, setShowMap] = useState(false);
   const filterKey = `alane_filters_${s.id}`;
   useEffect(() => {
     try {
@@ -2893,14 +2982,15 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
       if(saved.filterDispo!==undefined) setFilterDispo(saved.filterDispo);
       if(saved.filterTarifMax!==undefined) setFilterTarifMax(saved.filterTarifMax);
       if(saved.filterNoteMin!==undefined) setFilterNoteMin(saved.filterNoteMin);
+      if(saved.filterCertified!==undefined) setFilterCertified(saved.filterCertified);
       if(saved.sortBy!==undefined) setSortBy(saved.sortBy);
     } catch(_) {}
   }, []);
   useEffect(() => {
     try {
-      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy }));
+      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy }));
     } catch(_) {}
-  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy]);
+  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy]);
   const [showFilters, setShowFilters] = useState(false);
   const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
@@ -2923,6 +3013,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     .filter(p => !selectedDay || (p.dispon_jours||[]).includes(selectedDay))
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
+    .filter(p => !filterCertified || p.plan === "premium" || p.plan === "elite")
     .sort((a,b) => {
       const planDiff = (b.planRank||0) - (a.planRank||0);
       if(planDiff !== 0) return planDiff;
@@ -3074,7 +3165,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <input type="range" min={10} max={50} step={1} value={filterTarifMax} onChange={e=>setFilterTarifMax(Number(e.target.value))} style={{ width:"100%", accentColor:s.color }} />
                   <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:10, marginTop:2 }}><span>10 €/h</span><span>50 €/h</span></div>
                 </div>
-                <div>
+                <div style={{ marginBottom:14 }}>
                   <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Note minimum</div>
                   <div style={{ display:"flex", gap:8 }}>
                     {[0,3,4,4.5].map(n=>(
@@ -3084,8 +3175,14 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                     ))}
                   </div>
                 </div>
-                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate) && (
-                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                <div onClick={()=>setFilterCertified(!filterCertified)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+                  <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>✓ Certifiés uniquement <span style={{ color:C.textMuted, fontSize:11, fontWeight:400 }}>(Premium & Elite)</span></span>
+                  <div style={{ width:40, height:22, borderRadius:11, background:filterCertified?C.violet:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                    <div style={{ position:"absolute", top:2, left:filterCertified?20:2, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                  </div>
+                </div>
+                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate||filterCertified) && (
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); setFilterCertified(false); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
                 )}
               </div>
             )}
@@ -3149,7 +3246,20 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           ) : (
             /* ── MODE NORMAL → liste des prestataires ── */
             <>
-              {filteredProviders.length === 0 ? (
+              {/* Toggle liste / carte */}
+              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
+                <div style={{ display:"flex", background:"rgba(255,255,255,0.06)", borderRadius:10, padding:3, border:`1px solid ${C.border}` }}>
+                  {[{id:false, label:"📋 Liste"},{id:true, label:"🗺️ Carte"}].map(v => (
+                    <button key={String(v.id)} onClick={()=>setShowMap(v.id)} style={{ padding:"6px 14px", borderRadius:8, border:"none", background:showMap===v.id?C.violet:"transparent", color:showMap===v.id?"#fff":C.textSub, fontSize:12, fontWeight:showMap===v.id?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s" }}>{v.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Vue carte */}
+              {showMap && <LeafletMap providers={filteredProviders} onNavigate={onNavigate} />}
+
+              {/* Vue liste */}
+              {!showMap && (filteredProviders.length === 0 ? (
                 <div style={{ background:"#0D1B3E", borderRadius:r, padding:"24px", textAlign:"center", border:`1px solid ${C.border}` }}>
                   <div style={{ fontSize:32, marginBottom:8 }}>😔</div>
                   <div style={{ fontWeight:700, color:C.text, marginBottom:4 }}>Aucun prestataire disponible</div>
@@ -3211,7 +3321,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </>
           )}
 
@@ -7115,10 +7225,10 @@ function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
             setEmailSending(true);
             const { data:{ user } } = await supabase.auth.getUser();
             if(user?.email) {
-              await fetch("/api/booking-confirm", {
+              await fetch("/api/support", {
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
-                body: JSON.stringify({ clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
+                body: JSON.stringify({ action:"booking_confirm", clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
               }).catch(()=>{});
             }
             setEmailSending(false); setEmailSent(true);
@@ -7549,15 +7659,19 @@ function useBoData() {
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState(null);
 
+  const fetchAll = () => Promise.all([
+    boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
+    boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
+  ]).then(([stats, vis]) => {
+    setData(stats);
+    setVisits(vis);
+    setLoading(false);
+  });
+
   useEffect(() => {
-    Promise.all([
-      boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
-      boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
-    ]).then(([stats, vis]) => {
-      setData(stats);
-      setVisits(vis);
-      setLoading(false);
-    });
+    fetchAll();
+    const iv = setInterval(fetchAll, 60000);
+    return () => clearInterval(iv);
   }, []);
 
   return { data, loading, visits };
@@ -8251,6 +8365,106 @@ function BOTest({ onNavigate }) {
   );
 }
 
+function BOLogs() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterAction, setFilterAction] = useState("all");
+  const [search, setSearch] = useState("");
+  useEffect(()=>{
+    const token = sessionStorage.getItem("bo_token");
+    fetch("/api/bo-action", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+      body: JSON.stringify({ action:"list_logs" }),
+    }).then(r=>r.json()).then(d=>{ setLogs(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
+  },[]);
+  const ACTION_LABELS = { approve:"✅ Approuvé", reject:"❌ Refusé", delete:"🗑️ Supprimé" };
+  const ACTION_COLORS = { approve:C.success, reject:"#F25E5E", delete:"#E67E22" };
+  const filtered = logs.filter(l=>{
+    if(filterAction !== "all" && l.action !== filterAction) return false;
+    if(search && !(l.target_email||"").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  return (
+    <div>
+      <h3 style={{ color:C.text, fontSize:16, fontWeight:700, margin:"0 0 12px" }}>📋 Journal des actions BO</h3>
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un email…" style={{ flex:1, padding:"8px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, fontFamily:"inherit", outline:"none" }} />
+        <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:12, fontFamily:"inherit" }}>
+          <option value="all">Toutes</option>
+          <option value="approve">Approuvés</option>
+          <option value="reject">Refusés</option>
+          <option value="delete">Supprimés</option>
+        </select>
+      </div>
+      {loading ? <div style={{ color:C.textMuted, fontSize:13 }}>Chargement…</div> :
+      filtered.length === 0 ? <div style={{ color:C.textMuted, fontSize:13 }}>Aucune action trouvée.</div> :
+      filtered.map(l=>(
+        <div key={l.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:ACTION_COLORS[l.action]||C.textMuted, flexShrink:0 }} />
+          <div style={{ flex:1 }}>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600 }}>{ACTION_LABELS[l.action]||l.action}</div>
+            <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>{l.target_email||l.target_id||"—"}{l.reason?` · ${l.reason}`:""}</div>
+          </div>
+          <div style={{ color:C.textMuted, fontSize:11, flexShrink:0 }}>{l.created_at?new Date(l.created_at).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—"}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BORefundSection() {
+  const [missions, setMissions] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [refunding, setRefunding] = useState(null);
+  const [done, setDone]         = useState({});
+
+  useEffect(() => {
+    boFetch({ action: "list_paid_missions" })
+      .then(r => r.json())
+      .then(data => { setMissions(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleRefund = async (m) => {
+    if (!window.confirm(`Rembourser ${m.montant_total} € pour la mission ${m.id.slice(0,8)} ?`)) return;
+    setRefunding(m.id);
+    const token = sessionStorage.getItem("bo_token") || "";
+    const r = await fetch("/api/stripe-refund", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ paymentIntentId: m.stripe_payment_intent, missionId: m.id }),
+    });
+    const j = await r.json();
+    setRefunding(null);
+    if (j.ok) setDone(prev => ({ ...prev, [m.id]: true }));
+    else alert(`Erreur : ${j.error}`);
+  };
+
+  if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"12px 0" }}>Chargement remboursements…</div>;
+  if (!missions.length) return null;
+
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:16, padding:16, marginTop:4 }}>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>↩ Remboursements Stripe</div>
+      {missions.map(m => (
+        <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
+          <div>
+            <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {m.montant_total} €</div>
+            <div style={{ color:C.textSub, fontSize:11 }}>{new Date(m.created_at).toLocaleDateString("fr-FR")} · {m.stripe_payment_intent?.slice(0,20)}…</div>
+          </div>
+          {done[m.id]
+            ? <span style={{ color:C.success, fontSize:12, fontWeight:700 }}>✅ Remboursé</span>
+            : <button onClick={() => handleRefund(m)} disabled={refunding === m.id} style={{ background:"rgba(242,94,94,0.15)", border:`1px solid ${C.danger}`, color:C.danger, borderRadius:8, padding:"5px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                {refunding === m.id ? "…" : "↩ Rembourser"}
+              </button>
+          }
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
   const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
@@ -8302,6 +8516,7 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
             {id:"moderation", l:"⚠️ Modération"},
+            {id:"logs",       l:"📋 Logs"},
             {id:"test",       l:"🧪 Test"},
           ].map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
@@ -8329,6 +8544,9 @@ function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── TEST ── */}
         {tab==="test" && <BOTest onNavigate={onNavigate} />}
+
+        {/* ── LOGS ── */}
+        {tab==="logs" && <BOLogs />}
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
@@ -8534,10 +8752,12 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             })}
           </div>
 
-          <div style={{ display:"flex", gap:10 }}>
+          <div style={{ display:"flex", gap:10, marginBottom:16 }}>
             <BOExportCSV d={d} />
             <BOExportPDF d={d} />
           </div>
+
+          <BORefundSection />
         </>}
 
         {/* ── MODÉRATION ── */}
@@ -9718,9 +9938,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {hybridBanner}
         {/* Desktop content wrapper */}
         <div style={{
-          maxWidth: showSidebar ? 900 : 480,
+          maxWidth: showSidebar ? 900 : screen === "bo_dashboard" ? "none" : 480,
           width:"100%",
-          margin: showSidebar ? "0 auto" : "0 auto",
+          margin: "0 auto",
           flex:1,
           padding: showSidebar ? "0 0 40px" : "0",
         }}>
@@ -10174,6 +10394,15 @@ function RatingScreen({ provider, missionId, onSubmit, onBack }) {
         <Btn full disabled={rating===0||saving} onClick={async()=>{
           setSaving(true);
           try {
+            // Vérifier qu'une mission complétée existe entre le client et ce prestataire
+            if(userId && p.id) {
+              const { data: mCheck } = await supabase.from("missions")
+                .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
+              if(!mCheck?.length) {
+                alert("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
+                setSaving(false); return;
+              }
+            }
             await supabase.from("ratings").insert({
               reviewer_id: userId,
               reviewee_provider_id: p.id,
@@ -10349,11 +10578,13 @@ function AbonnementPrestaScreen({ onBack }) {
   const [loaded,setLoaded]=useState(false);
   const [missionsUsed,setMissionsUsed]=useState(0);
   const [pendingPlan,setPendingPlan]=useState(null);
+  const [endDate,setEndDate]=useState(null);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
       const u=data?.user; if(!u) return;
       setCurrent(u.user_metadata?.plan_abonnement||"free");
+      setEndDate(u.user_metadata?.subscription_end_date||null);
       setLoaded(true);
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -10418,6 +10649,14 @@ function AbonnementPrestaScreen({ onBack }) {
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Tarif transparent · prix affiché = prix réel</p>
+        {endDate && current !== "free" && (
+          <div style={{ marginTop:10, display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
+            <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
+              {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
+              {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
+            </span>
+          </div>
+        )}
       </div>
       <div style={{ padding:"20px 18px" }}>
         {isLaunchPhase() && (
@@ -11037,9 +11276,10 @@ export default function App() {
             if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
           }
           await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
-          fetch("/api/booking-confirm", {
+          fetch("/api/support", {
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
+              action: "booking_confirm",
               clientEmail: ud?.user?.email||null,
               clientName: ud?.user?.user_metadata?.prenom||null,
               prestaName: selectedProvider.name||null,

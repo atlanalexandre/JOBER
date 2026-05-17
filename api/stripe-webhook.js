@@ -78,17 +78,19 @@ export default async function handler(req, res) {
     const session = event.data.object;
     const userId  = session.metadata?.user_id || session.client_reference_id;
     const plan    = session.metadata?.plan;
+    const billing = session.metadata?.billing || "monthly";
     if (userId && plan && SUPABASE_URL && SERVICE_ROLE_KEY) {
       const hdrs = {
         "apikey":        SERVICE_ROLE_KEY,
         "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
         "Content-Type":  "application/json",
       };
-      // Update user_metadata plan via admin API
+      const daysToAdd = billing === "yearly" ? 365 : 30;
+      const endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
       await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
         method: "PUT",
         headers: hdrs,
-        body: JSON.stringify({ user_metadata: { plan_abonnement: plan } }),
+        body: JSON.stringify({ user_metadata: { plan_abonnement: plan, subscription_end_date: endDate } }),
       }).catch(() => {});
     }
   }

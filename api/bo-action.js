@@ -398,6 +398,24 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === "list_logs") {
+      const logsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/bo_logs?order=created_at.desc&limit=200`,
+        { headers }
+      );
+      const logs = await logsRes.json();
+      return res.status(200).json(Array.isArray(logs) ? logs : []);
+    }
+
+    if (action === "list_paid_missions") {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=not.is.null&status=eq.completed&select=id,montant_total,stripe_payment_intent,created_at,sector,metier&order=created_at.desc&limit=50`,
+        { headers }
+      );
+      const data = await r.json();
+      return res.status(200).json(Array.isArray(data) ? data : []);
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
