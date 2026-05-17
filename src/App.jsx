@@ -2882,6 +2882,87 @@ function useProviders() {
   return { providers, loading };
 }
 
+// ── LEAFLET MAP ───────────────────────────────────────────────────
+const FR_CITY_COORDS = {
+  "paris":[48.8566,2.3522],"lyon":[45.7640,4.8357],"marseille":[43.2965,5.3698],
+  "toulouse":[43.6047,1.4442],"nice":[43.7102,7.2620],"nantes":[47.2184,-1.5536],
+  "montpellier":[43.6119,3.8772],"strasbourg":[48.5734,7.7521],"bordeaux":[44.8378,-0.5792],
+  "lille":[50.6292,3.0573],"rennes":[48.1173,-1.6778],"reims":[49.2583,4.0317],
+  "toulon":[43.1242,5.9280],"saint-etienne":[45.4397,4.3872],"grenoble":[45.1885,5.7245],
+  "dijon":[47.3220,5.0415],"angers":[47.4784,-0.5632],"nimes":[43.8367,4.3601],
+  "villeurbanne":[45.7676,4.8796],"le mans":[48.0061,0.1996],"aix-en-provence":[43.5297,5.4474],
+  "clermont-ferrand":[45.7772,3.0870],"brest":[48.3905,-4.4860],"tours":[47.3941,0.6848],
+  "amiens":[49.8941,2.2958],"limoges":[45.8315,1.2578],"metz":[49.1193,6.1757],"nancy":[48.6921,6.1844],
+};
+
+function loadLeaflet() {
+  return new Promise(resolve => {
+    if (window.L) { resolve(window.L); return; }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => resolve(window.L);
+    document.head.appendChild(script);
+  });
+}
+
+function cityCoords(ville) {
+  if (!ville) return null;
+  const key = ville.toLowerCase().trim();
+  for (const [k, v] of Object.entries(FR_CITY_COORDS)) {
+    if (Array.isArray(v) && (key === k || key.startsWith(k))) return v;
+  }
+  return null;
+}
+
+function LeafletMap({ providers, onNavigate }) {
+  const mapRef = React.useRef(null);
+  const instanceRef = React.useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadLeaflet().then(L => {
+      if (cancelled || !mapRef.current || instanceRef.current) return;
+      const map = L.map(mapRef.current, { zoomControl: true }).setView([46.603354, 1.8883335], 6);
+      instanceRef.current = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 18,
+      }).addTo(map);
+
+      providers.forEach(p => {
+        const coords = cityCoords(p.ville || p.city);
+        if (!coords) return;
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="background:${p.available?"#10D98F":"#8B8FA8"};color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${p.avatar}</div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+        });
+        const marker = L.marker(coords, { icon }).addTo(map);
+        marker.bindPopup(`<div style="font-family:system-ui;min-width:140px"><strong>${p.name}</strong><br/><span style="color:#666;font-size:12px">${p.jobTitle||""}</span><br/><span style="color:#7C6FE0;font-weight:700">${p.hourlyRate}</span><br/><span style="color:${p.available?"#10D98F":"#888"};font-size:12px">${p.available?"● Disponible":"○ Occupé"}</span></div>`);
+        marker.on("click", () => { setTimeout(() => onNavigate("profile", p), 300); });
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (instanceRef.current) { instanceRef.current.remove(); instanceRef.current = null; }
+    };
+  }, []);
+
+  return (
+    <div style={{ borderRadius:14, overflow:"hidden", border:`1px solid ${C.border}`, marginBottom:12 }}>
+      <div ref={mapRef} style={{ height:400, width:"100%", background:"#0D1B3E" }} />
+      <div style={{ background:"#0D1B3E", padding:"8px 12px", fontSize:11, color:C.textSub }}>
+        ● Vert = disponible · ○ Gris = occupé · Cliquer sur un marqueur pour voir le profil
+      </div>
+    </div>
+  );
+}
+
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
 function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const s = sector || SECTORS[0];
@@ -2892,6 +2973,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [filterNoteMin, setFilterNoteMin] = useState(0);
   const [filterCertified, setFilterCertified] = useState(false);
   const [sortBy, setSortBy] = useState("rating");
+  const [showMap, setShowMap] = useState(false);
   const filterKey = `alane_filters_${s.id}`;
   useEffect(() => {
     try {
@@ -3164,7 +3246,20 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           ) : (
             /* ── MODE NORMAL → liste des prestataires ── */
             <>
-              {filteredProviders.length === 0 ? (
+              {/* Toggle liste / carte */}
+              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
+                <div style={{ display:"flex", background:"rgba(255,255,255,0.06)", borderRadius:10, padding:3, border:`1px solid ${C.border}` }}>
+                  {[{id:false, label:"📋 Liste"},{id:true, label:"🗺️ Carte"}].map(v => (
+                    <button key={String(v.id)} onClick={()=>setShowMap(v.id)} style={{ padding:"6px 14px", borderRadius:8, border:"none", background:showMap===v.id?C.violet:"transparent", color:showMap===v.id?"#fff":C.textSub, fontSize:12, fontWeight:showMap===v.id?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s" }}>{v.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Vue carte */}
+              {showMap && <LeafletMap providers={filteredProviders} onNavigate={onNavigate} />}
+
+              {/* Vue liste */}
+              {!showMap && (filteredProviders.length === 0 ? (
                 <div style={{ background:"#0D1B3E", borderRadius:r, padding:"24px", textAlign:"center", border:`1px solid ${C.border}` }}>
                   <div style={{ fontSize:32, marginBottom:8 }}>😔</div>
                   <div style={{ fontWeight:700, color:C.text, marginBottom:4 }}>Aucun prestataire disponible</div>
@@ -3226,7 +3321,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </>
           )}
 
@@ -7130,10 +7225,10 @@ function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
             setEmailSending(true);
             const { data:{ user } } = await supabase.auth.getUser();
             if(user?.email) {
-              await fetch("/api/booking-confirm", {
+              await fetch("/api/support", {
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
-                body: JSON.stringify({ clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
+                body: JSON.stringify({ action:"booking_confirm", clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
               }).catch(()=>{});
             }
             setEmailSending(false); setEmailSent(true);
@@ -8318,6 +8413,58 @@ function BOLogs() {
   );
 }
 
+function BORefundSection() {
+  const [missions, setMissions] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [refunding, setRefunding] = useState(null);
+  const [done, setDone]         = useState({});
+
+  useEffect(() => {
+    boFetch({ action: "list_paid_missions" })
+      .then(r => r.json())
+      .then(data => { setMissions(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleRefund = async (m) => {
+    if (!window.confirm(`Rembourser ${m.montant_total} € pour la mission ${m.id.slice(0,8)} ?`)) return;
+    setRefunding(m.id);
+    const token = sessionStorage.getItem("bo_token") || "";
+    const r = await fetch("/api/stripe-refund", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ paymentIntentId: m.stripe_payment_intent, missionId: m.id }),
+    });
+    const j = await r.json();
+    setRefunding(null);
+    if (j.ok) setDone(prev => ({ ...prev, [m.id]: true }));
+    else alert(`Erreur : ${j.error}`);
+  };
+
+  if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"12px 0" }}>Chargement remboursements…</div>;
+  if (!missions.length) return null;
+
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:16, padding:16, marginTop:4 }}>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>↩ Remboursements Stripe</div>
+      {missions.map(m => (
+        <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
+          <div>
+            <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {m.montant_total} €</div>
+            <div style={{ color:C.textSub, fontSize:11 }}>{new Date(m.created_at).toLocaleDateString("fr-FR")} · {m.stripe_payment_intent?.slice(0,20)}…</div>
+          </div>
+          {done[m.id]
+            ? <span style={{ color:C.success, fontSize:12, fontWeight:700 }}>✅ Remboursé</span>
+            : <button onClick={() => handleRefund(m)} disabled={refunding === m.id} style={{ background:"rgba(242,94,94,0.15)", border:`1px solid ${C.danger}`, color:C.danger, borderRadius:8, padding:"5px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                {refunding === m.id ? "…" : "↩ Rembourser"}
+              </button>
+          }
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
   const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
@@ -8605,10 +8752,12 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             })}
           </div>
 
-          <div style={{ display:"flex", gap:10 }}>
+          <div style={{ display:"flex", gap:10, marginBottom:16 }}>
             <BOExportCSV d={d} />
             <BOExportPDF d={d} />
           </div>
+
+          <BORefundSection />
         </>}
 
         {/* ── MODÉRATION ── */}
@@ -11127,9 +11276,10 @@ export default function App() {
             if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
           }
           await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
-          fetch("/api/booking-confirm", {
+          fetch("/api/support", {
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
+              action: "booking_confirm",
               clientEmail: ud?.user?.email||null,
               clientName: ud?.user?.user_metadata?.prenom||null,
               prestaName: selectedProvider.name||null,
