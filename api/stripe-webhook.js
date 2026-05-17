@@ -56,5 +56,24 @@ export default async function handler(req, res) {
     }
   }
 
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const userId  = session.metadata?.user_id || session.client_reference_id;
+    const plan    = session.metadata?.plan;
+    if (userId && plan && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const hdrs = {
+        "apikey":        SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type":  "application/json",
+      };
+      // Update user_metadata plan via admin API
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: "PUT",
+        headers: hdrs,
+        body: JSON.stringify({ user_metadata: { plan_abonnement: plan } }),
+      }).catch(() => {});
+    }
+  }
+
   return res.status(200).json({ received: true });
 }

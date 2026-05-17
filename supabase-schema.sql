@@ -229,3 +229,47 @@ CREATE POLICY "ratings_insert" ON ratings
 DROP POLICY IF EXISTS "ratings_read" ON ratings;
 CREATE POLICY "ratings_read" ON ratings
   FOR SELECT USING (true);
+
+-- ── TABLE contracts (contrats de mission signés) ─────────────────────
+CREATE TABLE IF NOT EXISTS contracts (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mission_id            text,
+  contract_number       text,
+  client_id             uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  prestataire_name      text,
+  prestataire_role      text,
+  nb_heures             numeric,
+  montant               numeric,
+  client_signed         boolean DEFAULT false,
+  prestataire_signed    boolean DEFAULT false,
+  client_signed_at      timestamptz,
+  prestataire_signed_at timestamptz,
+  created_at            timestamptz DEFAULT now()
+);
+
+ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "contracts_client_own" ON contracts;
+CREATE POLICY "contracts_client_own" ON contracts
+  FOR ALL USING (client_id = auth.uid());
+
+-- ── TABLE tracking_positions (localisation GPS prestataires) ─────────
+CREATE TABLE IF NOT EXISTS tracking_positions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mission_id      text NOT NULL,
+  prestataire_id  uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  lat             numeric NOT NULL,
+  lng             numeric NOT NULL,
+  updated_at      timestamptz DEFAULT now(),
+  UNIQUE (mission_id, prestataire_id)
+);
+
+ALTER TABLE tracking_positions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tracking_presta_write" ON tracking_positions;
+CREATE POLICY "tracking_presta_write" ON tracking_positions
+  FOR ALL USING (prestataire_id = auth.uid());
+
+DROP POLICY IF EXISTS "tracking_read" ON tracking_positions;
+CREATE POLICY "tracking_read" ON tracking_positions
+  FOR SELECT USING (true);
