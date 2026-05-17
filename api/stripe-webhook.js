@@ -39,8 +39,10 @@ export default async function handler(req, res) {
   catch { return res.status(400).json({ error: "JSON invalide" }); }
 
   if (event.type === "payment_intent.succeeded") {
-    const intent   = event.data.object;
-    const missionId = intent.metadata?.mission;
+    const intent        = event.data.object;
+    const missionId     = intent.metadata?.mission;
+    const candidatureId = intent.metadata?.candidature_id;
+    const prestataireId = intent.metadata?.prestataire_id;
     if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
       const headers = {
         "apikey":        SERVICE_ROLE_KEY,
@@ -48,11 +50,27 @@ export default async function handler(req, res) {
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
       };
+      const patch = { stripe_payment_intent: intent.id, status: "assigned" };
+      if (prestataireId) patch.prestataire_id = prestataireId;
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ stripe_payment_intent: intent.id, status: "assigned" }),
+        method: "PATCH", headers, body: JSON.stringify(patch),
       }).catch(() => {});
+      // Accepter la candidature + rejeter les autres
+      if (candidatureId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}`, {
+          method: "PATCH", headers, body: JSON.stringify({ status: "accepted" }),
+        }).catch(() => {});
+        await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${missionId}&id=neq.${candidatureId}`, {
+          method: "PATCH", headers, body: JSON.stringify({ status: "rejected" }),
+        }).catch(() => {});
+        // Notifier le prestataire
+        if (prestataireId) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers,
+            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée et le paiement confirmé. Préparez-vous pour la mission !", read: false }),
+          }).catch(() => {});
+        }
+      }
     }
   }
 

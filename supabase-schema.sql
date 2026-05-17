@@ -299,3 +299,14 @@ CREATE POLICY "favorites_own" ON favorites
 -- ── Colonnes parrainage sur profiles ───────────────────────────────────
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by  text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count integer DEFAULT 0;
+
+-- ── TABLE bo_logs (audit trail des actions backoffice) ─────────────────
+CREATE TABLE IF NOT EXISTS bo_logs (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  action       text NOT NULL,
+  target_id    uuid,
+  target_email text,
+  reason       text,
+  created_at   timestamptz DEFAULT now()
+);
+ALTER TABLE bo_logs ENABLE ROW LEVEL SECURITY;

@@ -150,6 +150,13 @@ export default async function handler(req, res) {
         }
       }
 
+      // Log action BO
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action, target_id: profileId, target_email: userEmail || null }),
+      }).catch(() => {});
+
       return res.status(200).json({ success: true });
     }
 
@@ -169,6 +176,13 @@ export default async function handler(req, res) {
           html: emailHtml(`<p>Bonjour,</p><p>Nous vous informons que votre compte <strong>ALANE</strong> a été supprimé par notre équipe d'administration.</p>${reasonBlock}<p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support depuis l'application.</p>`),
         });
       }
+
+      // Log suppression BO
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
+      }).catch(() => {});
 
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "DELETE",
