@@ -9321,6 +9321,13 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
       });
+      const data = await res.json();
+      if (data.payment_required) {
+        // Rediriger vers le paiement Stripe
+        onNavigate("stripe_pay", { amount: data.amount, clientSecret: data.client_secret, pendingCandidature: c, pendingMissionId: selected.id });
+        setActioning(null);
+        return;
+      }
       if (!res.ok) throw new Error();
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
       setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
@@ -10813,6 +10820,12 @@ export default function App() {
   // Tracking GPS prestataire — envoie la position toutes les 60s quand mission assignée
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
+    const consentKey = `alane_gps_consent_${supaUser.id}`;
+    if(!localStorage.getItem(consentKey)) {
+      const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une mission assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une mission active.\n\nAutoriser la géolocalisation ?");
+      if(!ok) return;
+      localStorage.setItem(consentKey, "1");
+    }
     let watchId = null;
     let currentPos = null;
     watchId = navigator.geolocation.watchPosition(

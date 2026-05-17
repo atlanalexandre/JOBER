@@ -15,6 +15,13 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { action, ...payload } = req.body || {};
+
+  // Validation globale
+  if (!action || typeof action !== "string" || action.length > 50) {
+    return res.status(400).json({ error: "Action invalide" });
+  }
+  const isUuid = (v) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -111,6 +118,8 @@ export default async function handler(req, res) {
       const { mission_id, message } = payload;
       const prestataire_id = caller.id;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (message && (typeof message !== "string" || message.length > 1000)) return res.status(400).json({ error: "Message trop long (max 1000 caractères)" });
 
       // Vérifier la limite mensuelle selon le plan
       const PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
@@ -188,6 +197,35 @@ export default async function handler(req, res) {
           const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
           const ud = await ur.json();
           tarifHoraire = Number(ud.user_metadata?.tarif_net) || 0;
+        } catch {}
+      }
+
+      // Vérifier si la mission a déjà un paiement Stripe
+      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours`, { headers });
+      const mCheckData = await mCheckRes.json();
+      const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
+
+      if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
+        try {
+          const hours = missionCheck.hours || 1;
+          const amountCents = Math.max(50, Math.round(tarifHoraire * hours * 100));
+          const params = new URLSearchParams({
+            amount: String(amountCents),
+            currency: "eur",
+            "metadata[mission]": mission_id,
+            "metadata[candidature_id]": candidature_id,
+            "metadata[prestataire_id]": prestataire_id || "",
+          });
+          const ir = await fetch("https://api.stripe.com/v1/payment_intents", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: params.toString(),
+          });
+          const intent = await ir.json();
+          if (intent.client_secret) {
+            return res.status(200).json({ payment_required: true, client_secret: intent.client_secret, amount: amountCents / 100 });
+          }
         } catch {}
       }
 
