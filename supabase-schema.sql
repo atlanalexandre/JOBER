@@ -297,8 +297,15 @@ CREATE POLICY "favorites_own" ON favorites
   FOR ALL USING (user_id = auth.uid());
 
 -- ── Colonnes parrainage sur profiles ───────────────────────────────────
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by  text;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count integer DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by     text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count  integer DEFAULT 0;
+
+-- ── Colonnes manquantes missions ─────────────────────────────────────
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS titre           text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancelled_at    timestamptz;
+
+-- ── plan_abonnement sur profiles (sync avec user_metadata) ───────────
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement text DEFAULT 'free';
 
 -- ── TABLE bo_logs (audit trail des actions backoffice) ─────────────────
 CREATE TABLE IF NOT EXISTS bo_logs (
