@@ -428,6 +428,15 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === "list_missions_export") {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`,
+        { headers }
+      );
+      const missions = await r.json();
+      return res.status(200).json(Array.isArray(missions) ? missions : []);
+    }
+
     if (action === "reset_visits") {
       await fetch(`${SUPABASE_URL}/rest/v1/visits?id=neq.00000000-0000-0000-0000-000000000000`, {
         method: "DELETE",
