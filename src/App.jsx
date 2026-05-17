@@ -2884,6 +2884,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [filterDispo, setFilterDispo] = useState(false);
   const [filterTarifMax, setFilterTarifMax] = useState(50);
   const [filterNoteMin, setFilterNoteMin] = useState(0);
+  const [filterCertified, setFilterCertified] = useState(false);
   const [sortBy, setSortBy] = useState("rating");
   const filterKey = `alane_filters_${s.id}`;
   useEffect(() => {
@@ -2893,14 +2894,15 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
       if(saved.filterDispo!==undefined) setFilterDispo(saved.filterDispo);
       if(saved.filterTarifMax!==undefined) setFilterTarifMax(saved.filterTarifMax);
       if(saved.filterNoteMin!==undefined) setFilterNoteMin(saved.filterNoteMin);
+      if(saved.filterCertified!==undefined) setFilterCertified(saved.filterCertified);
       if(saved.sortBy!==undefined) setSortBy(saved.sortBy);
     } catch(_) {}
   }, []);
   useEffect(() => {
     try {
-      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy }));
+      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy }));
     } catch(_) {}
-  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, sortBy]);
+  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy]);
   const [showFilters, setShowFilters] = useState(false);
   const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
@@ -2923,6 +2925,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     .filter(p => !selectedDay || (p.dispon_jours||[]).includes(selectedDay))
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
+    .filter(p => !filterCertified || p.plan === "premium" || p.plan === "elite")
     .sort((a,b) => {
       const planDiff = (b.planRank||0) - (a.planRank||0);
       if(planDiff !== 0) return planDiff;
@@ -3074,7 +3077,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <input type="range" min={10} max={50} step={1} value={filterTarifMax} onChange={e=>setFilterTarifMax(Number(e.target.value))} style={{ width:"100%", accentColor:s.color }} />
                   <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:10, marginTop:2 }}><span>10 €/h</span><span>50 €/h</span></div>
                 </div>
-                <div>
+                <div style={{ marginBottom:14 }}>
                   <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Note minimum</div>
                   <div style={{ display:"flex", gap:8 }}>
                     {[0,3,4,4.5].map(n=>(
@@ -3084,8 +3087,14 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                     ))}
                   </div>
                 </div>
-                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate) && (
-                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                <div onClick={()=>setFilterCertified(!filterCertified)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+                  <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>✓ Certifiés uniquement <span style={{ color:C.textMuted, fontSize:11, fontWeight:400 }}>(Premium & Elite)</span></span>
+                  <div style={{ width:40, height:22, borderRadius:11, background:filterCertified?C.violet:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                    <div style={{ position:"absolute", top:2, left:filterCertified?20:2, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                  </div>
+                </div>
+                {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate||filterCertified) && (
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); setFilterCertified(false); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
                 )}
               </div>
             )}
@@ -8251,6 +8260,36 @@ function BOTest({ onNavigate }) {
   );
 }
 
+function BOLogs() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(()=>{
+    const token = sessionStorage.getItem("bo_token");
+    fetch("/api/bo-action", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+      body: JSON.stringify({ action:"list_logs" }),
+    }).then(r=>r.json()).then(d=>{ setLogs(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
+  },[]);
+  const ACTION_LABELS = { approve:"✅ Approuvé", reject:"❌ Refusé", delete:"🗑️ Supprimé" };
+  return (
+    <div>
+      <h3 style={{ color:C.text, fontSize:16, fontWeight:700, margin:"0 0 14px" }}>📋 Journal des actions BO</h3>
+      {loading ? <div style={{ color:C.textMuted, fontSize:13 }}>Chargement…</div> :
+      logs.length === 0 ? <div style={{ color:C.textMuted, fontSize:13 }}>Aucune action enregistrée.</div> :
+      logs.map(l=>(
+        <div key={l.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ color:C.text, fontSize:13, fontWeight:600 }}>{ACTION_LABELS[l.action]||l.action}</div>
+            <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>{l.target_email||l.target_id||"—"}{l.reason?` · ${l.reason}`:""}</div>
+          </div>
+          <div style={{ color:C.textMuted, fontSize:11, flexShrink:0 }}>{l.created_at?new Date(l.created_at).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—"}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
   const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
@@ -8302,6 +8341,7 @@ function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
             {id:"moderation", l:"⚠️ Modération"},
+            {id:"logs",       l:"📋 Logs"},
             {id:"test",       l:"🧪 Test"},
           ].map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
@@ -8329,6 +8369,9 @@ function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── TEST ── */}
         {tab==="test" && <BOTest onNavigate={onNavigate} />}
+
+        {/* ── LOGS ── */}
+        {tab==="logs" && <BOLogs />}
 
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>

@@ -398,6 +398,15 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === "list_logs") {
+      const logsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/bo_logs?order=created_at.desc&limit=200`,
+        { headers }
+      );
+      const logs = await logsRes.json();
+      return res.status(200).json(Array.isArray(logs) ? logs : []);
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
