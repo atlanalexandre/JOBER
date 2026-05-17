@@ -274,11 +274,6 @@ const METIERS = Object.fromEntries(
 
 // tarifNet = ce que le prestataire encaisse
 // hourlyRate = prix affiché au CLIENT (tarifNet × (1+marge)) — jamais montré au prestataire
-const _mkP = (base) => ({ ...base,
-  hourlyRate: formatE(prixClient(base.tarifNet, base.sector)),
-  rateNum:    prixClient(base.tarifNet, base.sector),
-  cv: base.cv || null, // CV optionnel
-});
 
 // CV simulés pour quelques prestataires (les autres n'en ont pas)
 const CV_DATA = {
@@ -525,60 +520,6 @@ const CV_DATA = {
     hasCV: true,
   },
 };
-const PROVIDERS = [
-  _mkP({ id:1,  name:"Thomas Saumur",    jobTitle:"Cariste CACES 1",          tarifNet:14.0, avatar:"👨‍💼", color:"#4FC3F7", rating:4.8, reviews:47, skills:["CACES 1","CACES 3","Gestion entrepôt"],    experience:"8 ans",  available:true,  sector:"logistique",   bio:"Expert en logistique 8 ans. Certifié CACES 1,3,5.",           distance:"2,3 km", responseTime:"~10 min", missions:47, role:"Cariste CACES 1" }),
-  _mkP({ id:2,  name:"Brahim Oukaci",    jobTitle:"Cariste CACES 1",          tarifNet:13.5, avatar:"🚜",  color:"#4FC3F7", rating:4.6, reviews:31, skills:["CACES 1","Chariots élév.","Stockage"],       experience:"5 ans",  available:true,  sector:"logistique",   bio:"Cariste expérimenté, disponible matin et après-midi.",        distance:"1,4 km", responseTime:"~5 min",  missions:31, role:"Cariste CACES 1" }),
-  _mkP({ id:3,  name:"Kevin Moreau",     jobTitle:"Cariste CACES 1",          tarifNet:14.0, avatar:"🏭",  color:"#4FC3F7", rating:4.4, reviews:19, skills:["CACES 1","Prépa commandes","WMS"],           experience:"3 ans",  available:true,  sector:"logistique",   bio:"Polyvalent logistique, certifié CACES 1.",                    distance:"3,8 km", responseTime:"~14 min", missions:19, role:"Cariste CACES 1" }),
-  _mkP({ id:13, name:"Inès Moreau",      jobTitle:"Serveur(se)",              tarifNet:12.0, avatar:"🍽️", color:"#F06292", rating:4.7, reviews:28, skills:["Service en salle","Encaissement","Accueil"],   experience:"3 ans",  available:true,  sector:"restauration", bio:"Souriante et dynamique, expérience brasseries.",              distance:"1,5 km", responseTime:"~6 min",  missions:28, role:"Serveur(se)" }),
-  _mkP({ id:14, name:"Antoine Girard",   jobTitle:"Serveur(se)",              tarifNet:12.0, avatar:"🥗",  color:"#F06292", rating:4.5, reviews:18, skills:["Service en salle","Upselling","PMS"],          experience:"2 ans",  available:true,  sector:"restauration", bio:"Expérience restaurants gastronomiques et brasseries.",        distance:"0,7 km", responseTime:"~3 min",  missions:18, role:"Serveur(se)" }),
-  _mkP({ id:15, name:"Camille Dupont",   jobTitle:"Serveur(se)",              tarifNet:12.5, avatar:"🫖",  color:"#F06292", rating:4.8, reviews:44, skills:["Service VIP","Anglais","Sommellerie de base"],  experience:"5 ans",  available:true,  sector:"restauration", bio:"Serveuse gastronomique, anglais courant.",                     distance:"2,2 km", responseTime:"~9 min",  missions:44, role:"Serveur(se)" }),
-  _mkP({ id:33, name:"Julie Evan",       jobTitle:"Réceptionniste",           tarifNet:13.0, avatar:"🏨",  color:"#FFB74D", rating:4.6, reviews:29, skills:["Accueil","Logiciels hôteliers","Anglais"],      experience:"5 ans",  available:true,  sector:"hotellerie",   bio:"Réceptionniste bilingue, expérience 4 étoiles.",              distance:"3,2 km", responseTime:"~15 min", missions:29, role:"Réceptionniste" }),
-  _mkP({ id:34, name:"Mathilde Perrin",  jobTitle:"Réceptionniste",           tarifNet:13.0, avatar:"🗝️", color:"#FFB74D", rating:4.8, reviews:52, skills:["Opera PMS","Anglais","Espagnol","Check-in"],    experience:"7 ans",  available:true,  sector:"hotellerie",   bio:"Trilingue, expérience hôtels 4 et 5 étoiles.",               distance:"1,5 km", responseTime:"~6 min",  missions:52, role:"Réceptionniste" }),
-  _mkP({ id:35, name:"Sébastien Lamy",   jobTitle:"Réceptionniste",           tarifNet:12.5, avatar:"🛎️", color:"#FFB74D", rating:4.4, reviews:18, skills:["Accueil","Caisse","Réservations"],              experience:"3 ans",  available:true,  sector:"hotellerie",   bio:"Réceptionniste polyvalent, disponible nuits et week-ends.",   distance:"2,7 km", responseTime:"~10 min", missions:18, role:"Réceptionniste" }),
-  _mkP({ id:46, name:"Moussa Konaté",    jobTitle:"Agent de propreté",        tarifNet:12.0, avatar:"🧹",  color:"#26C6DA", rating:4.4, reviews:18, skills:["Nettoyage bureaux","Désinfection","Tri déchets"],experience:"2 ans",  available:true,  sector:"proprete",     bio:"Consciencieux, disponible tôt le matin.",                     distance:"1,2 km", responseTime:"~4 min",  missions:18, role:"Agent de propreté" }),
-  _mkP({ id:47, name:"Houda Saidi",      jobTitle:"Agent de propreté",        tarifNet:12.0, avatar:"🫧",  color:"#26C6DA", rating:4.5, reviews:24, skills:["Nettoyage sol","Désinfection","Vitres"],         experience:"3 ans",  available:true,  sector:"proprete",     bio:"Expérience bureaux et surfaces commerciales.",                distance:"0,6 km", responseTime:"~2 min",  missions:24, role:"Agent de propreté" }),
-  _mkP({ id:48, name:"Jean-Paul Merci",  jobTitle:"Agent de propreté",        tarifNet:12.0, avatar:"🧽",  color:"#26C6DA", rating:4.3, reviews:11, skills:["Nettoyage industriel","Produits chimiques"],     experience:"2 ans",  available:true,  sector:"proprete",     bio:"Disponible toute la journée, efficace et discret.",           distance:"2,8 km", responseTime:"~11 min", missions:11, role:"Agent de propreté" }),
-  _mkP({ id:60, name:"Marc Durand",      jobTitle:"Commercial terrain",       tarifNet:15.0, avatar:"💼",  color:"#BA68C8", rating:4.5, reviews:24, skills:["Prospection","Négociation","CRM"],               experience:"4 ans",  available:true,  sector:"commercial",   bio:"Chasseur de têtes, spécialiste B2B entreprises.",             distance:"2,1 km", responseTime:"~8 min",  missions:24, role:"Commercial terrain" }),
-  _mkP({ id:61, name:"Sophie Renard",    jobTitle:"Commercial terrain",       tarifNet:15.5, avatar:"🎯",  color:"#BA68C8", rating:4.8, reviews:56, skills:["Closing","Négociation","Salesforce"],            experience:"8 ans",  available:true,  sector:"commercial",   bio:"Top performer, spécialiste grands comptes B2B.",              distance:"0,7 km", responseTime:"~3 min",  missions:56, role:"Commercial terrain" }),
-  _mkP({ id:62, name:"Antoine Fleury",   jobTitle:"Commercial terrain",       tarifNet:14.5, avatar:"📈",  color:"#BA68C8", rating:4.4, reviews:19, skills:["Prospection terrain","Démo produit","CRM"],      experience:"3 ans",  available:true,  sector:"commercial",   bio:"Chasseur commercial B2B, habitué aux cycles courts.",         distance:"3,0 km", responseTime:"~12 min", missions:19, role:"Commercial terrain" }),
-  _mkP({ id:70, name:"Nadia Cherif",     jobTitle:"Hôte(sse) de caisse",      tarifNet:11.8, avatar:"🛒",  color:"#4DB6AC", rating:4.4, reviews:14, skills:["Encaissement","Accueil","Gestion files"],        experience:"2 ans",  available:true,  sector:"distribution", bio:"Rapide et souriante, habituée aux grandes surfaces.",         distance:"1,0 km", responseTime:"~4 min",  missions:14, role:"Hôte(sse) de caisse" }),
-  _mkP({ id:71, name:"Stéphanie Collin", jobTitle:"Hôte(sse) de caisse",      tarifNet:12.0, avatar:"💰",  color:"#4DB6AC", rating:4.6, reviews:27, skills:["Encaissement","SAV caisse","Fidélité"],          experience:"4 ans",  available:true,  sector:"distribution", bio:"Expérience hypermarchés et supermarchés.",                    distance:"0,5 km", responseTime:"~2 min",  missions:27, role:"Hôte(sse) de caisse" }),
-  _mkP({ id:72, name:"Mounia Brahim",    jobTitle:"Hôte(sse) de caisse",      tarifNet:11.8, avatar:"🏷️", color:"#4DB6AC", rating:4.3, reviews:10, skills:["Caisse","Accueil","Mise en rayon légère"],       experience:"1 an",   available:true,  sector:"distribution", bio:"Disponible tôt le matin et week-ends.",                       distance:"2,2 km", responseTime:"~8 min",  missions:10, role:"Hôte(sse) de caisse" }),
-  _mkP({ id:80, name:"Omar Messaoud",    jobTitle:"Agent de sécurité",        tarifNet:13.5, avatar:"🛡️", color:"#7986CB", rating:4.6, reviews:33, skills:["CQP APS","Rondes","Gestion conflits"],           experience:"6 ans",  available:true,  sector:"divers",       bio:"Agent qualifié CQP APS, calme et professionnel.",             distance:"2,9 km", responseTime:"~12 min", missions:33, role:"Agent de sécurité" }),
-  _mkP({ id:81, name:"Stéphane Veron",   jobTitle:"Agent de sécurité",        tarifNet:14.0, avatar:"🔐",  color:"#7986CB", rating:4.7, reviews:45, skills:["CQP APS","SST","Surveillance vidéo"],           experience:"8 ans",  available:true,  sector:"divers",       bio:"Agent expérimenté, habilité sûreté aéroportuaire.",           distance:"1,1 km", responseTime:"~4 min",  missions:45, role:"Agent de sécurité" }),
-  _mkP({ id:82, name:"Fatoumata Balde",  jobTitle:"Agent de sécurité",        tarifNet:13.5, avatar:"👮‍♀️",color:"#7986CB", rating:4.5, reviews:24, skills:["CQP APS","Contrôle accès","Prévention"],       experience:"4 ans",  available:true,  sector:"divers",       bio:"Agente de sécurité qualifiée, spécialiste contrôle accès.",   distance:"0,6 km", responseTime:"~2 min",  missions:24, role:"Agent de sécurité" }),
-  // BTP
-  _mkP({ id:90, name:"Rachid Benali",     jobTitle:"Maçon",                   tarifNet:17.0, avatar:"🧱",  color:"#FF8A65", rating:4.7, reviews:38, skills:["Maçonnerie","Béton","Coffrage","Enduit"],          experience:"10 ans", available:true,  sector:"btp",          bio:"Maçon confirmé, travaux neufs et rénovation.",                distance:"1,8 km", responseTime:"~7 min",  missions:38, role:"Maçon" }),
-  _mkP({ id:91, name:"Didier Fontaine",   jobTitle:"Électricien",             tarifNet:20.0, avatar:"⚡",  color:"#FF8A65", rating:4.8, reviews:51, skills:["Câblage","Tableau élec.","Norme NF C 15-100"],      experience:"12 ans", available:true,  sector:"btp",          bio:"Électricien qualifié, habilitations BR-B1V à jour.",          distance:"2,4 km", responseTime:"~9 min",  missions:51, role:"Électricien" }),
-  _mkP({ id:92, name:"Karim Hajjar",      jobTitle:"Plombier",                tarifNet:19.0, avatar:"🔧",  color:"#FF8A65", rating:4.6, reviews:33, skills:["Plomberie","Soudure","Sanitaire","Chauffage"],      experience:"8 ans",  available:true,  sector:"btp",          bio:"Plombier chauffagiste, installations neuves et dépannage.",   distance:"3,1 km", responseTime:"~13 min", missions:33, role:"Plombier" }),
-  _mkP({ id:93, name:"Julien Merlin",     jobTitle:"Peintre en bâtiment",     tarifNet:15.0, avatar:"🎨",  color:"#FF8A65", rating:4.5, reviews:27, skills:["Peinture intérieure","Enduit","Ravalement"],        experience:"6 ans",  available:true,  sector:"btp",          bio:"Peintre soigneux, intérieur et extérieur, délais respectés.", distance:"0,9 km", responseTime:"~4 min",  missions:27, role:"Peintre en bâtiment" }),
-  _mkP({ id:94, name:"Ibrahima Diallo",   jobTitle:"Manœuvre BTP",            tarifNet:13.0, avatar:"🏗️", color:"#FF8A65", rating:4.3, reviews:14, skills:["Aide maçonnerie","Port de charges","Nettoyage chantier"],experience:"2 ans",available:true, sector:"btp",           bio:"Manœuvre polyvalent, ponctuel et disponible rapidement.",      distance:"1,5 km", responseTime:"~6 min",  missions:14, role:"Manœuvre BTP" }),
-  _mkP({ id:95, name:"Patrice Giroux",    jobTitle:"Carreleur",               tarifNet:18.0, avatar:"🪟",  color:"#FF8A65", rating:4.7, reviews:42, skills:["Carrelage","Faïence","Chape","Ragréage"],           experience:"9 ans",  available:false, sector:"btp",           bio:"Carreleur-faïencier expert, finitions soignées.",             distance:"4,2 km", responseTime:"~20 min", missions:42, role:"Carreleur" }),
-  // Logistique (extras)
-  _mkP({ id:96, name:"Élodie Vasseur",    jobTitle:"Préparateur(trice) commandes", tarifNet:12.5, avatar:"📦", color:"#4FC3F7", rating:4.5, reviews:22, skills:["Prépa commandes","Scan","WMS","CACES 1"],    experience:"3 ans",  available:true,  sector:"logistique",   bio:"Rapide et rigoureuse, habituée aux grands entrepôts.",        distance:"1,0 km", responseTime:"~4 min",  missions:22, role:"Préparateur(trice) commandes" }),
-  _mkP({ id:97, name:"Yannick Aubert",    jobTitle:"Chauffeur VL",            tarifNet:14.5, avatar:"🚐",  color:"#4FC3F7", rating:4.6, reviews:35, skills:["Permis B","Livraison VL","Scan colis","Plan de tournée"],experience:"5 ans",available:true,sector:"logistique",  bio:"Chauffeur livreur fiable, connaissance IDF.",                 distance:"2,6 km", responseTime:"~10 min", missions:35, role:"Chauffeur VL" }),
-  _mkP({ id:98, name:"Abdelkader Saadi",  jobTitle:"Cariste CACES 3",         tarifNet:15.0, avatar:"🏋️", color:"#4FC3F7", rating:4.7, reviews:40, skills:["CACES 3","CACES 5","Palettisation","Stock"],        experience:"7 ans",  available:true,  sector:"logistique",   bio:"Cariste CACES 3 et 5, expert gestion de stock.",              distance:"0,8 km", responseTime:"~3 min",  missions:40, role:"Cariste CACES 3" }),
-  // Restauration (extras)
-  _mkP({ id:99, name:"Laura Schmitt",     jobTitle:"Cuisinier(ère)",          tarifNet:14.0, avatar:"👨‍🍳", color:"#F06292", rating:4.8, reviews:61, skills:["Cuisine française","Pastry","HACCP","Cold kitchen"],experience:"9 ans",  available:true,  sector:"restauration", bio:"Cuisinière confirmée, brigade étoilée et brasseries.",        distance:"1,3 km", responseTime:"~5 min",  missions:61, role:"Cuisinier(ère)" }),
-  _mkP({ id:100, name:"Ali Toure",        jobTitle:"Plongeur / Commis",       tarifNet:11.5, avatar:"🍳",  color:"#F06292", rating:4.4, reviews:16, skills:["Plonge","Aide cuisine","Découpe","Nettoyage"],       experience:"2 ans",  available:true,  sector:"restauration", bio:"Dynamique et rigoureux, disponible soirs et week-ends.",      distance:"0,4 km", responseTime:"~2 min",  missions:16, role:"Plongeur / Commis" }),
-  _mkP({ id:101, name:"Chloé Nguyen",     jobTitle:"Barman / Barmaid",        tarifNet:13.0, avatar:"🍸",  color:"#F06292", rating:4.6, reviews:39, skills:["Cocktails","Gestion stock bar","Caisse","Accueil"],  experience:"5 ans",  available:true,  sector:"restauration", bio:"Barmaid créative, expérience cocktail bars et restaurants.",  distance:"1,9 km", responseTime:"~7 min",  missions:39, role:"Barman / Barmaid" }),
-  // Hôtellerie (extras)
-  _mkP({ id:102, name:"Amira Slimani",    jobTitle:"Femme / Valet de chambre", tarifNet:12.0, avatar:"🛏️", color:"#FFB74D", rating:4.5, reviews:28, skills:["Nettoyage chambres","Hygiène hôtelière","Check-out"],experience:"4 ans", available:true,  sector:"hotellerie",   bio:"Gouvernante expérimentée, hôtels 3 et 4 étoiles.",            distance:"1,6 km", responseTime:"~6 min",  missions:28, role:"Femme / Valet de chambre" }),
-  _mkP({ id:103, name:"Nicolas Faure",    jobTitle:"Concierge",               tarifNet:15.0, avatar:"🗺️", color:"#FFB74D", rating:4.9, reviews:74, skills:["Conciergerie","Multilingue","Réservations","Accueil VIP"],experience:"11 ans",available:true,sector:"hotellerie",  bio:"Concierge 5 étoiles, anglais-espagnol-arabe courants.",       distance:"0,7 km", responseTime:"~3 min",  missions:74, role:"Concierge" }),
-  _mkP({ id:104, name:"Pauline Dumont",   jobTitle:"Responsable petit-déjeuner", tarifNet:13.5, avatar:"☕", color:"#FFB74D", rating:4.6, reviews:31, skills:["Service buffet","Hygiène alimentaire","Caisse"],    experience:"5 ans",  available:false, sector:"hotellerie",   bio:"Spécialiste service petit-déjeuner, rigoureuse HACCP.",       distance:"3,5 km", responseTime:"~15 min", missions:31, role:"Responsable petit-déjeuner" }),
-  // Propreté (extras)
-  _mkP({ id:105, name:"Sylvie Lecomte",   jobTitle:"Agent de propreté",       tarifNet:12.5, avatar:"✨",  color:"#26C6DA", rating:4.8, reviews:58, skills:["Nettoyage bureaux","Technique J38","Sols spéciaux"],  experience:"8 ans",  available:true,  sector:"proprete",     bio:"Agente confirmée, expérience immeubles de prestige.",         distance:"0,5 km", responseTime:"~2 min",  missions:58, role:"Agent de propreté" }),
-  _mkP({ id:106, name:"Hamidou Traoré",   jobTitle:"Technicien de surface",   tarifNet:13.5, avatar:"🧴",  color:"#26C6DA", rating:4.5, reviews:22, skills:["Monobrosse","Autolaveuse","Produits Pro"],            experience:"5 ans",  available:true,  sector:"proprete",     bio:"Technicien machines, remise en état sols et moquettes.",      distance:"2,3 km", responseTime:"~9 min",  missions:22, role:"Technicien de surface" }),
-  // Commercial (extras)
-  _mkP({ id:107, name:"Vanessa Piotrowski",jobTitle:"Téléprospecteur(trice)", tarifNet:13.0, avatar:"📞", color:"#BA68C8", rating:4.5, reviews:30, skills:["Cold calling","CRM","Qualification leads","Argumentation"],experience:"4 ans",available:true,sector:"commercial",  bio:"Téléprospectrice B2B, taux de prise de RDV au-dessus de la moyenne.",distance:"1,2 km",responseTime:"~5 min",missions:30,role:"Téléprospecteur(trice)" }),
-  _mkP({ id:108, name:"Hugo Bertin",      jobTitle:"Chargé(e) de compte",     tarifNet:16.0, avatar:"🤝",  color:"#BA68C8", rating:4.6, reviews:41, skills:["Account management","Upsell","Fidélisation","CRM"],   experience:"6 ans",  available:true,  sector:"commercial",   bio:"Chargé de compte confirmé, portefeuille PME-ETI.",            distance:"2,8 km", responseTime:"~11 min", missions:41, role:"Chargé(e) de compte" }),
-  // Distribution (extras)
-  _mkP({ id:109, name:"Leila Ouali",      jobTitle:"Mise en rayon",           tarifNet:11.5, avatar:"🏪",  color:"#4DB6AC", rating:4.4, reviews:19, skills:["Facing","Réassort","Étiquetage","PLV"],              experience:"2 ans",  available:true,  sector:"distribution", bio:"Expérience grandes surfaces, disponible tôt le matin.",       distance:"0,9 km", responseTime:"~4 min",  missions:19, role:"Mise en rayon" }),
-  _mkP({ id:110, name:"Frédéric Blanche", jobTitle:"Chef de rayon",           tarifNet:14.0, avatar:"📊",  color:"#4DB6AC", rating:4.7, reviews:46, skills:["Gestion rayon","Commandes","Management","Pertes"],    experience:"7 ans",  available:true,  sector:"distribution", bio:"Chef de rayon expérimenté, réduction des pertes et DLC.",      distance:"3,3 km", responseTime:"~14 min", missions:46, role:"Chef de rayon" }),
-  // Divers (extras)
-  _mkP({ id:111, name:"Cédric Masson",    jobTitle:"Chauffeur VTC",           tarifNet:15.5, avatar:"🚗",  color:"#7986CB", rating:4.8, reviews:67, skills:["Permis B","VTC","Anglais","Carte pro"],               experience:"5 ans",  available:true,  sector:"divers",       bio:"Chauffeur VTC professionnel, discret et ponctuel.",           distance:"0,3 km", responseTime:"~1 min",  missions:67, role:"Chauffeur VTC" }),
-  _mkP({ id:112, name:"Roxane Levy",      jobTitle:"Assistant(e) événementiel", tarifNet:13.0, avatar:"🎉", color:"#7986CB", rating:4.6, reviews:34, skills:["Organisation événements","Accueil","Logistique","Tenue pro"],experience:"4 ans",available:true,sector:"divers",    bio:"Hotesse et assistante événementielle, multilingue.",           distance:"1,7 km", responseTime:"~7 min",  missions:34, role:"Assistant(e) événementiel" })
-];
 
 const DOCS_REQUIS = [
   { id:"kbis",     label:"Extrait KBIS / INSEE",      icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
@@ -2789,9 +2730,10 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
 
 
 // ── CATALOGUE style Uber Eats ─────────────────────────────────────
-function CatalogueScreen({ onNavigate, realProviders=[] }) {
+function CatalogueScreen({ onNavigate }) {
   const [activeSector, setActiveSector] = useState(null);
   const sectorRefs = useRef({});
+  const { providers: realProviders } = useProviders();
 
   const scrollToSector = (id) => {
     setActiveSector(id);
@@ -2895,7 +2837,7 @@ function useProviders() {
 }
 
 // ── SECTOR DETAIL ─────────────────────────────────────────────────
-function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[] }) {
+function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
@@ -6015,9 +5957,12 @@ function PMissionsTab({ onNavigate }) {
   const handleApply = async (missionId) => {
     if (!userId) return;
     setApplying(missionId);
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
     const res = await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "apply", mission_id: missionId, prestataire_id: userId, message: message.trim() || null }),
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action: "apply", mission_id: missionId, message: message.trim() || null }),
     });
     const data = await res.json();
     if (data.success) {
@@ -10628,43 +10573,12 @@ export default function App() {
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
-  const [realProviders,setRealProviders]=useState([]);
-
   // Tracking visiteur — une seule fois par session
   useEffect(()=>{
     if(sessionStorage.getItem("visit_tracked")) return;
     sessionStorage.setItem("visit_tracked","1");
     const sessionId = Math.random().toString(36).slice(2)+Date.now().toString(36);
     supabase.from("visits").insert({ session_id: sessionId }).then(()=>{}).catch(()=>{});
-  },[]);
-
-  // Chargement des prestataires réels depuis Supabase
-  useEffect(()=>{
-    fetch("/api/prestataires")
-      .then(r=>r.json())
-      .then(({ prestataires })=>{
-        if(!Array.isArray(prestataires)) return;
-        setRealProviders(prestataires.map(p=>({
-          id: p.id,
-          name: p.name,
-          jobTitle: p.metier || "Prestataire",
-          role: p.metier || "Prestataire",
-          avatar: "👤",
-          color: C.violet,
-          rating: 4.5,
-          reviews: 0,
-          hourlyRate: `${Math.round((p.tarif_net||12)*1.35)} €/h HT`,
-          rateNum: Math.round((p.tarif_net||12)*1.35),
-          tarifNet: p.tarif_net||12,
-          available: !!p.dispo_immediat,
-          sector: p.secteur,
-          code_postal: p.code_postal,
-          responseTime: "< 2h",
-          distance: "—",
-          _real: true,
-        })));
-      })
-      .catch(()=>{});
   },[]);
 
   // Reset badge messages non lus quand le chat est ouvert
@@ -10835,8 +10749,8 @@ export default function App() {
       {screen==="client_onboarding" && <ClientOnboarding onComplete={()=>setScreen("home")} onBack={()=>setScreen("how_client")} />}
       {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
       {screen==="home"              && <HomeScreen onNavigate={navigate} notifCount={notifCount} />}
-      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} realProviders={realProviders} />}
-      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} realProviders={realProviders} />}
+      {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
+      {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={(m)=>{ if(m?.id) setSelectedMissionId(m.id); setScreen("mission_broadcast"); setPendingMission(m); }} />}
       {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}

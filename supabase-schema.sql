@@ -182,3 +182,50 @@ CREATE POLICY "messages_participants" ON messages
     sender_id = auth.uid() OR
     conversation_key LIKE '%' || auth.uid()::text || '%'
   );
+
+-- ── TABLE support_tickets ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_email text,
+  user_name  text,
+  subject    text,
+  message    text,
+  status     text DEFAULT 'open',   -- open | closed
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "support_tickets_insert" ON support_tickets;
+CREATE POLICY "support_tickets_insert" ON support_tickets
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "support_tickets_own" ON support_tickets;
+CREATE POLICY "support_tickets_own" ON support_tickets
+  FOR SELECT USING (user_id = auth.uid());
+
+-- ── TABLE ratings (notations prestataires) ───────────────────────────
+CREATE TABLE IF NOT EXISTS ratings (
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  reviewer_id          uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  reviewee_provider_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  reviewee_name        text,
+  mission_id           uuid REFERENCES missions(id) ON DELETE SET NULL,
+  rating               integer CHECK (rating BETWEEN 1 AND 5),
+  tags                 text[],
+  comment              text,
+  created_at           timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ratings_provider_idx ON ratings (reviewee_provider_id);
+
+ALTER TABLE ratings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "ratings_insert" ON ratings;
+CREATE POLICY "ratings_insert" ON ratings
+  FOR INSERT WITH CHECK (reviewer_id = auth.uid());
+
+DROP POLICY IF EXISTS "ratings_read" ON ratings;
+CREATE POLICY "ratings_read" ON ratings
+  FOR SELECT USING (true);
