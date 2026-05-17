@@ -8413,6 +8413,38 @@ function BOLogs() {
   );
 }
 
+function BOResetMonthly() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+
+  const handleReset = async () => {
+    if (!window.confirm("Remettre les compteurs de missions à 0 pour tous les prestataires ?")) return;
+    setLoading(true); setResult(null);
+    try {
+      const token = sessionStorage.getItem("bo_token") || "";
+      const r = await fetch("/api/cron-reset-monthly", {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const j = await r.json();
+      setResult(j.success ? `✅ Compteurs remis à 0 (${j.downgrades} abonnement(s) expiré(s) downgradé(s))` : `❌ Erreur : ${j.error}`);
+    } catch { setResult("❌ Erreur réseau"); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 16px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, border:`1px solid ${C.border}` }}>
+      <div>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>🔄 Reset compteurs mensuels</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Automatique le 1er du mois · Déclencher manuellement si besoin</div>
+        {result && <div style={{ fontSize:12, marginTop:4, color: result.startsWith("✅") ? C.success : C.danger }}>{result}</div>}
+      </div>
+      <button onClick={handleReset} disabled={loading} style={{ background:"rgba(124,111,224,0.15)", border:`1px solid ${C.violet}`, color:C.violet, borderRadius:8, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+        {loading ? "…" : "Réinitialiser"}
+      </button>
+    </div>
+  );
+}
+
 function BORefundSection() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -8551,6 +8583,10 @@ function BackofficeDashboard({ onBack, onNavigate }) {
         {/* ── DASHBOARD ── */}
         {tab==="dashboard" && <>
           {boLoading && <div style={{ textAlign:"center", color:C.textSub, fontSize:13, padding:"30px 0" }}>Chargement des données…</div>}
+
+          {/* Reset mensuel manuel */}
+          <BOResetMonthly />
+
 
           {/* Alertes dynamiques */}
           {d.users.pending > 0 && (

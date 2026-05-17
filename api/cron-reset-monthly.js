@@ -1,9 +1,27 @@
+import crypto from "crypto";
+
+function verifyBoToken(token, secret) {
+  if (!token) return false;
+  const [tsStr, sig] = token.split(".");
+  if (!tsStr || !sig) return false;
+  const ts = parseInt(tsStr, 10);
+  if (Date.now() / 1000 - ts > 86400) return false;
+  const expected = crypto.createHmac("sha256", secret).update(tsStr).digest("hex");
+  return expected === sig;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
-  // Vercel cron jobs call with GET; optionally verify the secret header
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && req.headers["authorization"] !== `Bearer ${cronSecret}`) {
+  const authHeader = req.headers["authorization"] || "";
+  const token = authHeader.replace("Bearer ", "");
+  const cronSecret  = process.env.CRON_SECRET;
+  const boSecret    = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+
+  // Accept either CRON_SECRET or a valid BO session token
+  const isCron = !cronSecret || authHeader === `Bearer ${cronSecret}`;
+  const isBo   = verifyBoToken(token, boSecret);
+  if (!isCron && !isBo) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
