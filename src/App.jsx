@@ -2740,7 +2740,9 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
                     <span style={{ fontSize:14, fontWeight:600, color:C.text, lineHeight:1.2 }}>{p.name}</span>
-                    <span style={{ fontSize:11, color:violetLite }}>✓</span>
+                    {p.plan==="elite"   && <span style={{ fontSize:10, fontWeight:700, color:"#F0B429" }}>👑</span>}
+                    {p.plan==="premium" && <span style={{ fontSize:11, color:violetLite }}>✓</span>}
+                    {(!p.plan||p.plan==="free") && <span style={{ fontSize:11, color:violetLite }}>✓</span>}
                   </div>
                   <div style={{ fontSize:11.5, color:C.textSub, marginBottom:5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.jobTitle}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:C.textMuted }}>
@@ -2854,6 +2856,7 @@ function useProviders() {
       _providersCachePromise = fetch("/api/prestataires")
         .then(r => r.json())
         .then(({ prestataires = [] }) => {
+          const PLAN_RANK = { elite: 2, premium: 1, free: 0 };
           const mapped = prestataires.map(p => {
             const sectorInfo = SECTORS.find(s => s.id === p.secteur);
             const rateNum    = prixClient(p.tarif_net || 12, p.secteur || "divers");
@@ -2876,6 +2879,8 @@ function useProviders() {
               avatar:       sectorInfo?.icon || "👷",
               color:        sectorInfo?.color || "#7C6FE0",
               niveau:       p.niveau,
+              plan:         p.plan_abonnement || "free",
+              planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
             };
           });
           _providersCache = mapped;
@@ -2937,6 +2942,8 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
     .sort((a,b) => {
+      const planDiff = (b.planRank||0) - (a.planRank||0);
+      if(planDiff !== 0) return planDiff;
       if(sortBy==="tarif")    return a.rateNum - b.rateNum;
       if(sortBy==="distance") return parseFloat(a.distance||"9") - parseFloat(b.distance||"9");
       return b.rating - a.rating;
@@ -3186,6 +3193,8 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords, realProviders=[]
                       <div style={{ flex:1 }}>
                         <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:2 }}>
                           <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</span>
+                          {p.plan==="elite"   && <span style={{ fontSize:10, fontWeight:700, color:"#F0B429", background:"#F0B42918", borderRadius:6, padding:"1px 6px" }}>👑 Elite</span>}
+                          {p.plan==="premium" && <span style={{ fontSize:10, fontWeight:700, color:"#7C6FE0", background:"#7C6FE018", borderRadius:6, padding:"1px 6px" }}>✓ Certifié</span>}
                           {hasCv && <Badge color={C.violet} small>CV</Badge>}
                         </div>
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
@@ -3246,12 +3255,12 @@ function SearchFiltersScreen({ onNavigate }) {
   const { providers, loading } = useProviders();
 
   const filtered = providers.filter(p=>{
-    if(search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.role.toLowerCase().includes(search.toLowerCase()) && !p.jobTitle?.toLowerCase().includes(search.toLowerCase())) return false;
+    if(search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.role?.toLowerCase().includes(search.toLowerCase()) && !p.jobTitle?.toLowerCase().includes(search.toLowerCase())) return false;
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
     if(dispoNow && !p.available) return false;
     return true;
-  });
+  }).sort((a,b) => (b.planRank||0) - (a.planRank||0));
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -3294,7 +3303,14 @@ function SearchFiltersScreen({ onNavigate }) {
               <div onClick={()=>onNavigate("profile",p)} style={{ width:56, height:56, borderRadius:17, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, flexShrink:0 }}>{p.avatar}</div>
               <div style={{ flex:1 }} onClick={()=>onNavigate("profile",p)}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div><div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{p.name}</div><div style={{ color:C.textSub, fontSize:12 }}>{p.role}</div></div>
+                  <div>
+                    <div style={{ display:"flex", gap:5, alignItems:"center", marginBottom:1 }}>
+                      <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{p.name}</div>
+                      {p.plan==="elite"   && <span style={{ fontSize:10, fontWeight:700, color:"#F0B429", background:"#F0B42918", borderRadius:6, padding:"1px 6px" }}>👑 Elite</span>}
+                      {p.plan==="premium" && <span style={{ fontSize:10, fontWeight:700, color:"#7C6FE0", background:"#7C6FE018", borderRadius:6, padding:"1px 6px" }}>✓ Certifié</span>}
+                    </div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>{p.role}</div>
+                  </div>
                   <div style={{ textAlign:"right" }}><div style={{ color:C.violet, fontWeight:800, fontSize:14 }}>{p.hourlyRate} HT</div><div style={{ fontSize:11, color:p.available?C.success:C.accent, fontWeight:600 }}>{p.available?"● Dispo":"○ Occupé"}</div></div>
                 </div>
                 <div style={{ marginTop:3, display:"flex", gap:6, alignItems:"center" }}><Stars rating={p.rating} /><span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {p.distance} · {p.responseTime}</span></div>
