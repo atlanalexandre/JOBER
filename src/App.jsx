@@ -10250,7 +10250,7 @@ function AbonnementPrestaScreen({ onBack }) {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       supabase.from("missions").select("id",{count:"exact",head:true})
-        .eq("user_id",u.id).gte("created_at",startOfMonth)
+        .eq("prestataire_id",u.id).gte("created_at",startOfMonth)
         .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
     });
   },[]);
@@ -10532,7 +10532,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
 
   const accepted = candidatures;
   const waiting  = Math.max(0, notifiedCount - accepted.length);
-  const tarifLabel = p => formatE(prixClient(p.tarifNet, p.sector));
+  const tarifLabel = p => formatE(p.rateNum || 0);
 
   return (
     <div style={{ minHeight:"100%", background:C.bg, paddingBottom:100 }}>
@@ -10597,7 +10597,7 @@ function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
                   </div>
                   <div>
                     <div style={{ fontWeight:800, color:C.success, fontSize:16 }}>{tarifLabel(p)}</div>
-                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {formatE(prixClient(p.tarifNet,p.sector)*m.hours).replace("/h","")}</div>
+                    <div style={{ color:C.textSub, fontSize:10, textAlign:"right" }}>{m.hours}h = {((p.rateNum||0)*m.hours).toFixed(2).replace(".",",")} €</div>
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>

@@ -342,9 +342,9 @@ export default async function handler(req, res) {
       if (!mission_id || lat == null || lng == null) return res.status(400).json({ error: "mission_id, lat, lng requis" });
       const prestataire_id = caller.id;
       // Upsert position (use mission_id as unique key per prestataire)
-      await fetch(`${SUPABASE_URL}/rest/v1/tracking_positions`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/tracking_positions?on_conflict=mission_id,prestataire_id`, {
         method: "POST",
-        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal", "on_conflict": "mission_id,prestataire_id" },
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify({ mission_id, prestataire_id, lat, lng, updated_at: new Date().toISOString() }),
       });
       return res.status(200).json({ success: true });
