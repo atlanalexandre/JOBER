@@ -194,12 +194,12 @@ const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";
 
 const SECTORS = [
   { id:"proprete",     label:"Propreté",        icon:"🧹", color:"#4FC3F7", bg:"#E3F7FF", count:15, banner:"🏢", marge:0.20 },
-  { id:"logistique",   label:"Logistique",      icon:"📦", color:"#81C784", bg:"#E8F5E9", count:19, banner:"🏭", marge:0.18 },
-  { id:"hotellerie",   label:"Hôtellerie",      icon:"🏨", color:"#FFB74D", bg:"#FFF3E0", count:18, banner:"🏨", marge:0.20 },
-  { id:"restauration", label:"Restauration",    icon:"🍽️", color:"#F06292", bg:"#FCE4EC", count:24, banner:"🍴", marge:0.25 },
-  { id:"commercial",   label:"Commercial",      icon:"💼", color:"#BA68C8", bg:"#F3E5F5", count:18, banner:"📊", marge:0.22 },
-  { id:"distribution", label:"Grande Distrib.", icon:"🛒", color:"#4DB6AC", bg:"#E0F2F1", count:22, banner:"🏬", marge:0.18 },
-  { id:"divers",       label:"Divers",          icon:"✨", color:"#7986CB", bg:"#E8EAF6", count:18, banner:"🎯", marge:0.20 },
+  { id:"logistique",   label:"Logistique",      icon:"📦", color:"#81C784", bg:"#E8F5E9", count:24, banner:"🏭", marge:0.18 },
+  { id:"hotellerie",   label:"Hôtellerie",      icon:"🏨", color:"#FFB74D", bg:"#FFF3E0", count:22, banner:"🏨", marge:0.20 },
+  { id:"restauration", label:"Restauration",    icon:"🍽️", color:"#F06292", bg:"#FCE4EC", count:29, banner:"🍴", marge:0.25 },
+  { id:"commercial",   label:"Commercial",      icon:"💼", color:"#BA68C8", bg:"#F3E5F5", count:23, banner:"📊", marge:0.22 },
+  { id:"distribution", label:"Grande Distrib.", icon:"🛒", color:"#4DB6AC", bg:"#E0F2F1", count:26, banner:"🏬", marge:0.18 },
+  { id:"divers",       label:"Divers",          icon:"✨", color:"#7986CB", bg:"#E8EAF6", count:22, banner:"🎯", marge:0.20 },
 ];
 
 // Met à jour les counts dynamiquement après chargement des PROVIDERS
@@ -248,6 +248,11 @@ const METIERS_TARIFS = {
     "Coordinateur logistique":              { min:16,   max:22,   default:18   },
     "Chef d’équipe logistique":             { min:17,   max:24,   default:19   },
     "Responsable logistique":               { min:18,   max:26,   default:21   },
+    "Conditionneur / Opérateur de conditionnement": { min:11.5, max:13, default:11.8 },
+    "Chargeur / Déchargeur":                { min:11.5, max:13,   default:12   },
+    "Cariste CACES 2":                      { min:13,   max:16,   default:14   },
+    "Dispatcher logistique":                { min:15,   max:21,   default:17   },
+    "Agent de transit":                     { min:14,   max:19,   default:16   },
   },
   // ROME G1401-G1502 - Hôtellerie
   hotellerie:{
@@ -269,6 +274,10 @@ const METIERS_TARIFS = {
     "Chef de réception":                    { min:17,   max:23,   default:19   },
     "Responsable hébergement":              { min:19,   max:27,   default:22   },
     "Directeur d’hôtel":                    { min:25,   max:40,   default:30   },
+    "Spa praticien / Esthéticien":          { min:13,   max:18,   default:15   },
+    "Majordome":                            { min:18,   max:28,   default:22   },
+    "Runner hôtelier":                      { min:11.5, max:13,   default:12   },
+    "Animateur club enfants":               { min:12,   max:15,   default:13   },
   },
   // ROME G1501-G1606 - Restauration
   restauration:{
@@ -296,6 +305,11 @@ const METIERS_TARIFS = {
     "Chef de cuisine":                      { min:20,   max:35,   default:25   },
     "Responsable restauration collective":  { min:18,   max:27,   default:22   },
     "Directeur de restaurant":              { min:22,   max:35,   default:27   },
+    "Commis pâtissier":                     { min:12,   max:15,   default:13   },
+    "Glacier":                              { min:13,   max:17,   default:14.5 },
+    "Poissonnier-écailler":                 { min:14,   max:20,   default:16   },
+    "Cuisinier de collectivité":            { min:13,   max:17,   default:14.5 },
+    "Agent de restauration scolaire":       { min:11.5, max:13.5, default:12   },
   },
   // ROME D1401-D1506 - Commerce, vente
   commercial:{
@@ -317,6 +331,11 @@ const METIERS_TARIFS = {
     "Ingénieur commercial":                 { min:20,   max:35,   default:26   },
     "Responsable comptes clés":             { min:22,   max:35,   default:27   },
     "Manager commercial":                   { min:20,   max:30,   default:24   },
+    "VRP (Voyageur Représentant Placier)":  { min:14,   max:22,   default:17   },
+    "Technico-commercial":                  { min:16,   max:26,   default:20   },
+    "Chef des ventes":                      { min:22,   max:35,   default:27   },
+    "Délégué commercial":                   { min:14,   max:21,   default:17   },
+    "Chargé d'affaires":                    { min:18,   max:30,   default:23   },
   },
   // ROME D1507-D1513 - Grande distribution
   distribution:{
@@ -342,6 +361,10 @@ const METIERS_TARIFS = {
     "Responsable de secteur GMS":           { min:17,   max:24,   default:20   },
     "Responsable adjoint magasin":          { min:16,   max:23,   default:19   },
     "Directeur de magasin":                 { min:22,   max:35,   default:27   },
+    "Conseiller jardinerie":                { min:12,   max:16,   default:13.5 },
+    "Fleuriste en GMS":                     { min:12,   max:16,   default:13.5 },
+    "Vendeur en parfumerie":                { min:12,   max:16,   default:13.5 },
+    "Vendeur en sport":                     { min:12,   max:16,   default:13.5 },
   },
   // ROME K2503, G1203, M1601, M1607, N4101, N4105, K1303...
   divers:{
@@ -363,6 +386,10 @@ const METIERS_TARIFS = {
     "Secrétaire":                           { min:13,   max:17,   default:14.5 },
     "Chauffeur VTC":                        { min:14,   max:20,   default:16   },
     "Téléconseiller":                       { min:12,   max:15,   default:13   },
+    "Éducateur sportif / Coach":            { min:14,   max:22,   default:17   },
+    "Agent de médiation":                   { min:13,   max:18,   default:15   },
+    "Photographe événementiel":             { min:16,   max:28,   default:21   },
+    "Technicien son / lumière":             { min:15,   max:25,   default:19   },
   },
 };
 
@@ -3321,6 +3348,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     } catch(_) {}
   }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy]);
   const [showFilters, setShowFilters] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
   const [missionDate, setMissionDate] = useState("");
   const SURCHARGE = 2;
   const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
@@ -3427,8 +3455,21 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           </div>
 
           <h4 style={{ margin:"0 0 12px", color:C.text, fontWeight:800 }}>Ou choisissez directement un prestataire</h4>
+          <div style={{ position:"relative", marginBottom:14 }}>
+            <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Rechercher un métier…"
+              value={jobSearch}
+              onChange={e=>setJobSearch(e.target.value)}
+              style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }}
+            />
+            {jobSearch && (
+              <button onClick={()=>setJobSearch("")} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:16, lineHeight:1 }}>×</button>
+            )}
+          </div>
 
-          {allServices.map((svc,i) => (
+          {(jobSearch ? allServices.filter(s => s.name.toLowerCase().includes(jobSearch.toLowerCase())) : allServices).map((svc,i) => (
             <div key={i} onClick={()=>svc.availCount>0 && setSelectedJob(svc.name)} style={{
               background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:8,
               display:"flex", alignItems:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
@@ -11624,6 +11665,7 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const s = sector || {};
   const jobs = METIERS[s.id] || [];
   const [metier, setMetier]       = useState("");
+  const [metierSearch, setMetierSearch] = useState("");
   const [date, setDate]           = useState("");
   const [hours, setHours]         = useState(8);
   const [description, setDesc]    = useState("");
@@ -11671,7 +11713,25 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
         </div>
 
         {jobs.length > 0 && (
-          <Select label="Métier recherché" options={["Tous les métiers du secteur", ...jobs]} value={metier||"Tous les métiers du secteur"} onChange={e=>setMetier(e.target.value==="Tous les métiers du secteur"?"":e.target.value)} />
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Métier recherché</label>
+            <div style={{ position:"relative" }}>
+              <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
+              <input type="text" placeholder="Tapez pour filtrer…" value={metierSearch||""} onChange={e=>{ setMetierSearch(e.target.value); if(!e.target.value) setMetier(""); }}
+                style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length>0?0:undefined }} />
+            </div>
+            {metierSearch && jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length > 0 && (
+              <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto" }}>
+                {jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).map((j,i,arr)=>(
+                  <button key={i} onMouseDown={()=>{ setMetier(j); setMetierSearch(j); }}
+                    style={{ width:"100%", padding:"10px 14px", background:"transparent", border:"none", borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
+                    {j}
+                  </button>
+                ))}
+              </div>
+            )}
+            {metier && <p style={{ fontSize:11, color:C.violet, margin:"5px 0 0 2px", fontWeight:600 }}>✓ {metier}</p>}
+          </div>
         )}
 
         <Input label="Date de la mission *" type="date" value={date} onChange={e=>setDate(e.target.value)} />
