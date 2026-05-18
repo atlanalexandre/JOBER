@@ -2103,11 +2103,27 @@ function ContactSupportScreen({ onBack }) {
 }
 
 // ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
-function PendingApprovalScreen({ onLogout }) {
+function PendingApprovalScreen({ onLogout, onApproved }) {
   const [userEmail, setUserEmail] = useState("");
+  const [checking, setChecking] = useState(false);
+
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{ if(data?.user) setUserEmail(data.user.email||""); });
   },[]);
+
+  useEffect(()=>{
+    const interval = setInterval(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("profiles").select("status,role").eq("id", user.id).single();
+      if (profile?.status === "approved") {
+        clearInterval(interval);
+        setChecking(true);
+        onApproved(profile.role);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [onApproved]);
 
   const steps = [
     { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
@@ -2117,10 +2133,10 @@ function PendingApprovalScreen({ onLogout }) {
 
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
-      <div style={{ width:80, height:80, borderRadius:24, background:"rgba(124,111,224,0.15)", border:"2px solid rgba(124,111,224,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24 }}>⏳</div>
-      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>Compte en attente</h2>
+      <div style={{ width:80, height:80, borderRadius:24, background:checking?"rgba(16,217,143,0.15)":"rgba(124,111,224,0.15)", border:`2px solid ${checking?"#10D98F":"rgba(124,111,224,0.4)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24, transition:"all 0.4s" }}>{checking?"🎉":"⏳"}</div>
+      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>{checking ? "Compte approuvé !" : "Compte en attente"}</h2>
       <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
-        Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement.
+        {checking ? "Votre compte a été validé. Redirection en cours…" : "Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement."}
       </p>
 
       {/* Timeline */}
@@ -11825,7 +11841,10 @@ export default function App() {
       unreadCount={unreadCount}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
-      {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
+      {screen==="pending_approval"  && <PendingApprovalScreen
+        onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }}
+        onApproved={(r)=>{ setRole(r); setScreen(r==="prestataire"?"p_home":"home"); }}
+      />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
