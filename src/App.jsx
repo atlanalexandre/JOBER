@@ -6945,6 +6945,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
   const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
+  const [profilPct,setProfilPct]=useState(0);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -6956,6 +6957,9 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
+      const m=u.user_metadata||{};
+      const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
+      setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
       const tourKey=`alane_presta_tour_done_${u.id}`;
       if(!localStorage.getItem(tourKey)) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
@@ -7013,6 +7017,19 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
             </div>
           ))}
         </div>
+        {/* Complétude du profil */}
+        {profilPct < 100 && (
+          <div onClick={()=>onNavigate("presta_profile_edit")} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px", marginTop:10, cursor:"pointer" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+              <span style={{ color:"rgba(255,255,255,0.7)", fontSize:11, fontWeight:600 }}>Complétude du profil</span>
+              <span style={{ color:profilPct>=80?C.success:profilPct>=50?C.accentGold:C.accent, fontSize:11, fontWeight:800 }}>{profilPct}%</span>
+            </div>
+            <div style={{ height:4, borderRadius:2, background:"rgba(255,255,255,0.15)", overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${profilPct}%`, borderRadius:2, background:profilPct>=80?C.success:profilPct>=50?C.accentGold:C.accent, transition:"width 0.6s" }} />
+            </div>
+            <p style={{ color:"rgba(255,255,255,0.4)", fontSize:10, margin:"4px 0 0" }}>Complétez votre profil pour être mis en avant →</p>
+          </div>
+        )}
         {/* Toggle disponibilité rapide */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px", marginTop:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -10364,6 +10381,8 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
   const [completing, setCompleting] = useState(false);
   const [completedResult, setCompletedResult] = useState(null);
   const [userId, setUserId]       = useState(null);
+  const [ratedMissions, setRatedMissions] = useState(new Set());
+  const [prestaName, setPrestaName] = useState("");
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -10379,8 +10398,17 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
       const data2 = await res.json();
       setMissions(Array.isArray(data2) ? data2 : []);
       setLoading(false);
+      const { data: rData } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", user.id);
+      if (Array.isArray(rData)) setRatedMissions(new Set(rData.map(r=>r.mission_id).filter(Boolean)));
     });
   }, []);
+
+  useEffect(() => {
+    if (selected?.prestataire_id) {
+      supabase.from("profiles").select("prenom,nom").eq("id", selected.prestataire_id).single()
+        .then(({ data }) => setPrestaName(data ? [data.prenom, data.nom].filter(Boolean).join(" ") : "Prestataire"));
+    } else setPrestaName("");
+  }, [selected]);
 
   const openCandidatures = async (mission) => {
     setSelected(mission);
@@ -10533,9 +10561,20 @@ function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
 
           {selected.status === "completed" && !completedResult && (
-            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center" }}>
-              <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
-              {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
+            <div style={{ marginTop:20 }}>
+              <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center", marginBottom:10 }}>
+                <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
+                {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
+              </div>
+              {selected.prestataire_id && !ratedMissions.has(selected.id) && (
+                <button onClick={()=>onNavigate("rating", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet, jobTitle:selected.metier||"Prestataire", _missionId:selected.id, _fromHistory:true })}
+                  style={{ width:"100%", padding:"13px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⭐ Noter le prestataire
+                </button>
+              )}
+              {ratedMissions.has(selected.id) && (
+                <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette mission</div>
+              )}
             </div>
           )}
 
@@ -12173,7 +12212,7 @@ export default function App() {
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
-    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage") setSelectedProvider(data?.provider||data);
+    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage"||to==="rating") setSelectedProvider(data?.provider||data);
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
@@ -12310,7 +12349,7 @@ export default function App() {
       {screen==="referral"          && <ReferralScreen onBack={()=>setScreen("home")} />}
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="cashback"          && <CashbackWalletScreen onBack={()=>setScreen("dashboard")} onNavigate={navigate} />}
-      {screen==="rating"            && <RatingScreen provider={selectedProvider} onSubmit={()=>setScreen("home")} onBack={()=>setScreen("validation")} />}
+      {screen==="rating"            && <RatingScreen provider={selectedProvider} missionId={selectedProvider?._missionId} onSubmit={()=>setScreen("home")} onBack={()=>setScreen(selectedProvider?._fromHistory?"mission_history":"validation")} />}
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
