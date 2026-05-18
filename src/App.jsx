@@ -700,12 +700,17 @@ function checkIban(iban) {
 
 const IbanInput = ({ label, placeholder, value, onChange, hint }) => {
   const valid = checkIban(value);
+  const handleChange = (e) => {
+    const raw = e.target.value.replace(/\s/g,"").toUpperCase().slice(0,34);
+    const formatted = raw.replace(/(.{4})(?=.)/g,"$1 ").trim();
+    onChange({ target: { value: formatted } });
+  };
   return (
     <div style={{ marginBottom:16 }}>
       {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
       <div style={{ position:"relative" }}>
         <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>🏦</span>
-        <input type="text" placeholder={placeholder} value={value||""} onChange={onChange} autoComplete="off"
+        <input type="text" placeholder={placeholder} value={value||""} onChange={handleChange} autoComplete="off"
           style={{ width:"100%", padding:"13px 44px 13px 44px", borderRadius:r, border:`1px solid ${valid===false?"#F25E5E55":valid===true?"#10D98F55":C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s" }} />
         {valid !== null && (
           <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>{valid ? "✅" : "❌"}</span>
@@ -714,6 +719,52 @@ const IbanInput = ({ label, placeholder, value, onChange, hint }) => {
       {valid === false && <p style={{ fontSize:11, color:"#F25E5E", margin:"5px 0 0 2px" }}>IBAN invalide — vérifiez le format</p>}
       {valid === true  && <p style={{ fontSize:11, color:"#10D98F", margin:"5px 0 0 2px" }}>IBAN valide ✓</p>}
       {valid === null && hint && <p style={{ fontSize:11, color:C.textMuted, margin:"5px 0 0 2px" }}>{hint}</p>}
+    </div>
+  );
+};
+
+function passwordStrength(pw) {
+  if (!pw || pw.length < 3) return null;
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { label:"Faible",  color:"#F25E5E", pct:25  };
+  if (score <= 3) return { label:"Moyen",   color:"#F5A623", pct:60  };
+  return              { label:"Fort",    color:"#10D98F", pct:100 };
+}
+
+const PasswordStrength = ({ password }) => {
+  const s = passwordStrength(password);
+  if (!s) return null;
+  return (
+    <div style={{ marginTop:-10, marginBottom:14 }}>
+      <div style={{ height:3, borderRadius:2, background:C.border, overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${s.pct}%`, background:s.color, borderRadius:2, transition:"width 0.4s, background 0.4s" }} />
+      </div>
+      <p style={{ fontSize:11, color:s.color, margin:"4px 0 0 2px", fontWeight:600 }}>Mot de passe {s.label}</p>
+    </div>
+  );
+};
+
+const EmailInput = ({ label, value, onChange }) => {
+  const [touched, setTouched] = useState(false);
+  const fmt = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value||"");
+  const showErr = touched && value && !fmt;
+  const showOk  = touched && value && fmt;
+  return (
+    <div style={{ marginBottom:16 }}>
+      <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label||"Adresse email *"}</label>
+      <div style={{ position:"relative" }}>
+        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>✉️</span>
+        <input type="email" placeholder="votre@email.fr" value={value||""} onChange={onChange} onBlur={()=>setTouched(true)} autoComplete="email"
+          style={{ width:"100%", padding:"13px 44px 13px 44px", borderRadius:r, border:`1px solid ${showErr?"#F25E5E55":showOk?"#10D98F55":C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s" }} />
+        {showOk  && <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>✅</span>}
+        {showErr && <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>❌</span>}
+      </div>
+      {showErr && <p style={{ fontSize:11, color:"#F25E5E", margin:"5px 0 0 2px" }}>Format d'email invalide</p>}
     </div>
   );
 };
@@ -1420,11 +1471,12 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               </div>
             ))}
           </div>
-          <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
           <div style={{ position:"relative" }}>
             <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
+          <PasswordStrength password={password} />
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
             En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
@@ -1729,11 +1781,12 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             </div>
           </div>
           <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-          <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
           <div style={{ position:"relative" }}>
             <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
+          <PasswordStrength password={password} />
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
             En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
@@ -2071,13 +2124,14 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <IbanInput label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des missions</div>
 
-            <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
+            <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
               <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
               <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>
                 {showPass?"Cacher":"Voir"}
               </button>
             </div>
+            <PasswordStrength password={password} />
 
             {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
             <Btn full onClick={handleRegister} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:14 }}>
