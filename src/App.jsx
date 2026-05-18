@@ -1001,6 +1001,9 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [rcProConfirmed, setRcProConfirmed] = useState(false);
+  const [btpDecennaleConfirmed, setBtpDecennaleConfirmed] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -1022,6 +1025,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
       }
+      if (!rcProConfirmed) return "Vous devez confirmer disposer d'une RC Pro en cours de validité";
+      if (hasBTP && !btpDecennaleConfirmed) return "Vous devez confirmer disposer d'une assurance décennale pour le BTP";
     }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
@@ -1093,6 +1098,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     setTimeout(() => setJustAdded(false), 1500);
   };
   const allCompListe = [...new Set((metiers).flatMap(m => COMPETENCES_PAR_SECTEUR[m.sector]||[]))];
+  const hasBTP = metiers.some(m => m.sector === "btp");
 
   const STEP_TITLES = ["Votre identité","Vos métiers","Expérience","Disponibilités","Statut & Paiement","Votre abonnement","Récapitulatif"];
   const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","⚡","✅"];
@@ -1160,6 +1166,13 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               ))}
             </div>
           )}
+          {/* Avertissement BTP */}
+          {metiers.some(m=>m.sector==="btp") && (
+            <div style={{ background:"rgba(255,138,101,0.08)", border:"1px solid rgba(255,138,101,0.3)", borderRadius:r, padding:"11px 14px", marginBottom:12, fontSize:12, color:"#FF8A65", lineHeight:1.5 }}>
+              🏗️ <strong>Secteur BTP détecté</strong> — une assurance décennale sera requise à l'étape suivante.
+            </div>
+          )}
+
           {/* Formulaire ajout métier */}
           <div style={{ background:"#0D1B3E", borderRadius:14, padding:"16px", marginBottom:8, border:`1px dashed ${C.border}` }}>
             <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"0 0 2px" }}>
@@ -1297,7 +1310,34 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
           </div>
           <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:20, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+
+          {/* RC Pro */}
+          <div onClick={()=>setRcProConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:rcProConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${rcProConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:10, transition:"all 0.2s" }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${rcProConfirmed?"#10D98F":C.border}`, background:rcProConfirmed?"#10D98F":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
+              {rcProConfirmed && <span style={{ color:"#fff", fontSize:12, fontWeight:800 }}>✓</span>}
+            </div>
+            <span style={{ fontSize:13, color:rcProConfirmed?C.text:C.textSub, lineHeight:1.5 }}>
+              Je certifie disposer d'une <strong style={{ color:rcProConfirmed?"#10D98F":C.text }}>assurance RC Professionnelle</strong> en cours de validité, couvrant mon activité de prestataire de services.
+            </span>
+          </div>
+
+          {/* BTP décennale */}
+          {hasBTP && (
+            <>
+              <div style={{ background:"rgba(255,138,101,0.1)", border:"1px solid rgba(255,138,101,0.35)", borderRadius:r, padding:"11px 14px", marginBottom:10, fontSize:12, color:"#FF8A65", lineHeight:1.5 }}>
+                🏗️ <strong>Secteur BTP :</strong> une assurance décennale est obligatoire pour les travaux de construction. Vérifiez que votre contrat couvre votre activité.
+              </div>
+              <div onClick={()=>setBtpDecennaleConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:btpDecennaleConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${btpDecennaleConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:10, transition:"all 0.2s" }}>
+                <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${btpDecennaleConfirmed?"#10D98F":C.border}`, background:btpDecennaleConfirmed?"#10D98F":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
+                  {btpDecennaleConfirmed && <span style={{ color:"#fff", fontSize:12, fontWeight:800 }}>✓</span>}
+                </div>
+                <span style={{ fontSize:13, color:btpDecennaleConfirmed?C.text:C.textSub, lineHeight:1.5 }}>
+                  Je certifie disposer d'une <strong style={{ color:btpDecennaleConfirmed?"#10D98F":C.text }}>assurance décennale</strong> couvrant mes prestations BTP.
+                </span>
+              </div>
+            </>
+          )}
         </>}
 
         {step === 6 && <>
@@ -1368,7 +1408,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
         </>}
       </div>
@@ -1380,6 +1420,30 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {/* Modal politique de confidentialité */}
+      {showPrivacyModal && (
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
+              <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"Données collectées", text:"Identité (nom, email, téléphone), documents professionnels (SIRET, pièce d'identité), données de paiement (via Stripe), géolocalisation (avec votre consentement)." },
+              { title:"Utilisation", text:"Gestion de votre compte, mise en relation client/prestataire, traitement des paiements, amélioration des services, lutte contre la fraude." },
+              { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale). Documents d'identité supprimés après vérification." },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité, opposition. Contact : privacy@alane.fr" },
+              { title:"Partage", text:"Vos données ne sont jamais vendues. Partagées uniquement avec Stripe (paiements) et sur réquisition judiciaire." },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1407,6 +1471,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const toggleSecteur = id => {
     setSecteursBesoins(prev => {
@@ -1651,7 +1716,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
         </>}
       </div>
@@ -1662,6 +1727,28 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {showPrivacyModal && (
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
+              <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"Données collectées", text:"Identité (nom, email, téléphone), données de facturation (IBAN), géolocalisation (avec votre consentement)." },
+              { title:"Utilisation", text:"Gestion de votre compte, mise en relation avec les prestataires, traitement des paiements." },
+              { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale)." },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité. Contact : privacy@alane.fr" },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
