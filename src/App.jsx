@@ -629,6 +629,60 @@ const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, d
   </div>
 );
 
+const AddressAutocomplete = ({ label, value, onChange, onSelect, placeholder="12 rue de la Paix" }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef(null);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const handleClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+  const handleChange = (e) => {
+    const q = e.target.value;
+    onChange(q);
+    clearTimeout(timerRef.current);
+    if (q.length < 3) { setSuggestions([]); setOpen(false); return; }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5`);
+        const data = await res.json();
+        setSuggestions(data.features || []);
+        setOpen((data.features||[]).length > 0);
+      } catch { setSuggestions([]); setOpen(false); }
+    }, 300);
+  };
+  const handleSelect = (feat) => {
+    const { name, postcode, city } = feat.properties;
+    onSelect({ rue: name, codePostal: postcode, ville: city });
+    setSuggestions([]);
+    setOpen(false);
+  };
+  return (
+    <div style={{ marginBottom:16, minWidth:0, position:"relative" }} ref={wrapRef}>
+      {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
+      <div style={{ position:"relative" }}>
+        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>📍</span>
+        <input type="text" placeholder={placeholder} value={value||""} onChange={handleChange} autoComplete="off"
+          style={{ width:"100%", padding:"13px 14px 13px 44px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s, box-shadow 0.2s" }} />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:1000, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.4)", marginTop:2 }}>
+          {suggestions.map((feat, i) => (
+            <button key={i} onMouseDown={()=>handleSelect(feat)}
+              style={{ width:"100%", padding:"11px 14px", background:"transparent", border:"none", borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit", display:"block", transition:"background 0.15s" }}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              📍 {feat.properties.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Select = ({ label, options, value, onChange }) => (
   <div style={{ marginBottom:16 }}>
     {label && (
@@ -1587,7 +1641,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} autoComplete="off" />
+          <AddressAutocomplete label="Adresse *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setCodePostal(s.codePostal);setVille(s.ville);}} />
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ flex:1, minWidth:0 }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value)} autoComplete="off" inputMode="numeric" /></div>
             <div style={{ flex:2, minWidth:0 }}><Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} autoComplete="off" /></div>
@@ -1615,8 +1669,9 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               {lieuxIntervention.length > 1 && (
                 <button onClick={()=>setLieuxIntervention(prev=>prev.filter((_,j)=>j!==i))} style={{ position:"absolute", top:10, right:10, background:"transparent", border:"none", color:"rgba(242,94,94,0.7)", fontSize:16, cursor:"pointer", lineHeight:1 }}>✕</button>
               )}
-              <Input label={`Adresse ${lieuxIntervention.length > 1 ? i+1 : ""}`} placeholder="12 rue de la Paix" icon="📍"
-                value={lieu.adresse} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:v}:l)); }} autoComplete="off" />
+              <AddressAutocomplete label={`Adresse ${lieuxIntervention.length > 1 ? i+1 : ""}`}
+                value={lieu.adresse} onChange={v=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:v}:l))}
+                onSelect={s=>setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,adresse:s.rue,codePostal:s.codePostal,ville:s.ville}:l))} />
               <div style={{ display:"flex", gap:10 }}>
                 <div style={{ flex:1, minWidth:0 }}><Input label="Code postal" placeholder="75001"
                   value={lieu.codePostal} onChange={e=>{ const v=e.target.value; setLieuxIntervention(prev=>prev.map((l,j)=>j===i?{...l,codePostal:v}:l)); }} autoComplete="off" inputMode="numeric" /></div>
@@ -5385,7 +5440,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
           </div>
         </>}
         {step===2 && <>
-          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="📍" value={adresse.rue} onChange={e=>setAdresse({...adresse,rue:e.target.value})} />
+          <AddressAutocomplete label="Adresse *" value={adresse.rue} onChange={v=>setAdresse({...adresse,rue:v})} onSelect={s=>setAdresse({...adresse,rue:s.rue,ville:s.ville,cp:s.codePostal})} />
           <div style={{ display:"flex", gap:10 }}><div style={{ flex:2 }}><Input label="Ville *" placeholder="Paris" value={adresse.ville} onChange={e=>setAdresse({...adresse,ville:e.target.value})} /></div><div style={{ flex:1 }}><Input label="CP *" placeholder="75001" value={adresse.cp} onChange={e=>setAdresse({...adresse,cp:e.target.value})} /></div></div>
           <Select label="Pays" options={["France","Belgique","Suisse","Luxembourg"]} value={adresse.pays} onChange={e=>setAdresse({...adresse,pays:e.target.value})} />
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
@@ -11394,7 +11449,7 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         </div>
 
-        <Input label="Adresse de la mission *" placeholder="12 rue de la Paix" icon="📍" value={adresse} onChange={e=>setAdresse(e.target.value)} />
+        <AddressAutocomplete label="Adresse de la mission *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
         <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
 
         <div style={{ marginBottom:20 }}>
