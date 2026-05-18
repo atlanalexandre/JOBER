@@ -171,7 +171,7 @@ const shadow = {
 const IS_LAUNCH = true; // Période de lancement — offre 10 missions gratuites pour les 100 premiers
 const isLaunchPhase = () => IS_LAUNCH; // conservé pour compatibilité, sera nettoyé après
 
-const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, btp:0.15, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
+const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
 const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 const ABONNEMENTS_PRESTA = [
   { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
@@ -196,7 +196,6 @@ const SECTORS = [
   { id:"proprete",     label:"Propreté",        icon:"🧹", color:"#4FC3F7", bg:"#E3F7FF", count:12, banner:"🏢", marge:0.20 },
   { id:"logistique",   label:"Logistique",      icon:"📦", color:"#81C784", bg:"#E8F5E9", count:18, banner:"🏭", marge:0.18 },
   { id:"hotellerie",   label:"Hôtellerie",      icon:"🏨", color:"#FFB74D", bg:"#FFF3E0", count:9,  banner:"🏨", marge:0.20 },
-  { id:"btp",          label:"BTP",             icon:"🏗️", color:"#FF8A65", bg:"#FBE9E7", count:24, banner:"🏗️", marge:0.15 },
   { id:"restauration", label:"Restauration",    icon:"🍽️", color:"#F06292", bg:"#FCE4EC", count:15, banner:"🍴", marge:0.25 },
   { id:"commercial",   label:"Commercial",      icon:"💼", color:"#BA68C8", bg:"#F3E5F5", count:11, banner:"📊", marge:0.22 },
   { id:"distribution", label:"Grande Distrib.", icon:"🛒", color:"#4DB6AC", bg:"#E0F2F1", count:8,  banner:"🏬", marge:0.18 },
@@ -230,15 +229,6 @@ const METIERS_TARIFS = {
     "Concierge":                  { min:14,   max:18,   default:15 },
     "Chef de réception":          { min:17,   max:23,   default:19 },
     "Night Auditor":              { min:14,   max:18,   default:16 },
-  },
-  btp:{
-    "Manœuvre":                   { min:12,   max:15,   default:13 },
-    "Maçon":                      { min:15,   max:22,   default:17 },
-    "Électricien":                { min:17,   max:25,   default:20 },
-    "Plombier":                   { min:16,   max:24,   default:19 },
-    "Chef de chantier":           { min:22,   max:35,   default:27 },
-    "Peintre":                    { min:13,   max:18,   default:15 },
-    "Carreleur":                  { min:14,   max:20,   default:16 },
   },
   restauration:{
     "Serveur(se)":                { min:11.5, max:14,   default:12 },
@@ -449,40 +439,6 @@ const CV_DATA = {
       { diplome:"Habilitation Sûreté Aéroportuaire (DGAC)", etablissement:"Aéroports de Paris", annee:"2018" },
     ],
     langues:["Français (natif)","Anglais (B1)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-  91: { // Didier Fontaine
-    titre:"Électricien Qualifié — Habilitations BR-B1V · Norme NF C 15-100",
-    accroche:"12 ans en électricité du bâtiment, travaux neufs et rénovation. Habilitations BR et B1V à jour. Rigoureux, autonome, respectueux des normes de sécurité.",
-    experiences:[
-      { poste:"Électricien chef d'équipe", entreprise:"Spie Batignolles IDF", periode:"2020 – 2025", desc:"Travaux neufs résidentiel & tertiaire · Mise en conformité tableaux · Encadrement 3 personnes" },
-      { poste:"Électricien", entreprise:"Bouygues Energies & Services", periode:"2016 – 2020", desc:"Câblage courants forts/faibles · Raccordement TGBT · Tests et mesures" },
-      { poste:"Électricien junior", entreprise:"SNEF Paris", periode:"2013 – 2016", desc:"Tirage de câbles · Pose chemins de câbles · Aide mise en service" },
-    ],
-    formations:[
-      { diplome:"Bac Pro Électrotechnique", etablissement:"Lycée Diderot Paris", annee:"2013" },
-      { diplome:"Habilitations B1V-BR-BC", etablissement:"APAVE Paris", annee:"2021" },
-      { diplome:"CACES Nacelle 3B", etablissement:"AFTRAL", annee:"2019" },
-    ],
-    langues:["Français (natif)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-  90: { // Rachid Benali
-    titre:"Maçon Confirmé — Travaux Neufs & Rénovation",
-    accroche:"10 ans en maçonnerie, aussi bien sur chantiers neufs qu'en rénovation. Maîtrise coffrage, béton armé et enduits. Autonome et capable de conduire une équipe.",
-    experiences:[
-      { poste:"Maçon chef d'équipe", entreprise:"Eiffage Construction IDF", periode:"2021 – 2025", desc:"Maçonnerie gros œuvre · Coffrage banche · Coulage béton · Coordination équipe 4 personnes" },
-      { poste:"Maçon", entreprise:"Vinci Construction France", periode:"2018 – 2021", desc:"Élévation murs · Dalles béton · Réservations techniques · Lecture plans" },
-      { poste:"Aide maçon", entreprise:"Chantiers Loiseau", periode:"2015 – 2018", desc:"Préparation mortier · Manutention · Nettoyage chantier · Assistance maçons" },
-    ],
-    formations:[
-      { diplome:"CAP Maçon", etablissement:"CFA BTP Île-de-France", annee:"2015" },
-      { diplome:"Bac Pro Technicien du Bâtiment", etablissement:"Lycée Gustave Eiffel Cachan", annee:"2017" },
-      { diplome:"AIPR (Autorisation Intervention Proximité Réseaux)", etablissement:"OPPBTP", annee:"2022" },
-    ],
-    langues:["Français (courant)","Arabe (natif)"],
     permis:"Permis B — véhiculé",
     hasCV: true,
   },
@@ -971,7 +927,6 @@ const COMPETENCES_PAR_SECTEUR = {
   proprete:    ["Nettoyage bureaux","Désinfection","Nettoyage industriel","Vitres","Sols spéciaux","Monobrosse","Autolaveuse","HACCP","Tri sélectif"],
   logistique:  ["CACES 1","CACES 3","CACES 5","Prépa commandes","Gestion de stock","WMS","Scan","Palettisation","Réception/Expédition"],
   hotellerie:  ["Opera PMS","Accueil VIP","Check-in/out","Conciergerie","Réservations","Service buffet","Gestion réclamations","Fidelio","Yield management"],
-  btp:         ["Maçonnerie","Coffrage","Béton armé","Câblage électrique","NF C 15-100","Plomberie","Soudure","Peinture intérieure","Carrelage","Lecture plans","AIPR","CACES Nacelle"],
   restauration:["Service en salle","HACCP","Cuisine française","Cuissons","Pâtisserie","Sommellerie","Barman cocktails","Caisse","Accueil clientèle"],
   commercial:  ["Prospection B2B","CRM","Closing","Négociation","Salesforce","HubSpot","Account management","Upselling","Cold calling"],
   distribution:["Encaissement","Mise en rayon","Gestion DLC","Facing","PLV","Inventaire","SAV caisse","Gestion de rayon"],
@@ -1001,6 +956,8 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [rcProConfirmed, setRcProConfirmed] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -1022,6 +979,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
       }
+      if (!rcProConfirmed) return "Vous devez confirmer disposer d'une RC Pro en cours de validité";
     }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
@@ -1297,7 +1255,18 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
           </div>
           <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:20, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+
+          {/* RC Pro */}
+          <div onClick={()=>setRcProConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:rcProConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${rcProConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:10, transition:"all 0.2s" }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${rcProConfirmed?"#10D98F":C.border}`, background:rcProConfirmed?"#10D98F":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
+              {rcProConfirmed && <span style={{ color:"#fff", fontSize:12, fontWeight:800 }}>✓</span>}
+            </div>
+            <span style={{ fontSize:13, color:rcProConfirmed?C.text:C.textSub, lineHeight:1.5 }}>
+              Je certifie disposer d'une <strong style={{ color:rcProConfirmed?"#10D98F":C.text }}>assurance RC Professionnelle</strong> en cours de validité, couvrant mon activité de prestataire de services.
+            </span>
+          </div>
+
         </>}
 
         {step === 6 && <>
@@ -1368,7 +1337,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
         </>}
       </div>
@@ -1380,6 +1349,30 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {/* Modal politique de confidentialité */}
+      {showPrivacyModal && (
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
+              <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"Données collectées", text:"Identité (nom, email, téléphone), documents professionnels (SIRET, pièce d'identité), données de paiement (via Stripe), géolocalisation (avec votre consentement)." },
+              { title:"Utilisation", text:"Gestion de votre compte, mise en relation client/prestataire, traitement des paiements, amélioration des services, lutte contre la fraude." },
+              { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale). Documents d'identité supprimés après vérification." },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité, opposition. Contact : privacy@alane.fr" },
+              { title:"Partage", text:"Vos données ne sont jamais vendues. Partagées uniquement avec Stripe (paiements) et sur réquisition judiciaire." },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1407,6 +1400,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const toggleSecteur = id => {
     setSecteursBesoins(prev => {
@@ -1651,7 +1645,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
+            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
           </p>
         </>}
       </div>
@@ -1662,6 +1656,28 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {showPrivacyModal && (
+        <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
+              <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"Données collectées", text:"Identité (nom, email, téléphone), données de facturation (IBAN), géolocalisation (avec votre consentement)." },
+              { title:"Utilisation", text:"Gestion de votre compte, mise en relation avec les prestataires, traitement des paiements." },
+              { title:"Conservation", text:"Durée de votre inscription + 3 ans pour les données de facturation (obligation légale)." },
+              { title:"Vos droits (RGPD)", text:"Accès, rectification, suppression, portabilité. Contact : privacy@alane.fr" },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2103,11 +2119,27 @@ function ContactSupportScreen({ onBack }) {
 }
 
 // ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
-function PendingApprovalScreen({ onLogout }) {
+function PendingApprovalScreen({ onLogout, onApproved }) {
   const [userEmail, setUserEmail] = useState("");
+  const [checking, setChecking] = useState(false);
+
   useEffect(()=>{
     supabase.auth.getUser().then(({ data })=>{ if(data?.user) setUserEmail(data.user.email||""); });
   },[]);
+
+  useEffect(()=>{
+    const interval = setInterval(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("profiles").select("status,role").eq("id", user.id).single();
+      if (profile?.status === "approved") {
+        clearInterval(interval);
+        setChecking(true);
+        onApproved(profile.role);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [onApproved]);
 
   const steps = [
     { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
@@ -2117,10 +2149,10 @@ function PendingApprovalScreen({ onLogout }) {
 
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
-      <div style={{ width:80, height:80, borderRadius:24, background:"rgba(124,111,224,0.15)", border:"2px solid rgba(124,111,224,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24 }}>⏳</div>
-      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>Compte en attente</h2>
+      <div style={{ width:80, height:80, borderRadius:24, background:checking?"rgba(16,217,143,0.15)":"rgba(124,111,224,0.15)", border:`2px solid ${checking?"#10D98F":"rgba(124,111,224,0.4)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24, transition:"all 0.4s" }}>{checking?"🎉":"⏳"}</div>
+      <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>{checking ? "Compte approuvé !" : "Compte en attente"}</h2>
       <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
-        Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement.
+        {checking ? "Votre compte a été validé. Redirection en cours…" : "Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement."}
       </p>
 
       {/* Timeline */}
@@ -2418,7 +2450,7 @@ const TOUR_STEPS = [
   {
     icon:"🗂️",
     title:"1. Trouvez votre prestataire",
-    desc:"Parcourez les secteurs (Logistique, BTP, Restauration…), filtrez par disponibilité, tarif ou note, et consultez les profils.",
+    desc:"Parcourez les secteurs (Logistique, Restauration, Hôtellerie…), filtrez par disponibilité, tarif ou note, et consultez les profils.",
     color:"#4FC3F7",
   },
   {
@@ -8619,7 +8651,7 @@ function BOLogs() {
   );
 }
 
-const SECTOR_LABELS = { proprete:"Propreté", logistique:"Logistique", hotellerie:"Hôtellerie", btp:"BTP", restauration:"Restauration", commercial:"Commercial", distribution:"Grande Distrib.", divers:"Divers" };
+const SECTOR_LABELS = { proprete:"Propreté", logistique:"Logistique", hotellerie:"Hôtellerie", restauration:"Restauration", commercial:"Commercial", distribution:"Grande Distrib.", divers:"Divers" };
 
 function BOSettingsTab() {
   // All hooks at top — no early returns before this block
@@ -11825,7 +11857,10 @@ export default function App() {
       unreadCount={unreadCount}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
-      {screen==="pending_approval"  && <PendingApprovalScreen onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
+      {screen==="pending_approval"  && <PendingApprovalScreen
+        onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }}
+        onApproved={(r)=>{ setRole(r); setScreen(r==="prestataire"?"p_home":"home"); }}
+      />}
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
