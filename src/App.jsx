@@ -683,6 +683,41 @@ const AddressAutocomplete = ({ label, value, onChange, onSelect, placeholder="12
   );
 };
 
+function formatPhone(v) {
+  const d = v.replace(/\D/g,"").slice(0,10);
+  return d.replace(/(\d{2})(?=\d)/g,"$1 ").trim();
+}
+
+function checkIban(iban) {
+  const s = (iban||"").replace(/\s/g,"").toUpperCase();
+  if (s.length < 15) return null;
+  const r = s.slice(4)+s.slice(0,4);
+  const n = r.split("").map(c=>isNaN(c)?(c.charCodeAt(0)-55).toString():c).join("");
+  let rem = 0;
+  for (const c of n) rem = (rem*10+parseInt(c))%97;
+  return rem === 1;
+}
+
+const IbanInput = ({ label, placeholder, value, onChange, hint }) => {
+  const valid = checkIban(value);
+  return (
+    <div style={{ marginBottom:16 }}>
+      {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
+      <div style={{ position:"relative" }}>
+        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>🏦</span>
+        <input type="text" placeholder={placeholder} value={value||""} onChange={onChange} autoComplete="off"
+          style={{ width:"100%", padding:"13px 44px 13px 44px", borderRadius:r, border:`1px solid ${valid===false?"#F25E5E55":valid===true?"#10D98F55":C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s" }} />
+        {valid !== null && (
+          <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>{valid ? "✅" : "❌"}</span>
+        )}
+      </div>
+      {valid === false && <p style={{ fontSize:11, color:"#F25E5E", margin:"5px 0 0 2px" }}>IBAN invalide — vérifiez le format</p>}
+      {valid === true  && <p style={{ fontSize:11, color:"#10D98F", margin:"5px 0 0 2px" }}>IBAN valide ✓</p>}
+      {valid === null && hint && <p style={{ fontSize:11, color:C.textMuted, margin:"5px 0 0 2px" }}>{hint}</p>}
+    </div>
+  );
+};
+
 const Select = ({ label, options, value, onChange }) => (
   <div style={{ marginBottom:16 }}>
     {label && (
@@ -1139,7 +1174,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
-          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
           <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginTop:4, display:"flex", gap:10 }}>
             <span style={{ fontSize:18 }}>💡</span>
             <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Votre numéro ne sera communiqué au client qu'après confirmation d'une mission.</p>
@@ -1308,7 +1343,7 @@ function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <Input label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
+          <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:20, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
 
           {/* RC Pro */}
@@ -1578,7 +1613,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
-          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+          <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Type de compte *</label>
           <div style={{ display:"flex", gap:8, marginBottom:16 }}>
             {[{id:"particulier",label:"👤 Particulier"},{id:"professionnel",label:"🏢 Professionnel"}].map(t=>(
@@ -1693,7 +1728,7 @@ function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
             </div>
           </div>
-          <Input label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
           <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
           <div style={{ position:"relative" }}>
             <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
@@ -2011,7 +2046,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
             </div>
 
-            <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
+            <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
 
             {/* Type de compte — client seulement */}
             {isClient && (
@@ -2033,7 +2068,7 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
               </>
             )}
 
-            <Input label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" icon="🏦" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+            <IbanInput label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des missions</div>
 
             <Input label="Adresse email *" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
@@ -2369,7 +2404,7 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
                 <div style={{ flex:1 }}><Input label="Prénom" placeholder="Prénom" icon="👤" value={editPrenom} onChange={e=>setEditPrenom(e.target.value)} /></div>
                 <div style={{ flex:1 }}><Input label="Nom" placeholder="Nom" value={editNom} onChange={e=>setEditNom(e.target.value)} /></div>
               </div>
-              <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={editTelephone} onChange={e=>setEditTelephone(e.target.value)} />
+              <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={editTelephone} onChange={e=>setEditTelephone(formatPhone(e.target.value))} />
               <Btn full onClick={handleSaveIdentite} disabled={identiteSaving} style={{ background:C.violet, padding:"13px" }}>
                 {identiteSaving?"Enregistrement…":identiteSaved?"✅ Sauvegardé !":"Enregistrer"}
               </Btn>
@@ -5342,6 +5377,32 @@ function PrestaOnboarding({ onComplete, onBack }) {
   const [infos,setInfos]=useState({prenom:"",nom:"",email:"",tel:"",password:"",dateNaissance:"",lieuNaissance:"",nationalite:"France"});
   const [adresse,setAdresse]=useState({rue:"",ville:"",cp:"",pays:"France",rayon:"20"});
   const [ae,setAe]=useState({siret:"",siren:"",activite:"",dateCreation:"",codeAPE:"",regime:"micro-entreprise"});
+  const [siretStatus,setSiretStatus]=useState(null); // null | "loading" | "ok" | "error"
+  const siretTimerRef=useRef(null);
+  const handleSiretChange=(v)=>{
+    const clean=v.replace(/\D/g,"").slice(0,14);
+    setAe(prev=>({...prev,siret:clean,siren:clean.slice(0,9)}));
+    setSiretStatus(null);
+    clearTimeout(siretTimerRef.current);
+    if(clean.length===14){
+      setSiretStatus("loading");
+      siretTimerRef.current=setTimeout(async()=>{
+        try{
+          const res=await fetch(`https://api.annuaire-entreprises.data.gouv.fr/entreprise/${clean.slice(0,9)}`);
+          if(!res.ok){setSiretStatus("error");return;}
+          const d=await res.json();
+          setSiretStatus("ok");
+          setAe(prev=>({
+            ...prev,
+            siren:clean.slice(0,9),
+            activite:prev.activite||d.libelle_activite_principale||"",
+            codeAPE:prev.codeAPE||d.activite_principale||"",
+            dateCreation:prev.dateCreation||d.date_creation||"",
+          }));
+        }catch{setSiretStatus("error");}
+      },600);
+    }
+  };
   const [docs,setDocs]=useState({});
   const [metiers,setMetiers]=useState([]);
   const [newMetier,setNewMetier]=useState({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
@@ -5426,7 +5487,7 @@ function PrestaOnboarding({ onComplete, onBack }) {
         {step===1 && <>
           <div style={{ display:"flex", gap:10 }}><div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" value={infos.prenom} onChange={e=>setInfos({...infos,prenom:e.target.value})} /></div><div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" value={infos.nom} onChange={e=>setInfos({...infos,nom:e.target.value})} /></div></div>
           <Input label="Email *" type="email" placeholder="jean@exemple.fr" icon="✉️" value={infos.email} onChange={e=>setInfos({...infos,email:e.target.value})} />
-          <Input label="Téléphone *" placeholder="+33 6 XX XX XX XX" icon="📱" value={infos.tel} onChange={e=>setInfos({...infos,tel:e.target.value})} />
+          <Input label="Téléphone *" placeholder="06 12 34 56 78" icon="📱" value={infos.tel} onChange={e=>setInfos({...infos,tel:formatPhone(e.target.value)})} />
           <Input label="Mot de passe *" type="password" placeholder="Minimum 8 caractères" icon="🔒" value={infos.password} onChange={e=>setInfos({...infos,password:e.target.value})} />
           <Input label="Date de naissance" type="date" value={infos.dateNaissance} onChange={e=>setInfos({...infos,dateNaissance:e.target.value})} />
           <Input label="Lieu de naissance" placeholder="Paris" value={infos.lieuNaissance} onChange={e=>setInfos({...infos,lieuNaissance:e.target.value})} />
@@ -5454,8 +5515,21 @@ function PrestaOnboarding({ onComplete, onBack }) {
         </>}
         {step===3 && <>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}55`, borderRadius:r, padding:"14px", marginBottom:18, fontSize:13, lineHeight:1.5 }}>⚠️ <strong>Auto-entrepreneur obligatoire</strong><br/><span style={{ color:C.textSub }}>ALANE travaille exclusivement avec des AE. Vos infos seront vérifiées.</span></div>
-          <Input label="N° SIRET *" placeholder="XXX XXX XXX XXXXX" icon="🔢" value={ae.siret} onChange={e=>setAe({...ae,siret:e.target.value})} hint="14 chiffres — visible sur votre extrait KBIS" />
-          <Input label="N° SIREN *" placeholder="XXX XXX XXX" icon="🏢" value={ae.siren} onChange={e=>setAe({...ae,siren:e.target.value})} hint="9 premiers chiffres du SIRET" />
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>N° SIRET *</label>
+            <div style={{ position:"relative" }}>
+              <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>🔢</span>
+              <input type="text" inputMode="numeric" placeholder="12345678900010" value={ae.siret} onChange={e=>handleSiretChange(e.target.value)} autoComplete="off"
+                style={{ width:"100%", padding:"13px 44px 13px 44px", borderRadius:r, border:`1px solid ${siretStatus==="error"?"#F25E5E55":siretStatus==="ok"?"#10D98F55":C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s" }} />
+              {siretStatus==="loading" && <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.textSub }}>⏳</span>}
+              {siretStatus==="ok"      && <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>✅</span>}
+              {siretStatus==="error"   && <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:15 }}>❌</span>}
+            </div>
+            {siretStatus==="ok"    && <p style={{ fontSize:11, color:"#10D98F", margin:"5px 0 0 2px" }}>Entreprise trouvée — infos auto-remplies ✓</p>}
+            {siretStatus==="error" && <p style={{ fontSize:11, color:"#F25E5E", margin:"5px 0 0 2px" }}>SIRET introuvable — vérifiez le numéro</p>}
+            {siretStatus===null    && <p style={{ fontSize:11, color:C.textMuted, margin:"5px 0 0 2px" }}>14 chiffres — visible sur votre extrait KBIS</p>}
+          </div>
+          <Input label="N° SIREN" placeholder="XXX XXX XXX" icon="🏢" value={ae.siren} onChange={e=>setAe({...ae,siren:e.target.value})} hint="Auto-rempli depuis le SIRET" />
           <Input label="Activité déclarée *" placeholder="Prestation de services…" value={ae.activite} onChange={e=>setAe({...ae,activite:e.target.value})} />
           <Input label="Code APE / NAF" placeholder="7022Z" value={ae.codeAPE} onChange={e=>setAe({...ae,codeAPE:e.target.value})} />
           <Input label="Date de création" type="date" value={ae.dateCreation} onChange={e=>setAe({...ae,dateCreation:e.target.value})} />
@@ -6092,8 +6166,8 @@ function PrestaProfileEditScreen({ onBack }) {
         {/* Coordonnées */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement</div>
-          <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(e.target.value)} />
-          <Input label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" icon="💳" value={iban} onChange={e=>setIban(e.target.value)} />
+          <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
+          <IbanInput label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" value={iban} onChange={e=>setIban(e.target.value.toUpperCase())} />
         </div>
 
         {/* CV */}
@@ -9496,7 +9570,7 @@ function ClientOnboarding({ onComplete, onBack }) {
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" value={infos.nom} onChange={e=>setInfos({...infos,nom:e.target.value})} /></div>
           </div>
           <Input label="Email professionnel *" type="email" placeholder="jean@societe.fr" icon="✉️" value={infos.email} onChange={e=>setInfos({...infos,email:e.target.value})} />
-          <Input label="Téléphone *" placeholder="+33 6 XX XX XX XX" icon="📱" value={infos.tel} onChange={e=>setInfos({...infos,tel:e.target.value})} />
+          <Input label="Téléphone *" placeholder="06 12 34 56 78" icon="📱" value={infos.tel} onChange={e=>setInfos({...infos,tel:formatPhone(e.target.value)})} />
           <Input label="Mot de passe *" type="password" placeholder="Minimum 8 caractères" icon="🔒" value={infos.password} onChange={e=>setInfos({...infos,password:e.target.value})} />
         </>}
 
@@ -9550,7 +9624,7 @@ function ClientOnboarding({ onComplete, onBack }) {
               </div>
             ))}
           </div>
-          {facturation.mode==="virement" && <Input label="IBAN" placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" icon="🏦" value={facturation.iban} onChange={e=>setFacturation({...facturation,iban:e.target.value})} />}
+          {facturation.mode==="virement" && <IbanInput label="IBAN" placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" value={facturation.iban} onChange={e=>setFacturation({...facturation,iban:e.target.value.toUpperCase()})} />}
 
           {/* CGU */}
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:14, border:`1px solid ${C.border}` }}>
