@@ -3441,20 +3441,7 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {/* Bouton urgence AVANT le choix du métier */}
           <UrgentToggle showBeforeJob={true} />
 
-          {/* Bouton publier une mission */}
-          <div onClick={()=>onNavigate("mission_request", s)} style={{ background:`linear-gradient(135deg,${C.violet}22,${C.indigo}15)`, border:`2px solid ${C.violet}55`, borderRadius:r+4, padding:"16px 18px", marginBottom:18, cursor:"pointer", display:"flex", alignItems:"center", gap:14, transition:"all 0.2s" }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=C.violet}
-            onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.violet}55`}
-          >
-            <div style={{ width:44, height:44, borderRadius:12, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>📢</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Publier une mission</div>
-              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez à tous les prestataires disponibles · Choisissez parmi ceux qui acceptent</div>
-            </div>
-            <span style={{ color:C.violet, fontSize:20, fontWeight:300 }}>›</span>
-          </div>
-
-          <h4 style={{ margin:"0 0 12px", color:C.text, fontWeight:800 }}>Ou choisissez directement un prestataire</h4>
+          <h4 style={{ margin:"0 0 12px", color:C.text, fontWeight:800 }}>Choisissez un métier pour commander</h4>
           <div style={{ position:"relative", marginBottom:14 }}>
             <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
             <input
@@ -3556,6 +3543,19 @@ function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Bouton broadcast métier sélectionné */}
+          <div onClick={()=>onNavigate("mission_request", { ...s, _preselectedJob: selectedJob })} style={{ background:`linear-gradient(135deg,${C.violet}22,${C.indigo}15)`, border:`2px solid ${C.violet}55`, borderRadius:r+4, padding:"16px 18px", marginBottom:14, cursor:"pointer", display:"flex", alignItems:"center", gap:14, transition:"all 0.2s" }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.violet}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=`${C.violet}55`}
+          >
+            <div style={{ width:44, height:44, borderRadius:12, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🚀</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Ne pas choisir le prestataire</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez votre demande · Le premier disponible accepte la mission</div>
+            </div>
+            <span style={{ color:C.violet, fontSize:20, fontWeight:300 }}>›</span>
           </div>
 
           {/* Bouton urgence APRÈS le choix du métier */}
@@ -11702,9 +11702,10 @@ function AbonnementPrestaScreen({ onBack }) {
 // ── MISSION REQUEST SCREEN ───────────────────────────────────────
 function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const s = sector || {};
+  const preselectedJob = s._preselectedJob || null;
   const jobs = METIERS[s.id] || [];
-  const [metier, setMetier]       = useState("");
-  const [metierSearch, setMetierSearch] = useState("");
+  const [metier, setMetier]       = useState(preselectedJob || "");
+  const [metierSearch, setMetierSearch] = useState(preselectedJob || "");
   const [date, setDate]           = useState("");
   const [hours, setHours]         = useState(8);
   const [description, setDesc]    = useState("");
@@ -11738,8 +11739,8 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:32, marginBottom:6 }}>{s.icon||"📢"}</div>
-        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Publier une mission</h2>
-        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{s.label} · {matchCount} prestataire{matchCount>1?"s":""} disponible{matchCount>1?"s":""}</p>
+        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Commander une mission</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{s.label}{preselectedJob ? ` · ${preselectedJob}` : ""} · {matchCount} prestataire{matchCount>1?"s":""} disponible{matchCount>1?"s":""}</p>
       </div>
 
       <div style={{ padding:"20px 18px" }}>
@@ -11754,22 +11755,32 @@ function MissionRequestScreen({ sector, onSubmit, onBack }) {
         {jobs.length > 0 && (
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Métier recherché</label>
-            <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
-              <input type="text" placeholder="Tapez pour filtrer…" value={metierSearch||""} onChange={e=>{ setMetierSearch(e.target.value); if(!e.target.value) setMetier(""); }}
-                style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length>0?0:undefined }} />
-            </div>
-            {metierSearch && jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length > 0 && (
-              <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto" }}>
-                {jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).map((j,i,arr)=>(
-                  <button key={i} onMouseDown={()=>{ setMetier(j); setMetierSearch(j); }}
-                    style={{ width:"100%", padding:"10px 14px", background:"transparent", border:"none", borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
-                    {j}
-                  </button>
-                ))}
+            {preselectedJob ? (
+              <div style={{ background:`${C.violet}15`, border:`1.5px solid ${C.violet}55`, borderRadius:r, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:16 }}>✓</span>
+                <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>{preselectedJob}</span>
+                <span style={{ color:C.textSub, fontSize:12, marginLeft:"auto" }}>Pré-sélectionné</span>
               </div>
+            ) : (
+              <>
+                <div style={{ position:"relative" }}>
+                  <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
+                  <input type="text" placeholder="Tapez pour filtrer…" value={metierSearch||""} onChange={e=>{ setMetierSearch(e.target.value); if(!e.target.value) setMetier(""); }}
+                    style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length>0?0:undefined }} />
+                </div>
+                {metierSearch && jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length > 0 && (
+                  <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto" }}>
+                    {jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).map((j,i,arr)=>(
+                      <button key={i} onMouseDown={()=>{ setMetier(j); setMetierSearch(j); }}
+                        style={{ width:"100%", padding:"10px 14px", background:"transparent", border:"none", borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
+                        {j}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {metier && <p style={{ fontSize:11, color:C.violet, margin:"5px 0 0 2px", fontWeight:600 }}>✓ {metier}</p>}
+              </>
             )}
-            {metier && <p style={{ fontSize:11, color:C.violet, margin:"5px 0 0 2px", fontWeight:600 }}>✓ {metier}</p>}
           </div>
         )}
 
