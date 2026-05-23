@@ -2067,8 +2067,8 @@ function AuthScreen({ role, onLogin, onRegister, onBack }) {
   };
 
   if (mode === "register") {
-    if (isClient) return <ClientRegisterFlow onRegister={onRegister} onBack={()=>setMode("login")} accentColor={accentColor} />;
-    return <PrestaRegisterFlow onRegister={onRegister} onBack={()=>setMode("login")} accentColor={accentColor} />;
+    if (isClient) return <ClientRegisterFlow onRegister={onRegister} onBack={onBack} accentColor={accentColor} />;
+    return <PrestaRegisterFlow onRegister={onRegister} onBack={onBack} accentColor={accentColor} />;
   }
 
   return (
@@ -10696,7 +10696,9 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     }}>
       {/* Logo */}
       <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <ALANELogo size="sm" />
+        <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer", display:"inline-flex" }}>
+          <ALANELogo size="sm" />
+        </div>
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
