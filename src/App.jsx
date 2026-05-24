@@ -10815,6 +10815,13 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
     return (
       <div style={{ width:"100%", height:"100vh", display:"flex", flexDirection:"column", fontFamily:"’DM Sans’,system-ui,sans-serif", background:C.bg, position:"relative", overflow:"hidden" }}>
         {hybridBanner}
+        {(showClientNav || showPrestaNav) && (
+          <div style={{ flexShrink:0, padding:"10px 18px", borderBottom:`1px solid rgba(255,255,255,0.06)`, display:"flex", alignItems:"center", background:"#050E20" }}>
+            <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer" }}>
+              <ALANELogo size="sm" />
+            </div>
+          </div>
+        )}
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {children}
         </div>
