@@ -157,6 +157,10 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   // ── default: support ticket ───────────────────────────────────────
   const { subject, message, userEmail, userName, userId } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
+  if (message.length < 10) return res.status(400).json({ error: "Le message doit contenir au moins 10 caractères" });
+  if (subject.length > 200) return res.status(400).json({ error: "Le sujet ne doit pas dépasser 200 caractères" });
+  if (message.length > 5000) return res.status(400).json({ error: "Le message ne doit pas dépasser 5000 caractères" });
+  if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return res.status(400).json({ error: "Adresse email invalide" });
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
