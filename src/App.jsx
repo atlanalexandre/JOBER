@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
+import { C, font, r, shadow } from "./constants/colors.js";
+import { IS_LAUNCH, isLaunchPhase, MARGES, FRAIS_MER, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, CASHBACK_TIERS, getCashbackTier, calcCashback } from "./constants/plans.js";
+import { useResponsive } from "./hooks/useResponsive.js";
 
 export class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError:false, error:null }; }
@@ -95,102 +98,7 @@ function genMissionCode(provId, type) {
   return String(((Math.abs(base) + offset) % 9000) + 1000).slice(-4);
 }
 
-// ── Responsive hook ───────────────────────────────────────────────
-const useResponsive = () => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, []);
-  return { isMobile, isDesktop: !isMobile };
-};
-
-// ── Design System — Premium Dark ─────────────────────────────────
-const C = {
-  // Backgrounds
-  bg:        "#0A1628",       // noir profond
-  bgCard:    "#0D1B3E",       // carte dark
-  bgCardAlt: "#112240",       // carte alt
-  bgSurface: "#162547",       // surface élevée
-
-  // Brand
-  violet:    "#7C6FE0",       // violet principal
-  violetLight:"#A29BFE",      // violet clair
-  violetDark: "#5B4FCF",      // violet foncé
-  violetGlow: "rgba(123,111,240,0.15)",
-  violetGlowStrong: "rgba(123,111,240,0.28)",
-
-  // Accents
-  accent:    "#F25E5E",       // rouge urgence
-  accentGold:"#F0B429",       // or premium
-  success:   "#10D98F",       // vert succès
-  warning:   "#F0B429",
-  danger:    "#F25E5E",
-
-  // Texte
-  white:     "#FFFFFF",
-  text:      "#F0F0F5",       // texte principal
-  textSub:   "#8B8FA8",       // texte secondaire
-  textMuted: "#4A4E6A",       // texte discret
-
-  // Bordures
-  border:    "rgba(255,255,255,0.10)",
-  borderHover:"rgba(123,111,240,0.35)",
-  borderStrong:"rgba(255,255,255,0.18)",
-
-  // Legacy compat
-  navy:      "#0A1628",
-  navyMid:   "#0D1B3E",
-  indigo:    "#162547",
-  offWhite:  "#F0F0F5",
-  grayLight: "rgba(255,255,255,0.06)",
-  gray:      "#8B8FA8",
-  textLight: "#8B8FA8",
-};
-
-// Typography helpers
-const font = {
-  display: "’Plus Jakarta Sans’, ‘Inter’, system-ui, sans-serif",
-  body:    "’Inter’, system-ui, sans-serif",
-};
-
-// Spacing — 1 système cohérent
-const r = 16; // border-radius unique
-
-// Shadow system
-const shadow = {
-  sm:  "0 2px 8px rgba(0,0,0,0.4)",
-  md:  "0 4px 20px rgba(0,0,0,0.5)",
-  lg:  "0 8px 40px rgba(0,0,0,0.6)",
-  glow:"0 0 30px rgba(123,111,240,0.25)",
-  glowStrong:"0 0 50px rgba(123,111,240,0.4)",
-};
-
-// ── Modèle hybride — abonnements prestataires, 0% commission ─────
-const IS_LAUNCH = true; // Période de lancement — offre 10 missions gratuites pour les 100 premiers
-const isLaunchPhase = () => IS_LAUNCH; // conservé pour compatibilité, sera nettoyé après
-
-const MARGES = { proprete:0.20, logistique:0.18, hotellerie:0.20, restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20 };
-const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
-const ABONNEMENTS_PRESTA = [
-  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
-    features:["2 missions/mois (10 pendant le lancement)","Profil visible par les clients"],
-    locked:["10 missions/mois","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
-    note:"* 10 missions/mois réservé aux 100 premiers inscrits. 2 missions/mois ensuite." },
-  { id:"premium", label:"Premium", price:29, color:"#7C6FE0", icon:"⚡", missions:10, popular:true,
-    features:["10 missions/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
-    locked:["Badge 👑 Elite et position #1 garantie dans les résultats"] },
-  { id:"elite",   label:"Elite",   price:59, color:"#F0B429", icon:"👑", missions:999, popular:false,
-    features:["Missions illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats","Missions urgentes (tarif majoré de 30%)","Position #1 dans les recherches (attribuée selon note moyenne et avis)"],
-    locked:[],
-    note:"La position #1 est attribuée parmi les membres Elite selon la note moyenne et les avis clients." },
-];
-const prixClient = (tarifNet, _sector) => tarifNet;
-const tarifInterim = (t) => Math.round(t*2.2*100)/100;
-const economiePct  = (t) => Math.round(((tarifInterim(t)-t)/tarifInterim(t))*100);
-
-const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";
+// ── Design System, plans, hooks → imported from separate modules ─
 
 const SECTORS = [
   { id:"proprete",     label:"Propreté",        icon:"🧹", color:"#4FC3F7", bg:"#E3F7FF", count:15, banner:"🏢", marge:0.20 },
@@ -11103,24 +11011,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
   );
 }
 
-// ── CASHBACK SYSTEM ──────────────────────────────────────────────
-
-// Paliers de fidélité
-const CASHBACK_TIERS = [
-  { id:"standard", label:"Standard", min:0,   max:2,   rate:0.005,  color:"#8B8FA8", icon:"⭐"  },
-  { id:"silver",   label:"Silver",   min:3,   max:5,   rate:0.0075, color:"#C0C0C0", icon:"🥈"  },
-  { id:"gold",     label:"Gold",     min:6,   max:9,   rate:0.01,   color:"#F0B429", icon:"🥇"  },
-  { id:"platinum", label:"Platinum", min:10,  max:999, rate:0.015,  color:"#A89DF5", icon:"💎"  },
-];
-
-const getCashbackTier = (missionsThisMonth) => {
-  return CASHBACK_TIERS.find(t => missionsThisMonth >= t.min && missionsThisMonth <= t.max) || CASHBACK_TIERS[0];
-};
-
-const calcCashback = (amount, missionsThisMonth) => {
-  const tier = getCashbackTier(missionsThisMonth);
-  return Math.round(amount * tier.rate * 100) / 100;
-};
 
 
 function CashbackWalletScreen({ onBack, onNavigate }) {
