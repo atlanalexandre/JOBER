@@ -2467,6 +2467,12 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName]   = useState("");
+  const [lightMode, setLightMode] = useState(()=>localStorage.getItem("alane_light_mode")==="1");
+  const toggleTheme = (v) => {
+    localStorage.setItem("alane_light_mode", v ? "1" : "0");
+    document.documentElement.setAttribute("data-alane-theme", v ? "light" : "dark");
+    setLightMode(v);
+  };
   const [clientMeta, setClientMeta] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [cpAdresse, setCpAdresse]     = useState("");
@@ -2660,6 +2666,22 @@ function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           </div>
         ))}
 
+        {/* Thème */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:18 }}>{lightMode?"☀️":"🌙"}</span>
+              <div>
+                <div style={{ fontWeight:600, color:C.text, fontSize:14 }}>Thème {lightMode?"clair":"sombre"}</div>
+                <div style={{ color:C.textSub, fontSize:12 }}>Modifier l'apparence de l'application</div>
+              </div>
+            </div>
+            <div onClick={()=>toggleTheme(!lightMode)} style={{ width:44, height:24, borderRadius:12, background:lightMode?C.violet:"rgba(255,255,255,0.15)", position:"relative", cursor:"pointer", transition:"background 0.2s", flexShrink:0 }}>
+              <div style={{ position:"absolute", top:3, left:lightMode?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
+            </div>
+          </div>
+        </div>
+
         {/* Déconnexion */}
         <button onClick={onLogout} style={{ width:"100%", padding:"15px", borderRadius:r, border:`1px solid #F25E5E44`, background:"#F25E5E12", color:"#F25E5E", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginTop:8 }}>
           🚪 Se déconnecter
@@ -2796,6 +2818,7 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
   const [walletBalance,  setWalletBalance]  = useState(0);
   const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
+  const [notifAsked, setNotifAsked] = useState(false);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const tier = getCashbackTier(walletMissions);
@@ -2804,6 +2827,12 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
   const tierProgress = nextTier
     ? Math.min(100, Math.max(8, (walletMissions / nextTier.min) * 100))
     : 8;
+
+  useEffect(()=>{
+    if("Notification" in window && Notification.permission === "default" && !localStorage.getItem("alane_notif_asked")) {
+      setNotifAsked(true);
+    }
+  },[]);
 
   useEffect(()=>{
     let mounted = true;
@@ -2941,6 +2970,23 @@ function HomeScreen({ onNavigate, notifCount=0 }) {
       </div>
 
       {isLaunchPhase() && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+
+      {/* ── Demande notifications push ── */}
+      {notifAsked && (
+        <div style={{ margin:"0 22px 16px", background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
+          <span style={{ fontSize:20, flexShrink:0 }}>🔔</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Activer les notifications</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles missions</div>
+          </div>
+          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+            <button onClick={()=>{ localStorage.setItem("alane_notif_asked","1"); setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
+            <button onClick={()=>{
+              Notification.requestPermission().then(p=>{ localStorage.setItem("alane_notif_asked","1"); setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles missions.",icon:"/favicon.svg"}); });
+            }} style={{ background:C.violet, border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Activer</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Wallet hero ── */}
       <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
@@ -3951,6 +3997,7 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
   const [fav,setFav]=useState(false);
   const [copied,setCopied]=useState(false);
   const [userId,setUserId]=useState(null);
+  const [reviews,setReviews]=useState([]);
   const cv = p.cv || CV_DATA[p.id];
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
@@ -3960,6 +4007,8 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
       supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",p.id).single()
         .then(({data:fd})=>setFav(!!fd));
     });
+    supabase.from("ratings").select("rating,comment,created_at,reviewer_id").eq("reviewee_provider_id",p.id).order("created_at",{ascending:false}).limit(10)
+      .then(({data:rd})=>{ if(rd) setReviews(rd); });
   },[p.id]);
   const toggleFav=async()=>{
     if(!userId) return;
@@ -4033,10 +4082,32 @@ function ProfileScreen({ provider, onNavigate, onBack }) {
             {card.content}
           </div>
         ))}
-        <div style={{ display:"flex", gap:10 }}>
-          <Btn variant="ghost" onClick={()=>onNavigate("chat",p)} style={{ flex:1, padding:"14px 10px", fontSize:14 }}>💬 Message</Btn>
-          {p.available && <Btn onClick={()=>onNavigate("booking",p)} style={{ flex:2, padding:"14px 10px", fontSize:14 }}>📅 Réserver</Btn>}
+        {/* ── Avis clients ── */}
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+          <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:700 }}>⭐ Avis clients ({reviews.length})</h4>
+          {reviews.length === 0 ? (
+            <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Aucun avis pour le moment.</p>
+          ) : reviews.map((rv,i)=>(
+            <div key={i} style={{ paddingBottom:12, marginBottom:12, borderBottom: i<reviews.length-1?`1px solid ${C.border}`:"none" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                <div style={{ display:"flex", gap:2 }}>{[1,2,3,4,5].map(s=><span key={s} style={{ fontSize:12, color: s<=rv.rating?C.accentGold:"rgba(255,255,255,0.2)" }}>★</span>)}</div>
+                <span style={{ color:C.textMuted, fontSize:11 }}>{rv.created_at ? new Date(rv.created_at).toLocaleDateString("fr-FR",{month:"short",year:"numeric"}) : ""}</span>
+              </div>
+              {rv.comment && <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6, fontStyle:"italic" }}>"{rv.comment}"</p>}
+            </div>
+          ))}
         </div>
+
+        {/* ── Actions ── */}
+        <div onClick={()=>onNavigate("chat",p)} style={{ background:`${C.violet}15`, border:`1.5px solid ${C.violet}44`, borderRadius:r, padding:"14px 18px", marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ fontSize:20 }}>💬</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Contacter avant de réserver</div>
+            <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>Posez vos questions directement au prestataire</div>
+          </div>
+          <span style={{ color:C.violet, fontSize:16 }}>›</span>
+        </div>
+        {p.available && <Btn full onClick={()=>onNavigate("booking",p)} style={{ fontSize:15, padding:"15px" }}>📅 Réserver maintenant</Btn>}
       </div>
     </div>
   );
@@ -4498,8 +4569,21 @@ function BookingScreen({ provider, onNavigate, onBack }) {
             </div>
           )}
 
-          <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:18, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
             🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la mission
+          </div>
+          <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
+            <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
+            {[
+              ["Plus de 24h avant","Remboursement intégral","#10D98F"],
+              ["Moins de 24h avant","Remboursement à 50%","#F0B429"],
+              ["Après le début","Non remboursable","#F25E5E"],
+            ].map(([delai,regle,col])=>(
+              <div key={delai} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.05)` }}>
+                <span style={{ color:C.textSub, fontSize:11 }}>{delai}</span>
+                <span style={{ color:col, fontWeight:700, fontSize:11 }}>{regle}</span>
+              </div>
+            ))}
           </div>
           {ribError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
@@ -6931,6 +7015,85 @@ function PrestaTour({ onDone }) {
   );
 }
 
+// ── PRESTA CLIENTS TAB ────────────────────────────────────────────
+function PrestaClientsTab() {
+  const [clients, setClients] = useState([]);
+  const [blocked, setBlocked] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    const blockedList = JSON.parse(localStorage.getItem("alane_blocked_clients")||"[]");
+    setBlocked(blockedList);
+    supabase.auth.getUser().then(async ({data})=>{
+      const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
+      const {data:missions} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
+      if(!missions){ setLoading(false); return; }
+      const seen = new Map();
+      for(const m of missions){
+        if(!seen.has(m.client_id)) seen.set(m.client_id, { clientId:m.client_id, lastDate:m.date, sector:m.sector, metier:m.metier, missionCount:0, total:0 });
+        const c = seen.get(m.client_id);
+        c.missionCount++;
+        c.total += Number(m.montant_total||0);
+      }
+      const ids = [...seen.keys()];
+      if(ids.length){
+        const {data:profiles} = await supabase.from("profiles").select("id,prenom,nom").in("id",ids);
+        for(const p of (profiles||[])){
+          const c = seen.get(p.id);
+          if(c) c.name = `${p.prenom||""} ${p.nom||""}`.trim() || "Client";
+        }
+      }
+      setClients([...seen.values()]);
+      setLoading(false);
+    });
+  },[]);
+
+  const toggleBlock = (clientId) => {
+    setBlocked(prev=>{
+      const next = prev.includes(clientId) ? prev.filter(id=>id!==clientId) : [...prev, clientId];
+      localStorage.setItem("alane_blocked_clients", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  if(loading) return <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Chargement…</div>;
+
+  return (
+    <div>
+      <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+        👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses missions.
+      </div>
+      {clients.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"28px 16px", color:C.textSub, fontSize:13 }}>
+          <div style={{ fontSize:36, marginBottom:10 }}>👥</div>
+          Aucun client pour le moment
+        </div>
+      ) : clients.map(c=>{
+        const isBlocked = blocked.includes(c.clientId);
+        const sector = SECTORS.find(s=>s.id===c.sector);
+        return (
+          <div key={c.clientId} style={{ background:"#0D1B3E", border:`1.5px solid ${isBlocked?"rgba(242,94,94,0.4)":C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
+            <div style={{ width:42, height:42, borderRadius:12, background:isBlocked?"rgba(242,94,94,0.15)":`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
+              {isBlocked?"🚫":"🏢"}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, color:isBlocked?C.accent:C.text, fontSize:14 }}>{c.name||"Client"}</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
+                {c.missionCount} mission{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
+                {c.total>0 && ` · ${c.total.toFixed(0)} €`}
+              </div>
+              {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière mission : {c.lastDate}</div>}
+            </div>
+            <button onClick={()=>toggleBlock(c.clientId)} style={{ padding:"7px 11px", borderRadius:9, border:`1px solid ${isBlocked?"rgba(242,94,94,0.5)":C.border}`, background:isBlocked?"rgba(242,94,94,0.12)":"rgba(255,255,255,0.05)", color:isBlocked?C.accent:C.textSub, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
+              {isBlocked?"Débloquer":"Bloquer"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── PRESTA DASHBOARD ──────────────────────────────────────────────
 function PrestaDashboard({ onNavigate, activeScreen }) {
   const [tab,setTab]=useState("missions");
@@ -7061,9 +7224,9 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
       </div>
       <div style={{ padding:"18px 18px 0" }}>
         {isLaunchPhase() && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
-        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18 }}>
-          {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
+        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto" }}>
+          {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
           ))}
         </div>
         {tab==="missions" && <>
@@ -7107,6 +7270,7 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
           <PMissionsTab onNavigate={onNavigate} />
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
+        {tab==="clients" && <PrestaClientsTab />}
         {tab==="docs" && <>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12 }}>⚠️ Certains documents doivent être renouvelés annuellement (attestation URSSAF, RC Pro).</div>
           {DOCS_REQUIS.map((doc,i)=>(
@@ -7152,9 +7316,22 @@ function PrestaDashboard({ onNavigate, activeScreen }) {
                 );
               })}
             </>}
-            <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text }}>
+            <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
               💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
             </div>
+            {completedMissions.length > 0 && (
+              <button onClick={()=>{
+                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+                const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.nb_heures||"",getAmt(m).toFixed(2),m.status||""])];
+                const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+                const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement("a"); a.href=url; a.download=`alane-revenus-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              }} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.04)", color:C.text, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                📥 Exporter en CSV (comptabilité)
+              </button>
+            )}
           </>;
         })()}
       </div>

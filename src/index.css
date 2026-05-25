@@ -24,3 +24,15 @@ html, body {
   box-sizing: border-box;
   background: #050E20;
 }
+
+/* ── Light theme ── */
+[data-alane-theme="light"] body,
+[data-alane-theme="light"] #root {
+  background: #F4F5F9 !important;
+  filter: invert(1) hue-rotate(180deg);
+}
+[data-alane-theme="light"] img,
+[data-alane-theme="light"] video,
+[data-alane-theme="light"] svg {
+  filter: invert(1) hue-rotate(180deg);
+}
