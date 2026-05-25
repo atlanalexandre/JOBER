@@ -6817,12 +6817,16 @@ function LegalScreen({ type, onBack }) {
       title:"Politique de confidentialité",
       icon:"🔒",
       sections:[
-        { title:"1. Données collectées", text:"Nous collectons : informations d’identité (nom, prénom, email, téléphone), documents professionnels (SIRET, pièce d’identité), données de paiement (traitées par notre prestataire sécurisé), données de géolocalisation (avec votre consentement)." },
-        { title:"2. Utilisation des données", text:"Vos données sont utilisées pour : la gestion de votre compte, la mise en relation client/prestataire, le traitement des paiements, l’amélioration de nos services et la lutte contre la fraude." },
-        { title:"3. Conservation", text:"Vos données sont conservées pendant la durée de votre inscription, augmentée de 3 ans pour les données de facturation (obligation légale). Les documents d’identité sont supprimés après vérification." },
-        { title:"4. Partage des données", text:"Vos données ne sont jamais vendues à des tiers. Elles peuvent être partagées avec : nos prestataires de paiement (Stripe), nos services de vérification d’identité, les autorités judiciaires sur réquisition." },
-        { title:"5. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : accès, rectification, suppression, portabilité, opposition. Exercez-les en nous contactant : privacy@alane.fr" },
-        { title:"6. Cookies", text:"Nous utilisons des cookies essentiels au fonctionnement de l’app. Aucun cookie publicitaire n’est utilisé. Vous pouvez configurer vos préférences dans les paramètres." },
+        { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : legal@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
+        { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des missions." },
+        { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de mission, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
+        { title:"4. Durée de conservation", text:"Comptes actifs : données conservées pendant toute la durée de la relation contractuelle. Comptes supprimés : données effacées sous 30 jours, à l’exception des données comptables obligatoires conservées 10 ans (art. L123-22 Code de commerce). Logs de connexion : 12 mois. Données de paiement : conservées par Stripe selon leurs propres politiques." },
+        { title:"5. Destinataires des données", text:"Vos données peuvent être partagées avec : Supabase Inc. (USA) — hébergement base de données, couvert par les Clauses Contractuelles Types CE ; Stripe Inc. (USA) — traitement des paiements, certifié PCI-DSS, couvert par les CCT ; Resend Inc. (USA) — envoi d’emails transactionnels, couvert par les CCT. Aucune vente de données à des tiers à des fins commerciales." },
+        { title:"6. Transferts hors Union Européenne", text:"Certains sous-traitants sont établis aux États-Unis (Supabase, Stripe, Resend). Ces transferts sont encadrés par les Clauses Contractuelles Types approuvées par la Commission Européenne, offrant un niveau de protection adéquat à vos données." },
+        { title:"7. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : droit d’accès à vos données (art. 15), droit de rectification (art. 16), droit à l’effacement (art. 17) — exercez-le via Paramètres → Supprimer mon compte, droit à la limitation du traitement (art. 18), droit à la portabilité (art. 20), droit d’opposition (art. 21). Pour exercer ces droits : legal@alane.fr. Réponse sous 30 jours. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr)." },
+        { title:"8. Cookies et traceurs", text:"ALANE utilise uniquement des cookies strictement nécessaires au fonctionnement du service : cookie de session Supabase (authentification, durée de session) et préférences locales (thème, notifications). Ces cookies ne nécessitent pas votre consentement car ils sont indispensables à la fourniture du service demandé (art. 82 loi Informatique et Libertés). Aucun cookie publicitaire ou de tracking tiers n’est utilisé." },
+        { title:"9. Sécurité", text:"Vos données sont protégées par : chiffrement TLS en transit, chiffrement au repos (Supabase), authentification par token signé HMAC pour l’administration, séparation stricte des clés API (clé service uniquement côté serveur). Les mots de passe ne sont jamais stockés en clair (gestion déléguée à Supabase Auth)." },
+        { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en bas de cette page. Dernière mise à jour : janvier 2026." },
       ]
     }
   };
@@ -8611,6 +8615,7 @@ export default function App() {
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
+  const [cookieNotice,setCookieNotice]=useState(()=>!localStorage.getItem("alane_cookie_ok"));
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -8851,6 +8856,23 @@ export default function App() {
           setShowOnboarding(false);
         }}
       />
+    )}
+    {cookieNotice && (
+      <div style={{
+        position:"fixed", bottom:0, left:0, right:0, zIndex:9998,
+        background:"#0D1B3E", borderTop:"1px solid rgba(255,255,255,0.10)",
+        padding:"14px 20px", display:"flex", flexWrap:"wrap",
+        alignItems:"center", gap:12, justifyContent:"space-between",
+      }}>
+        <p style={{ color:"rgba(255,255,255,0.7)", fontSize:12, margin:0, flex:1, minWidth:200, lineHeight:1.6 }}>
+          🍪 ALANE utilise uniquement des cookies nécessaires à son fonctionnement (session, préférences).
+          {" "}<span onClick={()=>navigate("legal","privacy")} style={{ color:"#7C6FE0", cursor:"pointer", textDecoration:"underline" }}>En savoir plus</span>
+        </p>
+        <button onClick={()=>{ localStorage.setItem("alane_cookie_ok","1"); setCookieNotice(false); }}
+          style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 18px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+          J'ai compris
+        </button>
+      </div>
     )}
     <ResponsiveLayout
       screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
