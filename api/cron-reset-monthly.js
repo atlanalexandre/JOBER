@@ -48,7 +48,8 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville`,
         { headers }
       );
-      const missions = Array.isArray(await missionsRes.json()) ? await missionsRes.clone().json() : [];
+      const missionsData = await missionsRes.json();
+      const missions = Array.isArray(missionsData) ? missionsData : [];
 
       if (!missions.length || !RESEND_API_KEY) {
         return res.status(200).json({ success: true, reminders: 0 });
@@ -151,9 +152,10 @@ ${[
         const meta = u.user_metadata || {};
         if (meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date) {
           if (new Date(meta.subscription_end_date) < now) {
+            // Merge pour ne pas écraser les métadonnées existantes
             await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
               method: "PUT", headers,
-              body: JSON.stringify({ user_metadata: { plan_abonnement: "free", subscription_end_date: null } }),
+              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
             }).catch(() => {});
             downgrades++;
           }

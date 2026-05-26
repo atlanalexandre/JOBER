@@ -831,6 +831,7 @@ export default function App() {
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
+  const [docsRefreshKey,setDocsRefreshKey]=useState(0);
   const [cookieNotice,setCookieNotice]=useState(()=>!localStorage.getItem("alane_cookie_ok"));
 
   // Capture ?ref=, ?profil=, ?bo= URL params
@@ -1200,7 +1201,7 @@ export default function App() {
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="cashback"          && <CashbackWalletScreen onBack={()=>setScreen("dashboard")} onNavigate={navigate} />}
       {screen==="rating"            && <RatingScreen provider={selectedProvider} missionId={selectedProvider?._missionId} onSubmit={()=>setScreen("home")} onBack={()=>setScreen(selectedProvider?._fromHistory?"mission_history":"validation")} />}
-      {screen==="doc_upload"           && <DocUploadScreen onBack={()=>setScreen("p_dashboard")} />}
+      {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
@@ -1316,7 +1317,7 @@ export default function App() {
 
       {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-          <PrestaDashboard activeScreen={screen} onNavigate={(to,data)=>{
+          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
             else if(to==="legal") navigate("legal",data);
             else navigate(to,data);

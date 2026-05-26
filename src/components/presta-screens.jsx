@@ -50,9 +50,11 @@ export function DocUploadCard({ doc, value, onChange, required }) {
     setUploading(false);
   };
 
+  const acceptAttr = doc.id === "photo" ? "image/*" : ".pdf,.jpg,.jpeg,.png";
+
   return (
     <div style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`2px solid ${loaded?C.success:C.grayLight}`, display:"flex", gap:11, alignItems:"flex-start" }}>
-      <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display:"none" }} onChange={handleFile} />
+      <input ref={inputRef} type="file" accept={acceptAttr} style={{ display:"none" }} onChange={handleFile} />
       <div style={{ width:40, height:40, borderRadius:11, background:loaded?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
@@ -1495,7 +1497,7 @@ export function PrestaClientsTab() {
   );
 }
 
-export function PrestaDashboard({ onNavigate, activeScreen }) {
+export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) {
   const [tab,setTab]=useState("missions");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
@@ -1554,7 +1556,7 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
-  },[]);
+  },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismissTour = async () => {
     setShowTour(false);
@@ -1688,7 +1690,7 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
                   ) : null;
                 })}
               </div>
-              <button onClick={()=>onNavigate("doc_upload")} style={{ background:C.accent, border:"none", borderRadius:r, padding:"10px 18px", color:C.white, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:C.accent, border:"none", borderRadius:r, padding:"10px 18px", color:C.white, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
                 Compléter mon dossier →
               </button>
             </div>

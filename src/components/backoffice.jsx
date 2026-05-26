@@ -264,7 +264,7 @@ export function BOComptes() {
                   {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
                   {docs[p.id] && docs[p.id].map(doc => (
                     <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5 }}>
-                      <span style={{ fontSize:14 }}>{doc.type==="kbis"?"🏢":doc.type==="urssaf"?"🏛️":doc.type==="cni"?"🪪":doc.type==="rib"?"💳":doc.type==="rcpro"?"🛡️":"📄"}</span>
+                      <span style={{ fontSize:14 }}>{doc.type==="kbis"?"🏢":doc.type==="urssaf"?"🏛️":doc.type==="cni"?"🪪":doc.type==="rib"?"💳":doc.type==="rc_pro"||doc.type==="rcpro"?"🛡️":doc.type==="photo"?"📸":doc.type==="domicile"?"🏠":doc.type==="diplomes"?"🎓":"📄"}</span>
                       <span style={{ flex:1, fontSize:11, color:"rgba(255,255,255,0.7)", textTransform:"capitalize" }}>{doc.type}</span>
                       <span style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700 }}>{doc.verified ? "✓ Vérifié" : "En attente"}</span>
                       {doc.signedUrl && <a href={doc.signedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:C.violet, fontWeight:700, textDecoration:"none", padding:"3px 8px", border:`1px solid ${C.violet}44`, borderRadius:6 }}>Voir</a>}
