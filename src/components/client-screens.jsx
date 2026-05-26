@@ -4787,7 +4787,6 @@ export function DocUploadScreen({ onBack }) {
     { id:"kbis",     label:"Extrait KBIS / Avis INSEE",  icon:"📋", required:true  },
     { id:"urssaf",   label:"Attestation URSSAF",          icon:"🏛️", required:true  },
     { id:"cni",      label:"Pièce d’identité",            icon:"🪪", required:true  },
-    { id:"vitale",   label:"Carte Vitale",                icon:"💊", required:false },
     { id:"domicile", label:"Justificatif de domicile",    icon:"🏠", required:false },
     { id:"rib",      label:"RIB / IBAN",                  icon:"💳", required:true  },
     { id:"rcpro",    label:"Attestation RC Pro",          icon:"🛡️", required:false },
@@ -5357,6 +5356,7 @@ export function OnboardingScreen({ role, onDone }) {
     { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
     { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé en escrow. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
+    { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
   const prestaSteps = [
     { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
@@ -5381,7 +5381,13 @@ export function OnboardingScreen({ role, onDone }) {
           <div style={{ fontSize:72, marginBottom:20, lineHeight:1 }}>{s.icon}</div>
           <div style={{ width:56, height:4, borderRadius:2, background:s.color, margin:"0 auto 24px" }} />
           <h2 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 14px", fontFamily:font.display, lineHeight:1.3 }}>{s.title}</h2>
-          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.75, margin:0, maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>{s.desc}</p>
+          {s.lines ? (
+            <div style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:320, marginLeft:"auto", marginRight:"auto", textAlign:"left" }}>
+              {s.lines.map((l,i) => <p key={i} style={{ margin:"0 0 10px" }}>{l}</p>)}
+            </div>
+          ) : (
+            <p style={{ color:C.textSub, fontSize:15, lineHeight:1.75, margin:0, maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>{s.desc}</p>
+          )}
         </div>
         <div style={{ display:"flex", gap:12 }}>
           {step > 0 && (
