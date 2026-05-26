@@ -100,12 +100,8 @@ export default async function handler(req, res) {
         const u = authUsers.find(u => u.id === p.id) || {};
         return {
           ...p,
-          email:       u.email || "",
-          rib:         u.user_metadata?.rib || "",
-          kbis:        u.user_metadata?.kbis || "",
-          societe_nom: u.user_metadata?.societe_nom || "",
-          type_compte: u.user_metadata?.type_compte || "",
-          telephone:   u.user_metadata?.telephone || "",
+          email: u.email || "",
+          ...(u.user_metadata || {}),
         };
       });
       return res.status(200).json(merged);
@@ -464,6 +460,47 @@ export default async function handler(req, res) {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "update_profile") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+
+      const PROFILE_COLS = ["prenom", "nom", "status"];
+      const profileFields = {};
+      const metaFields = {};
+      for (const [k, v] of Object.entries(payload)) {
+        if (PROFILE_COLS.includes(k)) profileFields[k] = v;
+        else metaFields[k] = v;
+      }
+
+      if (Object.keys(profileFields).length > 0) {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify(profileFields),
+        });
+        if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour profil" });
+      }
+
+      if (Object.keys(metaFields).length > 0) {
+        const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+        const existingUser = getR.ok ? await getR.json() : {};
+        const existingMeta = existingUser.user_metadata || {};
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ user_metadata: { ...existingMeta, ...metaFields } }),
+        });
+        if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour métadonnées" });
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "update_profile", target_id: profileId }),
+      }).catch(() => {});
+
       return res.status(200).json({ success: true });
     }
 
