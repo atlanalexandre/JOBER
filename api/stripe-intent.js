@@ -4,8 +4,11 @@ export default async function handler(req, res) {
   const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
 
-  const { amount, currency = "eur", metadata = {} } = req.body || {};
-  if (!amount || amount < 50) return res.status(400).json({ error: "Montant invalide (min 0.50€)" });
+  const { amount, currency = "eur", description, metadata = {} } = req.body || {};
+  if (!amount || typeof amount !== "number" || amount <= 0) return res.status(400).json({ error: "Montant invalide — doit être un nombre positif" });
+  if (amount < 1) return res.status(400).json({ error: "Montant invalide (min 1€)" });
+  if (amount > 50000) return res.status(400).json({ error: "Montant invalide (max 50 000€)" });
+  if (description !== undefined && (typeof description !== "string" || description.length > 500)) return res.status(400).json({ error: "La description ne doit pas dépasser 500 caractères" });
 
   try {
     const r = await fetch("https://api.stripe.com/v1/payment_intents", {

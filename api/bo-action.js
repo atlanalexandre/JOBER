@@ -184,6 +184,28 @@ export default async function handler(req, res) {
         body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
       }).catch(() => {});
 
+      // Cascade: supprimer toutes les données liées avant de supprimer le compte
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${profileId},prestataire_id.eq.${profileId})`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?user_id=eq.${profileId}`, {
+        method: "DELETE",
+        headers: { ...headers, "Prefer": "return=minimal" },
+      });
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },

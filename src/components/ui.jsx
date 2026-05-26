@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { C, font, r, shadow } from "../constants/colors.js";
+import { isLaunchPhase } from "../constants/plans.js";
 
 export const Stars = ({ rating, size=13 }) => (
   <span style={{ fontSize:size, letterSpacing:1 }}>
@@ -402,3 +403,22 @@ export const DonutChart = ({ sectors, size=120 }) => {
     </svg>
   );
 };
+
+export function LaunchBadge({ context="home", spotsLeft=null }) {
+  if(!isLaunchPhase()) return null;
+  const msgs = {
+    home:    { icon:"🎉", title:"Offre de lancement", sub:"10 missions gratuites pour les 100 premiers prestataires inscrits" },
+    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
+  };
+  const m = msgs[context] || msgs.home;
+  return (
+    <div style={{ background:"rgba(16,217,143,0.10)", border:"1px solid rgba(16,217,143,0.30)", borderRadius:r, padding:"11px 14px", marginBottom:14, display:"flex", gap:10, alignItems:"center" }}>
+      <span style={{ fontSize:18, flexShrink:0 }}>{m.icon}</span>
+      <div>
+        <div style={{ fontWeight:700, color:"#10D98F", fontSize:13 }}>{m.title}</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{m.sub}</div>
+      </div>
+    </div>
+  );
+}
