@@ -1509,6 +1509,7 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
   const [completedMissions,setCompletedMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [profilPct,setProfilPct]=useState(0);
+  const [missingDocs,setMissingDocs]=useState([]);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -1546,6 +1547,10 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
       setCompletedMissions(done);
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
+      const { data: uploadedDocs } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
+      const uploaded = (uploadedDocs||[]).map(d=>d.type);
+      const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
+      setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
@@ -1667,7 +1672,29 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
             );
           })()}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions disponibles</p>
-          <PMissionsTab onNavigate={onNavigate} />
+          {missingDocs.length > 0 ? (
+            <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}40`, borderRadius:r, padding:"16px", marginBottom:12 }}>
+              <div style={{ fontWeight:800, color:C.accent, fontSize:14, marginBottom:6 }}>📎 Documents obligatoires manquants</div>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
+                Vous devez uploader tous vos documents obligatoires avant de pouvoir recevoir des missions.
+              </p>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
+                {missingDocs.map(id => {
+                  const doc = DOCS_REQUIS.find(d=>d.id===id);
+                  return doc ? (
+                    <span key={id} style={{ background:`${C.accent}20`, border:`1px solid ${C.accent}50`, borderRadius:20, padding:"3px 10px", fontSize:11, color:C.accent, fontWeight:700 }}>
+                      {doc.icon} {doc.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+              <button onClick={()=>onNavigate("doc_upload")} style={{ background:C.accent, border:"none", borderRadius:r, padding:"10px 18px", color:C.white, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                Compléter mon dossier →
+              </button>
+            </div>
+          ) : (
+            <PMissionsTab onNavigate={onNavigate} />
+          )}
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="clients" && <PrestaClientsTab />}
