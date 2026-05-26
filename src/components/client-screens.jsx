@@ -5349,3 +5349,55 @@ export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
   );
 }
 
+export function OnboardingScreen({ role, onDone }) {
+  const [step, setStep] = useState(0);
+
+  const clientSteps = [
+    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
+    { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé en escrow. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
+    { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
+  ];
+  const prestaSteps = [
+    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
+    { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
+    { icon:"📦", title:"Postulez aux missions", desc:"Consultez les missions ouvertes dans votre secteur et candidatez en un clic. Votre plan définit le nombre de candidatures mensuelles.", color:C.success },
+    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les missions proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
+  ];
+
+  const steps = role === "prestataire" ? prestaSteps : clientSteps;
+  const s = steps[step];
+  const isLast = step === steps.length - 1;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.97)", zIndex:9999, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28 }}>
+      <div style={{ width:"100%", maxWidth:400 }}>
+        <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:40 }}>
+          {steps.map((_,i)=>(
+            <div key={i} style={{ width: i===step?24:8, height:8, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ textAlign:"center", marginBottom:40 }}>
+          <div style={{ fontSize:72, marginBottom:20, lineHeight:1 }}>{s.icon}</div>
+          <div style={{ width:56, height:4, borderRadius:2, background:s.color, margin:"0 auto 24px" }} />
+          <h2 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 14px", fontFamily:font.display, lineHeight:1.3 }}>{s.title}</h2>
+          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.75, margin:0, maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>{s.desc}</p>
+        </div>
+        <div style={{ display:"flex", gap:12 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+              ← Précédent
+            </button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"14px", borderRadius:r, border:"none", background:s.color, color:C.white, fontSize:15, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+          </button>
+        </div>
+        <button onClick={onDone} style={{ display:"block", margin:"16px auto 0", background:"none", border:"none", color:C.textMuted, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          Passer le tutoriel
+        </button>
+      </div>
+    </div>
+  );
+}
+
