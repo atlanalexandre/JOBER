@@ -439,13 +439,14 @@ export const CV_DATA = {
 };
 
 export const DOCS_REQUIS = [
-  { id:"kbis",     label:"Extrait KBIS / INSEE",      icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
-  { id:"urssaf",   label:"Attestation URSSAF",        icon:"📋", required:true,  info:"Prouve que vous êtes à jour de vos cotisations" },
-  { id:"cni",      label:"Pièce d'identité",          icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },
-  { id:"domicile", label:"Justificatif de domicile",  icon:"🏠", required:true,  info:"Facture EDF ou quittance de loyer -3 mois" },
-  { id:"rib",      label:"RIB / IBAN",                icon:"🏦", required:true,  info:"Pour le virement de vos paiements" },
-  { id:"rc_pro",   label:"Attestation RC Pro",        icon:"🛡️", required:false, info:"Responsabilité civile professionnelle" },
-  { id:"diplomes", label:"Diplômes & Certifications", icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
+  { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Photo professionnelle de face, fond neutre (JPG ou PNG uniquement)" },
+  { id:"kbis",     label:"Extrait KBIS / INSEE",       icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
+  { id:"urssaf",   label:"Attestation URSSAF",         icon:"📋", required:true,  info:"Prouve que vous êtes à jour de vos cotisations" },
+  { id:"cni",      label:"Pièce d'identité",           icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },
+  { id:"domicile", label:"Justificatif de domicile",   icon:"🏠", required:true,  info:"Facture EDF ou quittance de loyer -3 mois" },
+  { id:"rib",      label:"RIB / IBAN",                 icon:"🏦", required:true,  info:"Pour le virement de vos paiements" },
+  { id:"rc_pro",   label:"Attestation RC Pro",         icon:"🛡️", required:false, info:"Responsabilité civile professionnelle" },
+  { id:"diplomes", label:"Diplômes & Certifications",  icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
 ];
 
 export const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];

@@ -4791,12 +4791,13 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
 
 export function DocUploadScreen({ onBack }) {
   const DOC_DEFS = [
-    { id:"kbis",     label:"Extrait KBIS / Avis INSEE",  icon:"📋", required:true  },
-    { id:"urssaf",   label:"Attestation URSSAF",          icon:"🏛️", required:true  },
-    { id:"cni",      label:"Pièce d’identité",            icon:"🪪", required:true  },
-    { id:"domicile", label:"Justificatif de domicile",    icon:"🏠", required:false },
-    { id:"rib",      label:"RIB / IBAN",                  icon:"💳", required:true  },
-    { id:"rcpro",    label:"Attestation RC Pro",          icon:"🛡️", required:false },
+    { id:"photo",    label:"Photo de profil",              icon:"📸", required:true,  accept:"image/*" },
+    { id:"kbis",     label:"Extrait KBIS / Avis INSEE",    icon:"📋", required:true  },
+    { id:"urssaf",   label:"Attestation URSSAF",           icon:"🏛️", required:true  },
+    { id:"cni",      label:"Pièce d’identité",             icon:"🪪", required:true  },
+    { id:"domicile", label:"Justificatif de domicile",     icon:"🏠", required:true  },
+    { id:"rib",      label:"RIB / IBAN",                   icon:"💳", required:true  },
+    { id:"rcpro",    label:"Attestation RC Pro",           icon:"🛡️", required:false },
   ];
 
   const [userId, setUserId]   = useState(null);
@@ -4822,8 +4823,10 @@ export function DocUploadScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
-    const allowed = ["application/pdf","image/jpeg","image/png"];
-    if(!allowed.includes(file.type)){ alert("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    const allowedImages = ["image/jpeg","image/png","image/webp"];
+    const allowedAll = ["application/pdf",...allowedImages];
+    const allowed = docId === "photo" ? allowedImages : allowedAll;
+    if(!allowed.includes(file.type)){ alert(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
@@ -4879,7 +4882,7 @@ export function DocUploadScreen({ onBack }) {
 
         {/* Inputs fichiers cachés */}
         {DOC_DEFS.map(def => (
-          <input key={def.id} type="file" accept=".pdf,.jpg,.jpeg,.png" ref={el=>fileRefs.current[def.id]=el}
+          <input key={def.id} type="file" accept={def.accept || ".pdf,.jpg,.jpeg,.png"} ref={el=>fileRefs.current[def.id]=el}
             onChange={e=>handleFileChange(def.id,e)} style={{ display:"none" }} />
         ))}
 
