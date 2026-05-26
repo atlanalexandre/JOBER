@@ -128,9 +128,13 @@ export function BOComptes() {
   const [verifying, setVerifying] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
-  const [docs, setDocs]           = useState({});   // { [profileId]: [] }
+  const [docs, setDocs]           = useState({});
   const [docsLoading, setDocsLoading] = useState({});
   const [docVerifying, setDocVerifying] = useState(null);
+  const [editMode, setEditMode]   = useState(null);
+  const [editVals, setEditVals]   = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editResult, setEditResult] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -192,6 +196,73 @@ export function BOComptes() {
     setDeleteReason("");
   };
 
+  const startEdit = (p) => {
+    setEditVals({
+      prenom: p.prenom || "",
+      nom: p.nom || "",
+      telephone: p.telephone || "",
+      rib: p.rib || "",
+      type_compte: p.type_compte || "",
+      societe_nom: p.societe_nom || "",
+      kbis: p.kbis || "",
+      ae_siret: p.ae_siret || "",
+      secteur: p.secteur || "",
+      metier: p.metier || "",
+      tarif_net: p.tarif_net != null ? String(p.tarif_net) : "",
+      bio: p.bio || "",
+      rue: p.rue || p.adresse || "",
+      cp: p.cp || "",
+      ville: p.ville || "",
+      plan_abonnement: p.plan_abonnement || "free",
+      subscription_end_date: p.subscription_end_date ? p.subscription_end_date.slice(0, 10) : "",
+    });
+    setEditMode(p.id);
+    setEditResult(null);
+  };
+
+  const saveEdit = async (profileId) => {
+    setEditSaving(true);
+    setEditResult(null);
+    try {
+      const r = await boFetch({ action: "update_profile", profileId, ...editVals });
+      const j = await r.json();
+      if (j.success) {
+        setEditResult("ok");
+        setEditMode(null);
+        load();
+      } else {
+        setEditResult("error");
+      }
+    } catch { setEditResult("error"); }
+    setEditSaving(false);
+  };
+
+  const FI = ({ label, value, field, type = "text", options = null }) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      {options ? (
+        <select value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))}
+          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, fontFamily: "inherit" }}>
+          {options.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+        </select>
+      ) : type === "textarea" ? (
+        <textarea value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))} rows={3}
+          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+      ) : (
+        <input type={type} value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))}
+          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
+      )}
+    </div>
+  );
+
+  const InfoRow = ({ icon, label, value, mono }) => value ? (
+    <div style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 13, flexShrink: 0 }}>{icon}</span>
+      <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 12, flexShrink: 0 }}>{label} :</span>
+      <span style={{ color: C.white, fontSize: 12, fontWeight: 600, fontFamily: mono ? "monospace" : "inherit", wordBreak: "break-all" }}>{value}</span>
+    </div>
+  ) : null;
+
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
   const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
   const filtered = profiles.filter(p =>
@@ -247,17 +318,124 @@ export function BOComptes() {
 
           {/* Détails étendus */}
           {expanded===p.id && (
-            <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"12px", marginBottom:10, fontSize:12 }}>
-              {p.telephone && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📱 Tél : </span><span style={{ color:C.white }}>{p.telephone}</span></div>}
-              {p.rib && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏦 IBAN : </span><span style={{ color:C.white, fontWeight:600, fontFamily:"monospace" }}>{p.rib}</span></div>}
-              {p.type_compte && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>👤 Type : </span><span style={{ color:C.white }}>{p.type_compte==="professionnel"?"Professionnel":"Particulier"}</span></div>}
-              {p.societe_nom && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>🏢 Société : </span><span style={{ color:C.white }}>{p.societe_nom}</span></div>}
-              {p.kbis && <div style={{ marginBottom:6 }}><span style={{ color:"rgba(255,255,255,0.4)" }}>📄 KBIS/SIRET : </span><span style={{ color:C.white }}>{p.kbis}</span></div>}
-              {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>}
+            <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"14px", marginBottom:10 }}>
 
-              {/* Documents uploadés (prestataires uniquement) */}
+              {/* ── Header section avec bouton modifier ── */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, paddingBottom:10, borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+                <span style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>📋 Informations complètes</span>
+                {editMode === p.id ? (
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>{ setEditMode(null); setEditResult(null); }} style={{ padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button onClick={()=>saveEdit(p.id)} disabled={editSaving} style={{ padding:"5px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:editSaving?0.6:1 }}>
+                      {editSaving ? "Sauvegarde…" : "💾 Sauvegarder"}
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={()=>startEdit(p)} style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:"transparent", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✏️ Modifier</button>
+                )}
+              </div>
+              {editResult === "ok" && <div style={{ fontSize:12, color:C.success, fontWeight:600, marginBottom:8 }}>✅ Modifications sauvegardées</div>}
+              {editResult === "error" && <div style={{ fontSize:12, color:"#F25E5E", fontWeight:600, marginBottom:8 }}>❌ Erreur lors de la sauvegarde</div>}
+
+              {editMode === p.id ? (
+                /* ── MODE ÉDITION ── */
+                <div>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Identité</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                    <FI label="Prénom" field="prenom" />
+                    <FI label="Nom" field="nom" />
+                  </div>
+
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Contact & paiement</div>
+                  <div style={{ marginBottom:12 }}>
+                    <FI label="Téléphone" field="telephone" />
+                    <FI label="IBAN / RIB" field="rib" />
+                  </div>
+
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Profil légal</div>
+                  <div style={{ marginBottom:12 }}>
+                    <FI label="Type de compte" field="type_compte" options={[["","— Non renseigné —"],["particulier","Particulier"],["professionnel","Professionnel"]]} />
+                    <FI label="Nom de la société" field="societe_nom" />
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                      <FI label="KBIS / SIRET" field="kbis" />
+                      <FI label="SIRET auto-entrepreneur" field="ae_siret" />
+                    </div>
+                  </div>
+
+                  {p.role === "prestataire" && <>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Activité professionnelle</div>
+                    <div style={{ marginBottom:12 }}>
+                      <FI label="Secteur" field="secteur" options={[["","— Non renseigné —"],["logistique","Logistique"],["btp","BTP"],["restauration","Restauration"],["proprete","Propreté"],["commercial","Commercial"],["hotellerie","Hôtellerie"],["distribution","Distribution"],["divers","Divers"]]} />
+                      <FI label="Métier / Poste" field="metier" />
+                      <FI label="Tarif net (€/h)" field="tarif_net" type="number" />
+                      <FI label="Bio / Présentation" field="bio" type="textarea" />
+                    </div>
+
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Adresse</div>
+                    <div style={{ marginBottom:12 }}>
+                      <FI label="Rue" field="rue" />
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                        <FI label="Code postal" field="cp" />
+                        <FI label="Ville" field="ville" />
+                      </div>
+                    </div>
+                  </>}
+
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Abonnement</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:4 }}>
+                    <FI label="Plan" field="plan_abonnement" options={[["free","Gratuit"],["premium","Premium"],["elite","Elite"]]} />
+                    <FI label="Date de fin" field="subscription_end_date" type="date" />
+                  </div>
+                </div>
+              ) : (
+                /* ── MODE LECTURE ── */
+                <div style={{ fontSize:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
+                    <div>
+                      <InfoRow icon="📱" label="Tél" value={p.telephone} />
+                      <InfoRow icon="🏦" label="IBAN" value={p.rib} mono />
+                      <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
+                      <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
+                      <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
+                      <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret} />
+                    </div>
+                    <div>
+                      {p.role === "prestataire" && <>
+                        <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
+                        <InfoRow icon="💼" label="Métier" value={p.metier} />
+                        <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
+                        <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp, p.ville].filter(Boolean).join(", ") || null} />
+                        <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
+                      </>}
+                      <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
+                      <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
+                    </div>
+                  </div>
+                  {p.role === "prestataire" && p.bio && (
+                    <div style={{ marginTop:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>BIO</div>
+                      <div style={{ color:"rgba(255,255,255,0.7)", lineHeight:1.6 }}>{p.bio}</div>
+                    </div>
+                  )}
+                  {p.role === "prestataire" && Array.isArray(p.competences) && p.competences.length > 0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>COMPÉTENCES</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {p.competences.map((c, i) => (
+                          <span key={i} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:6, padding:"2px 8px", color:C.violet, fontSize:10, fontWeight:600 }}>{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && !p.secteur && (
+                    <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Documents uploadés (prestataires uniquement) ── */}
               {p.role === "prestataire" && (
-                <div style={{ marginTop:10 }}>
+                <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                   <button onClick={()=>{ if(!docs[p.id]) loadDocs(p.id); }} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:"transparent", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:8 }}>
                     {docsLoading[p.id] ? "Chargement…" : docs[p.id] ? `📂 ${docs[p.id].length} document(s)` : "📂 Voir les documents"}
                   </button>
@@ -274,11 +452,11 @@ export function BOComptes() {
                 </div>
               )}
 
-              {/* Bouton vérification IBAN/SIRET */}
+              {/* ── Vérification IBAN/SIRET ── */}
               {(p.rib || p.kbis) && (
-                <div style={{ marginTop:10 }}>
+                <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                   <button onClick={()=>handleVerify(p)} disabled={verifying===p.id} style={{ padding:"7px 14px", borderRadius:10, border:"1px solid rgba(124,111,224,0.4)", background:"rgba(124,111,224,0.1)", color:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:verifying===p.id?0.6:1 }}>
-                    {verifying===p.id ? "Vérification…" : "🔍 Vérifier les documents"}
+                    {verifying===p.id ? "Vérification…" : "🔍 Vérifier IBAN / SIRET"}
                   </button>
                   {verifs[p.id] && (
                     <div style={{ marginTop:10, fontSize:12, lineHeight:1.8 }}>
