@@ -684,6 +684,110 @@ export function CvEditor({ cv, onChange, color }) {
   );
 }
 
+const TAUX_URSSAF = { bic: 0.123, bnc: 0.212 };
+
+function TarifSimulateur({ secteur, metier, tarifNet, color }) {
+  const [open, setOpen]           = useState(false);
+  const [regime, setRegime]       = useState("bic");
+  const [netSouhaite, setNetSouhaite] = useState(tarifNet || 13);
+
+  const tarifInfo = secteur && metier ? METIERS_TARIFS[secteur]?.[metier] : null;
+  const taux      = TAUX_URSSAF[regime];
+  const tarifFact = netSouhaite / (1 - taux);
+  const charges   = tarifFact - netSouhaite;
+
+  // Position du curseur sur la barre (range 0–50€ pour la lisibilité)
+  const barMax = Math.max(tarifInfo?.max || 30, tarifNet, netSouhaite) + 5;
+  const pct = v => `${Math.min(Math.max((v / barMax) * 100, 0), 100)}%`;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {/* ── Fourchette marché ALANE ── */}
+      {tarifInfo && (
+        <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>
+            📊 <strong style={{ color: C.text }}>Fourchette marché ALANE — {metier}</strong>
+          </div>
+          {/* Barre visuelle */}
+          <div style={{ position: "relative", height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, margin: "10px 0 6px" }}>
+            {/* Zone marché */}
+            <div style={{ position: "absolute", left: pct(tarifInfo.min), width: `calc(${pct(tarifInfo.max)} - ${pct(tarifInfo.min)})`, height: "100%", background: `${C.success}55`, borderRadius: 4 }} />
+            {/* Curseur tarif actuel */}
+            <div style={{ position: "absolute", left: pct(tarifNet), top: "50%", transform: "translate(-50%, -50%)", width: 14, height: 14, borderRadius: "50%", background: color || C.violet, border: "2px solid #fff", boxShadow: "0 1px 4px rgba(0,0,0,0.4)", transition: "left 0.2s" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.textMuted }}>
+            <span>0 €</span>
+            <span style={{ color: C.success, fontWeight: 700 }}>{tarifInfo.min} – {tarifInfo.max} €/h</span>
+            <span>{barMax} €</span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: tarifNet < tarifInfo.min ? "#F25E5E" : tarifNet > tarifInfo.max ? C.accentGold : C.success, fontWeight: 700 }}>
+            {tarifNet < tarifInfo.min ? "⚠️ En dessous du marché" : tarifNet > tarifInfo.max ? "📈 Au-dessus du marché" : "✅ Dans la fourchette marché"}
+          </div>
+        </div>
+      )}
+
+      {/* ── Simulateur de charges ── */}
+      <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>🧮 Simulateur de charges URSSAF</span>
+          <span style={{ fontSize: 11, color: C.textMuted }}>{open ? "▲" : "▼"}</span>
+        </button>
+        {open && (
+          <div style={{ padding: "0 14px 14px", borderTop: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: C.textSub, margin: "10px 0 12px", lineHeight: 1.5 }}>
+              Indiquez votre revenu net souhaité. Le simulateur calcule le tarif à facturer selon votre régime.
+            </div>
+
+            {/* Régime */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {[["bic", "BIC — Services (12,3 %)"], ["bnc", "BNC — Libéral (21,2 %)"]].map(([val, lbl]) => (
+                <button key={val} onClick={() => setRegime(val)} style={{ flex: 1, padding: "8px 6px", borderRadius: 8, border: `1px solid ${regime === val ? color || C.violet : C.border}`, background: regime === val ? `${color || C.violet}18` : "transparent", color: regime === val ? color || C.violet : C.textSub, fontSize: 10, fontWeight: regime === val ? 700 : 400, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.4, textAlign: "center" }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+
+            {/* Input net souhaité */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.textSub, marginBottom: 6 }}>Revenu net souhaité (€/h)</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number" min={1} max={200} step={0.5}
+                  value={netSouhaite}
+                  onChange={e => setNetSouhaite(Math.max(1, Number(e.target.value)))}
+                  style={{ width: 80, padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.06)", color: C.text, fontSize: 14, fontWeight: 700, fontFamily: "inherit", textAlign: "center" }}
+                />
+                <span style={{ color: C.textSub, fontSize: 12 }}>€/h net</span>
+              </div>
+            </div>
+
+            {/* Résultat */}
+            <div style={{ background: "#0D1B3E", borderRadius: 10, padding: "12px 14px", border: `1px solid ${color || C.violet}33` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: C.textSub }}>Revenu net</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{netSouhaite.toFixed(2)} €/h</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: C.textSub }}>Charges URSSAF ({(taux * 100).toFixed(1)} %)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#F25E5E" }}>+{charges.toFixed(2)} €/h</span>
+              </div>
+              <div style={{ height: 1, background: C.border, marginBottom: 8 }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Tarif à facturer</span>
+                <span style={{ fontSize: 17, fontWeight: 800, color: color || C.violet }}>{tarifFact.toFixed(2)} €/h</span>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 10, color: C.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+              * Taux 2024. N'inclut pas la CFE (~200–600 €/an) ni la TVA (franchise en base si CA &lt; 36 800 €).
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PrestaProfileEditScreen({ onBack }) {
   const [meta, setMeta] = useState(null);
   const [dispos, setDispos] = useState({});
@@ -763,13 +867,7 @@ export function PrestaProfileEditScreen({ onBack }) {
           </label>
           <input type="range" min={sliderMin} max={sliderMax} step={0.5} value={tarifNet} onChange={e=>setTarifNet(Number(e.target.value))} style={{ width:"100%", accentColor:color, marginBottom:6 }} />
           <div style={{ display:"flex", justifyContent:"space-between", color:C.textMuted, fontSize:11 }}><span>{sliderMin} €</span><span>{sliderMax} €</span></div>
-          {tarifInfo && (
-            <div style={{ background: tarifNet < tarifInfo.min ? "rgba(242,94,94,0.08)" : tarifNet > tarifInfo.max ? "rgba(240,180,41,0.08)" : "rgba(255,255,255,0.04)", border:`1px solid ${tarifNet < tarifInfo.min ? "#F25E5E44" : tarifNet > tarifInfo.max ? `${C.accentGold}44` : C.border}`, borderRadius:8, padding:"6px 12px", marginTop:8, fontSize:11, color:C.textSub }}>
-              {tarifNet < tarifInfo.min && <span style={{ color:"#F25E5E", fontWeight:700 }}>⚠️ En dessous du marché · </span>}
-              {tarifNet > tarifInfo.max && <span style={{ color:C.accentGold, fontWeight:700 }}>📈 Au-dessus du marché · </span>}
-              📊 Marché : <strong style={{ color:C.text }}>{tarifInfo.min} – {tarifInfo.max} €/h</strong>
-            </div>
-          )}
+          <TarifSimulateur secteur={meta?.secteur} metier={meta?.metier} tarifNet={tarifNet} color={color} />
         </div>
 
         {/* Disponibilités par jour */}
