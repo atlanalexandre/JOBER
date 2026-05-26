@@ -258,10 +258,9 @@ export function BOComptes() {
   );
 
   const InfoRow = ({ icon, label, value, mono }) => value ? (
-    <div style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
-      <span style={{ fontSize: 13, flexShrink: 0 }}>{icon}</span>
-      <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 12, flexShrink: 0 }}>{label} :</span>
-      <span style={{ color: C.white, fontSize: 12, fontWeight: 600, fontFamily: mono ? "monospace" : "inherit", wordBreak: "break-all" }}>{value}</span>
+    <div style={{ marginBottom: 7 }}>
+      <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{icon} {label} : </span>
+      <span style={{ color: C.white, fontSize: 12, fontWeight: 600, fontFamily: mono ? "monospace" : "inherit", wordBreak: "break-word" }}>{value}</span>
     </div>
   ) : null;
 
@@ -400,31 +399,27 @@ export function BOComptes() {
               ) : (
                 /* ── MODE LECTURE ── */
                 <div style={{ fontSize:12 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
-                    <div>
-                      <InfoRow icon="📱" label="Tél" value={p.telephone} />
-                      <InfoRow icon="🏦" label="IBAN" value={p.rib} mono />
-                      <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
-                      <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
-                      <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
-                      <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret} />
-                    </div>
-                    <div>
-                      {p.role === "prestataire" && <>
-                        <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
-                        <InfoRow icon="💼" label="Métier" value={p.metier} />
-                        <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
-                        <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp || p.code_postal, p.ville].filter(Boolean).join(", ") || null} />
-                        <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
-                      </>}
-                      {p.role === "client" && <>
-                        <InfoRow icon="📍" label="Adresse" value={[p.adresse || p.rue, p.code_postal || p.cp, p.ville].filter(Boolean).join(", ") || null} />
-                        <InfoRow icon="🔄" label="Fréquence" value={p.frequence_besoins} />
-                        <InfoRow icon="⏱️" label="Volume" value={p.volume_horaire ? `${p.volume_horaire}h/mois` : null} />
-                      </>}
-                      <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
-                      <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
-                    </div>
+                  <div>
+                    <InfoRow icon="📱" label="Tél" value={p.telephone} />
+                    <InfoRow icon="🏦" label="IBAN" value={p.rib} mono />
+                    <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
+                    <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
+                    <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
+                    <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret} />
+                    {p.role === "prestataire" && <>
+                      <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
+                      <InfoRow icon="💼" label="Métier" value={p.metier} />
+                      <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
+                      <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp || p.code_postal, p.ville].filter(Boolean).join(", ") || null} />
+                      <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
+                    </>}
+                    {p.role === "client" && <>
+                      <InfoRow icon="📍" label="Adresse" value={[p.adresse || p.rue, p.code_postal || p.cp, p.ville].filter(Boolean).join(", ") || null} />
+                      <InfoRow icon="🔄" label="Fréquence" value={p.frequence_besoins} />
+                      <InfoRow icon="⏱️" label="Volume" value={p.volume_horaire ? `${p.volume_horaire}h/mois` : null} />
+                    </>}
+                    <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
+                    <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
                   </div>
                   {p.role === "prestataire" && p.bio && (
                     <div style={{ marginTop:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
