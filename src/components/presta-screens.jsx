@@ -1700,6 +1700,14 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
         {tab==="clients" && <PrestaClientsTab />}
         {tab==="docs" && <>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, fontSize:12 }}>⚠️ Certains documents doivent être renouvelés annuellement (attestation URSSAF, RC Pro).</div>
+          <div onClick={()=>onNavigate("micro_entreprise")} style={{ background:"linear-gradient(135deg,#4F46E515,#0EA5E910)", border:"1px solid #4F46E540", borderRadius:r, padding:"13px 14px", marginBottom:14, cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:22 }}>🚀</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Pas encore auto-entrepreneur ?</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>LegalStart & Shine vous accompagnent dans vos démarches</div>
+            </div>
+            <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
+          </div>
           {DOCS_REQUIS.map((doc,i)=>(
             <DocRowItem key={i} doc={doc} isValid={i<4} />
           ))}
@@ -1761,6 +1769,91 @@ export function PrestaDashboard({ onNavigate, activeScreen }) {
             )}
           </>;
         })()}
+      </div>
+    </div>
+  );
+}
+
+export function MicroEntrepriseScreen({ onBack }) {
+  const services = [
+    {
+      id: "legalstart",
+      name: "LegalStart",
+      emoji: "⚖️",
+      tagline: "Créez votre micro-entreprise en ligne",
+      color: "#4F46E5",
+      avantages: [
+        "Immatriculation en quelques clics (SIREN/SIRET)",
+        "Accompagnement juridique personnalisé",
+        "Contrats et statuts rédigés par des avocats",
+      ],
+      cta: "Créer ma micro-entreprise →",
+      url: "https://www.legalstart.fr/micro-entreprise/",
+    },
+    {
+      id: "shine",
+      name: "Shine",
+      emoji: "✨",
+      tagline: "Le compte pro pensé pour les indépendants",
+      color: "#0EA5E9",
+      avantages: [
+        "Compte bancaire professionnel en 24h",
+        "Facturation et devis intégrés",
+        "Suivi TVA, cotisations URSSAF simplifiés",
+      ],
+      cta: "Ouvrir mon compte pro →",
+      url: "https://www.shine.fr",
+    },
+  ];
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:0, fontFamily:font.display }}>Créer ma micro-entreprise</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Nos partenaires vous accompagnent dans vos démarches</p>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        <div style={{ background:`${C.violet}18`, border:`1px solid ${C.violet}40`, borderRadius:r, padding:"14px 16px", marginBottom:20, display:"flex", gap:10, alignItems:"flex-start" }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>💡</span>
+          <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6 }}>
+            Pour exercer sur ALANE, vous devez être auto-entrepreneur (micro-entreprise). Ces plateformes vous permettent de vous lancer rapidement et légalement.
+          </p>
+        </div>
+
+        {services.map(s => (
+          <div key={s.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r+4, padding:"20px", marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+              <div style={{ width:52, height:52, borderRadius:14, background:`${s.color}20`, border:`1px solid ${s.color}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>
+                {s.emoji}
+              </div>
+              <div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:17, fontFamily:font.display }}>{s.name}</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{s.tagline}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              {s.avantages.map((a, i) => (
+                <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:8 }}>
+                  <span style={{ color:s.color, fontSize:14, flexShrink:0, marginTop:1 }}>✓</span>
+                  <span style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>{a}</span>
+                </div>
+              ))}
+            </div>
+
+            <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ display:"block", textDecoration:"none" }}>
+              <button style={{ width:"100%", padding:"13px", borderRadius:r, border:"none", background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+                {s.cta}
+              </button>
+            </a>
+          </div>
+        ))}
+
+        <p style={{ color:C.textMuted, fontSize:11, textAlign:"center", margin:"8px 0 0", lineHeight:1.6 }}>
+          ALANE n'est pas affilié à ces services. Ces liens sont fournis à titre informatif pour faciliter vos démarches.
+        </p>
       </div>
     </div>
   );
