@@ -5356,7 +5356,7 @@ export function OnboardingScreen({ role, onDone }) {
     { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
     { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé en escrow. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
-    { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme.","En cas de doute, notre équipe support est là pour vous orienter. 👋"], color:"#4FC3F7" },
+    { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
   const prestaSteps = [
     { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
