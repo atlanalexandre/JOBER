@@ -4787,7 +4787,6 @@ export function DocUploadScreen({ onBack }) {
     { id:"kbis",     label:"Extrait KBIS / Avis INSEE",  icon:"📋", required:true  },
     { id:"urssaf",   label:"Attestation URSSAF",          icon:"🏛️", required:true  },
     { id:"cni",      label:"Pièce d’identité",            icon:"🪪", required:true  },
-    { id:"vitale",   label:"Carte Vitale",                icon:"💊", required:false },
     { id:"domicile", label:"Justificatif de domicile",    icon:"🏠", required:false },
     { id:"rib",      label:"RIB / IBAN",                  icon:"💳", required:true  },
     { id:"rcpro",    label:"Attestation RC Pro",          icon:"🛡️", required:false },
