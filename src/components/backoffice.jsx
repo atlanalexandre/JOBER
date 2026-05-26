@@ -632,6 +632,21 @@ export function EmailTestButton() {
   );
 }
 
+function ResetOnboardingButton() {
+  const [done, setDone] = useState(false);
+  const handle = () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith("alane_onboarded"));
+    keys.forEach(k => localStorage.removeItem(k));
+    setDone(true);
+    setTimeout(() => setDone(false), 3000);
+  };
+  return (
+    <button onClick={handle} style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${done ? C.success : C.border}`, background:done ? `${C.success}18` : "transparent", color:done ? C.success : C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+      {done ? "✅ Tutoriel réinitialisé — retourne à l'accueil" : "🔄 Réinitialiser le tutoriel"}
+    </button>
+  );
+}
+
 export function BOTest({ onNavigate }) {
   const MOCK_P = {
     id:"bo-test-001", name:"Jean Demo", jobTitle:"Agent de démonstration", role:"Agent de démonstration",
@@ -729,6 +744,12 @@ export function BOTest({ onNavigate }) {
         <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>📧 Test email</div>
         <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Envoie un email test à direction@alane.fr pour vérifier Resend.</p>
         <EmailTestButton />
+      </div>
+
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>🎓 Tutoriel first-login</div>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Réinitialise le tutoriel pour qu'il se relance au prochain accès à l'accueil (efface la clé localStorage du navigateur actuel).</p>
+        <ResetOnboardingButton />
       </div>
     </div>
   );
