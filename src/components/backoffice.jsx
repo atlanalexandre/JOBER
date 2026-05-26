@@ -211,8 +211,10 @@ export function BOComptes() {
       tarif_net: p.tarif_net != null ? String(p.tarif_net) : "",
       bio: p.bio || "",
       rue: p.rue || p.adresse || "",
-      cp: p.cp || "",
+      cp: p.cp || p.code_postal || "",
       ville: p.ville || "",
+      frequence_besoins: p.frequence_besoins || "",
+      volume_horaire: p.volume_horaire != null ? String(p.volume_horaire) : "",
       plan_abonnement: p.plan_abonnement || "free",
       subscription_end_date: p.subscription_end_date ? p.subscription_end_date.slice(0, 10) : "",
     });
@@ -370,16 +372,24 @@ export function BOComptes() {
                       <FI label="Tarif net (€/h)" field="tarif_net" type="number" />
                       <FI label="Bio / Présentation" field="bio" type="textarea" />
                     </div>
+                  </>}
 
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Adresse</div>
+                  {p.role === "client" && <>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Besoins</div>
                     <div style={{ marginBottom:12 }}>
-                      <FI label="Rue" field="rue" />
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                        <FI label="Code postal" field="cp" />
-                        <FI label="Ville" field="ville" />
-                      </div>
+                      <FI label="Fréquence des besoins" field="frequence_besoins" options={[["","— Non renseigné —"],["occasionnel","Occasionnel"],["regulier","Régulier"],["permanent","Permanent"]]} />
+                      <FI label="Volume horaire (h/mois)" field="volume_horaire" type="number" />
                     </div>
                   </>}
+
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Adresse</div>
+                  <div style={{ marginBottom:12 }}>
+                    <FI label="Rue / Adresse" field="rue" />
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                      <FI label="Code postal" field="cp" />
+                      <FI label="Ville" field="ville" />
+                    </div>
+                  </div>
 
                   <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Abonnement</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:4 }}>
@@ -404,8 +414,13 @@ export function BOComptes() {
                         <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
                         <InfoRow icon="💼" label="Métier" value={p.metier} />
                         <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
-                        <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp, p.ville].filter(Boolean).join(", ") || null} />
+                        <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp || p.code_postal, p.ville].filter(Boolean).join(", ") || null} />
                         <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
+                      </>}
+                      {p.role === "client" && <>
+                        <InfoRow icon="📍" label="Adresse" value={[p.adresse || p.rue, p.code_postal || p.cp, p.ville].filter(Boolean).join(", ") || null} />
+                        <InfoRow icon="🔄" label="Fréquence" value={p.frequence_besoins} />
+                        <InfoRow icon="⏱️" label="Volume" value={p.volume_horaire ? `${p.volume_horaire}h/mois` : null} />
                       </>}
                       <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
                       <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
@@ -427,7 +442,37 @@ export function BOComptes() {
                       </div>
                     </div>
                   )}
-                  {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && !p.secteur && (
+                  {p.role === "client" && Array.isArray(p.secteurs_besoins) && p.secteurs_besoins.length > 0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>SECTEURS RECHERCHÉS</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {p.secteurs_besoins.map((s, i) => (
+                          <span key={i} style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:6, padding:"2px 8px", color:"#F0B429", fontSize:10, fontWeight:600 }}>{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {p.role === "client" && Array.isArray(p.metiers_besoins) && p.metiers_besoins.length > 0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>MÉTIERS RECHERCHÉS</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {p.metiers_besoins.map((m, i) => (
+                          <span key={i} style={{ background:"rgba(124,111,224,0.12)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:6, padding:"2px 8px", color:C.violet, fontSize:10, fontWeight:600 }}>{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {p.role === "client" && Array.isArray(p.lieux_intervention) && p.lieux_intervention.length > 0 && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>LIEUX D'INTERVENTION</div>
+                      {p.lieux_intervention.map((l, i) => (
+                        <div key={i} style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginBottom:2 }}>
+                          📍 {[l.adresse, l.codePostal, l.ville].filter(Boolean).join(", ")}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && !p.secteur && !p.adresse && !p.frequence_besoins && (
                     <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>
                   )}
                 </div>
