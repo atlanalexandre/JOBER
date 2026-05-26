@@ -208,6 +208,8 @@ export default async function handler(req, res) {
     }
 
     if (action === "accept") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { candidature_id, mission_id, prestataire_id } = payload;
       if (!candidature_id || !mission_id) return res.status(400).json({ error: "candidature_id et mission_id requis" });
 

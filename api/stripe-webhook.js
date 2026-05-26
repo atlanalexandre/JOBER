@@ -100,10 +100,14 @@ export default async function handler(req, res) {
       const daysToAdd = billing === "yearly" ? 365 : 30;
       const endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
       try {
+        // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
+        const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
+        const existingUser = getR.ok ? await getR.json() : {};
+        const existingMeta = existingUser.user_metadata || {};
         const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
           method: "PUT",
           headers: hdrs,
-          body: JSON.stringify({ user_metadata: { plan_abonnement: plan, subscription_end_date: endDate } }),
+          body: JSON.stringify({ user_metadata: { ...existingMeta, plan_abonnement: plan, subscription_end_date: endDate } }),
         });
         if (!r.ok) {
           console.error("stripe-webhook: user metadata update failed", r.status);

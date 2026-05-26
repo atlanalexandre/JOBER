@@ -73,7 +73,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Non autorisé — token BO invalide ou expiré" });
   }
 
-  const { action, profileId } = req.body;
+  const { action, profileId, ...payload } = req.body;
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
