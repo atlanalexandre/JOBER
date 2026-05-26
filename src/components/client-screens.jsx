@@ -3353,6 +3353,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre mission en détail.", color:C.indigo },
     { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est bloqué en escrow. Aucun débit définitif avant que la mission soit validée par les deux parties.", color:C.accentGold },
     { icon:"✅", title:"Validez & notez", desc:"Une fois la mission terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
+    { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
 
   const prestaSteps = [
@@ -3446,7 +3447,13 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
           <div style={{ width:100, height:100, borderRadius:28, background:`${current.color}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48, marginBottom:24 }}>{current.icon}</div>
           <div style={{ fontSize:13, fontWeight:700, color:current.color, textTransform:"uppercase", letterSpacing:2, marginBottom:10 }}>Étape {step+1}/{steps.length}</div>
           <h3 style={{ fontSize:24, fontWeight:800, color:C.text, margin:"0 0 16px", fontFamily:font.display }}>{current.title}</h3>
-          <p style={{ color:C.textSub, fontSize:15, lineHeight:1.8, maxWidth:280, margin:0 }}>{current.desc}</p>
+          {current.lines ? (
+            <div style={{ color:C.textSub, fontSize:15, lineHeight:1.8, maxWidth:280, textAlign:"left" }}>
+              {current.lines.map((l,i) => <p key={i} style={{ margin:"0 0 12px" }}>{l}</p>)}
+            </div>
+          ) : (
+            <p style={{ color:C.textSub, fontSize:15, lineHeight:1.8, maxWidth:280, margin:0 }}>{current.desc}</p>
+          )}
         </div>
 
         {/* Navigation */}
