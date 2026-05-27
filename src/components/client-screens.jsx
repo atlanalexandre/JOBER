@@ -2616,7 +2616,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
 }
 
 export function ChatScreen({ provider, onBack, chatClientId }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Conversation introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Conversation introuvable.</div>;
   const p = provider;
   const [msg, setMsg] = useState("");
   const [msgs, setMsgs] = useState([]);
@@ -4661,7 +4661,7 @@ export function MissionTimeline({ status="in_progress" }) {
 }
 
 export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
   const p = provider;
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);

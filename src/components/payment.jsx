@@ -22,7 +22,7 @@ export function setUseProviders(fn) { _useProviders = fn; }
 
 // ── MISSION PENDING SCREEN ────────────────────────────────────────
 export function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
   const p = provider;
   const { providers: allProviders } = _useProviders();
   const [secsLeft, setSecsLeft]     = useState(3600);
@@ -309,7 +309,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
-  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestataire introuvable.</div>;
+  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
   useEffect(() => {
     if (method !== "card") return;
@@ -475,7 +475,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
 export function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Facture introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Facture introuvable.</div>;
   const p = provider;
   const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
   const [emailSent, setEmailSent] = useState(false);
@@ -592,7 +592,7 @@ export function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
 export function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Mission introuvable.</div>;
   const p = provider;
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
