@@ -2810,6 +2810,9 @@ export function FAQScreen({ onBack, role }) {
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des prestataires qualifiés dans votre secteur, vérifiés et assurés. Vous choisissez le profil, la date et l'horaire — ALANE s'occupe du reste." },
     { q:"Comment réserver un prestataire ?", a:"Parcourez les profils disponibles, sélectionnez celui qui correspond à vos besoins, choisissez le créneau et confirmez la réservation. Vous recevez une confirmation immédiate." },
     { q:"Le prix affiché est-il le prix final ?", a:"Oui. ALANE applique un tarif transparent : le prix affiché est le prix réel, sans frais cachés ni commission supplémentaire." },
+    { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque mission est encadrée par un contrat de prestation signé électroniquement, le prestataire travaille pour plusieurs clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
+    { q:"Qu'est-ce qui me protège contre une requalification ?", a:"Trois éléments vous protègent :\n\n① Le contrat ALANE — signé électroniquement, il établit explicitement l'absence de lien de subordination et cite les critères jurisprudentiels de la Cour de Cassation.\n\n② La multi-clientèle — nos prestataires travaillent pour plusieurs entreprises via ALANE, ce qui exclut tout état de dépendance économique exclusive, critère clé dans les décisions de requalification.\n\n③ La vérification des documents — ALANE s'assure que chaque prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance).\n\nBon réflexe complémentaire : évitez de faire appel au même prestataire de manière répétée et exclusive sur le long terme." },
+    { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque mission. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la mission, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de missions." },
     { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la mission annulée." },
     { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler jusqu'à 24h avant le début de la mission sans frais. En dessous de ce délai, des frais d'annulation peuvent s'appliquer selon les CGU." },
     { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la mission." },
@@ -3654,7 +3657,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 2 — Indépendance du prestataire",
-      content:`Le Prestataire intervient en tant que travailleur indépendant. Il conserve toute liberté dans l'organisation et l'exécution de sa prestation. Le présent contrat ne crée aucun lien de subordination juridique entre le Client et le Prestataire.\n\nLe Prestataire n'est pas soumis aux directives du Client concernant les moyens d'exécution de la mission, mais uniquement quant aux résultats attendus. Aucune requalification en contrat de travail ne saurait résulter du présent accord.\n\nLe Prestataire demeure libre de travailler pour d'autres clients pendant et après la présente mission.`
+      content:`Le Prestataire intervient en tant que travailleur indépendant au sens de l'article L8221-6 du Code du travail, lequel établit une présomption de non-salariat pour les personnes immatriculées en tant qu'auto-entrepreneur.\n\nConformément aux critères jurisprudentiels de la Chambre Sociale de la Cour de Cassation (notamment Cass. Soc. 13 novembre 1996 et Cass. Soc. 25 février 2003), la qualification de contrat de travail requiert la réunion cumulative de trois conditions : l'exécution d'un travail, le versement d'une rémunération, et l'existence d'un lien de subordination juridique caractérisé. Ce dernier élément, seul discriminant, est expressément exclu du présent accord.\n\n• Le Prestataire n'est soumis à aucune directive du Client sur les moyens d'exécution, uniquement sur les résultats attendus.\n• Le Prestataire organise librement son intervention dans le cadre horaire de la mission.\n• Le Prestataire exerce son activité auprès de plusieurs clients via la plateforme ALANE, ce qui exclut tout état de dépendance économique exclusive.\n• Le Prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance fournie à ALANE).\n• ALANE intervient en qualité de plateforme d'intermédiation et ne saurait être qualifiée d'employeur au sens du Code du travail.\n\nAucune requalification en contrat de travail ne saurait résulter du présent accord. Les parties reconnaissent expressément que leur relation est exclusivement de nature commerciale.`
     },
     {
       title:"Article 3 — Rémunération et paiement",
@@ -5359,7 +5362,7 @@ export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
   );
 }
 
-export function OnboardingScreen({ role, onDone }) {
+export function OnboardingScreen({ role, onDone, onNavigate }) {
   const [step, setStep] = useState(0);
 
   const clientSteps = [
@@ -5395,6 +5398,11 @@ export function OnboardingScreen({ role, onDone }) {
           {s.lines ? (
             <div style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:320, marginLeft:"auto", marginRight:"auto", textAlign:"left" }}>
               {s.lines.map((l,i) => <p key={i} style={{ margin:"0 0 10px" }}>{l}</p>)}
+              {isLast && onNavigate && (
+                <button onClick={()=>{ onDone(); onNavigate("faq"); }} style={{ marginTop:4, background:"transparent", border:`1px solid ${"#4FC3F7"}55`, borderRadius:8, padding:"8px 14px", color:"#4FC3F7", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
+                  📖 En savoir plus dans la FAQ →
+                </button>
+              )}
             </div>
           ) : (
             <p style={{ color:C.textSub, fontSize:15, lineHeight:1.75, margin:0, maxWidth:320, marginLeft:"auto", marginRight:"auto" }}>{s.desc}</p>

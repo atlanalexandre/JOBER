@@ -1072,6 +1072,11 @@ export default function App() {
           localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1");
           setShowOnboarding(false);
         }}
+        onNavigate={(to)=>{
+          localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1");
+          setShowOnboarding(false);
+          navigate(to);
+        }}
       />
     )}
     {cookieNotice && (
