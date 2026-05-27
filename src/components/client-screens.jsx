@@ -481,6 +481,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [notifAsked, setNotifAsked] = useState(false);
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
+  const sectorStatus = useSectorStatus();
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
@@ -724,22 +725,29 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <span onClick={()=>onNavigate("catalogue")} style={{ fontSize:12, color:violetLite, fontWeight:600, cursor:"pointer" }}>Voir tout ›</span>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:isDesktop?"repeat(8,1fr)":"repeat(4,1fr)", gap:10 }}>
-          {SECTORS.map(s=>(
-            <div key={s.id} onClick={()=>onNavigate("sector_detail",s)}
-              className="card-hover"
-              style={{
-                background:"rgba(255,255,255,0.025)",
-                border:`1px solid ${C.border}`,
-                borderRadius:r, padding:"12px 6px 10px",
-                textAlign:"center", cursor:"pointer",
-                position:"relative", overflow:"hidden",
-              }}>
-              <div style={{ position:"absolute", top:0, left:0, right:0, height:34, background:`radial-gradient(60% 100% at 50% 0%, ${s.color}25 0%, transparent 100%)`, pointerEvents:"none" }} />
-              <div style={{ fontSize:22, marginBottom:4, position:"relative" }}>{s.icon}</div>
-              <div style={{ fontSize:9.5, fontWeight:600, color:C.text, letterSpacing:0.3, textTransform:"uppercase", lineHeight:1.2, position:"relative" }}>{s.label}</div>
-              <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>{providers.filter(p=>p.sector===s.id).length} pros</div>
-            </div>
-          ))}
+          {SECTORS.map(s=>{
+            const ss = sectorStatus[s.id];
+            const isOpen = !ss || ss.open;
+            return (
+              <div key={s.id} onClick={isOpen ? ()=>onNavigate("sector_detail",s) : undefined}
+                className={isOpen ? "card-hover" : ""}
+                style={{
+                  background: isOpen ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.01)",
+                  border:`1px solid ${isOpen ? C.border : "rgba(255,255,255,0.04)"}`,
+                  borderRadius:r, padding:"12px 6px 10px",
+                  textAlign:"center", cursor: isOpen ? "pointer" : "default",
+                  position:"relative", overflow:"hidden",
+                  opacity: isOpen ? 1 : 0.45,
+                }}>
+                <div style={{ position:"absolute", top:0, left:0, right:0, height:34, background:`radial-gradient(60% 100% at 50% 0%, ${s.color}${isOpen?"25":"10"} 0%, transparent 100%)`, pointerEvents:"none" }} />
+                <div style={{ fontSize:22, marginBottom:4, position:"relative" }}>{isOpen ? s.icon : "🔒"}</div>
+                <div style={{ fontSize:9.5, fontWeight:600, color: isOpen ? C.text : C.textMuted, letterSpacing:0.3, textTransform:"uppercase", lineHeight:1.2, position:"relative" }}>{s.label}</div>
+                <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>
+                  {isOpen ? `${providers.filter(p=>p.sector===s.id).length} pros` : ss ? `${ss.count}/${ss.min} presta` : "Bientôt"}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -839,6 +847,7 @@ export function CatalogueScreen({ onNavigate }) {
   const [activeSector, setActiveSector] = useState(null);
   const sectorRefs = useRef({});
   const { providers: realProviders } = useProviders();
+  const sectorStatus = useSectorStatus();
 
   const scrollToSector = (id) => {
     setActiveSector(id);
@@ -856,11 +865,15 @@ export function CatalogueScreen({ onNavigate }) {
       {/* Sticky sector pills */}
       <div style={{ position:"sticky", top:0, background:C.bg, zIndex:50, borderBottom:`1px solid ${C.border}`, padding:"10px 0", width:"100%", boxSizing:"border-box" }}>
         <div style={{ display:"flex", gap:8, overflowX:"auto", padding:"0 18px", scrollbarWidth:"none", WebkitOverflowScrolling:"touch" }}>
-          {SECTORS.map(s=>(
-            <button key={s.id} onClick={()=>scrollToSector(s.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:20, border:"none", cursor:"pointer", whiteSpace:"nowrap", background:activeSector===s.id?`linear-gradient(135deg,${C.violet},${C.indigo})`:C.offWhite, color:activeSector===s.id?C.white:C.gray, fontWeight:activeSector===s.id?700:500, fontSize:12, fontFamily:"inherit", transition:"all 0.2s", flexShrink:0 }}>
-              {s.icon} {s.label}
-            </button>
-          ))}
+          {SECTORS.map(s=>{
+            const ss = sectorStatus[s.id];
+            const isOpen = !ss || ss.open;
+            return (
+              <button key={s.id} onClick={()=>scrollToSector(s.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 14px", borderRadius:20, border:"none", cursor:"pointer", whiteSpace:"nowrap", background:activeSector===s.id?`linear-gradient(135deg,${C.violet},${C.indigo})`:C.offWhite, color:activeSector===s.id?C.white:C.gray, fontWeight:activeSector===s.id?700:500, fontSize:12, fontFamily:"inherit", transition:"all 0.2s", flexShrink:0, opacity:isOpen?1:0.5 }}>
+                {isOpen ? s.icon : "🔒"} {s.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -868,15 +881,26 @@ export function CatalogueScreen({ onNavigate }) {
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
           const sectorProviders = realProviders.filter(p=>p.sector===sector.id);
+          const ss = sectorStatus[sector.id];
+          const isOpen = !ss || ss.open;
           return (
             <div key={sector.id} ref={el=>sectorRefs.current[sector.id]=el} style={{ marginBottom:8 }}>
-              {/* Bannière secteur cliquable uniquement */}
-              <div style={{ margin:"0 18px 14px", background:`linear-gradient(135deg,${sector.color}44,${sector.color}22)`, borderRadius:18, padding:"20px 18px", position:"relative", overflow:"hidden", cursor:"pointer" }} onClick={()=>onNavigate("sector_detail",sector)}>
-                <div style={{ position:"absolute", right:-10, top:-10, fontSize:64, opacity:0.25 }}>{sector.banner}</div>
-                <div style={{ position:"absolute", right:14, bottom:14, fontSize:36 }}>{sector.icon}</div>
+              <div
+                style={{ margin:"0 18px 14px", background: isOpen ? `linear-gradient(135deg,${sector.color}44,${sector.color}22)` : "rgba(255,255,255,0.03)", borderRadius:18, padding:"20px 18px", position:"relative", overflow:"hidden", cursor: isOpen ? "pointer" : "default", opacity: isOpen ? 1 : 0.5, border: isOpen ? "none" : `1px solid rgba(255,255,255,0.06)` }}
+                onClick={isOpen ? ()=>onNavigate("sector_detail",sector) : undefined}>
+                <div style={{ position:"absolute", right:-10, top:-10, fontSize:64, opacity:0.2 }}>{isOpen ? sector.banner : "🔒"}</div>
+                <div style={{ position:"absolute", right:14, bottom:14, fontSize:36 }}>{isOpen ? sector.icon : ""}</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:18 }}>{sector.label}</div>
-                <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sectorProviders.length} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
-                <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les prestataires →</Badge></div>
+                {isOpen ? (
+                  <>
+                    <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>{sectorProviders.length} prestataires · {sectorProviders.filter(p=>p.available).length} disponibles maintenant</div>
+                    <div style={{ marginTop:10 }}><Badge color={sector.color} small>Voir tous les prestataires →</Badge></div>
+                  </>
+                ) : (
+                  <div style={{ color:C.textMuted, fontSize:13, marginTop:6 }}>
+                    🔒 Bientôt disponible · {ss ? `${ss.count} / ${ss.min} prestataires inscrits` : "Ouverture prochaine"}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -884,6 +908,31 @@ export function CatalogueScreen({ onNavigate }) {
       </div>
     </div>
   );
+}
+
+let _sectorStatusCache = null;
+let _sectorStatusCacheTs = 0;
+
+export function useSectorStatus() {
+  const [status, setStatus] = useState(_sectorStatusCache || {});
+  useEffect(() => {
+    if (_sectorStatusCache && Date.now() - _sectorStatusCacheTs < 60_000) return;
+    fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_sector_status" }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d && typeof d === "object" && !d.error) {
+          _sectorStatusCache = d;
+          _sectorStatusCacheTs = Date.now();
+          setStatus(d);
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return status;
 }
 
 let _providersCache = null;
