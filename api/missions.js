@@ -407,6 +407,89 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "cancel_prestataire") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,hours,ville`,
+        { headers }
+      );
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+
+      // Remettre la mission en open et effacer le prestataire
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "open", prestataire_id: null }),
+      });
+
+      // Rejeter la candidature du prestataire désisté
+      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=eq.${caller.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "rejected" }),
+      });
+
+      // Notifier le client
+      if (mission.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.client_id,
+            type: "mission",
+            title: "Prestataire désisté — mission réouverte 🔄",
+            body: `Votre mission "${mission.metier || mission.sector}" du ${mission.date} a été réouverte automatiquement. De nouveaux prestataires vont être notifiés.`,
+            read: false,
+          }),
+        });
+      }
+
+      // Rediffuser aux prestataires approuvés du même secteur (sauf le désisté)
+      const prRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
+        { headers }
+      );
+      const prData = await prRes.json();
+      if (Array.isArray(prData)) {
+        const chunks = [];
+        for (let i = 0; i < prData.length; i += 5) chunks.push(prData.slice(i, i + 5));
+        for (const chunk of chunks) {
+          await Promise.all(chunk.map(async (p) => {
+            if (p.id === caller.id) return;
+            try {
+              const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
+              const ud = await ur.json();
+              const meta = ud.user_metadata || {};
+              const prestaSector = meta.secteur || meta.sector;
+              if (mission.sector && prestaSector && prestaSector !== mission.sector) return;
+              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({
+                  user_id: p.id,
+                  type: "mission",
+                  title: "🔔 Mission disponible — urgent !",
+                  body: `Mission ${mission.metier || mission.sector || ""} le ${mission.date || ""} à ${mission.ville || ""} (${mission.hours || ""}h). Postulez maintenant !`,
+                  read: false,
+                }),
+              });
+            } catch {}
+          }));
+        }
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "close") {
       const { mission_id } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });

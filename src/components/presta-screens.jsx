@@ -1186,6 +1186,8 @@ export function PMissionsTab({ onNavigate }) {
   const [message, setMessage]     = useState("");
   const [showMsg, setShowMsg]     = useState(null);
   const [actioning, setActioning] = useState(null);
+  const [cancelConfirm, setCancelConfirm] = useState(null);
+  const [cancelling, setCancelling]       = useState(false);
 
   const loadPending = async (uid) => {
     const { data } = await supabase.from("missions")
@@ -1220,6 +1222,27 @@ export function PMissionsTab({ onNavigate }) {
       setLoading(false);
     });
   }, []);
+
+  const handleCancelPrestataire = async (missionId) => {
+    setCancelling(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "cancel_prestataire", mission_id: missionId }),
+      });
+      if (r.ok) {
+        setCandidatures(prev => prev.map(c =>
+          c.mission_id === missionId ? { ...c, status: "rejected", mission: { ...c.mission, status: "open" } } : c
+        ));
+      }
+    } finally {
+      setCancelling(false);
+      setCancelConfirm(null);
+    }
+  };
 
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
@@ -1433,6 +1456,24 @@ export function PMissionsTab({ onNavigate }) {
                     <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
                       style={{ marginTop:8, width:"100%", padding:"8px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                       💬 Contacter le client
+                    </button>
+                  )}
+                  {cancelConfirm === c.mission_id ? (
+                    <div style={{ marginTop:8, background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ color:"#F87171", fontWeight:700, fontSize:12, marginBottom:8 }}>Confirmer le désistement ?</div>
+                      <div style={{ color:C.textMuted, fontSize:11, marginBottom:10 }}>La mission sera réouverte et d'autres prestataires seront notifiés automatiquement.</div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={()=>setCancelConfirm(null)} style={{ flex:1, padding:"7px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                        <button disabled={cancelling} onClick={()=>handleCancelPrestataire(c.mission_id)}
+                          style={{ flex:1, padding:"7px", borderRadius:8, border:"1px solid rgba(239,68,68,0.5)", background:"rgba(239,68,68,0.15)", color:"#F87171", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                          {cancelling ? "…" : "Confirmer"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={()=>setCancelConfirm(c.mission_id)}
+                      style={{ marginTop:8, width:"100%", padding:"7px", borderRadius:10, border:"1px solid rgba(239,68,68,0.3)", background:"transparent", color:"#F87171", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      Se désister de la mission
                     </button>
                   )}
                 </div>
