@@ -5398,8 +5398,8 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
           {s.lines ? (
             <div style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:320, marginLeft:"auto", marginRight:"auto", textAlign:"left" }}>
               {s.lines.map((l,i) => <p key={i} style={{ margin:"0 0 10px" }}>{l}</p>)}
-              {isLast && onNavigate && (
-                <button onClick={()=>{ onDone(); onNavigate("faq"); }} style={{ marginTop:4, background:"transparent", border:`1px solid ${"#4FC3F7"}55`, borderRadius:8, padding:"8px 14px", color:"#4FC3F7", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
+              {isLast && (
+                <button onClick={()=>{ onDone(); onNavigate?.("faq"); }} style={{ marginTop:8, background:"transparent", border:"1px solid rgba(79,195,247,0.4)", borderRadius:8, padding:"10px 14px", color:"#4FC3F7", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
                   📖 En savoir plus dans la FAQ →
                 </button>
               )}
