@@ -1045,6 +1045,37 @@ export default function App() {
 
   const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
+
+  // Stack for browser back button — tracks app-internal navigation history
+  const navStackRef = useRef([]);
+  const screenRef = useRef(screen);
+  useEffect(() => {
+    screenRef.current = screen;
+    // Vider la pile lors d'un retour aux écrans racine (déconnexion, etc.)
+    if (["role", "splash", "pending_approval", "auth_client", "auth_presta"].includes(screen)) {
+      navStackRef.current = [];
+    }
+  }, [screen]);
+
+  // Initialise l'entrée courante dans l'historique du navigateur
+  useEffect(() => {
+    // pushState (pas replaceState) crée une entrée tampon dès le chargement
+    // pour que le premier appui sur < déclenche popstate au lieu de quitter l'app
+    window.history.pushState({ alane: true }, "");
+    const handlePopState = () => {
+      const prev = navStackRef.current.pop();
+      if (prev !== undefined) {
+        window.history.pushState({ alane: true }, "");
+        setScreen(prev);
+      } else {
+        // Pile vide : rester sur l'app (re-push pour conserver le tampon)
+        window.history.pushState({ alane: true }, "");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
@@ -1055,6 +1086,9 @@ export default function App() {
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
+    // Empiler l'écran courant pour le bouton retour navigateur
+    navStackRef.current.push(screenRef.current);
+    window.history.pushState({ alane: true }, "");
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     setScreen(to);
