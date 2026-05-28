@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
       const payload  = `${tsStr}.${rawBody.toString()}`;
       const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
-      if (expected !== v1) return res.status(400).json({ error: "Signature invalide" });
+      if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
     } catch { return res.status(400).json({ error: "Erreur signature" }); }
   }
 

@@ -835,6 +835,7 @@ export default function App() {
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [docsRefreshKey,setDocsRefreshKey]=useState(0);
   const [cookieNotice,setCookieNotice]=useState(()=>!localStorage.getItem("alane_cookie_ok"));
+  const [clientCashback,setClientCashback]=useState(null);
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -968,6 +969,13 @@ export default function App() {
     const key = `alane_onboarded_${supaUser.id}`;
     if(!localStorage.getItem(key)) setShowOnboarding(true);
   },[screen, supaUser]);
+
+  // Charger le cashback du client quand on arrive sur le dashboard
+  useEffect(()=>{
+    if(!supaUser || role !== "client" || screen !== "dashboard") return;
+    supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id",supaUser.id).single()
+      .then(({ data })=>{ if(data) setClientCashback(data); });
+  },[supaUser, role, screen]);
 
   // Poll notifications non lues toutes les 30 secondes
   useEffect(()=>{
@@ -1244,12 +1252,12 @@ export default function App() {
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:1 }}>
                   <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Cashback disponible</span>
-                  <Badge color={getCashbackTier(0).color} small>
-                    {getCashbackTier(0).icon} {getCashbackTier(0).label}
+                  <Badge color={getCashbackTier(clientCashback?.missions_completed_month||0).color} small>
+                    {getCashbackTier(clientCashback?.missions_completed_month||0).icon} {getCashbackTier(clientCashback?.missions_completed_month||0).label}
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>0,00 €</strong> · {(getCashbackTier(0).rate*100).toFixed(0)}% sur chaque mission
+                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque mission
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>

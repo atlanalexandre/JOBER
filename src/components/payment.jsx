@@ -356,9 +356,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           setDone(true); setProcessing(false); onSuccess && onSuccess();
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
-    } else {
-      setProcessing(true);
-      setDone(true); setProcessing(false); onSuccess && onSuccess();
+    } else if (method === "apple") {
+      setStripeError("Apple Pay n'est pas disponible. Veuillez utiliser le paiement par carte.");
+    } else if (method === "wire") {
+      setStripeError("Le paiement par virement nécessite une confirmation manuelle. Notre équipe vous contactera pour finaliser.");
     }
   };
 
@@ -439,8 +440,8 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           {method==="apple" && (
             <div style={{ textAlign:"center", padding:"20px 0" }}>
               <div style={{ fontSize:48, marginBottom:8 }}></div>
-              <p style={{ color:C.textSub, fontSize:14 }}>Authentification Face ID / Touch ID requise</p>
-              <div style={{ background:"#000", borderRadius:12, padding:"14px", color:C.white, fontWeight:700, fontSize:15, cursor:"pointer" }}>Payer {total} € avec Apple Pay</div>
+              <p style={{ color:C.textSub, fontSize:14, marginBottom:12 }}>Apple Pay n'est pas disponible sur cet appareil ou ce navigateur.</p>
+              <p style={{ color:C.textSub, fontSize:12 }}>Utilisez le paiement par carte ou virement.</p>
             </div>
           )}
           {method==="wire" && (
@@ -480,9 +481,20 @@ export function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
   const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  const [clientName, setClientName] = useState("");
   const date = new Date().toLocaleDateString("fr-FR");
   const ht = amount || 124;
   const tva = 0; // auto-entrepreneur → pas de TVA
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        const meta = data.user.user_metadata || {};
+        const name = [meta.prenom, meta.nom].filter(Boolean).join(" ") || data.user.email || "";
+        setClientName(name);
+      }
+    });
+  }, []);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
@@ -507,9 +519,7 @@ export function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4 }}>CLIENT</div>
-              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>Société ABC</div>
-              <div style={{ fontSize:11, color:C.textSub }}>12 rue de Rivoli</div>
-              <div style={{ fontSize:11, color:C.textSub }}>75001 Paris</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{clientName || "—"}</div>
             </div>
             <div>
               <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4 }}>PRESTATAIRE</div>

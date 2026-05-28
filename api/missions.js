@@ -40,6 +40,7 @@ export default async function handler(req, res) {
       const { sector, metier } = payload;
       let url = `${SUPABASE_URL}/rest/v1/missions?status=eq.open&order=created_at.desc`;
       if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
+      if (metier) url += `&metier=eq.${encodeURIComponent(metier)}`;
       const r = await fetch(url, { headers });
       const missions = await r.json();
       return res.status(200).json(Array.isArray(missions) ? missions : []);
@@ -296,10 +297,11 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== client_id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
 
       const hours        = mission.hours || 0;
@@ -397,8 +399,22 @@ export default async function handler(req, res) {
     }
 
     if (action === "reject") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { candidature_id } = payload;
       if (!candidature_id) return res.status(400).json({ error: "candidature_id requis" });
+      if (!isUuid(candidature_id)) return res.status(400).json({ error: "candidature_id invalide" });
+
+      // Verify the caller owns the mission associated with this candidature
+      const cRes = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}&select=mission_id`, { headers });
+      const cData = await cRes.json();
+      const cand = Array.isArray(cData) && cData[0];
+      if (!cand) return res.status(404).json({ error: "Candidature introuvable" });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${cand.mission_id}&select=client_id`, { headers });
+      const mData = await mRes.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission || mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -491,8 +507,17 @@ export default async function handler(req, res) {
     }
 
     if (action === "close") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id`, { headers });
+      const mData = await mRes.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission || mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
