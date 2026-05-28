@@ -1049,30 +1049,36 @@ export default function App() {
   // Stack for browser back button — tracks app-internal navigation history
   const navStackRef = useRef([]);
   const screenRef = useRef(screen);
+  const roleRef = useRef(role);
+  useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => {
     screenRef.current = screen;
-    // Vider la pile lors d'un retour aux écrans racine (déconnexion, etc.)
     if (["role", "splash", "pending_approval", "auth_client", "auth_presta"].includes(screen)) {
       navStackRef.current = [];
     }
   }, [screen]);
 
-  // Initialise l'entrée courante dans l'historique du navigateur
+  // Bouton retour navigateur (iOS Safari compatible)
+  // Stratégie : replaceState sur alane.fr (ancre), pushState sur alane.fr#/ (entrée active).
+  // Ces deux URLs sont différentes → iOS Safari DOIT déclencher popstate au lieu de quitter.
+  // Chaque fois que popstate se déclenche on re-push alane.fr#/ = l'utilisateur ne peut
+  // jamais repartir vers un autre site.
   useEffect(() => {
-    // Entrée tampon avec hash #/ — iOS Safari traite alane.fr et alane.fr#/ comme
-    // deux pages différentes, ce qui garantit que popstate est déclenché au lieu
-    // de quitter vers un autre site
-    const buf = () => window.history.pushState({ alane: true }, "", window.location.pathname + "#/");
-    buf();
+    const anchor = window.location.pathname;            // ex: "/"
+    const active = window.location.pathname + "#/";    // ex: "/#/"
+    const rebond = () => window.history.pushState({ alane: true }, "", active);
+
+    window.history.replaceState({ alane: "anchor" }, "", anchor);
+    rebond(); // crée l'entrée active immédiatement
 
     const handlePopState = () => {
+      rebond(); // re-push active → on rebondit toujours sur l'ancre
       const prev = navStackRef.current.pop();
-      buf(); // Toujours re-créer l'entrée tampon
-      if (prev !== undefined) setScreen(prev);
+      const fallback = roleRef.current === "prestataire" ? "p_home" : "home";
+      setScreen(prev !== undefined ? prev : fallback);
     };
 
-    // iOS BFCache : quand l'app est restaurée depuis le cache, ré-ajouter le tampon
-    const handlePageShow = (e) => { if (e.persisted) buf(); };
+    const handlePageShow = (e) => { if (e.persisted) rebond(); };
 
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("pageshow", handlePageShow);
@@ -1092,7 +1098,6 @@ export default function App() {
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
-    // Empiler l'écran courant pour le bouton retour navigateur
     navStackRef.current.push(screenRef.current);
     window.history.pushState({ alane: true }, "", window.location.pathname + "#/");
     if(to==="mission_request") setSelectedSector(data);
