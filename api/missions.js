@@ -581,6 +581,48 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(rows) && rows[0] ? rows[0] : null);
     }
 
+    if (action === "get_sector_status") {
+      // Threshold configurable depuis le BO
+      let minPrestataires = 20;
+      try {
+        const sr = await fetch(
+          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.sector_min_prestataires&select=value`,
+          { headers }
+        );
+        const sd = await sr.json();
+        if (Array.isArray(sd) && sd[0]?.value != null) minPrestataires = Number(sd[0].value) || 20;
+      } catch {}
+
+      // IDs des prestataires approuvés
+      const pr = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
+        { headers }
+      );
+      const profileData = await pr.json();
+      const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
+
+      // Récupérer tous les users (metadata contient le secteur)
+      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=1`, { headers });
+      const ud = await ur.json();
+      const allUsers = ud.users || [];
+
+      // Compter par secteur
+      const counts = {};
+      for (const u of allUsers) {
+        if (!approvedIds.has(u.id)) continue;
+        const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
+        if (sector) counts[sector] = (counts[sector] || 0) + 1;
+      }
+
+      const KNOWN_SECTORS = ["proprete","logistique","hotellerie","restauration","commercial","distribution","divers"];
+      const result = {};
+      for (const s of KNOWN_SECTORS) {
+        const count = counts[s] || 0;
+        result[s] = { count, open: count >= minPrestataires, min: minPrestataires };
+      }
+      return res.status(200).json(result);
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("missions error:", e);
