@@ -1059,21 +1059,27 @@ export default function App() {
 
   // Initialise l'entrée courante dans l'historique du navigateur
   useEffect(() => {
-    // pushState (pas replaceState) crée une entrée tampon dès le chargement
-    // pour que le premier appui sur < déclenche popstate au lieu de quitter l'app
-    window.history.pushState({ alane: true }, "");
+    // Entrée tampon avec hash #/ — iOS Safari traite alane.fr et alane.fr#/ comme
+    // deux pages différentes, ce qui garantit que popstate est déclenché au lieu
+    // de quitter vers un autre site
+    const buf = () => window.history.pushState({ alane: true }, "", window.location.pathname + "#/");
+    buf();
+
     const handlePopState = () => {
       const prev = navStackRef.current.pop();
-      if (prev !== undefined) {
-        window.history.pushState({ alane: true }, "");
-        setScreen(prev);
-      } else {
-        // Pile vide : rester sur l'app (re-push pour conserver le tampon)
-        window.history.pushState({ alane: true }, "");
-      }
+      buf(); // Toujours re-créer l'entrée tampon
+      if (prev !== undefined) setScreen(prev);
     };
+
+    // iOS BFCache : quand l'app est restaurée depuis le cache, ré-ajouter le tampon
+    const handlePageShow = (e) => { if (e.persisted) buf(); };
+
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
   }, []);
 
   const navigate=(to,data)=>{
@@ -1088,7 +1094,7 @@ export default function App() {
     if(to==="payslip") setPayslipData(data);
     // Empiler l'écran courant pour le bouton retour navigateur
     navStackRef.current.push(screenRef.current);
-    window.history.pushState({ alane: true }, "");
+    window.history.pushState({ alane: true }, "", window.location.pathname + "#/");
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     setScreen(to);
