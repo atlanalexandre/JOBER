@@ -626,10 +626,17 @@ export default async function handler(req, res) {
       const profileData = await pr.json();
       const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
 
-      // Récupérer tous les users (metadata contient le secteur)
-      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=1`, { headers });
-      const ud = await ur.json();
-      const allUsers = ud.users || [];
+      // Récupérer tous les users (metadata contient le secteur) — pagination pour > 1000 users
+      let allUsers = [];
+      let page = 1;
+      while (true) {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+        const ud = await ur.json();
+        const batch = ud.users || [];
+        allUsers = allUsers.concat(batch);
+        if (batch.length < 1000) break;
+        page++;
+      }
 
       // Compter par secteur
       const counts = {};
@@ -646,6 +653,66 @@ export default async function handler(req, res) {
         result[s] = { count, open: count >= minPrestataires, min: minPrestataires };
       }
       return res.status(200).json(result);
+    }
+
+    if (action === "cancel_client") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, reason, penalty } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector`,
+        { headers }
+      );
+      const mData = await mRes.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (!["open", "assigned", "pending_acceptance"].includes(mission.status)) {
+        return res.status(400).json({ error: "Cette mission ne peut plus être annulée" });
+      }
+
+      // Update mission to cancelled
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty || 0 }),
+      });
+
+      // Stripe partial refund if payment exists and penalty < 100
+      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+      if (mission.stripe_payment_intent && STRIPE_SECRET_KEY && penalty != null && penalty < 100) {
+        try {
+          const refundPct = (100 - penalty) / 100;
+          const amountToRefund = Math.round((mission.montant_total || 0) * refundPct * 100);
+          if (amountToRefund > 0) {
+            await fetch("https://api.stripe.com/v1/refunds", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ payment_intent: mission.stripe_payment_intent, amount: String(amountToRefund) }).toString(),
+            }).catch(() => {});
+          }
+        } catch {}
+      }
+
+      // Notify the prestataire
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "mission",
+            title: "Mission annulée ❌",
+            body: `La mission "${mission.metier || mission.sector || ""}" a été annulée par le client.${penalty > 0 ? "" : " Vous serez remboursé intégralement."}`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ success: true });
     }
 
     return res.status(400).json({ error: "Action invalide" });

@@ -729,9 +729,25 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
           <Btn variant="secondary" onClick={onBack} style={{ flex:1, padding:"13px", fontSize:13 }}>Garder la mission</Btn>
           <Btn variant="danger" disabled={!reason||cancelling} onClick={async()=>{
             setCancelling(true);
-            if (missionId) {
-              await supabase.from("missions").update({ status:"cancelled" }).eq("id", missionId).catch(()=>{});
-            }
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              const token = session?.access_token;
+              if (missionId && token) {
+                await fetch("/api/missions", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                    action: "cancel_client",
+                    mission_id: missionId,
+                    reason,
+                    penalty,
+                  }),
+                });
+              }
+            } catch {}
             setCancelling(false);
             setStep("replacement");
           }} style={{ flex:2, padding:"13px", fontSize:13 }}>
