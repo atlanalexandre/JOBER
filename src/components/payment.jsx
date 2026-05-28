@@ -358,7 +358,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
     } else {
       setProcessing(true);
-      setTimeout(() => { setDone(true); setProcessing(false); onSuccess && onSuccess(); }, 2200);
+      setDone(true); setProcessing(false); onSuccess && onSuccess();
     }
   };
 

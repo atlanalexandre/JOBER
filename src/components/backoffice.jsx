@@ -400,6 +400,7 @@ export function BOComptes() {
                 /* ── MODE LECTURE ── */
                 <div style={{ fontSize:12 }}>
                   <div>
+                    <InfoRow icon="📧" label="Email" value={p.email} />
                     <InfoRow icon="📱" label="Tél" value={p.telephone} />
                     <InfoRow icon="🏦" label="IBAN" value={p.rib} mono />
                     <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
