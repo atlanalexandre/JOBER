@@ -14,11 +14,43 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
 }
 
-function DocRowItem({ doc, isValid }) {
+function DocRowItem({ doc, isValid, onUploaded }) {
   const [renewed, setRenewed] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const valid = isValid || renewed;
+
+  const handleUploadClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) throw new Error("Session expirée");
+      const user = authData.user;
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${doc.id}_${Date.now()}.${ext}`;
+      const { error: storageErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+      if (storageErr) throw storageErr;
+      const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: user.id, type: doc.id, storage_path: path });
+      if (dbErr) throw dbErr;
+      setRenewed(true);
+      onUploaded?.();
+    } catch (err) {
+      console.error("Upload error", err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", marginBottom:8, display:"flex", gap:10, alignItems:"center", border:`1px solid ${valid?C.border:C.accent+"30"}` }}>
+      <input ref={fileInputRef} type="file" style={{ display:"none" }} onChange={handleFileChange} />
       <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
@@ -27,7 +59,7 @@ function DocRowItem({ doc, isValid }) {
       <div style={{ display:"flex", gap:6, alignItems:"center" }}>
         <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
         {!isValid && !renewed && (
-          <button onClick={()=>setRenewed(true)} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>+ Charger</button>
+          <button onClick={handleUploadClick} disabled={uploading} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:uploading?"not-allowed":"pointer", fontFamily:"inherit", opacity:uploading?0.6:1 }}>{uploading?"...":"+ Charger"}</button>
         )}
         {isValid && (
           <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
@@ -138,24 +170,38 @@ export function PrestaOnboarding({ onComplete, onBack }) {
       const { data, error:authErr } = await supabase.auth.getUser();
       if(authErr || !data?.user) throw new Error("Session expirée, reconnectez-vous");
       const user = data.user;
-      if(user){
-        await supabase.from("profiles").update({ prenom:infos.prenom, nom:infos.nom, tel:infos.tel }).eq("id",user.id);
-        await supabase.from("prestataires").upsert({
-          id:user.id, siret:ae.siret, siren:ae.siren, activite:ae.activite,
-          rue:adresse.rue, ville:adresse.ville, cp:adresse.cp,
-          zone_km:parseInt(adresse.rayon)||20, bio, available:true,
-        });
-        if(metiers.length>0){
-          await supabase.from("metiers").insert(metiers.map(m=>({
-            prestataire_id:user.id, sector:m.sector, job_title:m.metier,
-            niveau:m.niveau, tarif_net:m.tarifNet, certifs:m.certifs,
-          })));
-        }
-        const dispoRows=[];
-        Object.entries(dispos).forEach(([jour,creneaux])=>(creneaux||[]).forEach(c=>dispoRows.push({ prestataire_id:user.id, jour, creneau:c })));
-        if(dispoRows.length>0) await supabase.from("disponibilites").insert(dispoRows);
-        await supabase.from("abonnements").upsert({ prestataire_id:user.id, plan:abonnement });
-      }
+      const existingMeta = user.user_metadata || {};
+
+      // Update profiles table for prenom/nom
+      await supabase.from("profiles").update({ prenom:infos.prenom, nom:infos.nom }).eq("id",user.id);
+
+      // Store everything else in user_metadata (merge with existing to not overwrite rib/role/etc.)
+      await supabase.auth.updateUser({
+        data: {
+          ...existingMeta,
+          prenom: infos.prenom,
+          nom: infos.nom,
+          telephone: infos.tel || existingMeta.telephone,
+          ae_siret: ae.siret,
+          ae_siren: ae.siren,
+          ae_activite: ae.activite,
+          ae_dateCreation: ae.dateCreation,
+          ae_codeAPE: ae.codeAPE,
+          ae_regime: ae.regime,
+          adresse: adresse.rue,
+          ville: adresse.ville,
+          cp: adresse.cp,
+          zone_km: parseInt(adresse.rayon) || 20,
+          bio,
+          secteur: metiers[0]?.sector || existingMeta.secteur,
+          metiers_list: metiers.map(m => ({ sector: m.sector, metier: m.metier, niveau: m.niveau, tarifNet: m.tarifNet, certifs: m.certifs })),
+          tarif_net: metiers[0]?.tarifNet || existingMeta.tarif_net,
+          langues,
+          dispon_jours_creneaux: dispos,
+          plan_abonnement: abonnement !== "free" ? abonnement : (existingMeta.plan_abonnement || "free"),
+          dossier_soumis: true,
+        },
+      });
     } catch(e){
       console.error("Supabase submit error",e);
       setSubmitError("Une erreur est survenue lors de l'envoi. Réessayez.");
@@ -1651,6 +1697,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) 
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [profilPct,setProfilPct]=useState(0);
   const [missingDocs,setMissingDocs]=useState([]);
+  const [uploadedDocIds,setUploadedDocIds]=useState([]);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -1690,6 +1737,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) 
       setMissionsUsedMonth(doneMois.length + assignedNow);
       const { data: uploadedDocs } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
       const uploaded = (uploadedDocs||[]).map(d=>d.type);
+      setUploadedDocIds(uploaded);
       const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     });
@@ -1850,7 +1898,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) 
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>
           {DOCS_REQUIS.map((doc,i)=>(
-            <DocRowItem key={i} doc={doc} isValid={i<4} />
+            <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
+              const { data:{ user } } = await supabase.auth.getUser();
+              if(!user) return;
+              const { data } = await supabase.from("documents").select("type").eq("prestataire_id", user.id);
+              setUploadedDocIds((data||[]).map(d=>d.type));
+            }} />
           ))}
         </>}
         {tab==="revenus" && (()=>{
