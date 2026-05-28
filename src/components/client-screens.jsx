@@ -1808,11 +1808,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const isUrgent = p.urgentMode || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
-  const [userRib,setUserRib]=useState(null);
-  const [ribError,setRibError]=useState(false);
-  useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{ setUserRib(data?.user?.user_metadata?.rib||null); });
-  },[]);
   const [payMethod,setPayMethod]=useState("carte");
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
@@ -3885,7 +3880,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
             {/* Blocs de signature */}
             {[
-              { role:"Client",      name:"Jean Dupont",   icon:"🏢", signed:clientSigned,  color:C.violet, onSign:()=>setClientSigned(true)  },
+              { role:"Client",      name:clientName||"Client",   icon:"🏢", signed:clientSigned,  color:C.violet, onSign:()=>setClientSigned(true)  },
               { role:"Prestataire", name:p.name,          icon:p.avatar, signed:prestaSigned, color:C.accent,  onSign:()=>setPrestaSigned(true)  },
             ].map((s,i)=>(
               <div key={i} style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${s.signed?C.success:C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"border 0.3s" }}>
