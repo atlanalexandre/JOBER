@@ -354,13 +354,16 @@ export default async function handler(req, res) {
       const emails = authUsers.filter(u => ids.has(u.id)).map(u => u.email).filter(Boolean);
 
       let sent = 0;
-      for (const email of emails) {
-        await sendEmail({
-          to: email,
-          subject: "📢 Communication de l'équipe ALANE",
-          html: emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
-        });
-        sent++;
+      const chunks = [];
+      for (let i = 0; i < emails.length; i += 5) chunks.push(emails.slice(i, i + 5));
+      for (const chunk of chunks) {
+        await Promise.all(chunk.map(email =>
+          sendEmail({
+            to: email,
+            subject: "📢 Communication de l'équipe ALANE",
+            html: emailHtml(`<p>Bonjour,</p><p>${esc(message).replace(/\n/g,"<br/>")}</p><p style="color:#888;font-size:13px;">L'équipe ALANE</p>`),
+          }).then(() => { sent++; }).catch(() => {})
+        ));
       }
       return res.status(200).json({ success: true, sent });
     }
