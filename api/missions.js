@@ -674,30 +674,66 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Cette mission ne peut plus être annulée" });
       }
 
-      // Update mission to cancelled
+      // Récupérer l'email du client pour le ticket
+      let clientEmail = null;
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+        const uData = await uRes.json();
+        clientEmail = uData.email || null;
+      } catch {}
+
+      // Marquer la mission comme annulée
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty || 0 }),
       });
 
-      // Stripe partial refund if payment exists and penalty < 100
-      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      if (mission.stripe_payment_intent && STRIPE_SECRET_KEY && penalty != null && penalty < 100) {
-        try {
-          const refundPct = (100 - penalty) / 100;
-          const amountToRefund = Math.round((mission.montant_total || 0) * refundPct * 100);
-          if (amountToRefund > 0) {
-            await fetch("https://api.stripe.com/v1/refunds", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({ payment_intent: mission.stripe_payment_intent, amount: String(amountToRefund) }).toString(),
-            }).catch(() => {});
-          }
-        } catch {}
+      // Créer un ticket support prioritaire si paiement existant (remboursement traité manuellement par ALANE)
+      if (mission.stripe_payment_intent) {
+        const penaltyLabel = penalty === 0 ? "remboursement intégral à traiter" : penalty === 50 ? "remboursement 50% à traiter" : "aucun remboursement (annulation <24h)";
+        await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            subject: `[ANNULATION] Mission ${mission_id.slice(0, 8)} — ${penaltyLabel}`,
+            message: `Mission annulée par le client.\n\nMission : ${mission.metier || mission.sector || "—"}\nMontant : ${mission.montant_total || "—"} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\nPénalité appliquée : ${penalty ?? 0}%\nMotif : ${reason || "—"}\n\nAction requise : traiter le remboursement manuellement dans le dashboard Stripe.`,
+            user_email: clientEmail,
+            user_id: caller.id,
+            status: "open",
+          }),
+        }).catch(() => {});
+
+        // Alerter l'admin par email
+        const RESEND_API_KEY = process.env.RESEND_API_KEY;
+        const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+        const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+        if (RESEND_API_KEY && ADMIN_EMAIL) {
+          fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: RESEND_FROM,
+              to: ADMIN_EMAIL,
+              subject: `[ACTION REQUISE] Annulation mission — ${penaltyLabel}`,
+              html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+                <h2 style="color:#050E20">⚠️ Annulation mission — remboursement à traiter</h2>
+                <table style="width:100%;border-collapse:collapse;font-size:14px">
+                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${mission.metier || mission.sector || "—"}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700">${mission.montant_total || "—"} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${mission.stripe_payment_intent}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Pénalité</td><td style="font-weight:700;color:${penalty === 0 ? "#10D98F" : "#F0B429"}">${penalty ?? 0}%</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Motif</td><td>${reason || "—"}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail || caller.id}</td></tr>
+                </table>
+                <p style="margin-top:20px;font-size:13px;color:#666">Traiter le remboursement depuis le <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">dashboard Stripe</a>.</p>
+              </div>`,
+            }),
+          }).catch(() => {});
+        }
       }
 
-      // Notify the prestataire
+      // Notifier le prestataire
       if (mission.prestataire_id) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
@@ -706,7 +742,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Mission annulée ❌",
-            body: `La mission "${mission.metier || mission.sector || ""}" a été annulée par le client.${penalty > 0 ? "" : " Vous serez remboursé intégralement."}`,
+            body: `La mission "${mission.metier || mission.sector || ""}" a été annulée par le client. L'équipe ALANE vous contactera concernant le règlement.`,
             read: false,
           }),
         }).catch(() => {});
