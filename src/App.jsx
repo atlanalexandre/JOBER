@@ -1045,49 +1045,6 @@ export default function App() {
 
   const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
-
-  // Stack for browser back button — tracks app-internal navigation history
-  const navStackRef = useRef([]);
-  const screenRef = useRef(screen);
-  const roleRef = useRef(role);
-  useEffect(() => { roleRef.current = role; }, [role]);
-  useEffect(() => {
-    screenRef.current = screen;
-    if (["role", "splash", "pending_approval", "auth_client", "auth_presta"].includes(screen)) {
-      navStackRef.current = [];
-    }
-  }, [screen]);
-
-  // Bouton retour navigateur (iOS Safari compatible)
-  // Stratégie : replaceState sur alane.fr (ancre), pushState sur alane.fr#/ (entrée active).
-  // Ces deux URLs sont différentes → iOS Safari DOIT déclencher popstate au lieu de quitter.
-  // Chaque fois que popstate se déclenche on re-push alane.fr#/ = l'utilisateur ne peut
-  // jamais repartir vers un autre site.
-  useEffect(() => {
-    const anchor = window.location.pathname;            // ex: "/"
-    const active = window.location.pathname + "#/";    // ex: "/#/"
-    const rebond = () => window.history.pushState({ alane: true }, "", active);
-
-    window.history.replaceState({ alane: "anchor" }, "", anchor);
-    rebond(); // crée l'entrée active immédiatement
-
-    const handlePopState = () => {
-      rebond(); // re-push active → on rebondit toujours sur l'ancre
-      const prev = navStackRef.current.pop();
-      const fallback = roleRef.current === "prestataire" ? "p_home" : "home";
-      setScreen(prev !== undefined ? prev : fallback);
-    };
-
-    const handlePageShow = (e) => { if (e.persisted) rebond(); };
-
-    window.addEventListener("popstate", handlePopState);
-    window.addEventListener("pageshow", handlePageShow);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("pageshow", handlePageShow);
-    };
-  }, []);
-
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
@@ -1098,8 +1055,6 @@ export default function App() {
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
-    navStackRef.current.push(screenRef.current);
-    window.history.pushState({ alane: true }, "", window.location.pathname + "#/");
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     setScreen(to);
