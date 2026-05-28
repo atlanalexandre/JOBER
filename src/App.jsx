@@ -1059,15 +1059,16 @@ export default function App() {
 
   // Initialise l'entrée courante dans l'historique du navigateur
   useEffect(() => {
-    window.history.replaceState({ alane: true }, "");
+    // pushState (pas replaceState) crée une entrée tampon dès le chargement
+    // pour que le premier appui sur < déclenche popstate au lieu de quitter l'app
+    window.history.pushState({ alane: true }, "");
     const handlePopState = () => {
       const prev = navStackRef.current.pop();
       if (prev !== undefined) {
-        // Remettre une entrée pour que le prochain "retour" refonctionne
         window.history.pushState({ alane: true }, "");
         setScreen(prev);
       } else {
-        // Pile vide : rester sur l'app plutôt que quitter
+        // Pile vide : rester sur l'app (re-push pour conserver le tampon)
         window.history.pushState({ alane: true }, "");
       }
     };
