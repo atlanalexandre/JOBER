@@ -40,7 +40,7 @@ function emailHtml(content) {
         </tr>
         <tr>
           <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
-            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
           </td>
         </tr>
       </table>
@@ -133,7 +133,7 @@ export default async function handler(req, res) {
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               <p>Nous sommes ravis de vous accueillir sur la plateforme. Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p>Si vous avez la moindre question ou besoin d'aide pour démarrer, n'hésitez pas à contacter notre support directement depuis l'application — nous sommes là pour vous accompagner.</p>
-              <p style="text-align:center;margin:28px 0;"><a href="https://www.alane.fr" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
           });

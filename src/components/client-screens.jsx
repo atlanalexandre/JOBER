@@ -2173,7 +2173,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             </div>
             <div style={{ padding:14 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div><div style={{ color:C.textSub, fontSize:12 }}>12 rue de Rivoli, 75001</div></div>
           </div>
-          <Input label="Adresse *" placeholder="12 rue de Rivoli" icon="📍" value={adresse} onChange={e=>{setAdresse(e.target.value);setAdresseError(false);}} />
+          <AddressAutocomplete label="Adresse *" value={adresse} onChange={v=>{setAdresse(v);setAdresseError(false);}} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);setCp(s.codePostal);}} />
           <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
           <Input label="Code postal" placeholder="75001" value={cp} onChange={e=>setCp(e.target.value)} />
           <Input label="Informations complémentaires" placeholder="Digicode, étage, instructions…" value={instructions} onChange={e=>setInstructions(e.target.value)} />
@@ -2273,12 +2273,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               </div>
             ))}
           </div>
-          {ribError && (
-            <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
-              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages pour passer une commande.
-            </div>
-          )}
-          <Btn full onClick={()=>{ if(!userRib){ setRibError(true); return; } onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -3639,8 +3634,19 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [finalised, setFinalised] = useState(false);
   const [activeTab, setActiveTab] = useState("contrat");
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
   const bothSigned = clientSigned && prestaSigned;
-  const [contractNum] = useState(`CTR-ALANE-2025-${Math.floor(Math.random()*90000+10000)}`);
+  const [contractNum] = useState(`CTR-ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*90000+10000)}`);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({ data })=>{
+      const u = data?.user;
+      if (!u) return;
+      const meta = u.user_metadata || {};
+      setClientName([meta.prenom, meta.nom].filter(Boolean).join(" ") || u.email);
+      setClientEmail(u.email || "");
+    });
+  },[]);
   const today = new Date().toLocaleDateString("fr-FR");
   const missionDate = date || today;
   const missionHours = hours || 8;
@@ -3650,31 +3656,29 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   useEffect(()=>{
     if(!bothSigned) return;
     let mounted = true;
-    const t = setTimeout(async ()=>{
-      if (mounted) {
-        try {
-          const { data:{ user } } = await supabase.auth.getUser();
-          if (user) {
-            await supabase.from("contracts").insert({
-              mission_id: missionId || null,
-              contract_number: contractNum,
-              client_id: user.id,
-              prestataire_name: p.name,
-              prestataire_role: p.role || p.jobTitle,
-              nb_heures: missionHours,
-              montant: totalAmount,
-              client_signed: true,
-              prestataire_signed: true,
-              client_signed_at: new Date().toISOString(),
-              prestataire_signed_at: new Date().toISOString(),
-            });
-          }
-        } catch(_) {}
-        setFinalised(true);
-        onSign && onSign();
-      }
-    }, 1800);
-    return ()=>{ mounted=false; clearTimeout(t); };
+    (async ()=>{
+      if (!mounted) return;
+      try {
+        const { data:{ user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("contracts").insert({
+            mission_id: missionId || null,
+            contract_number: contractNum,
+            client_id: user.id,
+            prestataire_name: p.name,
+            prestataire_role: p.role || p.jobTitle,
+            nb_heures: missionHours,
+            montant: totalAmount,
+            client_signed: true,
+            prestataire_signed: true,
+            client_signed_at: new Date().toISOString(),
+            prestataire_signed_at: new Date().toISOString(),
+          });
+        }
+      } catch(_) {}
+      if (mounted) { setFinalised(true); onSign && onSign(); }
+    })();
+    return ()=>{ mounted=false; };
   },[bothSigned]);
 
   if(finalised) return (
@@ -3738,7 +3742,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 10 — Règlement des litiges",
-      content:`En cas de différend relatif à l'exécution ou à l'interprétation du présent contrat, les parties s'engagent à recourir en premier lieu à la médiation ALANE, accessible via l'application.\n\nALANE dispose d'un délai de 72h ouvrées pour proposer une solution amiable. En cas d'échec de la médiation, les parties pourront saisir les juridictions compétentes.\n\nLe présent contrat est soumis au droit français. En cas de litige judiciaire, les tribunaux de Paris seront seuls compétents.`
+      content:`En cas de différend relatif à l'exécution ou à l'interprétation du présent contrat, les parties s'engagent à recourir en premier lieu à une tentative de règlement amiable directement entre elles.\n\nÀ défaut d'accord amiable dans un délai de 15 jours, les parties pourront faire appel à un médiateur indépendant ou au médiateur de la consommation compétent.\n\nLe présent contrat est soumis au droit français. En cas de litige judiciaire, les tribunaux compétents seront seuls compétents.`
     },
     {
       title:"Article 11 — Protection des données",
@@ -3823,11 +3827,11 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
               <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
                 <div style={{ width:46, height:46, borderRadius:13, background:`${C.violet}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>🏢</div>
                 <div>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>Société ABC</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>Représentée par Jean Dupont</div>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{clientName || "—"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>Client · {clientEmail || "—"}</div>
                 </div>
               </div>
-              {[["SIRET","XXX XXX XXX XXXXX"],["N° TVA","FR XX XXXXXXXXX"],["Adresse","12 rue de Rivoli, 75001 Paris"],["Email","jean.dupont@societe-abc.fr"],["Téléphone","+33 6 XX XX XX XX"]].map(([l,v])=>(
+              {[["Email", clientEmail || "—"]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{v}</span>

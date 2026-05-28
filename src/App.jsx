@@ -283,6 +283,8 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
   },[]);
 
   useEffect(()=>{
+    const onApprovedRef = { current: onApproved };
+    onApprovedRef.current = onApproved;
     const interval = setInterval(async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -290,11 +292,11 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
       if (profile?.status === "approved") {
         clearInterval(interval);
         setChecking(true);
-        onApproved(profile.role);
+        onApprovedRef.current(profile.role);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [onApproved]);
+  }, []);
 
   const steps = [
     { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
@@ -1192,7 +1194,7 @@ export default function App() {
         onCancelled={()=>{ setScreen("sector_detail"); }}
         onBack={()=>setScreen("home")}
       />}
-      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setTimeout(()=>setScreen("tracking"),1000)} onBack={()=>setScreen("stripe_pay")} />}
+      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("stripe_pay")} />}
       {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="invoice"           && <InvoiceScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onBack={()=>setScreen("dashboard")} />}
