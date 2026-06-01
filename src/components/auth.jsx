@@ -30,6 +30,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showPass, setShowPass] = useState(false);
   const [rcProConfirmed, setRcProConfirmed] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [cgpsAccepted, setCgpsAccepted] = useState(false);
+  const [showCgpsModal, setShowCgpsModal] = useState(false);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -56,6 +58,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
       if (password.length < 6)  return "Mot de passe minimum 6 caractères";
+      if (!cgpsAccepted)        return "Vous devez accepter les CGPS pour créer votre compte";
     }
     return null;
   };
@@ -409,9 +412,17 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
-          <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
-          </p>
+          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+              {cgpsAccepted && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
+            </div>
+            <span style={{ color:C.text, fontSize:12, lineHeight:1.6 }}>
+              J'ai lu et j'accepte les{" "}
+              <span onClick={e=>{e.stopPropagation();setShowCgpsModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Conditions Générales de Prestation de Services (CGPS)</span>
+              {" "}et la{" "}
+              <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
+            </span>
+          </div>
         </>}
       </div>
 
@@ -422,6 +433,35 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {/* Modal CGPS */}
+      {showCgpsModal && (
+        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
+              <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
+              { title:"2. Statut prestataire", text:"Vous intervenez en qualité d'auto-entrepreneur indépendant. Aucun lien de subordination n'existe entre ALANE et vous. Vous êtes seul responsable du respect de vos obligations légales, fiscales et sociales." },
+              { title:"3. Missions", text:"Les missions sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client." },
+              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont directement réglés entre les parties selon les conditions convenues. ALANE prélève une commission de mise en relation selon les conditions de votre abonnement." },
+              { title:"5. Annulations", text:"Politique d'annulation : gratuit au-delà de 48h, 50% entre 24-48h, 100% en dessous de 24h. En cas de litige, ALANE propose une médiation. Tout remboursement est traité manuellement par l'équipe ALANE." },
+              { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. Vous êtes couvert par votre propre assurance RC Pro (obligatoire)." },
+              { title:"7. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+            <div style={{ marginTop:16, textAlign:"center" }}>
+              <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal politique de confidentialité */}
       {showPrivacyModal && (
@@ -474,6 +514,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [cgpsAccepted, setCgpsAccepted] = useState(false);
+  const [showCgpsModal, setShowCgpsModal] = useState(false);
 
   const toggleSecteur = id => {
     setSecteursBesoins(prev => {
@@ -507,6 +549,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 3) {
       if (!email || !password) return "Email et mot de passe requis";
       if (password.length < 6) return "Mot de passe minimum 6 caractères";
+      if (!cgpsAccepted)       return "Vous devez accepter les CGPS pour créer votre compte";
     }
     return null;
   };
@@ -719,9 +762,17 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
-          <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-            En créant un compte vous acceptez nos <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span> et notre <span onClick={()=>setShowPrivacyModal(true)} style={{ color:accentColor, cursor:"pointer", textDecoration:"underline" }}>Politique de confidentialité</span>
-          </p>
+          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+              {cgpsAccepted && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
+            </div>
+            <span style={{ color:C.text, fontSize:12, lineHeight:1.6 }}>
+              J'ai lu et j'accepte les{" "}
+              <span onClick={e=>{e.stopPropagation();setShowCgpsModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Conditions Générales de Prestation de Services (CGPS)</span>
+              {" "}et la{" "}
+              <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
+            </span>
+          </div>
         </>}
       </div>
 
@@ -731,6 +782,35 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           {step===TOTAL ? (loading?"Création…":"Créer mon compte →") : "Continuer →"}
         </Btn>
       </div>
+
+      {/* Modal CGPS */}
+      {showCgpsModal && (
+        <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
+              <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {[
+              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
+              { title:"2. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+              { title:"3. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
+              { title:"4. Annulations", text:"Gratuit au-delà de 48h avant la mission, 50% de frais entre 24h et 48h, 100% de frais en dessous de 24h. En cas de litige, ALANE propose une médiation. Tout remboursement est traité manuellement par l'équipe ALANE." },
+              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+              { title:"6. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
+              { title:"7. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
+            ].map((s,i)=>(
+              <div key={i} style={{ background:"#162547", borderRadius:10, padding:"12px 14px", marginBottom:8 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>{s.text}</div>
+              </div>
+            ))}
+            <div style={{ marginTop:16, textAlign:"center" }}>
+              <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPrivacyModal && (
         <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
