@@ -1030,8 +1030,8 @@ export function BOSettingsTab() {
   const [saved, setSaved]     = useState({});
   const [localPl,  setLocalPl]  = useState({ free:2, premium:10, elite:999 });
   const [localSp,  setLocalSp]  = useState({ premium:{ monthly:29, yearly:290 }, elite:{ monthly:79, yearly:790 } });
-  const [localCr,  setLocalCr]  = useState("20");
   const [localUs,  setLocalUs]  = useState("5");
+  const [localFs,  setLocalFs]  = useState({ single:"4.90", range:"2.90", urgent:"9.90" });
   const [localDs,  setLocalDs]  = useState([]);
   const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
   const [localSmp, setLocalSmp] = useState("20");
@@ -1041,8 +1041,8 @@ export function BOSettingsTab() {
     boFetch({ action: "get_settings" }).then(r => r.json()).then(s => {
       if (s.plan_limits)             setLocalPl(s.plan_limits);
       if (s.subscription_prices)     setLocalSp(s.subscription_prices);
-      if (s.commission_rate != null) setLocalCr(String(Math.round(s.commission_rate * 100)));
       if (s.urgency_surcharge != null) setLocalUs(String(s.urgency_surcharge));
+      if (s.frais_service) setLocalFs({ single: String(s.frais_service.single ?? "4.90"), range: String(s.frais_service.range ?? "2.90"), urgent: String(s.frais_service.urgent ?? "9.90") });
       if (s.disabled_sectors)        setLocalDs(s.disabled_sectors);
       if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 1000) / 10) })));
       if (s.sector_min_prestataires != null) setLocalSmp(String(s.sector_min_prestataires));
@@ -1139,22 +1139,33 @@ export function BOSettingsTab() {
         </div>
       </div>
 
-      {/* ── Commission & Urgence ── */}
+      {/* ── Frais de service & Urgence ── */}
       <SectionTitle>💶 Tarification plateforme</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-          <span style={{ color:C.text, fontSize:13, fontWeight:600, width:160 }}>Commission globale</span>
-          <input type="number" min={0} max={100} step={1} value={localCr} onChange={e => setLocalCr(e.target.value)}
-            style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
-          <span style={{ color:C.textSub, fontSize:12 }}>%</span>
-          <SaveBtn k="commission_rate" onClick={() => save("commission_rate", Number(localCr) / 100)} />
+        <div style={{ color:C.textSub, fontSize:11, marginBottom:12, lineHeight:1.5 }}>Frais de service facturés au client à chaque commande, en plus du tarif du prestataire.</div>
+        {[
+          { key:"single", label:"Commande standard" },
+          { key:"range",  label:"Commande récurrente" },
+          { key:"urgent", label:"Commande urgente" },
+        ].map(({ key, label }) => (
+          <div key={key} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+            <span style={{ color:C.text, fontSize:13, fontWeight:600, width:180 }}>{label}</span>
+            <input type="number" min={0} step={0.1} value={localFs[key]} onChange={e => setLocalFs(p => ({ ...p, [key]: e.target.value }))}
+              style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+            <span style={{ color:C.textSub, fontSize:12 }}>€</span>
+          </div>
+        ))}
+        <div style={{ marginBottom:16 }}>
+          <SaveBtn k="frais_service" onClick={() => save("frais_service", { single: Number(localFs.single), range: Number(localFs.range), urgent: Number(localFs.urgent) })} />
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <span style={{ color:C.text, fontSize:13, fontWeight:600, width:160 }}>Surcoût urgence</span>
-          <input type="number" min={0} max={50} step={1} value={localUs} onChange={e => setLocalUs(e.target.value)}
-            style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
-          <span style={{ color:C.textSub, fontSize:12 }}>€/h</span>
-          <SaveBtn k="urgency_surcharge" onClick={() => save("urgency_surcharge", Number(localUs))} />
+        <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <span style={{ color:C.text, fontSize:13, fontWeight:600, width:180 }}>Surcoût urgence</span>
+            <input type="number" min={0} max={50} step={1} value={localUs} onChange={e => setLocalUs(e.target.value)}
+              style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
+            <span style={{ color:C.textSub, fontSize:12 }}>€/h</span>
+            <SaveBtn k="urgency_surcharge" onClick={() => save("urgency_surcharge", Number(localUs))} />
+          </div>
         </div>
       </div>
 
