@@ -550,9 +550,27 @@ export default async function handler(req, res) {
       );
       const profiles = await pr.json();
 
+      // Fetch all push subscriptions for quick lookup
+      const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=user_id,endpoint,p256dh,auth`, { headers });
+      const allSubs = await psRes.json().catch(() => []);
+      const subsByUser = {};
+      if (Array.isArray(allSubs)) {
+        for (const s of allSubs) {
+          if (!subsByUser[s.user_id]) subsByUser[s.user_id] = [];
+          subsByUser[s.user_id].push(s);
+        }
+      }
+
+      // VAPID config
+      const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
+      const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+      const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:contact@jober.fr";
+
+      const pushTitle = "🔔 Nouvelle mission disponible";
+      const pushBody  = `${mission?.metier || sector || "Mission"} · ${mission?.date || ""} · ${mission?.ville || ""} (${mission?.hours || ""}h)`;
+
       let notified = 0;
       if (Array.isArray(profiles)) {
-        // Send notifications in parallel batches of 5
         const chunks = [];
         for (let i = 0; i < profiles.length; i += 5) chunks.push(profiles.slice(i, i + 5));
         for (const chunk of chunks) {
@@ -564,17 +582,35 @@ export default async function handler(req, res) {
               const meta = ud.user_metadata || {};
               const presta_sector = meta.secteur || meta.sector;
               if (sector && presta_sector && presta_sector !== sector) return;
+
+              // In-app notification
               await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                 method: "POST",
                 headers: { ...headers, "Prefer": "return=minimal" },
                 body: JSON.stringify({
                   user_id: p.id,
                   type: "mission",
-                  title: "🔔 Nouvelle mission disponible",
-                  body: `Mission ${mission?.metier || sector || ""} le ${mission?.date || ""} à ${mission?.ville || ""} (${mission?.hours || ""}h). Postulez dans votre espace !`,
+                  title: pushTitle,
+                  body: `${pushBody}. Postulez dans votre espace !`,
                   read: false,
                 }),
               });
+
+              // Web push notification (if subscribed)
+              if (VAPID_PUBLIC && VAPID_PRIVATE && subsByUser[p.id]?.length) {
+                const { createRequire } = await import("module");
+                const require = createRequire(import.meta.url);
+                const webpush = require("web-push");
+                webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+                const payload = JSON.stringify({ title: pushTitle, body: pushBody, url: "/" });
+                for (const sub of subsByUser[p.id]) {
+                  await webpush.sendNotification(
+                    { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                    payload
+                  ).catch(() => {});
+                }
+              }
+
               notified++;
             } catch {}
           }));
@@ -650,10 +686,12 @@ export default async function handler(req, res) {
       }
 
       const KNOWN_SECTORS = ["proprete","logistique","hotellerie","restauration","commercial","distribution","divers"];
+      // Secteurs forcés ouverts pour tests (retirer après validation)
+      const FORCE_OPEN = ["hotellerie"];
       const result = {};
       for (const s of KNOWN_SECTORS) {
         const count = counts[s] || 0;
-        result[s] = { count, open: count >= minPrestataires, min: minPrestataires };
+        result[s] = { count, open: FORCE_OPEN.includes(s) || count >= minPrestataires, min: minPrestataires };
       }
       return res.status(200).json(result);
     }
