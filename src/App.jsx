@@ -277,11 +277,17 @@ function RoleScreen({ onSelect }) {
 function PendingApprovalScreen({ onLogout, onApproved }) {
   const [userEmail, setUserEmail] = useState("");
   const [checking, setChecking] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
+  const [manualChecking, setManualChecking] = useState(false);
+  const [manualMsg, setManualMsg] = useState("");
 
   useEffect(()=>{
-    supabase.auth.getUser().then(({ data })=>{ if(data?.user) setUserEmail(data.user.email||""); });
+    supabase.auth.getUser().then(({ data })=>{
+      if(data?.user){ setUserEmail(data.user.email||""); setHasSession(true); }
+    });
   },[]);
 
+  // Polling uniquement si session active (login avec statut pending)
   useEffect(()=>{
     const onApprovedRef = { current: onApproved };
     onApprovedRef.current = onApproved;
@@ -294,9 +300,28 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
         setChecking(true);
         onApprovedRef.current(profile.role);
       }
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleManualCheck = async () => {
+    setManualChecking(true); setManualMsg("");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setManualMsg("Connectez-vous pour vérifier votre statut.");
+      setManualChecking(false); return;
+    }
+    const { data: profile } = await supabase.from("profiles").select("status,role").eq("id", user.id).single();
+    if (profile?.status === "approved") {
+      setChecking(true);
+      onApproved(profile.role);
+    } else if (profile?.status === "rejected") {
+      setManualMsg("Votre compte a été refusé. Contactez le support.");
+    } else {
+      setManualMsg("Votre compte est toujours en cours de vérification.");
+    }
+    setManualChecking(false);
+  };
 
   const steps = [
     { icon:"✅", label:"Inscription reçue",      sub:"Votre dossier a bien été enregistré",          done:true,  active:false },
@@ -334,6 +359,13 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6 }}>Vérifiez vos spams si vous ne recevez rien</div>
       </div>
 
+      <button onClick={handleManualCheck} disabled={manualChecking || checking} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:12, padding:"12px 28px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:10, width:"100%", maxWidth:320 }}>
+        {manualChecking ? "Vérification…" : "🔄 Vérifier mon statut"}
+      </button>
+      {manualMsg && <div style={{ fontSize:12, color: manualMsg.includes("refusé") ? "#F25E5E" : "rgba(255,255,255,0.5)", marginBottom:14, maxWidth:300 }}>{manualMsg}</div>}
+      {!hasSession && <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:14, maxWidth:300, lineHeight:1.6, textAlign:"center" }}>
+        Une fois approuvé, reconnectez-vous avec votre email et mot de passe pour accéder à votre espace.
+      </div>}
       <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
         Se déconnecter
       </button>
