@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, CASHBACK_TIERS, getCashbackTier, calcCashback, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, CV_DATA, cpToCoords, genMissionCode } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, CV_DATA, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 
@@ -944,7 +944,7 @@ export function PrestaProfileEditScreen({ onBack }) {
   const tarifInfo = meta?.secteur && meta?.metier ? METIERS_TARIFS[meta.secteur]?.[meta.metier] : null;
   const sliderMin = 1;
   const sliderMax = 100;
-  const compListe = COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
+  const compListe = COMPETENCES_PAR_METIER[meta?.metier] || COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:100 }}>
@@ -1016,7 +1016,8 @@ export function PrestaProfileEditScreen({ onBack }) {
         {/* Compétences */}
         {compListe.length > 0 && (
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>⚡ Compétences clés</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>🎯 Vos spécialités</div>
+            <div style={{ fontSize:11, color:C.textSub, marginBottom:12, lineHeight:1.5 }}>Sélectionnez ce que vous maîtrisez — ces tags apparaissent sur votre profil et aident les clients à vous trouver</div>
             <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
               {compListe.map(c=>(
                 <button key={c} onClick={()=>toggle(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?color:C.border}`, background:competences.includes(c)?`${color}25`:"transparent", color:competences.includes(c)?color:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
