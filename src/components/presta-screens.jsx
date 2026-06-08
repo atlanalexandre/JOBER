@@ -1948,6 +1948,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) 
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
               💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
             </div>
+            <div style={{ background:"rgba(239,68,68,0.10)", border:"1px solid rgba(239,68,68,0.35)", borderRadius:12, padding:"12px 14px", fontSize:12, color:C.text, marginBottom:12, lineHeight:1.6 }}>
+              <span style={{ fontWeight:700 }}>⚠️ Plafond auto-entrepreneur</span><br/>
+              Le régime micro-entreprise est soumis à un plafond annuel de chiffre d'affaires de <strong>77 700 € pour les prestations de services</strong> (seuil révisé chaque année). Au-delà de ce seuil, vous perdez le bénéfice du régime. Suivez vos revenus toutes sources confondues et consultez l'URSSAF ou un expert-comptable si vous approchez de cette limite.
+            </div>
             {completedMissions.length > 0 && (
               <button onClick={()=>{
                 const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
