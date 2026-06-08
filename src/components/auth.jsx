@@ -32,6 +32,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [cgpsAccepted, setCgpsAccepted] = useState(false);
   const [showCgpsModal, setShowCgpsModal] = useState(false);
+  const [acreEnabled, setAcreEnabled] = useState(false);
+  const [showAcreInfo, setShowAcreInfo] = useState(false);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -235,33 +237,79 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                   </div>
                   {/* Simulateur de charges auto-entrepreneur */}
                   {(()=>{
-                    const charges = Math.round(net * 0.22 * 100) / 100;
+                    const taux = acreEnabled ? 0.11 : 0.22;
+                    const charges = Math.round(net * taux * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
                     const scenarios = [
-                      { label:"Mission 4h",  gain: Math.round(netApres * 4 * 10) / 10 },
-                      { label:"Mission 8h",  gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"Mission 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Mission 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
                       { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
                     ];
                     return (
-                      <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid rgba(16,217,143,0.2)`, borderRadius:10, padding:"12px 14px", marginTop:10 }}>
-                        <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:8 }}>🧮 Simulateur de charges auto-entrepreneur</div>
-                        <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
-                          <span style={{ fontSize:11, color:C.textSub }}>Cotisations URSSAF (22%)</span>
-                          <span style={{ fontSize:11, fontWeight:700, color:"#F25E5E" }}>− {formatE(charges)}</span>
-                        </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 8px", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
-                          <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
-                          <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}/h</span>
-                        </div>
-                        <div style={{ display:"flex", gap:6, marginTop:8 }}>
-                          {scenarios.map(s=>(
-                            <div key={s.label} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
-                              <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{s.label}</div>
-                              <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(s.gain)}</div>
+                      <>
+                        {/* Modal info ACRE */}
+                        {showAcreInfo && (
+                          <div onClick={()=>setShowAcreInfo(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", padding:"0 0 0 0" }}>
+                            <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"100%", maxHeight:"80vh", overflowY:"auto" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                                <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>🎁 L'ACRE — Exonération de charges</div>
+                                <button onClick={()=>setShowAcreInfo(false)} style={{ background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, width:32, height:32, color:C.text, cursor:"pointer", fontSize:16 }}>×</button>
+                              </div>
+                              <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7, marginBottom:14 }}>
+                                L'ACRE (Aide aux Créateurs et Repreneurs d'Entreprise) réduit de <strong style={{ color:"#10D98F" }}>50%</strong> tes cotisations sociales pendant les <strong style={{ color:C.text }}>12 premiers mois</strong> d'activité, soit <strong style={{ color:"#10D98F" }}>11% au lieu de 22%</strong>.
+                              </div>
+                              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:8 }}>✅ Tu y as droit si tu es :</div>
+                              {[
+                                "Demandeur d'emploi indemnisé (ARE ou ASS)",
+                                "Moins de 26 ans (ou moins de 30 ans sans condition de chômage)",
+                                "Bénéficiaire du RSA",
+                                "En création dans une zone prioritaire (QPV)",
+                                "Salarié ou licencié d'une entreprise en sauvegarde/redressement",
+                                "Créateur dans un quartier politique de la ville",
+                              ].map((c,i)=>(
+                                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"7px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                                  <span style={{ color:"#10D98F", fontSize:14, flexShrink:0 }}>•</span>
+                                  <span style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>{c}</span>
+                                </div>
+                              ))}
+                              <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:10, padding:"12px 14px", marginTop:14 }}>
+                                <div style={{ fontWeight:700, color:"#F0B429", fontSize:12, marginBottom:4 }}>⚠️ Important</div>
+                                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>La demande d'ACRE doit être faite dans les <strong style={{ color:C.text }}>45 jours</strong> suivant la création de l'auto-entreprise sur autoentrepreneur.urssaf.fr. Elle n'est pas automatique.</div>
+                              </div>
                             </div>
-                          ))}
+                          </div>
+                        )}
+                        <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid rgba(16,217,143,0.2)`, borderRadius:10, padding:"12px 14px", marginTop:10 }}>
+                          <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:8 }}>🧮 Simulateur de charges auto-entrepreneur</div>
+                          {/* Toggle ACRE */}
+                          <div onClick={()=>setAcreEnabled(v=>!v)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 10px", marginBottom:10, cursor:"pointer" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>Je bénéficie de l'ACRE</span>
+                              <button onClick={e=>{e.stopPropagation();setShowAcreInfo(true);}} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:"50%", width:18, height:18, color:C.text, cursor:"pointer", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"inherit", flexShrink:0 }}>?</button>
+                            </div>
+                            <div style={{ width:36, height:20, borderRadius:10, background:acreEnabled?"#10D98F":"rgba(255,255,255,0.15)", transition:"background 0.2s", position:"relative", flexShrink:0 }}>
+                              <div style={{ position:"absolute", top:2, left:acreEnabled?18:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                            </div>
+                          </div>
+                          {acreEnabled && <div style={{ fontSize:11, color:"#10D98F", fontWeight:600, marginBottom:8, textAlign:"center" }}>✓ Taux réduit ACRE : 11% (12 premiers mois)</div>}
+                          <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                            <span style={{ fontSize:11, color:C.textSub }}>Cotisations URSSAF ({acreEnabled?"11%":"22%"})</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:"#F25E5E" }}>− {formatE(charges)}</span>
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 8px", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                            <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
+                            <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}/h</span>
+                          </div>
+                          <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                            {scenarios.map(s=>(
+                              <div key={s.label} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
+                                <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{s.label}</div>
+                                <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(s.gain)}</div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      </>
                     );
                   })()}
                 </div>
