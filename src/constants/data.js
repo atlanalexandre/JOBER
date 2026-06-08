@@ -464,6 +464,82 @@ export const COMPETENCES_PAR_SECTEUR = {
   divers:      ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Permis B","VTC","Animation événements","Bureautique","Word/Excel","Standard téléphonique","Accueil physique","Aide à la personne","Conduite accompagnée","Livraison","BAFA"],
 };
 
+export const COMPETENCES_PAR_METIER = {
+  // ── Propreté ──
+  "Agent de propreté":                    ["Nettoyage bureaux","Désinfection","Produits d'entretien","EPI","Tri sélectif","Aspiration","Lavage sols","Protocole hygiène","HACCP"],
+  "Agent de propreté et d'hygiène":       ["Désinfection","HACCP","Produits biocides","EPI","Nettoyage sanitaires","Traçabilité hygiène","Protocole ISO"],
+  "Agent d'entretien des bureaux":        ["Nettoyage bureaux","Aspiration","Lavage sols","Dépoussiérage","Vidage poubelles","Respect des espaces de travail"],
+  "Agent de nettoyage industriel":        ["Nettoyage industriel","Monobrosse","Autolaveuse","Produits chimiques","EPI","QHSE","Sécurité machines"],
+  "Agent multiservice":                   ["Nettoyage","Petite maintenance","Manutention légère","Accueil","Polyvalence","Entretien espaces verts"],
+  "Technicien de surface":                ["Monobrosse","Autolaveuse","Sols spéciaux","Moquette","Cristallisation","Vitrification","Cire"],
+  "Laveur de vitres":                     ["Lavage vitres","Perche télescopique","Nacelle","PEMP","Sécurité en hauteur","Karcher","Raclette pro"],
+  "Nettoyeur haute pression":             ["Karcher haute pression","Dégraissage","Toiture","Façades","Gouttières","EPI","Eau chaude"],
+  "Opérateur de machines de nettoyage":   ["Autolaveuse","Monobrosse","Balayeuse","Aspiro-brosseur","CACES optionnel","Maintenance 1er niveau"],
+  "Chef d'équipe propreté":               ["Management équipe","Plannings","Contrôle qualité","Formation agents","Commande produits","QHSE","Reporting"],
+  "Chef de chantier propreté":            ["Gestion de chantier","Multi-sites","QHSE","Audit propreté","ISO 9001","Management","Appels d'offres"],
+  // ── Logistique ──
+  "Manutentionnaire":                     ["Manutention manuelle","Charges lourdes","Palettisation","Filmage palette","Scan","EPI","Sécurité entrepôt"],
+  "Préparateur de commandes":             ["Prépa commandes","Scan code-barres","Commandes vocales","Palettisation","Gestion de stock","WMS","Inventaire"],
+  "Préparateur de commandes vocales":     ["Commandes vocales","Scan","Palettisation","WMS","Inventaire tournant","Gestion emplacements"],
+  "Agent de quai":                        ["Réception/Expédition","Contrôle BL","Filmage","Transpalette","CACES 1","Chargement/Déchargement"],
+  "Cariste CACES 1":                      ["CACES 1","Prépa commandes","Scan","Palettisation","Gestion de stock","Filmage palette","Entrepôt grande hauteur"],
+  "Cariste CACES 3":                      ["CACES 3","Magasinage","Chargement/Déchargement","WMS","Gestion emplacements","SAP WM"],
+  "Cariste CACES 5":                      ["CACES 5","Grande hauteur","Gestion stocks spécialisés","CACES R489","Entrepôt froid"],
+  "Gestionnaire de stocks":               ["WMS","SAP WM","EDI","Inventaire tournant","Gestion entrées/sorties","Réapprovisionnement","Reporting stocks"],
+  "Coordinateur logistique":              ["Coordination flux","Transport","EDI","SAP","Gestion fournisseurs","KPIs logistique","Excel avancé"],
+  "Chef d'équipe logistique":             ["Management équipe","Plannings","Sécurité entrepôt","KPIs","WMS","Formation caristes","Reporting"],
+  // ── Hôtellerie ──
+  "Femme/Valet de chambre":               ["Nettoyage de chambre","Protocole de chambre","Literie","Gestion du chariot","Produits d'entretien hôteliers","Contrôle minibar","Rapport de ronde","Courtoisie client"],
+  "Équipier polyvalent hôtellerie":       ["Polyvalence","Service chambre","Nettoyage","Manutention","Accueil ponctuel","Communication équipe"],
+  "Bagagiste / Portier":                  ["Bagagerie","Accueil client","Protocole luxe","Service voiturier","Communication radio","Discrétion VIP"],
+  "Voiturier":                            ["Conduite véhicules","Permis B","Stationnement","Protocole accueil","Discrétion","Service haut de gamme"],
+  "Standardiste hôtelier":               ["Standard téléphonique","Opera PMS","Réservations","Filtrage d'appels","Langues étrangères","Gestion messagerie"],
+  "Agent d'accueil hôtelier":            ["Accueil client","Check-in/out","Opera PMS","Langues étrangères","Facturation","Gestion réclamations"],
+  "Réceptionniste":                       ["Check-in/out","Opera PMS","Fidelio","Facturation","Réservations","Gestion réclamations","Langues étrangères","Encaissement"],
+  "Réceptionniste bilingue":              ["Check-in/out","Opera PMS","Fidelio","Anglais courant","Seconde langue","Facturation","Protocole luxe"],
+  "Veilleur de nuit":                     ["Clôture de nuit","Night audit","Rapport de nuit","Gestion des urgences","Sécurité hôtel","Facturation","Check-in tardif"],
+  "Night Auditor":                        ["Night audit","Clôture comptable","Opera PMS","Reporting direction","Gestion des urgences","Soldes de caisse"],
+  "Concierge d'hôtel":                    ["Conciergerie","Réservations restaurants","Transferts VIP","Réseau prestataires","Langues étrangères","Protocole luxe","Bagagerie"],
+  "Gouvernant(e) d'étage":               ["Management équipe","Contrôle qualité chambre","Plannings","Commande produits","Formation femmes de chambre","Protocole hôtelier"],
+  "Responsable des étages":              ["Management","Audit qualité","Plannings multi-équipes","Gestion fournitures","QHSE","Recrutement"],
+  "Chef de réception":                    ["Management réception","Opera PMS","Yield management","Formation équipe","Gestion plaintes","Reporting direction"],
+  "Spa praticien / Esthéticien":         ["Soins corps","Soins visage","Massage","Épilation","Protocoles spa","Produits professionnels","Relation client premium"],
+  "Animateur club enfants":              ["Animation enfants","BAFA","Jeux pédagogiques","Sécurité mineurs","Activités créatives","Communication parents"],
+  // ── Restauration ──
+  "Runner":                               ["Service en salle","Transport assiettes","Communication brigade","Dressage","Rapidité","Service à table"],
+  "Plongeur":                             ["Plonge","Nettoyage cuisine","HACCP","Rangement vaisselle","Aide cuisine","EPI"],
+  "Serveur(se)":                          ["Service en salle","Prise de commande","HACCP","Encaissement","Accueil clientèle","Upselling","Travail en brigade"],
+  "Barman / Barmaid":                     ["Cocktails","Mixologie","Vins","Gestion bar","Caisse","Accueil client","Mise en place bar"],
+  "Barista":                              ["Latte art","Espresso","Gestion machine","Café de spécialité","Accueil client","Mise en place"],
+  "Commis de cuisine":                    ["Préparations préliminaires","Mise en place","HACCP","Aide chef de partie","Fiches techniques","Cuissons de base"],
+  "Cuisinier":                            ["Cuissons","HACCP","Fiches techniques","Cuisine française","Travail en brigade","Gestion des déchets","Mise en place"],
+  "Chef de partie":                       ["Management poste","Cuissons maîtrisées","HACCP","Fiches techniques","Gestion des stocks de poste","Formation commis"],
+  "Pâtissier":                            ["Pâtisserie","Viennoiserie","Décoration","Entremets","Chocolaterie","Fiches techniques","HACCP"],
+  "Pizzaïolo":                            ["Pétrissage","Cuisson four à bois","Étalage","Garnitures","HACCP","Gestion des stocks","Service rapide"],
+  "Chef de cuisine":                      ["Management brigade","Création de cartes","Gestion des coûts","HACCP","Formation équipe","Commandes fournisseurs"],
+  "Maître d'hôtel":                       ["Management salle","Protocole service","Vins et accords","Formation équipe","Gestion réservations","Relation clients VIP"],
+  "Sommelier":                            ["Œnologie","Accords mets/vins","Gestion de cave","Service du vin","Conseil client","Commandes fournisseurs"],
+  // ── Commercial ──
+  "Conseiller de vente":                  ["Accueil client","Techniques de vente","Upselling","Caisse","Gestion stock rayon","Fidélisation","Connaissance produits"],
+  "Télévendeur":                          ["Phoning","Argumentaire","CRM","Gestion objections","Closing téléphonique","Reporting","Quota"],
+  "Commercial terrain":                   ["Prospection B2B","Closing","Négociation","CRM","Gestion portefeuille","Reporting","Permis B","Déplacements"],
+  "Chargé de clientèle":                  ["Relation client","CRM","Gestion de compte","Upselling","Cross-selling","Reporting","SAV"],
+  "Business developer":                   ["Prospection","Partenariats","Négociation","Closing","LinkedIn","Salesforce","HubSpot","Stratégie commerciale"],
+  "Technico-commercial":                  ["Connaissance technique produit","Argumentation technique","Chiffrage","Devis","Closing","CRM","Démonstration"],
+  // ── Distribution ──
+  "Hôte(sse) de caisse":                 ["Encaissement","Accueil client","Gestion coffre","Programme fidélité","SAV caisse","Rapidité d'exécution"],
+  "Employé libre-service":                ["Mise en rayon","Gestion DLC/DDM","Facing","Réception livraisons","Inventaire","PLV","Rotation des stocks"],
+  "Responsable rayon":                    ["Gestion de rayon","Management équipe","Commandes","Inventaire","Objectifs CA","Formation employés","PLV"],
+  "Boucher":                              ["Découpe de viande","Désossage","Ficelage","Respect chaîne du froid","Hygiène alimentaire","Relation client","Étiquetage"],
+  "Boulanger":                            ["Pétrissage","Fermentation","Cuisson","Viennoiserie","HACCP","Gestion stocks","Normes sanitaires"],
+  "Poissonnier-écailler":                 ["Découpe poisson","Écaillage","Levage de filets","Respect chaîne du froid","Connaissance produits marée","Traçabilité"],
+  // ── Divers ──
+  "Agent de sécurité":                    ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Gestion de crise","Main courante","SST"],
+  "Hôte(sse) d'accueil":                 ["Accueil physique","Standard téléphonique","Orientation visiteurs","Gestion badges","Tenue professionnelle","Langues étrangères"],
+  "Animateur événementiel":              ["Animation","Prise de parole","Gestion foule","Microphone","Dynamisme","Gestion du temps","BAFA"],
+  "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],
+};
+
 export const PROVIDERS_CACHE_TTL = 15 * 60 * 1000; // 15 min
 
 // ── LEAFLET MAP ───────────────────────────────────────────────────
