@@ -422,11 +422,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               return (
                 <div style={{ background:`${C.violet}08`, border:`1px solid ${C.violet}22`, borderRadius:r, padding:"16px", marginBottom:14 }}>
 
-                  {/* Fourchette indicative — pas une limite */}
+                  {/* Moyenne prestataire */}
                   {t && (
                     <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"10px 12px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>💡 Fourchette du marché</span>
-                      <span style={{ fontSize:13, color:C.accentGold, fontWeight:800 }}>{formatE(t.min)} — {formatE(t.max)}</span>
+                      <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>📊 Moyenne prestataire</span>
+                      <span style={{ fontSize:13, color:C.accentGold, fontWeight:800 }}>{formatE(Math.round(((t.min + t.max) / 2) * 10) / 10)}</span>
                     </div>
                   )}
 
@@ -479,6 +479,43 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                   <p style={{ fontSize:11, color:C.textSub, margin:"8px 0 0", textAlign:"center", lineHeight:1.4 }}>
                     Le tarif client inclut les frais de service ALANE
                   </p>
+
+                  {/* Simulateur de charges auto-entrepreneur */}
+                  {(() => {
+                    const TAUX_CHARGES = 0.231; // 23,1% BIC services (URSSAF AE 2024)
+                    const heures = [4, 8, 35];
+                    const charges = Math.round(net * TAUX_CHARGES * 100) / 100;
+                    const netApres = Math.round((net - charges) * 100) / 100;
+                    return (
+                      <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid ${C.success}25`, borderRadius:12, padding:"13px 14px", marginTop:12 }}>
+                        <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:10 }}>🧮 Simulateur de charges auto-entrepreneur</div>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                          <span style={{ fontSize:12, color:C.textSub }}>Taux horaire brut</span>
+                          <span style={{ fontSize:12, fontWeight:700, color:C.text }}>{formatE(net)}</span>
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                          <span style={{ fontSize:12, color:C.textSub }}>Cotisations URSSAF <span style={{ fontSize:10 }}>(23,1%)</span></span>
+                          <span style={{ fontSize:12, fontWeight:700, color:C.accent }}>− {formatE(charges)}</span>
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"7px 0 4px" }}>
+                          <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
+                          <span style={{ fontSize:14, fontWeight:800, color:C.success }}>{formatE(netApres)}</span>
+                        </div>
+                        <div style={{ marginTop:10, display:"flex", gap:6 }}>
+                          {heures.map(h => (
+                            <div key={h} style={{ flex:1, background:"#0D1B3E", borderRadius:8, padding:"7px 4px", textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{h}h/sem</div>
+                              <div style={{ fontSize:13, fontWeight:800, color:C.success }}>{formatE(Math.round(netApres * h * 4.33 * 10) / 10)}</div>
+                              <div style={{ fontSize:9, color:C.textMuted }}>/mois</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize:10, color:C.textMuted, marginTop:8, lineHeight:1.5 }}>
+                          Estimation indicative · Taux BIC services 2024 · Prélèvement libératoire non inclus
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
