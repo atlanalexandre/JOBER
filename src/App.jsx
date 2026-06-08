@@ -1086,10 +1086,10 @@ export default function App() {
         });
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        fetch("/api/push-subscribe", {
+        fetch("/api/missions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-          body: JSON.stringify({ action: "subscribe", subscription: sub.toJSON() }),
+          body: JSON.stringify({ action: "push_subscribe", subscription: sub.toJSON() }),
         }).catch(() => {});
       } catch {}
     };
