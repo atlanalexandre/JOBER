@@ -36,6 +36,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showAcreInfo, setShowAcreInfo] = useState(false);
   const [villeBase, setVilleBase] = useState("");
   const [rayonKm, setRayonKm] = useState(20);
+  const [adresseRue, setAdresseRue] = useState("");
+  const [codePostal, setCodePostal] = useState("");
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -44,7 +46,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 1) {
       if (!prenom.trim() || !nom.trim()) return "Prénom et nom obligatoires";
       if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
-      if (!villeBase.trim()) return "Indiquez votre ville de base";
+      if (!adresseRue.trim()) return "Indiquez votre adresse";
+      if (!codePostal.trim() || codePostal.replace(/\s/g,"").length < 5) return "Code postal invalide";
+      if (!villeBase.trim()) return "Indiquez votre ville";
     }
     if (step === 2) {
       if (metiers.length === 0) return "Ajoutez au moins un métier";
@@ -83,6 +87,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
+        adresse: adresseRue.trim(), code_postal: codePostal.trim(),
         ville: villeBase.trim(), zone_km: rayonKm,
         secteur: metiers[0]?.sector || "", metier: metiers[0]?.metier || "",
         tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
@@ -167,7 +172,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
           <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
-          <Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="La ville depuis laquelle vous partez en mission" />
+          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="🏠" value={adresseRue} onChange={e=>setAdresseRue(e.target.value)} />
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:"0 0 120px" }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value.replace(/\D/g,"").slice(0,5))} inputMode="numeric" /></div>
+            <div style={{ flex:1 }}><Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="Ville de départ en mission" /></div>
+          </div>
           <div style={{ marginBottom:14 }}>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10 }}>
               📡 Rayon d'intervention : <span style={{ color:accentColor, fontWeight:800 }}>{rayonKm} km</span>
@@ -428,13 +437,34 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:20, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
 
           {/* RC Pro */}
-          <div onClick={()=>setRcProConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:rcProConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${rcProConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:10, transition:"all 0.2s" }}>
+          <div onClick={()=>setRcProConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:rcProConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${rcProConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:16, transition:"all 0.2s" }}>
             <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${rcProConfirmed?"#10D98F":C.border}`, background:rcProConfirmed?"#10D98F":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
               {rcProConfirmed && <span style={{ color:"#fff", fontSize:12, fontWeight:800 }}>✓</span>}
             </div>
             <span style={{ fontSize:13, color:rcProConfirmed?C.text:C.textSub, lineHeight:1.5 }}>
               Je certifie disposer d'une <strong style={{ color:rcProConfirmed?"#10D98F":C.text }}>assurance RC Professionnelle</strong> en cours de validité, couvrant mon activité de prestataire de services.
             </span>
+          </div>
+
+          {/* Documents obligatoires */}
+          <div style={{ background:"rgba(240,180,41,0.08)", border:"1.5px solid rgba(240,180,41,0.35)", borderRadius:r, padding:"14px 16px" }}>
+            <div style={{ fontWeight:800, color:"#F0B429", fontSize:13, marginBottom:8 }}>📎 Documents obligatoires pour recevoir des missions</div>
+            <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:"0 0 10px" }}>
+              Une fois votre compte approuvé, vous devrez envoyer les documents suivants depuis votre espace pour débloquer l'accès aux missions :
+            </p>
+            {[
+              "Photo d'identité récente (selfie ou portrait)",
+              "Justificatif d'immatriculation (KBIS ou extrait INSEE)",
+              "Attestation de vigilance URSSAF (moins de 6 mois)",
+              "Carte nationale d'identité ou passeport (recto-verso)",
+              "Justificatif de domicile (moins de 3 mois)",
+              "RIB / Relevé d'Identité Bancaire",
+            ].map((doc,i) => (
+              <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"5px 0", borderBottom:i<5?"1px solid rgba(255,255,255,0.05)":"none" }}>
+                <span style={{ color:"#F0B429", fontSize:13, flexShrink:0, marginTop:1 }}>•</span>
+                <span style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{doc}</span>
+              </div>
+            ))}
           </div>
 
         </>}
@@ -487,6 +517,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             {[
               { l:"Nom",           v:`${prenom} ${nom}` },
               { l:"Téléphone",     v:telephone },
+              { l:"Adresse",       v:`${adresseRue.trim()}, ${codePostal.trim()} ${villeBase.trim()}`.replace(/^, /,"") || "—" },
+              { l:"Rayon",         v:`${rayonKm} km autour de ${villeBase || "votre ville"}` },
               { l:"Métiers",       v:metiers.map(m=>`${m.metier} (${formatE(m.tarifNet)}/h)`).join(", ") || "—" },
               { l:"Niveau",        v:niveau },
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
