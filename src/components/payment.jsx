@@ -167,7 +167,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
 
         {/* Info paiement sécurisé */}
         <div style={{ width:"100%", background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"12px 14px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont bloqués en escrow mais ne seront débités que si {p.name} accepte la mission. En cas de refus ou de timeout, vous êtes intégralement remboursé.
+          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont sécurisés via Stripe mais ne seront libérés que si {p.name} accepte la mission. En cas de refus ou de timeout, contactez le support pour un remboursement.
         </div>
 
         {/* Bouton annuler */}
@@ -261,7 +261,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
           <strong style={{ color:C.text }}>{p.name}</strong> n'a pas répondu dans le délai d'une heure. La mission est automatiquement annulée.
         </p>
         <div style={{ background:C.success+"08", border:"1px solid "+C.success+"25", borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:13, color:C.textSub, lineHeight:1.6 }}>
-          ✅ <strong style={{ color:C.text }}>Remboursement automatique</strong> — Aucun débit n'a été effectué. Votre paiement escrow est libéré instantanément.
+          ✅ <strong style={{ color:C.text }}>Paiement annulé</strong> — Aucun débit n'a été effectué. Le paiement Stripe est annulé instantanément.
         </div>
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
           📧 Un email de confirmation vous a été envoyé. Le prestataire a été notifié de l'annulation automatique.
