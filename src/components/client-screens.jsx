@@ -1878,11 +1878,14 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [cvOpen, setCvOpen] = useState(false);
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
+  const [savedAddress, setSavedAddress] = useState(null);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
       supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", data.user.id).single()
         .then(({ data: prof }) => { if (prof) setWalletInfo({ balance: prof.cashback_balance || 0, missionsThisMonth: prof.missions_completed_month || 0 }); });
+      const meta = data.user.user_metadata || {};
+      if (meta.adresse) setSavedAddress({ adresse: meta.adresse, ville: meta.ville || "", cp: meta.code_postal || "" });
     });
   }, []);
 
@@ -2167,6 +2170,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             </div>
             <div style={{ padding:14 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div><div style={{ color:C.textSub, fontSize:12 }}>12 rue de Rivoli, 75001</div></div>
           </div>
+          {savedAddress && (
+            <button onClick={()=>{ setAdresse(savedAddress.adresse); setVille(savedAddress.ville); setCp(savedAddress.cp); setAdresseError(false); }} style={{ width:"100%", padding:"12px 16px", borderRadius:12, border:`1px solid ${C.indigo}55`, background:`${C.indigo}15`, color:C.text, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit", textAlign:"left", marginBottom:8, display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:16 }}>📍</span>
+              <div>
+                <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Même adresse qu'à l'inscription</div>
+                <div>{savedAddress.adresse}{savedAddress.ville ? `, ${savedAddress.ville}` : ""}{savedAddress.cp ? ` ${savedAddress.cp}` : ""}</div>
+              </div>
+            </button>
+          )}
           <AddressAutocomplete label="Adresse *" value={adresse} onChange={v=>{setAdresse(v);setAdresseError(false);}} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);setCp(s.codePostal);}} />
           <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
           <Input label="Code postal" placeholder="75001" value={cp} onChange={e=>setCp(e.target.value)} />
