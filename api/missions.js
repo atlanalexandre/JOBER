@@ -534,6 +534,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id, sector } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      console.log("[broadcast] caller:", caller.id, "mission_id:", mission_id, "sector:", sector);
 
       // Fetch mission details
       const mr = await fetch(
@@ -542,6 +543,7 @@ export default async function handler(req, res) {
       );
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
+      console.log("[broadcast] mission:", mission);
 
       // Fetch all approved prestataires
       const pr = await fetch(
@@ -549,6 +551,7 @@ export default async function handler(req, res) {
         { headers }
       );
       const profiles = await pr.json();
+      console.log("[broadcast] approved prestataires count:", Array.isArray(profiles) ? profiles.length : profiles);
 
       // Fetch all push subscriptions for quick lookup
       const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=user_id,endpoint,p256dh,auth`, { headers });
@@ -576,6 +579,7 @@ export default async function handler(req, res) {
               const ud = await ur.json();
               const meta = ud.user_metadata || {};
               const presta_sector = meta.secteur || meta.sector;
+              console.log("[broadcast] prestataire", p.id, "presta_sector:", presta_sector, "mission sector:", sector);
               if (sector && presta_sector && presta_sector !== sector) return;
 
               // In-app notification
@@ -591,19 +595,23 @@ export default async function handler(req, res) {
                 }),
               });
 
+              console.log("[broadcast] in-app notification sent to", p.id);
+
               // SMS Brevo (si numéro dispo et clé configurée)
               const BREVO_KEY = process.env.BREVO_API_KEY;
               const phone = meta.telephone;
+              console.log("[broadcast] SMS check - BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
               if (BREVO_KEY && phone) {
                 const digits = phone.replace(/\D/g, "");
                 const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
                 if (e164) {
                   const smsText = `JOBER - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler.`;
+                  console.log("[broadcast] sending SMS to", e164);
                   fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
                     headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
                     body: JSON.stringify({ sender: "JOBER", recipient: e164, content: smsText }),
-                  }).catch(() => {});
+                  }).then(r => r.json()).then(d => console.log("[broadcast] SMS response:", JSON.stringify(d))).catch(e => console.log("[broadcast] SMS error:", e.message));
                 }
               }
 
