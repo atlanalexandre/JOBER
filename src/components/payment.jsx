@@ -323,6 +323,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       stripeRef.current = stripe;
       const elements = stripe.elements();
       cardEl = elements.create("card", {
+        hidePostalCode: true,
         style: {
           base: { color:"#e2e8f0", fontFamily:"inherit", fontSize:"15px", "::placeholder":{ color:"#64748b" } },
           invalid: { color:"#f87171" },
