@@ -598,15 +598,13 @@ export default async function handler(req, res) {
 
               // Web push notification (if subscribed)
               if (VAPID_PUBLIC && VAPID_PRIVATE && subsByUser[p.id]?.length) {
-                const { createRequire } = await import("module");
-                const require = createRequire(import.meta.url);
-                const webpush = require("web-push");
+                const webpush = (await import("web-push")).default;
                 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
-                const payload = JSON.stringify({ title: pushTitle, body: pushBody, url: "/" });
+                const pushPayload = JSON.stringify({ title: pushTitle, body: pushBody, url: "/" });
                 for (const sub of subsByUser[p.id]) {
                   await webpush.sendNotification(
                     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                    payload
+                    pushPayload
                   ).catch(() => {});
                 }
               }
