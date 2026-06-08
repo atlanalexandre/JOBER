@@ -633,6 +633,26 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, notified });
     }
 
+    if (action === "push_subscribe" || action === "push_unsubscribe") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { subscription } = payload;
+      if (action === "push_subscribe") {
+        if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+          return res.status(400).json({ error: "Subscription invalide" });
+        }
+        await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ user_id: caller.id, endpoint: subscription.endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth }),
+        });
+      } else {
+        if (!subscription?.endpoint) return res.status(400).json({ error: "Endpoint manquant" });
+        await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${caller.id}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`, { method: "DELETE", headers });
+      }
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "update_position") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
