@@ -1199,12 +1199,12 @@ export default function App() {
         } catch(e) {
           setBookingError(e.message || "Une erreur est survenue. Contactez le support si le paiement a été prélevé.");
         }
-      }} onBack={()=>setScreen("booking")} />
+      }} onBack={()=>setScreen("booking")} />}
       {bookingError && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", background:"#1a1a2e", border:"1px solid #F25E5E", borderRadius:12, padding:"12px 18px", color:"#F25E5E", fontSize:13, fontWeight:600, maxWidth:340, zIndex:9999, textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)" }}>
           ⚠️ {bookingError}<br/><button onClick={()=>setBookingError(null)} style={{ marginTop:8, background:"none", border:"none", color:"#F25E5E", cursor:"pointer", fontSize:12, textDecoration:"underline" }}>Fermer</button>
         </div>
-      )}}
+      )}
       {screen==="mission_pending"   && <MissionPendingScreen
         provider={pendingProvider||selectedProvider}
         amount={paymentAmount}
