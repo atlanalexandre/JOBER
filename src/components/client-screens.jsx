@@ -262,6 +262,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         { icon:"🔔", label:"Notifications", value:"Activées" },
         { icon:"🌍", label:"Langue", value:"Français" },
         { icon:"📄", label:"CGU & Politique de confidentialité", action:()=>onNavigate("legal","cgu"), chevron:true },
+        { icon:"⚖️", label:"Mentions légales", action:()=>onNavigate("legal","mentions_legales"), chevron:true },
       ]
     },
     {
@@ -470,7 +471,7 @@ export const TOUR_STEPS = [
   {
     icon:"📅",
     title:"2. Réservez & payez",
-    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé en escrow — vous n'êtes pas débité tant que la mission n'est pas validée.",
+    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la mission n'est pas validée.",
     color:"#F0B429",
   },
   {
@@ -1876,6 +1877,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
 
+  const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) return;
+      supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", data.user.id).single()
+        .then(({ data: prof }) => { if (prof) setWalletInfo({ balance: prof.cashback_balance || 0, missionsThisMonth: prof.missions_completed_month || 0 }); });
+    });
+  }, []);
+
   // Auto-ajuster la pause minimum si on monte à ≥7h et que la pause est à 0
   useEffect(() => {
     if(hours >= 7 && breakMin < 20) setBreakMin(20);
@@ -2279,8 +2289,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
 
             {/* Cashback gagné sur cette mission */}
             {(() => {
-              const tier = getCashbackTier(INITIAL_WALLET.missionsThisMonth);
-              const earned = calcCashback(Number(totalGlobal), INITIAL_WALLET.missionsThisMonth);
+              const tier = getCashbackTier(walletInfo.missionsThisMonth);
+              const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
               return (
                 <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 0", alignItems:"center" }}>
                   <div style={{ display:"flex", gap:7, alignItems:"center" }}>
@@ -2297,11 +2307,11 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
           </div>
 
           {/* Solde cashback disponible */}
-          {INITIAL_WALLET.balance >= 10 && (
+          {walletInfo.balance >= 10 && (
             <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"13px 15px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <div style={{ fontWeight:700, color:C.success, fontSize:13, marginBottom:2 }}>💰 Cashback disponible</div>
-                <div style={{ color:C.textSub, fontSize:12 }}>Vous avez {INITIAL_WALLET.balance.toFixed(2)} € à utiliser</div>
+                <div style={{ color:C.textSub, fontSize:12 }}>Vous avez {walletInfo.balance.toFixed(2)} € à utiliser</div>
               </div>
               <button style={{ background:`${C.success}25`, border:`1px solid ${C.success}44`, borderRadius:10, padding:"7px 14px", color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                 Appliquer
@@ -2340,8 +2350,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
           <div style={{ textAlign:"center", paddingTop:10 }}>
             {/* Cashback gagné — confirmation */}
             {(() => {
-              const earned = calcCashback(Number(totalGlobal), INITIAL_WALLET.missionsThisMonth);
-              const tier = getCashbackTier(INITIAL_WALLET.missionsThisMonth);
+              const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
+              const tier = getCashbackTier(walletInfo.missionsThisMonth);
               return (
                 <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"16px", marginBottom:20, display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${C.success}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💰</div>
@@ -2358,8 +2368,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             </h3>
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
-                ? <>Votre mission a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé en escrow.</>
-                : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé et sera libéré après validation mutuelle.</>
+                ? <>Votre mission a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
+                : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera libéré après validation mutuelle.</>
               }
             </p>
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"left" }}>
@@ -3438,7 +3448,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
               <span style={{ fontWeight:800, color:C.text, fontSize:15 }}>Total équipe</span>
               <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{totalTeam.toFixed(0)} €</span>
             </div>
-            <div style={{ marginTop:8, fontSize:11, color:C.textSub }}>🔒 Bloqué en escrow jusqu'à validation de chaque prestataire</div>
+            <div style={{ marginTop:8, fontSize:11, color:C.textSub }}>🔒 Sécurisé via Stripe jusqu'à validation de chaque prestataire</div>
           </div>
 
           <Btn full onClick={()=>setStep("payment")} disabled={!date||!timeStart} style={{ fontSize:15, padding:"16px" }}>
@@ -3456,7 +3466,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
     { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre mission en détail.", color:C.indigo },
-    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est bloqué en escrow. Aucun débit définitif avant que la mission soit validée par les deux parties.", color:C.accentGold },
+    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la mission soit validée par les deux parties.", color:C.accentGold },
     { icon:"✅", title:"Validez & notez", desc:"Une fois la mission terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
@@ -3751,7 +3761,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
           "📧 Copies envoyées aux deux parties",
           "📁 Archivé dans vos espaces respectifs",
           "⏱️ Horodaté et certifié",
-          "🔒 Fonds en escrow sécurisé",
+          "🔒 Fonds sécurisés via Stripe",
           "✅ Mission autorisée à démarrer",
         ].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:12, padding:"5px 0", borderBottom:i<4?"1px solid rgba(255,255,255,0.15)":"none" }}>{s}</div>
@@ -3772,7 +3782,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service ALANE)\n\nLe paiement est sécurisé via le système d'escrow ALANE : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
@@ -3926,7 +3936,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire et gestionnaire de paiement. Les fonds de <strong>{totalAmount} €</strong> sont placés en escrow sécurisé jusqu'à validation mutuelle de la mission.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la mission.
               </div>
             </div>
           </div>
@@ -3995,9 +4005,9 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
               )}
             </div>
 
-            {/* Info escrow */}
+            {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Escrow sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement bloqués chez ALANE et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
             </div>
           </div>
         )}
@@ -4015,7 +4025,7 @@ export function LegalScreen({ type, onBack }) {
         { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme ALANE, service de mise en relation entre clients et prestataires de services. En utilisant ALANE, vous acceptez sans réserve les présentes conditions." },
         { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
         { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
-        { title:"4. Paiements", text:"Les paiements sont sécurisés via un système d’escrow. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. La commission ALANE est incluse dans le tarif affiché." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la mission et couvrent les coûts de traitement et de la plateforme." },
         { title:"5. Annulations", text:"Politique d’annulation : gratuit au-delà de 48h, 50% entre 24-48h, 100% en dessous de 24h. Ces frais s’appliquent tant aux clients qu’aux prestataires." },
         { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
@@ -4035,6 +4045,17 @@ export function LegalScreen({ type, onBack }) {
         { title:"8. Cookies et traceurs", text:"ALANE utilise uniquement des cookies strictement nécessaires au fonctionnement du service : cookie de session Supabase (authentification, durée de session) et préférences locales (thème, notifications). Ces cookies ne nécessitent pas votre consentement car ils sont indispensables à la fourniture du service demandé (art. 82 loi Informatique et Libertés). Aucun cookie publicitaire ou de tracking tiers n’est utilisé." },
         { title:"9. Sécurité", text:"Vos données sont protégées par : chiffrement TLS en transit, chiffrement au repos (Supabase), authentification par token signé HMAC pour l’administration, séparation stricte des clés API (clé service uniquement côté serveur). Les mots de passe ne sont jamais stockés en clair (gestion déléguée à Supabase Auth)." },
         { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en bas de cette page. Dernière mise à jour : janvier 2026." },
+      ]
+    },
+    mentions_legales: {
+      title:"Mentions légales",
+      icon:"⚖️",
+      sections:[
+        { title:"Éditeur du site", text:"Raison sociale : [À REMPLIR — ex. ALANE SAS]\nForme juridique : [À REMPLIR — ex. SAS]\nCapital social : [À REMPLIR — ex. 1 000 €]\nSIRET : [À REMPLIR]\nSiège social : [À REMPLIR — ex. 75001 Paris, France]\nEmail : legal@alane.fr\nDirecteur de la publication : [À REMPLIR]" },
+        { title:"Hébergeur", text:"Vercel Inc.\n340 Pine Street, Suite 200\nSan Francisco, CA 94104, États-Unis\nhttps://vercel.com\n\nBase de données : Supabase Inc.\n970 Toa Payoh N, Singapour\nhttps://supabase.com" },
+        { title:"Propriété intellectuelle", text:"L'ensemble du contenu de la plateforme ALANE (textes, graphismes, logotype, code source) est protégé par le droit d'auteur. Toute reproduction, même partielle, est interdite sans autorisation préalable écrite de l'éditeur." },
+        { title:"Médiation de la consommation", text:"Conformément aux articles L.612-1 et suivants du Code de la consommation, vous avez le droit de recourir à un médiateur de la consommation en vue de la résolution amiable d'un litige.\n\nMédiateur désigné : [À REMPLIR — ex. Médiateur du e-commerce de la FEVAD]\nAdresse : [À REMPLIR]\nSite : [À REMPLIR]\n\nVous pouvez également recourir à la plateforme européenne de règlement en ligne des litiges : https://ec.europa.eu/consumers/odr" },
+        { title:"Données personnelles", text:"Conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés, vous disposez d'un droit d'accès, de rectification et de suppression de vos données personnelles. Pour exercer ces droits : legal@alane.fr\n\nResponsable de traitement : [À REMPLIR]\nDélégué à la Protection des Données : [À REMPLIR — si applicable]" },
       ]
     }
   };
@@ -5479,7 +5500,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const clientSteps = [
     { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
     { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
-    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé en escrow. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];

@@ -254,7 +254,7 @@ function RoleScreen({ onSelect }) {
               { title:"1. Objet", text:"ALANE est une plateforme de mise en relation entre clients professionnels et prestataires qualifiés. L'utilisation de la plateforme implique l'acceptation des présentes conditions." },
               { title:"2. Inscription", text:"L'accès aux services nécessite la création d'un compte. Les informations fournies doivent être exactes et à jour. ALANE se réserve le droit de refuser ou suspendre tout compte." },
               { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
-              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont placés en escrow jusqu'à validation de la mission par le client. Toute contestation doit être soumise sous 48h." },
+              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la mission. Toute contestation doit être soumise sous 48h en contactant le support." },
               { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
               { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : legal@alane.fr" },
             ].map((s,i)=>(
@@ -738,7 +738,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             {/* Value props */}
             {[
               { icon:"✅", text:"Prestataires vérifiés et approuvés" },
-              { icon:"🔒", text:"Paiement sécurisé en escrow" },
+              { icon:"🔒", text:"Paiement sécurisé via Stripe" },
               { icon:"⭐", text:"Notes et avis après chaque mission" },
               { icon:"⚡", text:"Tarif transparent — prix affiché = prix réel" },
             ].map((v,i) => (
