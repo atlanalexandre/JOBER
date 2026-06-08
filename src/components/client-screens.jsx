@@ -1886,10 +1886,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     });
   }, []);
 
-  // Auto-ajuster la pause minimum si on monte à ≥7h et que la pause est à 0
-  useEffect(() => {
-    if(hours >= 7 && breakMin < 20) setBreakMin(20);
-  }, [hours]);
 
   const tarifHoraire = isUrgent && urgentPrice ? urgentPrice : (p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers'));
 
@@ -2152,68 +2148,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             )}
           </div>
 
-          {/* Temps de pause */}
-          {!isUrgent && (
-            <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
-              <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:`${C.accentGold}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>☕</div>
-                <label style={{ fontSize:13, fontWeight:700, color:C.text }}>Temps de pause</label>
-                {hours >= 7 && (
-                  <Badge color={C.accentGold} small>⚠️ Obligatoire ≥7h</Badge>
-                )}
-              </div>
-
-              {/* Alerte légale si ≥ 7h */}
-              {hours >= 7 && (
-                <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"9px 12px", marginBottom:12, fontSize:12, color:C.text, lineHeight:1.6 }}>
-                  ⚖️ <strong>Obligation légale</strong> — À partir de 7h de travail consécutives, une pause de <strong style={{ color:C.accentGold }}>minimum 20 minutes</strong> est obligatoire (Code du travail, Art. L3121-16).
-                </div>
-              )}
-
-              {/* Choix de pause */}
-              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                {[
-                  { val:0,   label:"Aucune",    disabled: hours >= 7 },
-                  { val:20,  label:"20 min",    disabled: false      },
-                  { val:30,  label:"30 min",    disabled: false      },
-                  { val:45,  label:"45 min",    disabled: false      },
-                  { val:60,  label:"1 heure",   disabled: false      },
-                ].map(opt => {
-                  const isSelected = breakMin === opt.val;
-                  const isForced = opt.val === 0 && hours >= 7;
-                  return (
-                    <button
-                      key={opt.val}
-                      onClick={()=>{ if(!isForced) setBreakMin(opt.val); }}
-                      disabled={isForced}
-                      style={{
-                        padding:"8px 14px", borderRadius:100, fontSize:12, fontWeight:600,
-                        cursor: isForced ? "not-allowed" : "pointer",
-                        fontFamily:"inherit", border:"none", transition:"all 0.2s",
-                        background: isSelected ? (hours>=7 && opt.val===0 ? C.danger+"22" : C.violet) : "rgba(255,255,255,0.06)",
-                        color: isSelected ? (hours>=7 && opt.val===0 ? C.danger : C.white) : C.textSub,
-                        opacity: isForced ? 0.4 : 1,
-                        boxShadow: isSelected && opt.val > 0 ? `0 4px 12px ${C.violet}44` : "none",
-                      }}
-                    >{opt.label}</button>
-                  );
-                })}
-              </div>
-
-              {/* Résumé temps effectif */}
-              {breakMin > 0 && (
-                <div style={{ marginTop:12, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10 }}>
-                  <div style={{ fontSize:12, color:C.textSub }}>
-                    Temps de travail effectif : <strong style={{ color:C.text }}>{hours}h - {breakMin}min = {Math.floor((hours*60 - breakMin)/60)}h{(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}</strong>
-                  </div>
-                  <div style={{ fontSize:12, color:C.violet, fontWeight:700 }}>
-                    {(tarifHoraire * (hours - breakMin/60)).toFixed(0)} € HT
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Description */}
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Description de la mission</label>
@@ -2263,7 +2197,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               ["Date", isUrgent ? `Aujourd’hui — ${urgentStartDate}` : missionType==="range" && startDate && endDate ? `${formatDate(startDate)} → ${formatDate(endDate)}` : formatDate(startDate)],
               ["Heure de début", isUrgent ? `${urgentStartTime} (~30 min)` : startTime||"—"],
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
-              ...(!isUrgent && breakMin>0 ? [["Temps de pause", `${breakMin} min${hours>=7?" (obligatoire)":""}`]] : []),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
