@@ -308,7 +308,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
     setManualChecking(true); setManualMsg("");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      setManualMsg("Connectez-vous pour vérifier votre statut.");
+      setManualMsg("Session expirée. Déconnectez-vous puis reconnectez-vous.");
       setManualChecking(false); return;
     }
     const { data: profile } = await supabase.from("profiles").select("status,role").eq("id", user.id).single();
@@ -364,7 +364,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
       </button>
       {manualMsg && <div style={{ fontSize:12, color: manualMsg.includes("refusé") ? "#F25E5E" : "rgba(255,255,255,0.5)", marginBottom:14, maxWidth:300 }}>{manualMsg}</div>}
       {!hasSession && <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:14, maxWidth:300, lineHeight:1.6, textAlign:"center" }}>
-        Une fois approuvé, reconnectez-vous avec votre email et mot de passe pour accéder à votre espace.
+        Déconnectez-vous puis reconnectez-vous pour vérifier votre statut.
       </div>}
       <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
         Se déconnecter

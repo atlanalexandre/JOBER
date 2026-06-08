@@ -123,7 +123,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         }).catch(() => {});
         sessionStorage.removeItem("alane_referrer");
       }
-      await supabase.auth.signOut();
+      // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
+      sessionStorage.setItem("alane_session_active", "1");
     }
     setLoading(false);
     onRegister();
@@ -731,7 +732,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         }).catch(() => {});
         sessionStorage.removeItem("alane_referrer");
       }
-      await supabase.auth.signOut();
+      // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
+      sessionStorage.setItem("alane_session_active", "1");
     }
     setLoading(false);
     onRegister();
@@ -1066,7 +1068,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
       }).catch(() => {});
-      await supabase.auth.signOut();
+      sessionStorage.setItem("alane_session_active", "1");
     }
     setLoading(false);
     onRegister();
