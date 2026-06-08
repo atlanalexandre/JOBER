@@ -438,16 +438,16 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                     <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                       <div style={{ flex:1, position:"relative" }}>
                         <input
-                          type="number" min={1} step={0.5}
+                          type="number" min={1} step={0.1}
                           value={net}
-                          onChange={e => setNewMetier({...newMetier, tarifNet: Math.max(1, +e.target.value || 1)})}
+                          onChange={e => setNewMetier({...newMetier, tarifNet: Math.max(1, Math.round(+(e.target.value||1)*100)/100)})}
                           style={{ width:"100%", padding:"14px 48px 14px 16px", borderRadius:12, border:`2px solid ${belowMarket||aboveMarket ? C.accentGold : C.violet}`, fontSize:20, fontWeight:800, color:C.violet, fontFamily:"inherit", outline:"none", boxSizing:"border-box", textAlign:"center" }}
                         />
                         <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", color:C.textSub, fontSize:13, fontWeight:600 }}>€/h</span>
                       </div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                        <button onClick={()=>setNewMetier({...newMetier, tarifNet: Math.round((net+0.5)*10)/10})} style={{ width:36, height:32, borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>＋</button>
-                        <button onClick={()=>setNewMetier({...newMetier, tarifNet: Math.max(1, Math.round((net-0.5)*10)/10)})} style={{ width:36, height:32, borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>－</button>
+                        <button onClick={()=>setNewMetier({...newMetier, tarifNet: Math.round((net+0.1)*100)/100})} style={{ width:36, height:32, borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>＋</button>
+                        <button onClick={()=>setNewMetier({...newMetier, tarifNet: Math.max(1, Math.round((net-0.1)*100)/100)})} style={{ width:36, height:32, borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>－</button>
                       </div>
                     </div>
 
@@ -482,36 +482,31 @@ export function PrestaOnboarding({ onComplete, onBack }) {
 
                   {/* Simulateur de charges auto-entrepreneur */}
                   {(() => {
-                    const TAUX_CHARGES = 0.231; // 23,1% BIC services (URSSAF AE 2024)
-                    const heures = [4, 8, 35];
-                    const charges = Math.round(net * TAUX_CHARGES * 100) / 100;
+                    const charges = Math.round(net * 0.22 * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
+                    const scenarios = [
+                      { label:"Mission 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Mission 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
+                    ];
                     return (
                       <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid ${C.success}25`, borderRadius:12, padding:"13px 14px", marginTop:12 }}>
                         <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:10 }}>🧮 Simulateur de charges auto-entrepreneur</div>
                         <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
-                          <span style={{ fontSize:12, color:C.textSub }}>Taux horaire brut</span>
-                          <span style={{ fontSize:12, fontWeight:700, color:C.text }}>{formatE(net)}</span>
-                        </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
-                          <span style={{ fontSize:12, color:C.textSub }}>Cotisations URSSAF <span style={{ fontSize:10 }}>(23,1%)</span></span>
+                          <span style={{ fontSize:12, color:C.textSub }}>Cotisations URSSAF (22%)</span>
                           <span style={{ fontSize:12, fontWeight:700, color:C.accent }}>− {formatE(charges)}</span>
                         </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", padding:"7px 0 4px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"7px 0 8px", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
                           <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
-                          <span style={{ fontSize:14, fontWeight:800, color:C.success }}>{formatE(netApres)}</span>
+                          <span style={{ fontSize:14, fontWeight:800, color:C.success }}>{formatE(netApres)}/h</span>
                         </div>
                         <div style={{ marginTop:10, display:"flex", gap:6 }}>
-                          {heures.map(h => (
-                            <div key={h} style={{ flex:1, background:"#0D1B3E", borderRadius:8, padding:"7px 4px", textAlign:"center" }}>
-                              <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{h}h/sem</div>
-                              <div style={{ fontSize:13, fontWeight:800, color:C.success }}>{formatE(Math.round(netApres * h * 4.33 * 10) / 10)}</div>
-                              <div style={{ fontSize:9, color:C.textMuted }}>/mois</div>
+                          {scenarios.map(s => (
+                            <div key={s.label} style={{ flex:1, background:"#0D1B3E", borderRadius:8, padding:"7px 4px", textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{s.label}</div>
+                              <div style={{ fontSize:13, fontWeight:800, color:C.success }}>{formatE(s.gain)}</div>
                             </div>
                           ))}
-                        </div>
-                        <div style={{ fontSize:10, color:C.textMuted, marginTop:8, lineHeight:1.5 }}>
-                          Estimation indicative · Taux BIC services 2024 · Prélèvement libératoire non inclus
                         </div>
                       </div>
                     );

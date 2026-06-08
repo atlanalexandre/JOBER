@@ -218,14 +218,14 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                   <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Taux horaire souhaité</label>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
                     <div style={{ flex:1, position:"relative" }}>
-                      <input type="number" min={1} step={0.5} value={net}
-                        onChange={e=>setNewMetier({...newMetier, tarifNet:Math.max(1,+e.target.value||1)})}
+                      <input type="number" min={1} step={0.1} value={net}
+                        onChange={e=>setNewMetier({...newMetier, tarifNet:Math.max(1, Math.round(+(e.target.value||1)*100)/100)})}
                         style={{ width:"100%", padding:"12px 44px 12px 16px", borderRadius:10, border:`2px solid ${accentColor}`, fontSize:18, fontWeight:800, color:accentColor, fontFamily:"inherit", outline:"none", boxSizing:"border-box", textAlign:"center", background:"#162547" }} />
                       <span style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", color:C.textSub, fontSize:13, fontWeight:600 }}>€/h</span>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.round((net+0.5)*10)/10})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>＋</button>
-                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.max(1,Math.round((net-0.5)*10)/10)})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>－</button>
+                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.round((net+0.1)*100)/100})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>＋</button>
+                      <button onClick={()=>setNewMetier({...newMetier,tarifNet:Math.max(1,Math.round((net-0.1)*100)/100)})} style={{ width:34, height:28, borderRadius:7, border:`1px solid ${C.border}`, background:"#162547", cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", color:C.text }}>－</button>
                     </div>
                   </div>
                   <div style={{ background:"#162547", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -235,25 +235,29 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                   </div>
                   {/* Simulateur de charges auto-entrepreneur */}
                   {(()=>{
-                    const charges = Math.round(net * 0.231 * 100) / 100;
+                    const charges = Math.round(net * 0.22 * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
+                    const scenarios = [
+                      { label:"Mission 4h",  gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Mission 8h",  gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
+                    ];
                     return (
                       <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid rgba(16,217,143,0.2)`, borderRadius:10, padding:"12px 14px", marginTop:10 }}>
                         <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:8 }}>🧮 Simulateur de charges auto-entrepreneur</div>
                         <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
-                          <span style={{ fontSize:11, color:C.textSub }}>Cotisations URSSAF (23,1%)</span>
+                          <span style={{ fontSize:11, color:C.textSub }}>Cotisations URSSAF (22%)</span>
                           <span style={{ fontSize:11, fontWeight:700, color:"#F25E5E" }}>− {formatE(charges)}</span>
                         </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 4px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 8px", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
                           <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
-                          <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}</span>
+                          <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}/h</span>
                         </div>
                         <div style={{ display:"flex", gap:6, marginTop:8 }}>
-                          {[4,8,35].map(h=>(
-                            <div key={h} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
-                              <div style={{ fontSize:10, color:C.textSub }}>{h}h/sem</div>
-                              <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(Math.round(netApres*h*4.33*10)/10)}</div>
-                              <div style={{ fontSize:9, color:C.textSub }}>/mois</div>
+                          {scenarios.map(s=>(
+                            <div key={s.label} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{s.label}</div>
+                              <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(s.gain)}</div>
                             </div>
                           ))}
                         </div>
