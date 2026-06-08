@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, JOURS, PLAGES, NIVEAUX, LANGUES_LIST } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST } from "../constants/data.js";
 import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Badge, AddressAutocomplete, formatPhone, checkIban } from "./ui.jsx";
 
 export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
@@ -125,7 +125,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1500);
   };
-  const allCompListe = [...new Set((metiers).flatMap(m => COMPETENCES_PAR_SECTEUR[m.sector]||[]))];
+  const allCompListe = [...new Set((metiers).flatMap(m => COMPETENCES_PAR_METIER[m.metier] || COMPETENCES_PAR_SECTEUR[m.sector] || []))];
 
   const STEP_TITLES = ["Votre identité","Vos métiers","Expérience","Disponibilités","Statut & Paiement","Votre abonnement","Récapitulatif"];
   const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","⚡","✅"];
@@ -212,8 +212,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               return (
                 <div style={{ background:`${accentColor}08`, border:`1px solid ${accentColor}22`, borderRadius:r, padding:"14px", marginBottom:14 }}>
                   {t && <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:8, padding:"8px 12px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>💡 Fourchette marché</span>
-                    <span style={{ fontSize:13, color:C.accentGold, fontWeight:800 }}>{formatE(t.min)} — {formatE(t.max)}</span>
+                    <span style={{ fontSize:12, color:C.text, fontWeight:600 }}>📊 Moyenne prestataire</span>
+                    <span style={{ fontSize:13, color:C.accentGold, fontWeight:800 }}>{formatE(Math.round(((t.min + t.max) / 2) * 10) / 10)}</span>
                   </div>}
                   <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Taux horaire souhaité</label>
                   <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
@@ -233,6 +233,33 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                     <span style={{ color:C.grayLight }}>→</span>
                     <div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:C.textSub }}>Affiché clients</div><div style={{ fontSize:18, fontWeight:800, color:C.text }}>{formatE(prixClient(net,newMetier.sector||"divers"))}</div></div>
                   </div>
+                  {/* Simulateur de charges auto-entrepreneur */}
+                  {(()=>{
+                    const charges = Math.round(net * 0.231 * 100) / 100;
+                    const netApres = Math.round((net - charges) * 100) / 100;
+                    return (
+                      <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid rgba(16,217,143,0.2)`, borderRadius:10, padding:"12px 14px", marginTop:10 }}>
+                        <div style={{ fontWeight:800, color:C.text, fontSize:12, marginBottom:8 }}>🧮 Simulateur de charges auto-entrepreneur</div>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
+                          <span style={{ fontSize:11, color:C.textSub }}>Cotisations URSSAF (23,1%)</span>
+                          <span style={{ fontSize:11, fontWeight:700, color:"#F25E5E" }}>− {formatE(charges)}</span>
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 4px" }}>
+                          <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
+                          <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}</span>
+                        </div>
+                        <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                          {[4,8,35].map(h=>(
+                            <div key={h} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:C.textSub }}>{h}h/sem</div>
+                              <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(Math.round(netApres*h*4.33*10)/10)}</div>
+                              <div style={{ fontSize:9, color:C.textSub }}>/mois</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
@@ -258,7 +285,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           </label>
           <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
           {allCompListe.length > 0 && <>
-            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Compétences clés (optionnel)</label>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.8 }}>Vos spécialités</label>
+            <p style={{ fontSize:11, color:C.textSub, margin:"0 0 10px", lineHeight:1.5 }}>Ces tags apparaissent sur votre profil et aident les clients à vous trouver</p>
             <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:20 }}>
               {allCompListe.map(c => (
                 <button key={c} onClick={()=>toggleItem(competences,setCompetences,c)} style={{ padding:"7px 12px", borderRadius:100, border:`1px solid ${competences.includes(c)?accentColor:C.border}`, background:competences.includes(c)?`${accentColor}25`:"transparent", color:competences.includes(c)?accentColor:C.textSub, fontSize:12, fontWeight:competences.includes(c)?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{c}</button>
