@@ -611,6 +611,22 @@ export default async function handler(req, res) {
                 }
               }
 
+              // SMS Brevo (si numéro dispo et clé configurée)
+              const BREVO_KEY = process.env.BREVO_API_KEY;
+              const phone = meta.telephone;
+              if (BREVO_KEY && phone) {
+                const digits = phone.replace(/\D/g, "");
+                const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+                if (e164) {
+                  const smsText = `JOBER - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler.`;
+                  fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                    method: "POST",
+                    headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+                    body: JSON.stringify({ sender: "JOBER", recipient: e164, content: smsText }),
+                  }).catch(() => {});
+                }
+              }
+
               notified++;
             } catch {}
           }));
