@@ -341,3 +341,21 @@ INSERT INTO platform_settings (key, value) VALUES
   ('cashback_rates',       '[{"id":"standard","min":0,"max":2,"rate":0.005},{"id":"silver","min":3,"max":5,"rate":0.0075},{"id":"gold","min":6,"max":9,"rate":0.01},{"id":"platinum","min":10,"max":999,"rate":0.015}]'::jsonb),
   ('sector_min_prestataires', '20'::jsonb)
 ON CONFLICT (key) DO NOTHING;
+
+-- ── WEB PUSH SUBSCRIPTIONS ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  endpoint   text NOT NULL,
+  p256dh     text NOT NULL,
+  auth       text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, endpoint)
+);
+
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "push_own" ON push_subscriptions;
+CREATE POLICY "push_own" ON push_subscriptions
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
