@@ -138,9 +138,10 @@ function DeleteAccountSection({ onLogout }) {
       const { data:{ session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) throw new Error("Session expirée");
-      const r = await fetch("/api/gdpr-delete", {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` },
+      const r = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "delete_account" }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Erreur suppression");
