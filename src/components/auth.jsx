@@ -34,6 +34,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showCgpsModal, setShowCgpsModal] = useState(false);
   const [acreEnabled, setAcreEnabled] = useState(false);
   const [showAcreInfo, setShowAcreInfo] = useState(false);
+  const [villeBase, setVilleBase] = useState("");
+  const [rayonKm, setRayonKm] = useState(20);
 
   const toggleItem = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -42,6 +44,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 1) {
       if (!prenom.trim() || !nom.trim()) return "Prénom et nom obligatoires";
       if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
+      if (!villeBase.trim()) return "Indiquez votre ville de base";
     }
     if (step === 2) {
       if (metiers.length === 0) return "Ajoutez au moins un métier";
@@ -80,6 +83,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
+        ville: villeBase.trim(), zone_km: rayonKm,
         secteur: metiers[0]?.sector || "", metier: metiers[0]?.metier || "",
         tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
         niveau, experience_ans: experienceAns, competences, langues,
@@ -163,6 +167,17 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
           <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
+          <Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="La ville depuis laquelle vous partez en mission" />
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10 }}>
+              📡 Rayon d'intervention : <span style={{ color:accentColor, fontWeight:800 }}>{rayonKm} km</span>
+            </label>
+            <input type="range" min={5} max={100} step={5} value={rayonKm} onChange={e=>setRayonKm(Number(e.target.value))}
+              style={{ width:"100%", accentColor, marginBottom:6 }} />
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.textMuted }}>
+              <span>5 km</span><span>50 km</span><span>100 km</span>
+            </div>
+          </div>
           <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginTop:4, display:"flex", gap:10 }}>
             <span style={{ fontSize:18 }}>💡</span>
             <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Votre numéro ne sera communiqué au client qu'après confirmation d'une mission.</p>
