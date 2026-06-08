@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
-import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase } from "../constants/plans.js";
+import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
@@ -123,6 +123,55 @@ export function ContactSupportScreen({ onBack }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function DeleteAccountSection({ onLogout }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const handleDelete = async () => {
+    setDeleting(true); setDeleteError(null);
+    try {
+      const { data:{ session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Session expirée");
+      const r = await fetch("/api/gdpr-delete", {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Erreur suppression");
+      await supabase.auth.signOut();
+      onLogout?.();
+    } catch(e) {
+      setDeleteError(e.message);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop:24, borderTop:`1px solid ${C.border}`, paddingTop:20 }}>
+      <div style={{ fontWeight:700, color:C.textSub, fontSize:12, marginBottom:10, textTransform:"uppercase", letterSpacing:1 }}>Zone de danger</div>
+      {!confirmDelete ? (
+        <button onClick={()=>setConfirmDelete(true)} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.danger}44`, background:"transparent", color:C.danger, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          🗑️ Supprimer mon compte (RGPD art. 17)
+        </button>
+      ) : (
+        <div style={{ background:`${C.danger}12`, border:`1px solid ${C.danger}44`, borderRadius:14, padding:"14px 16px" }}>
+          <div style={{ fontWeight:700, color:C.danger, fontSize:13, marginBottom:8 }}>⚠️ Cette action est irréversible</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:14 }}>
+            Vos données personnelles seront supprimées conformément au RGPD art. 17 (droit à l'effacement). L'historique des missions sera anonymisé. Cette action ne peut pas être annulée.
+          </div>
+          {deleteError && <div style={{ color:C.danger, fontSize:12, marginBottom:10, fontWeight:600 }}>⚠️ {deleteError}</div>}
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={()=>{ setConfirmDelete(false); setDeleteError(null); }} disabled={deleting} style={{ flex:1, padding:"11px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+            <button onClick={handleDelete} disabled={deleting} style={{ flex:1, padding:"11px", borderRadius:r, border:"none", background:C.danger, color:"#fff", fontWeight:700, fontSize:13, cursor:deleting?"not-allowed":"pointer", fontFamily:"inherit" }}>{deleting?"Suppression...":"Confirmer la suppression"}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -349,6 +398,9 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         <button onClick={onLogout} style={{ width:"100%", padding:"15px", borderRadius:r, border:`1px solid #F25E5E44`, background:"#F25E5E12", color:"#F25E5E", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginTop:8 }}>
           🚪 Se déconnecter
         </button>
+
+        {/* Suppression RGPD */}
+        <DeleteAccountSection onLogout={onLogout} />
 
         <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>ALANE v1.0 · Tous droits réservés</p>
       </div>
@@ -1839,8 +1891,10 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return diff > 0 ? diff : 1;
   })();
 
+  const fraisMission = isUrgent ? FRAIS_MER.urgent : (missionType === "range" ? FRAIS_MER.range : FRAIS_MER.single);
   const totalParJour = (tarifHoraire * hours).toFixed(0);
-  const totalGlobal = (tarifHoraire * hours * nbJours).toFixed(0);
+  const totalHT = tarifHoraire * hours * nbJours;
+  const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
   // Urgence
   const now = new Date();
@@ -2209,8 +2263,16 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
                 <span style={{ fontWeight:700, color: l.includes("surcoût")?C.accent:C.text, fontSize:13 }}>{v}</span>
               </div>
             ))}
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ fontWeight:700, color:C.text, fontSize:15 }}>Total HT {missionType==="range" && nbJours>1 && <span style={{ color:C.textMuted, fontWeight:400, fontSize:12 }}>({nbJours} jours)</span>}</span>
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ color:C.textSub, fontSize:13 }}>Sous-total HT {missionType==="range" && nbJours>1 && <span style={{ color:C.textMuted, fontSize:11 }}>({nbJours}j)</span>}</span>
+              <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
+              <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
+              <span style={{ fontWeight:700, color:C.text, fontSize:15 }}>Total TTC</span>
               <span style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:18 }}>{totalGlobal} €</span>
             </div>
 
@@ -2258,9 +2320,9 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
             {[
-              ["Plus de 24h avant","Remboursement intégral","#10D98F"],
-              ["Moins de 24h avant","Remboursement à 50%","#F0B429"],
-              ["Après le début","Non remboursable","#F25E5E"],
+              ["Plus de 48h avant","Remboursement intégral","#10D98F"],
+              ["Entre 24h et 48h","Remboursement à 50%","#F0B429"],
+              ["Moins de 24h avant","Non remboursable","#F25E5E"],
             ].map(([delai,regle,col])=>(
               <div key={delai} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.05)` }}>
                 <span style={{ color:C.textSub, fontSize:11 }}>{delai}</span>

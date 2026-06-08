@@ -368,7 +368,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       <div style={{ width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:44, marginBottom:20 }}>✓</div>
       <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Paiement sécurisé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 24px" }}>
-        <strong>{total} €</strong> placés en escrow ALANE.<br/>Libérés après validation de la mission.
+        <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la mission.
       </p>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", width:"100%", maxWidth:300, marginBottom:24, textAlign:"left" }}>
         {[

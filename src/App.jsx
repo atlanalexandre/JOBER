@@ -822,6 +822,7 @@ export default function App() {
   const [paymentDescription,setPaymentDescription]=useState("");
   const [paymentAdresse,setPaymentAdresse]=useState("");
   const [paymentVille,setPaymentVille]=useState("");
+  const [bookingError,setBookingError]=useState(null);
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -1150,49 +1151,60 @@ export default function App() {
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
       {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async()=>{
+        setBookingError(null);
         setPendingProvider(selectedProvider);
-        const { data:ud } = await supabase.auth.getUser();
-        const userId = ud?.user?.id;
-        if(selectedProvider?.id && userId){
-          const today=new Date().toDateString();
-          const mDay=paymentDate?new Date(paymentDate).toDateString():null;
-          const isSameDay=!mDay||mDay===today;
-          const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
-          let missionId = selectedMissionId;
-          if(missionId){
-            // Flux broadcast : assigner le prestataire choisi
-            await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",missionId);
-          } else {
-            // Flux direct (profil → booking) : créer la mission
-            const { data:newM } = await supabase.from("missions").insert({
-              client_id:userId, prestataire_id:selectedProvider.id,
-              sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
-              date:paymentDate||null, hours:paymentHours,
-              tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
-              description:paymentDescription||null,
-              adresse:paymentAdresse||null,
-              ville:paymentVille||null,
-              status:"pending_acceptance", acceptance_deadline:deadline,
-            }).select().single();
-            if(newM){ missionId=newM.id; setSelectedMissionId(newM.id); }
+        try {
+          const { data:ud } = await supabase.auth.getUser();
+          const userId = ud?.user?.id;
+          if(!userId) throw new Error("Session expirée, veuillez vous reconnecter.");
+          if(selectedProvider?.id){
+            const today=new Date().toDateString();
+            const mDay=paymentDate?new Date(paymentDate).toDateString():null;
+            const isSameDay=!mDay||mDay===today;
+            const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
+            let missionId = selectedMissionId;
+            if(missionId){
+              const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",missionId);
+              if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
+            } else {
+              const { data:newM, error:insertErr } = await supabase.from("missions").insert({
+                client_id:userId, prestataire_id:selectedProvider.id,
+                sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
+                date:paymentDate||null, hours:paymentHours,
+                tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
+                description:paymentDescription||null,
+                adresse:paymentAdresse||null,
+                ville:paymentVille||null,
+                status:"pending_acceptance", acceptance_deadline:deadline,
+              }).select().single();
+              if(insertErr || !newM) throw new Error("Erreur lors de la création de la mission.");
+              missionId=newM.id; setSelectedMissionId(newM.id);
+            }
+            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+            fetch("/api/support", {
+              method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({
+                action: "booking_confirm",
+                clientEmail: ud?.user?.email||null,
+                clientName: ud?.user?.user_metadata?.prenom||null,
+                prestaName: selectedProvider.name||null,
+                job: selectedProvider.jobTitle||selectedProvider.role||null,
+                date: paymentDate||null,
+                hours: paymentHours||null,
+                total: paymentAmount,
+              }),
+            }).catch(()=>{});
           }
-          await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
-          fetch("/api/support", {
-            method:"POST", headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-              action: "booking_confirm",
-              clientEmail: ud?.user?.email||null,
-              clientName: ud?.user?.user_metadata?.prenom||null,
-              prestaName: selectedProvider.name||null,
-              job: selectedProvider.jobTitle||selectedProvider.role||null,
-              date: paymentDate||null,
-              hours: paymentHours||null,
-              total: paymentAmount,
-            }),
-          }).catch(()=>{});
+          setScreen("mission_pending");
+        } catch(e) {
+          setBookingError(e.message || "Une erreur est survenue. Contactez le support si le paiement a été prélevé.");
         }
-        setScreen("mission_pending");
-      }} onBack={()=>setScreen("booking")} />}
+      }} onBack={()=>setScreen("booking")} />
+      {bookingError && (
+        <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", background:"#1a1a2e", border:"1px solid #F25E5E", borderRadius:12, padding:"12px 18px", color:"#F25E5E", fontSize:13, fontWeight:600, maxWidth:340, zIndex:9999, textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)" }}>
+          ⚠️ {bookingError}<br/><button onClick={()=>setBookingError(null)} style={{ marginTop:8, background:"none", border:"none", color:"#F25E5E", cursor:"pointer", fontSize:12, textDecoration:"underline" }}>Fermer</button>
+        </div>
+      )}}
       {screen==="mission_pending"   && <MissionPendingScreen
         provider={pendingProvider||selectedProvider}
         amount={paymentAmount}

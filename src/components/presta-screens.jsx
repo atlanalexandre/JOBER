@@ -17,17 +17,21 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 function DocRowItem({ doc, isValid, onUploaded }) {
   const [renewed, setRenewed] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
   const valid = isValid || renewed;
 
   const handleUploadClick = () => {
+    setUploadError(null);
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { setUploadError("Fichier trop lourd (max 10 Mo)"); return; }
     setUploading(true);
+    setUploadError(null);
     try {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr || !authData?.user) throw new Error("Session expirée");
@@ -42,6 +46,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       onUploaded?.();
     } catch (err) {
       console.error("Upload error", err);
+      setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -49,22 +54,29 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   };
 
   return (
-    <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", marginBottom:8, display:"flex", gap:10, alignItems:"center", border:`1px solid ${valid?C.border:C.accent+"30"}` }}>
-      <input ref={fileInputRef} type="file" style={{ display:"none" }} onChange={handleFileChange} />
-      <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
-      <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
-        <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":"En attente"}</div>
+    <div style={{ marginBottom:8 }}>
+      <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", display:"flex", gap:10, alignItems:"center", border:`1px solid ${uploadError?C.danger+"60":valid?C.border:C.accent+"30"}` }}>
+        <input ref={fileInputRef} type="file" style={{ display:"none" }} onChange={handleFileChange} />
+        <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
+          <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":"En attente"}</div>
+        </div>
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
+          {!isValid && !renewed && (
+            <button onClick={handleUploadClick} disabled={uploading} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:uploading?"not-allowed":"pointer", fontFamily:"inherit", opacity:uploading?0.6:1 }}>{uploading?"...":"+ Charger"}</button>
+          )}
+          {isValid && (
+            <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
+          )}
+        </div>
       </div>
-      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-        <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
-        {!isValid && !renewed && (
-          <button onClick={handleUploadClick} disabled={uploading} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:uploading?"not-allowed":"pointer", fontFamily:"inherit", opacity:uploading?0.6:1 }}>{uploading?"...":"+ Charger"}</button>
-        )}
-        {isValid && (
-          <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
-        )}
-      </div>
+      {uploadError && (
+        <div style={{ background:`${C.danger}15`, border:`1px solid ${C.danger}44`, borderRadius:8, padding:"6px 10px", marginTop:4, fontSize:11, color:C.danger, fontWeight:600 }}>
+          ⚠️ {uploadError}
+        </div>
+      )}
     </div>
   );
 }
