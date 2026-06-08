@@ -157,7 +157,7 @@ export default async function handler(req, res) {
         if (limit < 999) {
           const completedThisMonth = (Array.isArray(profileData) && profileData[0]?.missions_completed_month) || 0;
           const assignedRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=eq.assigned&select=id`,
+            `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`,
             { headers }
           );
           const assignedData = await assignedRes.json();
@@ -314,11 +314,14 @@ export default async function handler(req, res) {
       const profile = Array.isArray(profiles) && profiles[0];
       const missionsThisMonth = (profile?.missions_completed_month || 0) + 1;
 
-      // Calcul du taux selon palier
-      let rate = 0.005;
-      if (missionsThisMonth >= 10) rate = 0.015;
-      else if (missionsThisMonth >= 6) rate = 0.01;
-      else if (missionsThisMonth >= 3) rate = 0.0075;
+      // Calcul du taux selon palier (doit rester synchronisé avec CASHBACK_TIERS dans constants/plans.js)
+      const CASHBACK_TIERS = [
+        { min:0,  max:4,        rate:0.01 },
+        { min:5,  max:9,        rate:0.02 },
+        { min:10, max:19,       rate:0.03 },
+        { min:20, max:Infinity, rate:0.05 },
+      ];
+      const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
       const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
