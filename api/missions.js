@@ -561,11 +561,6 @@ export default async function handler(req, res) {
         }
       }
 
-      // VAPID config
-      const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
-      const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
-      const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:contact@jober.fr";
-
       const pushTitle = "🔔 Nouvelle mission disponible";
       const pushBody  = `${mission?.metier || sector || "Mission"} · ${mission?.date || ""} · ${mission?.ville || ""} (${mission?.hours || ""}h)`;
 
@@ -595,19 +590,6 @@ export default async function handler(req, res) {
                   read: false,
                 }),
               });
-
-              // Web push notification (if subscribed)
-              if (VAPID_PUBLIC && VAPID_PRIVATE && subsByUser[p.id]?.length) {
-                const webpush = (await import("web-push")).default;
-                webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
-                const pushPayload = JSON.stringify({ title: pushTitle, body: pushBody, url: "/" });
-                for (const sub of subsByUser[p.id]) {
-                  await webpush.sendNotification(
-                    { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                    pushPayload
-                  ).catch(() => {});
-                }
-              }
 
               // SMS Brevo (si numéro dispo et clé configurée)
               const BREVO_KEY = process.env.BREVO_API_KEY;
