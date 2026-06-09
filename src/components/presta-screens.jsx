@@ -1281,17 +1281,20 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [cancelConfirm, setCancelConfirm] = useState(null);
   const [cancelling, setCancelling]       = useState(false);
 
-  const loadPending = async (uid) => {
-    const [{ data: pending }, { data: assigned }] = await Promise.all([
-      supabase.from("missions")
-        .select("id,sector,metier,date,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse")
-        .eq("prestataire_id", uid).eq("status", "pending_acceptance"),
-      supabase.from("missions")
-        .select("id,sector,metier,date,hours,tarif_horaire,client_id,titre,ville,adresse,description")
-        .eq("prestataire_id", uid).eq("status", "assigned"),
-    ]);
-    setPendingMissions(Array.isArray(pending) ? pending : []);
-    setAssignedMissions(Array.isArray(assigned) ? assigned : []);
+  const loadPending = async () => {
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    if (!token) return;
+    try {
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "my_missions" }),
+      });
+      const data = await r.json();
+      setPendingMissions(Array.isArray(data.pending)  ? data.pending  : []);
+      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned : []);
+    } catch {}
   };
 
   useEffect(() => {
@@ -1316,7 +1319,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       const cands = Array.isArray(d2) ? d2 : [];
       setCandidatures(cands);
       setApplied(new Set(cands.map(c => c.mission_id)));
-      await loadPending(u.id);
+      await loadPending();
       setLoading(false);
     });
   }, []);
@@ -1346,22 +1349,16 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_acc");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    await supabase.from("missions").update({ status: "assigned" }).eq("id", m.id);
-    if (m.client_id) {
-      await supabase.from("notifications").insert({
-        user_id: m.client_id, type: "mission",
-        title: "Mission acceptée ! 🎉",
-        body: `${userName || "Votre prestataire"} a accepté votre demande de mission.`,
-        read: false,
-      });
-      fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "notify_client", client_id: m.client_id, type: "accepted", mission_label: m.titre || m.metier || "", presta_name: userName }),
-      }).catch(() => {});
+    const r = await fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "accept", presta_name: userName }),
+    });
+    const data = await r.json();
+    if (data.success) {
+      setPendingMissions(prev => prev.filter(x => x.id !== m.id));
+      setAssignedMissions(prev => [...prev, { ...m, status: "assigned" }]);
     }
-    setPendingMissions(prev => prev.filter(x => x.id !== m.id));
-    setAssignedMissions(prev => [...prev, { ...m, status: "assigned" }]);
     setActioning(null);
   };
 
@@ -1369,21 +1366,15 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_ref");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    await supabase.from("missions").update({ status: "refused" }).eq("id", m.id);
-    if (m.client_id) {
-      await supabase.from("notifications").insert({
-        user_id: m.client_id, type: "mission",
-        title: "Mission refusée",
-        body: `${userName || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
-        read: false,
-      });
-      fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "notify_client", client_id: m.client_id, type: "refused", mission_label: m.titre || m.metier || "", presta_name: userName }),
-      }).catch(() => {});
+    const r = await fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "refuse", presta_name: userName }),
+    });
+    const data = await r.json();
+    if (data.success) {
+      setPendingMissions(prev => prev.filter(x => x.id !== m.id));
     }
-    setPendingMissions(prev => prev.filter(x => x.id !== m.id));
     setActioning(null);
   };
 
