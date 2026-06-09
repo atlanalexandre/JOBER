@@ -1298,30 +1298,37 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   };
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const u = data?.user; if (!u) return;
-      setUserId(u.id);
-      const meta = u.user_metadata || {};
-      setUserMeta(meta);
-      setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
-      const sector = meta.secteur || meta.sector || null;
-      const { data: sd } = await supabase.auth.getSession();
-      const token = sd?.session?.access_token;
-      const authH = token ? { "Authorization": `Bearer ${token}` } : {};
-      const [r1, r2] = await Promise.all([
-        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ action:"list_open", sector }) }),
-        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json", ...authH},
-          body: JSON.stringify({ action:"mes_candidatures" }) }),
-      ]);
-      const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
-      setMissions(Array.isArray(d1) ? d1 : []);
-      const cands = Array.isArray(d2) ? d2 : [];
-      setCandidatures(cands);
-      setApplied(new Set(cands.map(c => c.mission_id)));
-      await loadPending();
-      setLoading(false);
-    });
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const u = data?.user;
+        if (!u) { setLoading(false); return; }
+        setUserId(u.id);
+        const meta = u.user_metadata || {};
+        setUserMeta(meta);
+        setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
+        const sector = meta.secteur || meta.sector || null;
+        const { data: sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        const authH = token ? { "Authorization": `Bearer ${token}` } : {};
+        const [r1, r2] = await Promise.all([
+          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ action:"list_open", sector }) }),
+          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json", ...authH},
+            body: JSON.stringify({ action:"mes_candidatures" }) }),
+        ]);
+        const [d1, d2] = await Promise.all([r1.json().catch(()=>[]), r2.json().catch(()=>[])]);
+        setMissions(Array.isArray(d1) ? d1 : []);
+        const cands = Array.isArray(d2) ? d2 : [];
+        setCandidatures(cands);
+        setApplied(new Set(cands.map(c => c.mission_id)));
+        await loadPending();
+      } catch (e) {
+        console.error("[PMissionsTab] load error:", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const handleCancelPrestataire = async (missionId) => {
