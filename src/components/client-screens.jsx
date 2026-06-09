@@ -1874,6 +1874,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [cp, setCp]                   = useState("");
   const [instructions, setInstructions] = useState("");
   const [adresseError, setAdresseError] = useState(false);
+  const [dateError, setDateError] = useState(false);
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
 
@@ -2060,7 +2061,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               /* ── Date unique ── */
               <div style={{ display:"flex", gap:10, marginBottom:16 }}>
                 <div style={{ flex:2 }}>
-                  <Input label="Date de début" type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} />
+                  <Input label="Date de début *" type="date" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }} />
                 </div>
                 <div style={{ flex:1 }}>
                   <Input label="Heure" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
@@ -2075,13 +2076,13 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
                   <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                     <div style={{ flex:1 }}>
                       <label style={{ display:"block", fontSize:11, color:C.textMuted, marginBottom:6, fontWeight:600 }}>Du</label>
-                      <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+                      <input type="date" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }}
                         style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }} />
                     </div>
                     <div style={{ display:"flex", alignItems:"flex-end", paddingBottom:12, color:C.textMuted, fontSize:18, fontWeight:300 }}>→</div>
                     <div style={{ flex:1 }}>
                       <label style={{ display:"block", fontSize:11, color:C.textMuted, marginBottom:6, fontWeight:600 }}>Au</label>
-                      <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} min={startDate}
+                      <input type="date" value={endDate} onChange={e=>{ setEndDate(e.target.value); setDateError(false); }} min={startDate}
                         style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }} />
                     </div>
                   </div>
@@ -2159,7 +2160,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               style={{ width:"100%", padding:"13px 15px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.6 }} />
           </div>
 
-          <Btn full onClick={()=>setStep(2)} style={{ fontSize:15, padding:"16px" }}>Continuer →</Btn>
+          {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
+          <Btn full onClick={()=>{
+            if(!isUrgent){
+              if(!startDate){ setDateError(true); return; }
+              if(missionType==="range" && !endDate){ setDateError(true); return; }
+            }
+            setDateError(false);
+            setStep(2);
+          }} style={{ fontSize:15, padding:"16px" }}>Continuer →</Btn>
         </>}
 
         {step===2 && <>
