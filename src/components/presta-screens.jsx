@@ -1975,28 +1975,21 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             );
           })()}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes missions" : "🔔 Missions disponibles"}</p>
-          {missingDocs.length > 0 && (
-            <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}40`, borderRadius:r, padding:"16px", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.accent, fontSize:14, marginBottom:6 }}>📎 Documents obligatoires manquants</div>
+          {userStatus !== "approved" ? (
+            <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
+              <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
+              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Compte en attente de validation</div>
               <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
-                Complétez votre dossier pour être visible par les clients.
+                Votre compte doit être validé par l'équipe ALANE avant de pouvoir accéder aux missions.<br/>
+                Assurez-vous d'avoir uploadé tous vos documents dans l'onglet <strong>Docs</strong>.
               </p>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
-                {missingDocs.map(id => {
-                  const doc = DOCS_REQUIS.find(d=>d.id===id);
-                  return doc ? (
-                    <span key={id} style={{ background:`${C.accent}20`, border:`1px solid ${C.accent}50`, borderRadius:20, padding:"3px 10px", fontSize:11, color:C.accent, fontWeight:700 }}>
-                      {doc.icon} {doc.label}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-              <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:C.accent, border:"none", borderRadius:r, padding:"10px 18px", color:C.white, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-                Compléter mon dossier →
+              <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:"rgba(240,180,41,0.2)", border:`1px solid rgba(240,180,41,0.5)`, borderRadius:r, padding:"10px 18px", color:C.accentGold, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                📎 Compléter mon dossier
               </button>
             </div>
+          ) : (
+            <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
           )}
-          <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="clients" && <PrestaClientsTab />}

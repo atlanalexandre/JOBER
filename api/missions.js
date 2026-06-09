@@ -780,7 +780,7 @@ export default async function handler(req, res) {
 
     if (action === "get_sector_status") {
       // Threshold configurable depuis le BO
-      let minPrestataires = 20;
+      let minPrestataires = 30;
       try {
         const sr = await fetch(
           `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.sector_min_prestataires&select=value`,
