@@ -1236,7 +1236,9 @@ export default function App() {
               const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",missionId);
               if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
             } else {
-              const { data:newM, error:insertErr } = await supabase.from("missions").insert({
+              const newMissionId = crypto.randomUUID();
+              const { error:insertErr } = await supabase.from("missions").insert({
+                id: newMissionId,
                 client_id:userId, prestataire_id:selectedProvider.id,
                 sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
                 date:paymentDate||null, hours:paymentHours,
@@ -1245,9 +1247,9 @@ export default function App() {
                 adresse:paymentAdresse||null,
                 ville:paymentVille||null,
                 status:"pending_acceptance", acceptance_deadline:deadline,
-              }).select().single();
-              if(insertErr || !newM) throw new Error(insertErr?.message || "Erreur lors de la création de la mission.");
-              missionId=newM.id; setSelectedMissionId(newM.id);
+              });
+              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la mission.");
+              missionId=newMissionId; setSelectedMissionId(newMissionId);
             }
             await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
             fetch("/api/support", {
