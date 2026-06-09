@@ -923,6 +923,111 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "my_missions") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const [r1, r2] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,hours,tarif_horaire,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
+      ]);
+      const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
+      return res.status(200).json({
+        pending:  Array.isArray(pending)  ? pending  : [],
+        assigned: Array.isArray(assigned) ? assigned : [],
+      });
+    }
+
+    if (action === "respond_mission") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, response, presta_name } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!["accept","refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre`, { headers });
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable ou délai dépassé" });
+
+      const newStatus = response === "accept" ? "assigned" : "refused";
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (mission.client_id) {
+        const missionLabel = mission.titre || mission.metier || "";
+        const isAccepted = response === "accept";
+
+        // Notification in-app client
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.client_id,
+            type: "mission",
+            title: isAccepted ? "Mission acceptée ! 🎉" : "Mission refusée",
+            body: isAccepted
+              ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
+              : `${presta_name || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
+            read: false,
+          }),
+        }).catch(() => {});
+
+        // Email + SMS client
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.client_id}`, { headers });
+        const ud = await ur.json();
+        const clientEmail = ud.email;
+        const phone = ud.user_metadata?.telephone;
+        const clientName = ud.user_metadata?.prenom || "Client";
+
+        const RESEND_KEY  = process.env.RESEND_API_KEY;
+        const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+        if (RESEND_KEY && clientEmail) {
+          fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: RESEND_FROM,
+              to: [clientEmail],
+              subject: isAccepted ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !` : `❌ ${presta_name || "Le prestataire"} a refusé la mission`,
+              html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+                <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Mission acceptée ✅":"Mission refusée ❌"}</h2>
+                <p>Bonjour ${clientName},</p>
+                ${isAccepted
+                  ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
+                  : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+                }
+                <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+              </div>`,
+            }),
+          }).catch(() => {});
+        }
+
+        const BREVO_KEY = process.env.BREVO_API_KEY;
+        if (BREVO_KEY && phone) {
+          const digits = phone.replace(/\D/g, "");
+          const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+          if (e164) {
+            fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+              method: "POST",
+              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: "ALANE",
+                recipient: e164,
+                content: isAccepted
+                  ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre.`
+                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire.`,
+              }),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "notify_client") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
