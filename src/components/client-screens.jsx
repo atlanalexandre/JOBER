@@ -193,6 +193,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [cpVille, setCpVille]         = useState("");
   const [cpVolume, setCpVolume]       = useState("");
   const [cpFrequence, setCpFrequence] = useState("");
+  const [cpIban, setCpIban]           = useState("");
   const [cpSaving, setCpSaving]       = useState(false);
   const [cpSaved, setCpSaved]         = useState(false);
   const [editingIdentite, setEditingIdentite] = useState(false);
@@ -215,6 +216,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         setCpVille(m.ville||"");
         setCpVolume(m.volume_horaire||"");
         setCpFrequence(m.frequence_besoins||"");
+        setCpIban(m.rib||"");
       }
       supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
         .then(({ data:p })=>{ if(p){ setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); setEditPrenom(p.prenom||""); setEditNom(p.nom||""); } });
@@ -227,6 +229,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     await supabase.auth.updateUser({ data: {
       adresse: cpAdresse, code_postal: cpCodePostal, ville: cpVille,
       volume_horaire: cpVolume, frequence_besoins: cpFrequence,
+      rib: cpIban,
     }});
     setCpSaving(false); setCpSaved(true);
     setTimeout(()=>{ setCpSaved(false); setEditingProfile(false); }, 1200);
@@ -333,7 +336,8 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
                 {clientMeta?.frequence_besoins && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🔄</span><span style={{ color:C.textSub, fontSize:13, textTransform:"capitalize" }}>{clientMeta.frequence_besoins}</span></div>}
                 {clientMeta?.volume_horaire && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>⏱️</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.volume_horaire} / semaine</span></div>}
                 {clientMeta?.secteurs_besoins?.length > 0 && <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:4 }}>{clientMeta.secteurs_besoins.map(sid=>{ const s=SECTORS.find(x=>x.id===sid); return s?<span key={sid} style={{ background:`${s.color}20`, border:`1px solid ${s.color}44`, borderRadius:6, padding:"2px 8px", color:s.color, fontSize:11, fontWeight:600 }}>{s.icon} {s.label}</span>:null; })}</div>}
-                {!clientMeta?.adresse && !clientMeta?.frequence_besoins && <div style={{ color:C.textSub, fontSize:12 }}>Aucune information de profil renseignée.</div>}
+                {clientMeta?.rib && <div style={{ display:"flex", gap:8, alignItems:"center" }}><span style={{ fontSize:14 }}>🏦</span><span style={{ color:C.textSub, fontSize:13 }}>{clientMeta.rib.slice(0,8)}••••••••••••••</span></div>}
+                {!clientMeta?.adresse && !clientMeta?.frequence_besoins && !clientMeta?.rib && <div style={{ color:C.textSub, fontSize:12 }}>Aucune information de profil renseignée.</div>}
               </div>
             ) : (
               <div>
@@ -342,6 +346,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
                   <div style={{ flex:1 }}><Input label="Code postal" placeholder="75001" value={cpCodePostal} onChange={e=>setCpCodePostal(e.target.value)} /></div>
                   <div style={{ flex:2 }}><Input label="Ville" placeholder="Paris" value={cpVille} onChange={e=>setCpVille(e.target.value)} /></div>
                 </div>
+                <IbanInput label="IBAN (pour remboursements)" placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" value={cpIban} onChange={e=>setCpIban(e.target.value.toUpperCase())} />
                 <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence des besoins</label>
                 <div style={{ display:"flex", gap:8, marginBottom:14 }}>
                   {[{id:"ponctuel",label:"⚡ Ponctuel"},{id:"regulier",label:"📅 Régulier"},{id:"les-deux",label:"🔄 Les deux"}].map(f=>(
