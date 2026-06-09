@@ -2731,6 +2731,19 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
     setMsgs(m => [...m, optimistic]);
     try {
       await supabase.from("messages").insert({ conversation_key:key, sender_id:userId, sender_tag:senderTag, content });
+      // Notifier le destinataire (in-app + SMS)
+      const recipientId = chatClientId ? chatClientId : p.id;
+      const { data: meData } = await supabase.auth.getUser();
+      const meMeta = meData?.user?.user_metadata || {};
+      const senderDisplayName = `${meMeta.prenom || ""} ${meMeta.nom || ""}`.trim() || (senderTag === "client" ? "Un client" : "Un prestataire");
+      supabase.auth.getSession().then(({ data: sd }) => {
+        const token = sd?.session?.access_token;
+        fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ action: "chat_notify", recipient_id: recipientId, sender_name: senderDisplayName, message_preview: content }),
+        }).catch(() => {});
+      });
     } catch (_) {}
     setSending(false);
   };
