@@ -923,6 +923,69 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "notify_client") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { client_id, type, mission_label, presta_name } = payload;
+      if (!client_id || !isUuid(client_id)) return res.status(400).json({ error: "client_id requis" });
+
+      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${client_id}`, { headers });
+      const ud = await ur.json();
+      const clientEmail = ud.email;
+      const phone = ud.user_metadata?.telephone;
+      const clientName = ud.user_metadata?.prenom || "Client";
+
+      const isAccepted = type === "accepted";
+      const subject = isAccepted
+        ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !`
+        : `❌ ${presta_name || "Le prestataire"} a refusé la mission`;
+      const smsText = isAccepted
+        ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${mission_label || ""}. Connectez-vous pour suivre la mission.`
+        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire.`;
+
+      const RESEND_KEY  = process.env.RESEND_API_KEY;
+      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (RESEND_KEY && clientEmail) {
+        fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [clientEmail],
+            subject,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+              <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Mission acceptée ✅":"Mission refusée ❌"}</h2>
+              <p>Bonjour ${clientName},</p>
+              ${isAccepted
+                ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
+                : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre demande pour la mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+              }
+              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+            </div>`,
+          }),
+        }).catch(() => {});
+      } else {
+        console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "clientEmail:", clientEmail);
+      }
+
+      const BREVO_KEY = process.env.BREVO_API_KEY;
+      if (BREVO_KEY && phone) {
+        const digits = phone.replace(/\D/g, "");
+        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+        if (e164) {
+          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+            method: "POST",
+            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsText }),
+          }).then(r => r.json()).then(d => console.log("[notify_client] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_client] SMS error:", e.message));
+        }
+      } else {
+        console.log("[notify_client] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "notify_prestataire") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
