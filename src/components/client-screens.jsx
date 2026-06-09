@@ -195,6 +195,13 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [cpFrequence, setCpFrequence] = useState("");
   const [cpIban, setCpIban]           = useState("");
   const [cpSaving, setCpSaving]       = useState(false);
+  const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
+  const [addingCard, setAddingCard]   = useState(false);
+  const [cardSaving, setCardSaving]   = useState(false);
+  const [cardError, setCardError]     = useState(null);
+  const cardMountRef                  = useRef(null);
+  const stripeCardRef                 = useRef(null);
+  const stripeRef                     = useRef(null);
   const [cpSaved, setCpSaved]         = useState(false);
   const [editingIdentite, setEditingIdentite] = useState(false);
   const [editPrenom, setEditPrenom]   = useState("");
@@ -217,12 +224,68 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         setCpVolume(m.volume_horaire||"");
         setCpFrequence(m.frequence_besoins||"");
         setCpIban(m.rib||"");
+        if (m.stripe_pm_id) setSavedCard({ pmId: m.stripe_pm_id, customerId: m.stripe_customer_id, brand: m.card_brand||"card", last4: m.card_last4||"••••" });
       }
       supabase.from("profiles").select("prenom,nom").eq("id",user.id).single()
         .then(({ data:p })=>{ if(p){ setUserName(`${p.prenom||""} ${p.nom||""}`.trim()); setEditPrenom(p.prenom||""); setEditNom(p.nom||""); } });
       setEditTelephone(m.telephone||"");
     });
   },[]);
+
+  const handleOpenCardForm = async () => {
+    setAddingCard(true); setCardError(null);
+    await new Promise(r => setTimeout(r, 100)); // laisser le DOM se mettre à jour
+    const { loadStripe } = await import("@stripe/stripe-js");
+    const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+    if (!pk || !cardMountRef.current) return;
+    const stripe = await loadStripe(pk);
+    stripeRef.current = stripe;
+    const elements = stripe.elements();
+    const cardEl = elements.create("card", {
+      hidePostalCode: true,
+      style: { base: { color:"#e2e8f0", fontFamily:"inherit", fontSize:"15px", "::placeholder":{ color:"#64748b" } }, invalid: { color:"#f87171" } },
+    });
+    stripeCardRef.current = cardEl;
+    cardEl.mount(cardMountRef.current);
+  };
+
+  const handleSaveCard = async () => {
+    if (!stripeRef.current || !stripeCardRef.current) return;
+    setCardSaving(true); setCardError(null);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/stripe-intent", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ action:"setup_card", customerId: savedCard?.customerId||null }),
+      });
+      const { clientSecret, customerId, error: apiErr } = await r.json();
+      if (apiErr) { setCardError(apiErr); setCardSaving(false); return; }
+      const { setupIntent, error: stripeErr } = await stripeRef.current.confirmCardSetup(clientSecret, {
+        payment_method: { card: stripeCardRef.current },
+      });
+      if (stripeErr) { setCardError(stripeErr.message); setCardSaving(false); return; }
+      const pmId = setupIntent.payment_method;
+      // Récupérer last4 + brand
+      const pr = await fetch("/api/stripe-intent", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ action:"get_pm", pmId }),
+      });
+      const { brand="card", last4="••••" } = await pr.json();
+      await supabase.auth.updateUser({ data: { stripe_pm_id: pmId, stripe_customer_id: customerId, card_brand: brand, card_last4: last4 } });
+      setSavedCard({ pmId, customerId, brand, last4 });
+      stripeCardRef.current.destroy(); stripeCardRef.current = null;
+      setAddingCard(false);
+    } catch(e) { setCardError("Erreur lors de l'enregistrement"); }
+    setCardSaving(false);
+  };
+
+  const handleRemoveCard = async () => {
+    await supabase.auth.updateUser({ data: { stripe_pm_id: null, stripe_customer_id: null, card_brand: null, card_last4: null } });
+    setSavedCard(null);
+  };
 
   const handleSaveClientProfile = async () => {
     setCpSaving(true);
@@ -365,6 +428,35 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
               </div>
             )}
           </div>
+
+        {/* Carte bancaire enregistrée */}
+        {role === "client" && (
+          <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: addingCard||savedCard ? 12 : 0 }}>
+              <div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>💳 Ma carte bancaire</div>
+                {savedCard && !addingCard && <div style={{ color:C.textSub, fontSize:12, marginTop:3, textTransform:"capitalize" }}>{savedCard.brand} ••••{savedCard.last4}</div>}
+                {!savedCard && !addingCard && <div style={{ color:C.textSub, fontSize:12, marginTop:3 }}>Aucune carte enregistrée</div>}
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                {savedCard && !addingCard && <button onClick={handleRemoveCard} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 10px", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Supprimer</button>}
+                {!addingCard && <button onClick={handleOpenCardForm} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{savedCard?"✏️ Changer":"+ Ajouter"}</button>}
+                {addingCard && <button onClick={()=>{ stripeCardRef.current?.destroy(); stripeCardRef.current=null; setAddingCard(false); setCardError(null); }} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 10px", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>}
+              </div>
+            </div>
+            {addingCard && (
+              <div>
+                <div style={{ borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", overflow:"hidden", marginBottom:10 }}>
+                  <div ref={cardMountRef} style={{ padding:"14px", minHeight:50 }} />
+                </div>
+                {cardError && <div style={{ color:"#f87171", fontSize:12, marginBottom:8 }}>⚠️ {cardError}</div>}
+                <Btn full onClick={handleSaveCard} disabled={cardSaving} style={{ background:C.violet, padding:"13px" }}>
+                  {cardSaving?"Enregistrement…":"🔒 Enregistrer la carte"}
+                </Btn>
+              </div>
+            )}
+          </div>
+        )}
         )}
 
         {sections.map(section=>(
