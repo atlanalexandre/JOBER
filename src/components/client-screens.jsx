@@ -4670,9 +4670,22 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
     await markOneRead(n.id);
     if (!onNavigate) return;
     const isPresta = role === "prestataire";
-    if (n.type === "mission") onNavigate(isPresta ? "p_missions" : "dashboard");
-    else if (n.type === "system") onNavigate(isPresta ? "p_missions" : "search_filters"); // chat
-    else if (n.type === "cashback") onNavigate(isPresta ? "p_home" : "cashback");
+    if (n.type === "system" && n.ref_id) {
+      // Notification chat → ouvrir directement la conversation
+      if (isPresta) {
+        // Le prestataire voit un message du client : ref_id = client_id
+        onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Client", avatar: "👤", color: "#4F46E5", clientId: n.ref_id });
+      } else {
+        // Le client voit un message du prestataire : ref_id = prestataire_id
+        onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
+      }
+    } else if (n.type === "mission") {
+      onNavigate(isPresta ? "p_missions" : "dashboard");
+    } else if (n.type === "system") {
+      onNavigate(isPresta ? "p_missions" : "search_filters");
+    } else if (n.type === "cashback") {
+      onNavigate(isPresta ? "p_home" : "cashback");
+    }
   };
 
   return (

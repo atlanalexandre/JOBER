@@ -429,7 +429,9 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
               </div>
               <div style={{ marginBottom:12 }}>
                 <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
-                <div ref={mountRef} style={{ padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", minHeight:44 }} />
+                <div style={{ borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", overflow:"hidden" }}>
+                  <div ref={mountRef} style={{ padding:"14px 14px", minHeight:50 }} />
+                </div>
               </div>
               {stripeError && (
                 <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginTop:8 }}>

@@ -597,6 +597,33 @@ export default async function handler(req, res) {
 
               console.log("[broadcast] in-app notification sent to", p.id);
 
+              // Email Resend (quand app fermée)
+              const RESEND_KEY_B = process.env.RESEND_API_KEY;
+              const RESEND_FROM_B = process.env.RESEND_FROM || "JOBER <no-reply@jober.fr>";
+              if (RESEND_KEY_B && ud.email) {
+                const missionLabel = mission?.metier || sector || "Mission";
+                fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Authorization": `Bearer ${RESEND_KEY_B}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    from: RESEND_FROM_B,
+                    to: [ud.email],
+                    subject: `🔔 Nouvelle mission disponible : ${missionLabel}`,
+                    html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                      <h2 style="color:#4F46E5">Nouvelle mission JOBER</h2>
+                      <p>Une nouvelle mission correspond à votre profil :</p>
+                      <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px">
+                        <strong>${missionLabel}</strong><br/>
+                        📅 ${mission?.date || "Date à confirmer"}<br/>
+                        📍 ${mission?.ville || "Ville à confirmer"}<br/>
+                        ⏱ ${mission?.hours || "?"}h
+                      </div>
+                      <p>Connectez-vous à JOBER pour postuler.</p>
+                    </div>`,
+                  }),
+                }).catch(() => {});
+              }
+
               // SMS Brevo (si numéro dispo et clé configurée)
               const BREVO_KEY = process.env.BREVO_API_KEY;
               const phone = meta.telephone;
@@ -649,7 +676,13 @@ export default async function handler(req, res) {
       const { recipient_id, sender_name, message_preview } = payload;
       if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "recipient_id requis" });
 
-      // In-app notification
+      // Fetch recipient info (email + phone)
+      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
+      const ud = await ur.json();
+      const recipientEmail = ud.email;
+      const phone = ud.user_metadata?.telephone;
+
+      // In-app notification (with ref_id = sender id for direct chat navigation)
       await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -659,29 +692,46 @@ export default async function handler(req, res) {
           title: `💬 Nouveau message de ${sender_name || "votre contact"}`,
           body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
           read: false,
+          ref_id: caller.id,
         }),
       });
 
+      // Email Resend (quand app fermée)
+      const RESEND_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM = process.env.RESEND_FROM || "JOBER <no-reply@jober.fr>";
+      if (RESEND_KEY && recipientEmail) {
+        fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [recipientEmail],
+            subject: `💬 Nouveau message de ${sender_name || "votre contact"}`,
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+              <h2 style="color:#4F46E5">Nouveau message JOBER</h2>
+              <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
+              <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${message_preview || ""}</div>
+              <p>Connectez-vous à JOBER pour répondre.</p>
+            </div>`,
+          }),
+        }).catch(() => {});
+      }
+
       // SMS Brevo
       const BREVO_KEY = process.env.BREVO_API_KEY;
-      if (BREVO_KEY) {
-        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
-        const ud = await ur.json();
-        const phone = ud.user_metadata?.telephone;
-        if (phone) {
-          const digits = phone.replace(/\D/g, "");
-          const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-          if (e164) {
-            fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-              method: "POST",
-              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sender: "JOBER",
-                recipient: e164,
-                content: `JOBER - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
-              }),
-            }).catch(() => {});
-          }
+      if (BREVO_KEY && phone) {
+        const digits = phone.replace(/\D/g, "");
+        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+        if (e164) {
+          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+            method: "POST",
+            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: "JOBER",
+              recipient: e164,
+              content: `JOBER - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
+            }),
+          }).catch(() => {});
         }
       }
 
