@@ -310,11 +310,18 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
   const cardElRef   = useRef(null);
   const mountRef    = useRef(null);
 
+  const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
+  const [useSavedCard, setUseSavedCard] = useState(true);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      const rib = data?.user?.user_metadata?.rib || "";
+      const m = data?.user?.user_metadata || {};
+      const rib = m.rib || "";
       setSavedIban(rib);
       setIbanInput(rib);
+      if (m.stripe_pm_id) {
+        setSavedCard({ pmId: m.stripe_pm_id, customerId: m.stripe_customer_id, brand: m.card_brand||"card", last4: m.card_last4||"••••" });
+      }
     });
   }, []);
 
@@ -324,6 +331,15 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
   useEffect(() => {
     if (method !== "card") return;
+    if (savedCard && useSavedCard) {
+      (async () => {
+        const { loadStripe } = await import("@stripe/stripe-js");
+        const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+        if (!pk) return;
+        stripeRef.current = await loadStripe(pk);
+      })();
+      return;
+    }
     let cardEl;
     (async () => {
       const { loadStripe } = await import("@stripe/stripe-js");
@@ -344,25 +360,27 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       if (mountRef.current) cardEl.mount(mountRef.current);
     })();
     return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
-  }, [method]);
+  }, [method, useSavedCard]);
 
   const handlePay = async () => {
     if (processing) return;
     setStripeError(null);
     if (method === "card") {
-      if (!stripeRef.current || !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+      const useStored = savedCard && useSavedCard;
+      if (!useStored && (!stripeRef.current || !cardElRef.current)) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
       setProcessing(true);
       try {
         const r = await fetch("/api/stripe-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
+          body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
         });
         const { clientSecret, error: intentErr } = await r.json();
         if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
-        const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, {
-          payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined },
-        });
+        const confirmOpts = useStored
+          ? { payment_method: savedCard.pmId }
+          : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
+        const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
         if (error) { setStripeError(error.message); setProcessing(false); return; }
         if (paymentIntent?.status === "succeeded") {
           setDone(true); setProcessing(false); onSuccess && onSuccess();
@@ -434,16 +452,45 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
           {method==="card" && (
             <div>
-              <div style={{ marginBottom:12 }}>
-                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Titulaire de la carte</label>
-                <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="Jean Dupont" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:C.text }} />
-              </div>
-              <div style={{ marginBottom:12 }}>
-                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
-                <div style={{ borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", overflow:"hidden" }}>
-                  <div ref={mountRef} style={{ padding:"14px 14px", minHeight:50 }} />
+              {savedCard && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useSavedCard?`${C.violet}18`:"#0D1B3E", border:`2px solid ${useSavedCard?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }} onClick={()=>setUseSavedCard(true)}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:20 }}>💳</span>
+                      <div>
+                        <div style={{ fontWeight:700, color:C.text, fontSize:13, textTransform:"capitalize" }}>{savedCard.brand} ••••{savedCard.last4}</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>Carte enregistrée</div>
+                      </div>
+                    </div>
+                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useSavedCard?C.violet:C.border}`, background:useSavedCard?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      {useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: !useSavedCard?`${C.violet}18`:"#0D1B3E", border:`2px solid ${!useSavedCard?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer", marginTop:8 }} onClick={()=>setUseSavedCard(false)}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:20 }}>➕</span>
+                      <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>Utiliser une autre carte</div>
+                    </div>
+                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${!useSavedCard?C.violet:C.border}`, background:!useSavedCard?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      {!useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+              {(!savedCard || !useSavedCard) && (
+                <>
+                  <div style={{ marginBottom:12 }}>
+                    <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Titulaire de la carte</label>
+                    <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="Jean Dupont" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:C.text }} />
+                  </div>
+                  <div style={{ marginBottom:12 }}>
+                    <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
+                    <div style={{ borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", overflow:"hidden" }}>
+                      <div ref={mountRef} style={{ padding:"14px 14px", minHeight:50 }} />
+                    </div>
+                  </div>
+                </>
+              )}
               {stripeError && (
                 <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginTop:8 }}>
                   ⚠️ {stripeError}
