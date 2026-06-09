@@ -3,6 +3,9 @@ export default async function handler(req, res) {
 
   const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
+  if (STRIPE_SECRET_KEY.startsWith("pk_")) {
+    return res.status(500).json({ error: "Configuration Stripe incorrecte : STRIPE_SECRET_KEY doit être la clé secrète (sk_test_... ou sk_live_...), pas la clé publique (pk_...). Corrigez dans Vercel → Settings → Environment Variables → STRIPE_SECRET_KEY." });
+  }
 
   const { amount, currency = "eur", description, metadata = {} } = req.body || {};
   if (!amount || typeof amount !== "number" || amount <= 0) return res.status(400).json({ error: "Montant invalide — doit être un nombre positif" });

@@ -700,39 +700,53 @@ export default async function handler(req, res) {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "JOBER <no-reply@jober.fr>";
       if (RESEND_KEY && recipientEmail) {
-        fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: RESEND_FROM,
-            to: [recipientEmail],
-            subject: `💬 Nouveau message de ${sender_name || "votre contact"}`,
-            html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-              <h2 style="color:#4F46E5">Nouveau message JOBER</h2>
-              <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
-              <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${message_preview || ""}</div>
-              <p>Connectez-vous à JOBER pour répondre.</p>
-            </div>`,
-          }),
-        }).catch(() => {});
+        try {
+          const er = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: RESEND_FROM,
+              to: [recipientEmail],
+              subject: `💬 Nouveau message de ${sender_name || "votre contact"}`,
+              html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                <h2 style="color:#4F46E5">Nouveau message JOBER</h2>
+                <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
+                <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${message_preview || ""}</div>
+                <p>Connectez-vous à JOBER pour répondre.</p>
+              </div>`,
+            }),
+          });
+          const eb = await er.json().catch(() => ({}));
+          console.log("[chat_notify] email status:", er.status, JSON.stringify(eb));
+        } catch (e) { console.error("[chat_notify] email error:", e.message); }
+      } else {
+        console.log("[chat_notify] email skipped — RESEND_KEY:", !!RESEND_KEY, "recipientEmail:", recipientEmail);
       }
 
       // SMS Brevo
       const BREVO_KEY = process.env.BREVO_API_KEY;
+      console.log("[chat_notify] phone:", phone, "BREVO_KEY set:", !!BREVO_KEY);
       if (BREVO_KEY && phone) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+        console.log("[chat_notify] SMS e164:", e164);
         if (e164) {
-          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
-            method: "POST",
-            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sender: "JOBER",
-              recipient: e164,
-              content: `JOBER - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
-            }),
-          }).catch(() => {});
+          try {
+            const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+              method: "POST",
+              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: "ALANE",
+                recipient: e164,
+                content: `ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
+              }),
+            });
+            const sb = await sr.json().catch(() => ({}));
+            console.log("[chat_notify] SMS brevo status:", sr.status, JSON.stringify(sb));
+          } catch (e) { console.error("[chat_notify] SMS error:", e.message); }
         }
+      } else {
+        console.log("[chat_notify] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
       }
 
       return res.status(200).json({ success: true });
@@ -805,12 +819,10 @@ export default async function handler(req, res) {
       }
 
       const KNOWN_SECTORS = ["proprete","logistique","hotellerie","restauration","commercial","distribution","divers"];
-      // Secteurs forcés ouverts pour tests (retirer après validation)
-      const FORCE_OPEN = ["hotellerie"];
       const result = {};
       for (const s of KNOWN_SECTORS) {
         const count = counts[s] || 0;
-        result[s] = { count, open: FORCE_OPEN.includes(s) || count >= minPrestataires, min: minPrestataires };
+        result[s] = { count, open: count >= minPrestataires, min: minPrestataires };
       }
       return res.status(200).json(result);
     }
