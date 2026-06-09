@@ -923,6 +923,69 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "notify_prestataire") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { prestataire_id, mission_label, date, ville, hours } = payload;
+      if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id requis" });
+
+      const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+      const ud = await ur.json();
+      const prestaEmail = ud.email;
+      const phone = ud.user_metadata?.telephone;
+      const prestaName = ud.user_metadata?.prenom || "Prestataire";
+
+      const RESEND_KEY  = process.env.RESEND_API_KEY;
+      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (RESEND_KEY && prestaEmail) {
+        fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: [prestaEmail],
+            subject: "🔔 Nouvelle demande de mission — répondez rapidement !",
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+              <h2 style="color:#A29BFE;margin:0 0 12px">Nouvelle demande de mission 🔔</h2>
+              <p>Bonjour ${prestaName},</p>
+              <p>Un client vous a envoyé une demande de mission directe :</p>
+              <div style="background:#162547;border-left:4px solid #A29BFE;padding:12px 16px;margin:16px 0;border-radius:4px">
+                <strong>${mission_label || "Mission"}</strong><br/>
+                📅 ${date || "Date à confirmer"}<br/>
+                📍 ${ville || "Ville à confirmer"}<br/>
+                ⏱ ${hours || "?"}h
+              </div>
+              <p>Connectez-vous à <strong>ALANE</strong> pour accepter ou refuser dans les délais impartis.</p>
+              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+            </div>`,
+          }),
+        }).catch(() => {});
+      } else {
+        console.log("[notify_prestataire] email skipped — RESEND_KEY:", !!RESEND_KEY, "prestaEmail:", prestaEmail);
+      }
+
+      const BREVO_KEY = process.env.BREVO_API_KEY;
+      if (BREVO_KEY && phone) {
+        const digits = phone.replace(/\D/g, "");
+        const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+        if (e164) {
+          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+            method: "POST",
+            headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: "ALANE",
+              recipient: e164,
+              content: `ALANE - Demande de mission : ${mission_label || "Mission"} le ${date || "?"} à ${ville || "?"} (${hours || "?"}h). Connectez-vous pour répondre !`,
+            }),
+          }).then(r => r.json()).then(d => console.log("[notify_prestataire] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_prestataire] SMS error:", e.message));
+        }
+      } else {
+        console.log("[notify_prestataire] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("missions error:", e);
