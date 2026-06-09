@@ -1727,7 +1727,7 @@ export function PrestaClientsTab() {
   );
 }
 
-export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) {
+export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
   const [tab,setTab]=useState("missions");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
@@ -1811,6 +1811,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0 }) 
               <span style={{ color:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:C.accentGold, fontSize:11, fontWeight:700 }}>{userStatus==="approved"?"Compte validé":userStatus==="rejected"?"Compte refusé":"En attente de validation"}</span>
             </div>
           </div>
+          <button onClick={()=>onNavigate("notifications")} style={{ position:"relative", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:12, width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, cursor:"pointer", flexShrink:0 }}>
+            🔔
+            {notifCount > 0 && (
+              <div style={{ position:"absolute", top:-4, right:-4, background:"#E74C3C", borderRadius:"50%", width:18, height:18, fontSize:10, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{notifCount > 9 ? "9+" : notifCount}</div>
+            )}
+          </button>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
           {[{l:"Missions",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(

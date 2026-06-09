@@ -1121,7 +1121,7 @@ export default function App() {
     setScreen("role");
   };
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise","notifications"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
@@ -1291,7 +1291,7 @@ export default function App() {
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
-      {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen("home")} onNavigate={navigate} />}
+      {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onNavigate={navigate} />}
       {screen==="favorites"         && <FavoritesScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="referral"          && <ReferralScreen onBack={()=>setScreen("home")} />}
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
@@ -1413,7 +1413,7 @@ export default function App() {
 
       {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} onNavigate={(to,data)=>{
+          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
             else if(to==="legal") navigate("legal",data);
             else navigate(to,data);
