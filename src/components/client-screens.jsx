@@ -4617,7 +4617,7 @@ export function timeAgo(ts) {
   return `Il y a ${Math.floor(diff/86400)}j`;
 }
 
-export function NotificationsScreen({ onBack, onNavigate }) {
+export function NotificationsScreen({ onBack, onNavigate, role }) {
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -4657,6 +4657,15 @@ export function NotificationsScreen({ onBack, onNavigate }) {
     setNotifs(ns=>ns.map(n=>n.id===id?{...n,read:true}:n));
   };
 
+  const handleNotifClick = async (n) => {
+    await markOneRead(n.id);
+    if (!onNavigate) return;
+    const isPresta = role === "prestataire";
+    if (n.type === "mission") onNavigate(isPresta ? "p_missions" : "dashboard");
+    else if (n.type === "system") onNavigate(isPresta ? "p_missions" : "search_filters"); // chat
+    else if (n.type === "cashback") onNavigate(isPresta ? "p_home" : "cashback");
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 20px" }}>
@@ -4686,7 +4695,7 @@ export function NotificationsScreen({ onBack, onNavigate }) {
           const color = NOTIF_COLORS[n.type] || C.textMuted;
           const icon  = NOTIF_ICONS[n.type]  || "🔔";
           return (
-            <div key={n.id} onClick={()=>markOneRead(n.id)} style={{
+            <div key={n.id} onClick={()=>handleNotifClick(n)} style={{
               background: n.read ? "#0D1B3E" : `${color}12`,
               border: `1px solid ${n.read ? C.border : color+"35"}`,
               borderRadius:r, padding:"14px 15px", marginBottom:8,

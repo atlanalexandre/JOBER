@@ -1291,7 +1291,7 @@ export default function App() {
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
-      {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onNavigate={navigate} />}
+      {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onNavigate={navigate} role={role} />}
       {screen==="favorites"         && <FavoritesScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="referral"          && <ReferralScreen onBack={()=>setScreen("home")} />}
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
