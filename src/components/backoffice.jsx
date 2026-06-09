@@ -490,6 +490,21 @@ export function BOComptes() {
                       {!doc.verified && <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"3px 8px", cursor:"pointer", fontFamily:"inherit", opacity:docVerifying===doc.id?0.5:1 }}>✓ Valider</button>}
                     </div>
                   ))}
+                  {/* Bouton valider l'accès aux missions */}
+                  <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+                    {p.missions_enabled ? (
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Missions activées</div>
+                        <button onClick={()=>handleAction(p.id,"disable_missions")} disabled={!!actioning} style={{ padding:"7px 14px", borderRadius:10, border:`1px solid rgba(240,80,80,0.4)`, background:"rgba(240,80,80,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+                          {actioning===p.id+"disable_missions" ? "…" : "🚫 Désactiver"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux missions"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1034,7 +1049,7 @@ export function BOSettingsTab() {
   const [localFs,  setLocalFs]  = useState({ single:"4.90", range:"2.90", urgent:"9.90" });
   const [localDs,  setLocalDs]  = useState([]);
   const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
-  const [localSmp, setLocalSmp] = useState("20");
+  const [localSmp, setLocalSmp] = useState("30");
   const [sectorCounts, setSectorCounts] = useState({});
 
   useEffect(() => {

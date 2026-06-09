@@ -90,7 +90,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,created_at&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
@@ -151,6 +151,61 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action, target_id: profileId, target_email: userEmail || null }),
+      }).catch(() => {});
+
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "enable_missions" || action === "disable_missions") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const enabled = action === "enable_missions";
+
+      const [patchRes, userRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ missions_enabled: enabled }),
+        }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
+      ]);
+      if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+
+      if (enabled) {
+        const userData = await userRes.json();
+        const userEmail = userData.email;
+        const prenom = userData.user_metadata?.prenom || "";
+        if (userEmail) {
+          await sendEmail({
+            to: userEmail,
+            subject: "✅ Accès aux missions activé — ALANE",
+            html: emailHtml(`
+              <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
+              <p>Bonne nouvelle ! 🎉 Vos documents ont été validés par notre équipe.</p>
+              <p>Vous avez maintenant <strong>accès aux missions</strong> sur la plateforme ALANE. Les clients peuvent désormais vous contacter directement.</p>
+              <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#10D98F;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Voir les missions →</a></p>
+              <p style="color:#888;font-size:13px;">À très vite,<br/>L'équipe ALANE</p>
+            `),
+          });
+        }
+
+        // Notification in-app
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: profileId,
+            type: "mission",
+            title: "Accès aux missions activé ✅",
+            body: "Vos documents ont été validés. Vous pouvez maintenant recevoir des missions via ALANE !",
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action, target_id: profileId }),
       }).catch(() => {});
 
       return res.status(200).json({ success: true });
