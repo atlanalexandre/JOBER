@@ -1263,7 +1263,7 @@ export function UpgradeNudge({ onNavigate }) {
   );
 }
 
-export function PMissionsTab({ onNavigate }) {
+export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [tab, setTab]             = useState("disponibles");
   const [missions, setMissions]   = useState([]);
   const [candidatures, setCandidatures] = useState([]);
@@ -1272,6 +1272,7 @@ export function PMissionsTab({ onNavigate }) {
   const [userId, setUserId]       = useState(null);
   const [userName, setUserName]   = useState("");
   const [userMeta, setUserMeta]   = useState({});
+  const [assignedMissions, setAssignedMissions] = useState([]);
   const [applying, setApplying]   = useState(null);
   const [applied, setApplied]     = useState(new Set());
   const [message, setMessage]     = useState("");
@@ -1281,10 +1282,16 @@ export function PMissionsTab({ onNavigate }) {
   const [cancelling, setCancelling]       = useState(false);
 
   const loadPending = async (uid) => {
-    const { data } = await supabase.from("missions")
-      .select("id,sector,metier,date,hours,tarif_horaire,acceptance_deadline,client_id,titre")
-      .eq("prestataire_id", uid).eq("status", "pending_acceptance");
-    setPendingMissions(Array.isArray(data) ? data : []);
+    const [{ data: pending }, { data: assigned }] = await Promise.all([
+      supabase.from("missions")
+        .select("id,sector,metier,date,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse")
+        .eq("prestataire_id", uid).eq("status", "pending_acceptance"),
+      supabase.from("missions")
+        .select("id,sector,metier,date,hours,tarif_horaire,client_id,titre,ville,adresse,description")
+        .eq("prestataire_id", uid).eq("status", "assigned"),
+    ]);
+    setPendingMissions(Array.isArray(pending) ? pending : []);
+    setAssignedMissions(Array.isArray(assigned) ? assigned : []);
   };
 
   useEffect(() => {
@@ -1337,6 +1344,8 @@ export function PMissionsTab({ onNavigate }) {
 
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
     await supabase.from("missions").update({ status: "assigned" }).eq("id", m.id);
     if (m.client_id) {
       await supabase.from("notifications").insert({
@@ -1345,13 +1354,21 @@ export function PMissionsTab({ onNavigate }) {
         body: `${userName || "Votre prestataire"} a accepté votre demande de mission.`,
         read: false,
       });
+      fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "notify_client", client_id: m.client_id, type: "accepted", mission_label: m.titre || m.metier || "", presta_name: userName }),
+      }).catch(() => {});
     }
     setPendingMissions(prev => prev.filter(x => x.id !== m.id));
+    setAssignedMissions(prev => [...prev, { ...m, status: "assigned" }]);
     setActioning(null);
   };
 
   const handleRefuse = async (m) => {
     setActioning(m.id + "_ref");
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
     await supabase.from("missions").update({ status: "refused" }).eq("id", m.id);
     if (m.client_id) {
       await supabase.from("notifications").insert({
@@ -1360,6 +1377,11 @@ export function PMissionsTab({ onNavigate }) {
         body: `${userName || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
         read: false,
       });
+      fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "notify_client", client_id: m.client_id, type: "refused", mission_label: m.titre || m.metier || "", presta_name: userName }),
+      }).catch(() => {});
     }
     setPendingMissions(prev => prev.filter(x => x.id !== m.id));
     setActioning(null);
@@ -1454,15 +1476,58 @@ export function PMissionsTab({ onNavigate }) {
         </div>
       )}
 
-      {/* Onglets */}
-      <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
+      {/* Missions en cours (assignées) */}
+      {assignedMissions.length > 0 && (
+        <div style={{ marginBottom:18 }}>
+          <p style={{ fontWeight:800, color:C.success, fontSize:13, margin:"0 0 10px", display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:8, height:8, borderRadius:"50%", background:C.success, display:"inline-block" }} />
+            Mission{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
+          </p>
+          {assignedMissions.map(m => {
+            const sector = SECTORS.find(s => s.id === m.sector);
+            return (
+              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${C.success}44` }}>
+                <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
+                  <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                    {m.ville && <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>}
+                    {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
+                    {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
+                  </div>
+                  <span style={{ background:`${C.success}20`, border:`1px solid ${C.success}44`, borderRadius:20, padding:"3px 9px", color:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>En cours</span>
+                </div>
+                {m.client_id && (
+                  <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
+                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    💬 Contacter le client
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* En mode accueil : pas de liste missions disponibles, juste un lien vers l'onglet missions */}
+      {homeMode && assignedMissions.length === 0 && pendingMissions.length === 0 && (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"22px 16px", textAlign:"center", marginBottom:16 }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune mission en cours</div>
+          <div style={{ color:C.textMuted, fontSize:12 }}>Consultez l'onglet Missions pour voir les offres disponibles.</div>
+        </div>
+      )}
+
+      {/* Onglets — masqués en mode accueil */}
+      {!homeMode && <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
         {[{id:"disponibles",l:"Missions disponibles"},{id:"candidatures",l:`Mes candidatures${candidatures.length>0?` (${candidatures.length})`:""}`}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
         ))}
-      </div>
+      </div>}
 
       {/* Missions disponibles */}
-      {tab === "disponibles" && (
+      {!homeMode && tab === "disponibles" && (
         matched.length === 0 ? (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
@@ -1513,7 +1578,7 @@ export function PMissionsTab({ onNavigate }) {
       )}
 
       {/* Mes candidatures */}
-      {tab === "candidatures" && (
+      {!homeMode && tab === "candidatures" && (
         candidatures.length === 0 ? (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📝</div>
@@ -1911,7 +1976,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </div>
             );
           })()}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>🔔 Missions disponibles</p>
+          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes missions" : "🔔 Missions disponibles"}</p>
           {missingDocs.length > 0 ? (
             <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}40`, borderRadius:r, padding:"16px", marginBottom:12 }}>
               <div style={{ fontWeight:800, color:C.accent, fontSize:14, marginBottom:6 }}>📎 Documents obligatoires manquants</div>
@@ -1933,7 +1998,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </button>
             </div>
           ) : (
-            <PMissionsTab onNavigate={onNavigate} />
+            <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
           )}
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}

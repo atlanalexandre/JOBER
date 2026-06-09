@@ -1252,6 +1252,11 @@ export default function App() {
               missionId=newMissionId; setSelectedMissionId(newMissionId);
             }
             await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+            const { data:sessionData } = await supabase.auth.getSession();
+            fetch("/api/missions", {
+              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
+              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null }),
+            }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json"},
               body: JSON.stringify({
