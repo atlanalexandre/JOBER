@@ -2286,7 +2286,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               </div>
             ))}
           </div>
-          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobal, hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
