@@ -643,6 +643,51 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "chat_notify") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { recipient_id, sender_name, message_preview } = payload;
+      if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "recipient_id requis" });
+
+      // In-app notification
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: recipient_id,
+          type: "system",
+          title: `💬 Nouveau message de ${sender_name || "votre contact"}`,
+          body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
+          read: false,
+        }),
+      });
+
+      // SMS Brevo
+      const BREVO_KEY = process.env.BREVO_API_KEY;
+      if (BREVO_KEY) {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
+        const ud = await ur.json();
+        const phone = ud.user_metadata?.telephone;
+        if (phone) {
+          const digits = phone.replace(/\D/g, "");
+          const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
+          if (e164) {
+            fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+              method: "POST",
+              headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sender: "JOBER",
+                recipient: e164,
+                content: `JOBER - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
+              }),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "update_position") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
