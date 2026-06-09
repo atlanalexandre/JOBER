@@ -387,7 +387,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           )}
         </div>
 
-        {role === "client" && (
+        {role === "client" && (<>
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
               <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Mon profil client</div>
@@ -430,7 +430,6 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           </div>
 
         {/* Carte bancaire enregistrée */}
-        {role === "client" && (
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: addingCard||savedCard ? 12 : 0 }}>
               <div>
@@ -456,8 +455,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
               </div>
             )}
           </div>
-        )}
-        )}
+        </>)}
 
         {sections.map(section=>(
           <div key={section.title} style={{ marginBottom:20 }}>
