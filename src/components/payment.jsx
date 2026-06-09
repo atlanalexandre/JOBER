@@ -303,9 +303,20 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
   const [stripeError, setStripeError] = useState(null);
+  const [savedIban, setSavedIban]     = useState("");
+  const [editingIban, setEditingIban] = useState(false);
+  const [ibanInput, setIbanInput]     = useState("");
   const stripeRef   = useRef(null);
   const cardElRef   = useRef(null);
   const mountRef    = useRef(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const rib = data?.user?.user_metadata?.rib || "";
+      setSavedIban(rib);
+      setIbanInput(rib);
+    });
+  }, []);
 
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
@@ -456,6 +467,25 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
                 </div>
               ))}
               <div style={{ marginTop:10, color:C.warning, fontSize:11, fontWeight:600 }}>⚠️ Délai de validation : 1-2 jours ouvrés</div>
+            </div>
+          )}
+        </div>
+
+        {/* IBAN remboursement */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: editingIban ? 10 : 0 }}>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:C.text }}>🏦 IBAN pour remboursement</div>
+              {!editingIban && <div style={{ fontSize:12, color:C.textSub, marginTop:3 }}>{savedIban ? `${ibanInput.slice(0,8)}••••••••••••••` : "Non renseigné"}</div>}
+            </div>
+            <button onClick={()=>setEditingIban(!editingIban)} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              {editingIban ? "Annuler" : savedIban ? "✏️ Modifier" : "+ Ajouter"}
+            </button>
+          </div>
+          {editingIban && (
+            <div>
+              <input value={ibanInput} onChange={e=>setIbanInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(.{4})/g,"$1 ").trim())} placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" style={{ width:"100%", padding:"11px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"monospace", background:"#162547", color:C.text, boxSizing:"border-box", outline:"none", marginBottom:8 }} />
+              <button onClick={async()=>{ await supabase.auth.updateUser({ data:{ rib: ibanInput.replace(/\s/g,"") } }); setSavedIban(ibanInput); setEditingIban(false); }} style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Enregistrer</button>
             </div>
           )}
         </div>
