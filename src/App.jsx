@@ -1121,8 +1121,8 @@ export default function App() {
     setScreen("role");
   };
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise","notifications"];
-  const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","notifications","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
+  const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
@@ -1138,8 +1138,8 @@ export default function App() {
     setScreen(to);
   };
 
-  const clientScreens=["home","catalogue","search_filters","dashboard","settings","contact_support"];
-  const prestaScreens=["p_home","p_missions","p_dashboard","calendar","settings","contact_support"];
+  const clientScreens=["home","catalogue","search_filters","dashboard","settings","contact_support","notifications"];
+  const prestaScreens=["p_home","p_missions","p_dashboard","calendar","settings","contact_support","notifications"];
   const showClientNav=role==="client"&&clientScreens.includes(screen);
   const showPrestaNav=role==="prestataire"&&prestaScreens.includes(screen);
 
