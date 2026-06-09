@@ -1246,7 +1246,7 @@ export default function App() {
                 ville:paymentVille||null,
                 status:"pending_acceptance", acceptance_deadline:deadline,
               }).select().single();
-              if(insertErr || !newM) throw new Error(insertErr?.message || "Erreur lors de la création de la mission.");
+              if(insertErr || !newM) throw new Error(`[DEBUG] code=${insertErr?.code} msg=${insertErr?.message} details=${insertErr?.details} hint=${insertErr?.hint} newM=${!!newM}`);
               missionId=newM.id; setSelectedMissionId(newM.id);
             }
             await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
