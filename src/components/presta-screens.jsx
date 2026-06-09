@@ -1968,11 +1968,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             );
           })()}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes missions" : "🔔 Missions disponibles"}</p>
-          {missingDocs.length > 0 ? (
+          {missingDocs.length > 0 && (
             <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}40`, borderRadius:r, padding:"16px", marginBottom:12 }}>
               <div style={{ fontWeight:800, color:C.accent, fontSize:14, marginBottom:6 }}>📎 Documents obligatoires manquants</div>
               <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
-                Vous devez uploader tous vos documents obligatoires avant de pouvoir recevoir des missions.
+                Complétez votre dossier pour être visible par les clients.
               </p>
               <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
                 {missingDocs.map(id => {
@@ -1988,9 +1988,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 Compléter mon dossier →
               </button>
             </div>
-          ) : (
-            <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
           )}
+          <PMissionsTab onNavigate={onNavigate} homeMode={activeScreen==="p_home"} />
         </>}
         {tab==="profil" && <PrestaProfilTab onNavigate={onNavigate} />}
         {tab==="clients" && <PrestaClientsTab />}
