@@ -28,3 +28,6 @@ dist-ssr
 *.sw?
 ALANE-Business-Plan-*.pdf
 business-plan.html
+
+# Claude Code agent worktrees
+.claude/worktrees/
