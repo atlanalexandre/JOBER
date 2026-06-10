@@ -1280,6 +1280,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [actioning, setActioning] = useState(null);
   const [cancelConfirm, setCancelConfirm] = useState(null);
   const [cancelling, setCancelling]       = useState(false);
+  const [confirmRefuse, setConfirmRefuse] = useState(null);
+  const [now, setNow] = useState(Date.now());
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1331,6 +1333,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     })();
   }, []);
 
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
   const handleCancelPrestataire = async (missionId) => {
     setCancelling(true);
     try {
@@ -1370,6 +1377,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   };
 
   const handleRefuse = async (m) => {
+    setConfirmRefuse(null);
     setActioning(m.id + "_ref");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
@@ -1387,7 +1395,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   const formatDeadline = (deadline) => {
     if (!deadline) return null;
-    const secs = Math.floor((new Date(deadline).getTime() - Date.now()) / 1000);
+    const secs = Math.floor((new Date(deadline).getTime() - now) / 1000);
     if (secs <= 0) return "Délai dépassé";
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
@@ -1459,13 +1467,23 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                 {expired ? (
                   <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette mission a été annulée automatiquement</div>
                 ) : (
-                  <div style={{ display:"flex", gap:8 }}>
-                    <button onClick={()=>handleRefuse(m)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                      {actioning===m.id+"_ref" ? "…" : "✗ Refuser"}
-                    </button>
-                    <button onClick={()=>handleAccept(m)} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                      {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
-                    </button>
+                  <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                    {confirmRefuse === m.id ? (
+                      <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}44`, borderRadius:10, padding:"12px", textAlign:"center" }}>
+                        <div style={{ color:C.accent, fontWeight:700, fontSize:13, marginBottom:8 }}>Confirmer le refus ?</div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <button onClick={()=>setConfirmRefuse(null)} style={{ flex:1, padding:"9px", borderRadius:8, border:`1px solid rgba(255,255,255,0.2)`, background:"transparent", color:"rgba(255,255,255,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                          <button onClick={()=>handleRefuse(m)} disabled={isAct} style={{ flex:1, padding:"9px", borderRadius:8, border:"none", background:C.accent, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>{actioning===m.id+"_ref" ? "…" : "Oui, refuser"}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
+                        <button onClick={()=>handleAccept(m)} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                          {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1853,6 +1871,18 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
   },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.auth.getUser();
+      const u = data?.user; if (!u) return;
+      const { data: prof } = await supabase.from("profiles").select("status,missions_enabled").eq("id", u.id).single();
+      if (prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
 
   const dismissTour = async () => {
     setShowTour(false);

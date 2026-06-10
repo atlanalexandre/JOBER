@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     if (action === "list") {
       const [profilesRes, authRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,created_at&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
       const authData = await authRes.json();
@@ -400,7 +400,7 @@ export default async function handler(req, res) {
       // Récupérer tous les prestataires approuvés
       const [profilesRes, authRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved`, { headers }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
       const authData = await authRes.json();

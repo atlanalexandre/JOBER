@@ -180,6 +180,18 @@ function DeleteAccountSection({ onLogout }) {
 export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName]   = useState("");
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [newPass, setNewPass]     = useState("");
+  const [passMsg, setPassMsg]     = useState(null);
+  const [passSaving, setPassSaving] = useState(false);
+  const handleChangePassword = async () => {
+    if (newPass.length < 8) { setPassMsg({ err: true, text: "8 caractères minimum" }); return; }
+    setPassSaving(true); setPassMsg(null);
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    setPassSaving(false);
+    if (error) { setPassMsg({ err: true, text: error.message }); }
+    else { setPassMsg({ err: false, text: "Mot de passe modifié ✓" }); setNewPass(""); setTimeout(() => setShowPassModal(false), 1500); }
+  };
   const [lightMode, setLightMode] = useState(()=>localStorage.getItem("alane_light_mode")==="1");
   const toggleTheme = (v) => {
     localStorage.setItem("alane_light_mode", v ? "1" : "0");
@@ -319,7 +331,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       items:[
         { icon:"👤", label:"Nom", value:userName||"—" },
         { icon:"✉️", label:"Email", value:userEmail||"—" },
-        { icon:"🔑", label:"Changer le mot de passe", action:()=>onNavigate("reset_password"), chevron:true },
+        { icon:"🔑", label:"Changer le mot de passe", action:()=>{ setNewPass(""); setPassMsg(null); setShowPassModal(true); }, chevron:true },
       ]
     },
     {
@@ -501,6 +513,21 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
 
         <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>ALANE v1.0 · Tous droits réservés</p>
       </div>
+
+      {/* Modal changement de mot de passe */}
+      {showPassModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:400, border:"1px solid rgba(255,255,255,0.12)" }}>
+            <h3 style={{ color:C.text, fontSize:16, fontWeight:800, margin:"0 0 16px" }}>🔑 Changer le mot de passe</h3>
+            <Input label="Nouveau mot de passe" type="password" placeholder="8 caractères minimum" value={newPass} onChange={e=>setNewPass(e.target.value)} />
+            {passMsg && <div style={{ fontSize:12, color:passMsg.err?C.danger:C.success, fontWeight:600, marginBottom:10 }}>{passMsg.text}</div>}
+            <div style={{ display:"flex", gap:10, marginTop:4 }}>
+              <button onClick={()=>setShowPassModal(false)} style={{ flex:1, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button onClick={handleChangePassword} disabled={passSaving} style={{ flex:2, padding:"11px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:passSaving?0.6:1 }}>{passSaving?"…":"Modifier"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

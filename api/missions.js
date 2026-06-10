@@ -593,6 +593,11 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       console.log("[broadcast] caller:", caller.id, "mission_id:", mission_id, "sector:", sector);
 
+      // Verify caller owns this mission
+      const ownerCheck = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&select=id&limit=1`, { headers });
+      const ownerData = await ownerCheck.json();
+      if (!Array.isArray(ownerData) || ownerData.length === 0) return res.status(403).json({ error: "Non autorisé" });
+
       // Fetch mission details
       const mr = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector,metier,date,hours,ville`,
@@ -609,6 +614,14 @@ export default async function handler(req, res) {
       );
       const profiles = await pr.json();
       console.log("[broadcast] approved prestataires count:", Array.isArray(profiles) ? profiles.length : profiles);
+
+      // Fetch all auth users upfront to avoid N+1 (one call instead of one per prestataire)
+      const allUsersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+      const allUsersData = await allUsersRes.json().catch(() => ({}));
+      const userMetaMap = {};
+      if (Array.isArray(allUsersData?.users)) {
+        for (const u of allUsersData.users) userMetaMap[u.id] = u;
+      }
 
       // Fetch all push subscriptions for quick lookup
       const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=user_id,endpoint,p256dh,auth`, { headers });
@@ -631,9 +644,7 @@ export default async function handler(req, res) {
         for (const chunk of chunks) {
           await Promise.all(chunk.map(async (p) => {
             try {
-              // Filter by sector using user_metadata
-              const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
-              const ud = await ur.json();
+              const ud = userMetaMap[p.id] || {};
               const meta = ud.user_metadata || {};
               const presta_sector = meta.secteur || meta.sector;
               console.log("[broadcast] prestataire", p.id, "presta_sector:", presta_sector, "mission sector:", sector);
@@ -1159,6 +1170,10 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { prestataire_id, mission_label, date, ville, hours } = payload;
       if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id requis" });
+      // Verify caller has a mission with this prestataire
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`, { headers });
+      const mCheck = await mCheckRes.json().catch(() => []);
+      if (!Array.isArray(mCheck) || mCheck.length === 0) return res.status(403).json({ error: "Non autorisé" });
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
       const ud = await ur.json();
