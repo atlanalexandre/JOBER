@@ -1373,7 +1373,7 @@ export default function App() {
             {/* Menu secondaire */}
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12, letterSpacing:0.3 }}>Gestion</div>
             {[
-              { icon:"📄", label:"Mes factures",      sub:"Télécharger mes justificatifs",    action:"invoice"       },
+              { icon:"📄", label:"Mes factures",      sub:"Voir mes missions et justificatifs", action:"mission_history" },
               { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
