@@ -1282,6 +1282,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [cancelling, setCancelling]       = useState(false);
   const [confirmRefuse, setConfirmRefuse] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const [expandedDetail, setExpandedDetail] = useState(null);
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1464,6 +1465,20 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                     </div>
                   )}
                 </div>
+                {(m.ville || m.adresse || m.description) && (
+                  <div style={{ marginBottom:8 }}>
+                    <button onClick={()=>setExpandedDetail(expandedDetail===m.id?null:m.id)} style={{ background:"transparent", border:`1px solid rgba(255,255,255,0.12)`, borderRadius:8, padding:"5px 12px", color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
+                      {expandedDetail===m.id ? "▲ Masquer les détails" : "▼ Voir les détails"}
+                    </button>
+                    {expandedDetail===m.id && (
+                      <div style={{ marginTop:8, padding:"10px 12px", background:"rgba(255,255,255,0.03)", borderRadius:10, border:"1px solid rgba(255,255,255,0.07)", display:"flex", flexDirection:"column", gap:6 }}>
+                        {(m.ville||m.adresse) && <div style={{ fontSize:12, color:C.textSub }}>📍 {[m.adresse, m.ville].filter(Boolean).join(", ")}</div>}
+                        {m.description && <div style={{ fontSize:12, color:C.textSub }}>📝 {m.description}</div>}
+                        {m.tarif_horaire && m.hours && <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>💶 Total estimé : {(Number(m.tarif_horaire)*Number(m.hours)).toFixed(2).replace(".",",")} € HT</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {expired ? (
                   <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette mission a été annulée automatiquement</div>
                 ) : (

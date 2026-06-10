@@ -1005,8 +1005,20 @@ export default async function handler(req, res) {
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,hours,tarif_horaire,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
+      const pendingList = Array.isArray(pending) ? pending : [];
+      const nowIso = new Date().toISOString();
+      const expired = pendingList.filter(m => m.acceptance_deadline && m.acceptance_deadline < nowIso);
+      const stillPending = pendingList.filter(m => !m.acceptance_deadline || m.acceptance_deadline >= nowIso);
+      if (expired.length > 0) {
+        await Promise.all(expired.map(m =>
+          fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "open", prestataire_id: null }),
+          })
+        ));
+      }
       return res.status(200).json({
-        pending:  Array.isArray(pending)  ? pending  : [],
+        pending:  stillPending,
         assigned: Array.isArray(assigned) ? assigned : [],
       });
     }

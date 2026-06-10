@@ -649,6 +649,13 @@ export function ClientTour({ onDone }) {
 
 export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
+  const [showPwaBanner, setShowPwaBanner] = useState(false);
+  useEffect(() => {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    const dismissed = localStorage.getItem("alane_pwa_banner");
+    if (isIOS && !isStandalone && !dismissed) setShowPwaBanner(true);
+  }, []);
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
@@ -807,6 +814,17 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       </div>
 
       {isLaunchPhase() && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+
+      {showPwaBanner && (
+        <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📲</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, color:"#fff", fontSize:13 }}>Installer l'app</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Appuyez sur <strong style={{color:"#fff"}}>Partager</strong> puis "Sur l'écran d'accueil" pour activer les notifications.</div>
+          </div>
+          <button onClick={()=>{ localStorage.setItem("alane_pwa_banner","1"); setShowPwaBanner(false); }} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", flexShrink:0 }}>✕</button>
+        </div>
+      )}
 
       {/* ── Demande notifications push ── */}
       {notifAsked && (
@@ -4339,6 +4357,23 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         .then(({ data }) => setPrestaName(data ? [data.prenom, data.nom].filter(Boolean).join(" ") : "Prestataire"));
     } else setPrestaName("");
   }, [selected]);
+
+  useEffect(() => {
+    const poll = async () => {
+      const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+      const user = data?.user; if (!user) return;
+      const token = sd?.session?.access_token;
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "list_client" }),
+      });
+      const data2 = await res.json();
+      if (Array.isArray(data2)) setMissions(data2);
+    };
+    const t = setInterval(poll, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const openCandidatures = async (mission) => {
     setSelected(mission);
