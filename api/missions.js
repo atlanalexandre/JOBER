@@ -192,7 +192,12 @@ export default async function handler(req, res) {
           const prData = await prRes.json();
           let plan = urData.user_metadata?.plan_abonnement || "free";
           const endDate = urData.user_metadata?.subscription_end_date;
-          if (endDate && plan !== "free" && new Date(endDate) < new Date()) plan = "free";
+          if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
+            plan = "free";
+            // Sync profiles.plan_abonnement + user_metadata
+            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
+            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
+          }
 
           const limit = PLAN_LIMITS[plan] ?? 2;
           if (limit < 999) {

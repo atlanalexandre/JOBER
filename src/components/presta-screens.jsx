@@ -1639,6 +1639,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [profilPct,setProfilPct]=useState(0);
   const [missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
+  const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
@@ -1684,6 +1685,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     });
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({data})=>{ if(data?.value!=null) setLaunchPhaseActive(Boolean(data.value)); });
   },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1776,7 +1779,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         })()}
       </div>
       <div style={{ padding:"18px 18px 0" }}>
-        {isLaunchPhase() && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
+        {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto" }}>
           {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>

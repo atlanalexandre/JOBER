@@ -665,6 +665,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
+  const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  useEffect(() => {
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
+  }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
@@ -813,7 +818,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {isLaunchPhase() && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -2025,6 +2030,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
+  const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -2035,6 +2041,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     });
     supabase.from("platform_settings").select("value").eq("key","frais_service").single()
       .then(({ data }) => { if (data?.value) setFraisSettings(data.value); });
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({ data }) => { if (data?.value != null) setLaunchPhaseBooking(Boolean(data.value)); });
   }, []);
 
 
@@ -2166,7 +2174,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             <span>📄</span> Consulter le CV de {p.name}
           </button>
 
-          {isLaunchPhase() && <LaunchBadge context="booking" />}
+          {launchPhaseBooking && <LaunchBadge context="booking" />}
 
           {/* Bandeau urgence */}
           {isUrgent && (
