@@ -1292,7 +1292,7 @@ export default function App() {
         onCancelled={()=>{ setScreen("sector_detail"); }}
         onBack={()=>setScreen("home")}
       />}
-      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("stripe_pay")} />}
+      {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("home")} />}
       {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="invoice"           && <InvoiceScreen mission={invoiceMission} onBack={()=>setScreen("mission_history")} />}
