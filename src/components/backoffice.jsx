@@ -1050,6 +1050,7 @@ export function BOSettingsTab() {
   const [localDs,  setLocalDs]  = useState([]);
   const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
   const [localSmp, setLocalSmp] = useState("30");
+  const [launchPhase, setLaunchPhase] = useState(true);
   const [sectorCounts, setSectorCounts] = useState({});
 
   useEffect(() => {
@@ -1061,6 +1062,7 @@ export function BOSettingsTab() {
       if (s.disabled_sectors)        setLocalDs(s.disabled_sectors);
       if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 1000) / 10) })));
       if (s.sector_min_prestataires != null) setLocalSmp(String(s.sector_min_prestataires));
+      if (s.launch_phase != null)    setLaunchPhase(Boolean(s.launch_phase));
       setLoading(false);
     }).catch(() => setLoading(false));
     // Charger les compteurs par secteur
@@ -1216,6 +1218,19 @@ export function BOSettingsTab() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* ── Phase de lancement ── */}
+      <SectionTitle>🚀 Phase de lancement</SectionTitle>
+      <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 10 missions gratuites sur toute la plateforme.</div>
+        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+          <button onClick={()=>setLaunchPhase(v=>!v)} style={{ width:48, height:28, borderRadius:99, border:"none", cursor:"pointer", background:launchPhase?"#4CC99B":"rgba(255,255,255,0.15)", transition:"background 0.2s", position:"relative" }}>
+            <div style={{ position:"absolute", top:4, left:launchPhase?22:4, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+          </button>
+          <span style={{ color:launchPhase?"#4CC99B":C.textSub, fontSize:13, fontWeight:600 }}>{launchPhase ? "Active" : "Désactivée"}</span>
+          <SaveBtn k="launch_phase" onClick={() => save("launch_phase", launchPhase)} />
         </div>
       </div>
 

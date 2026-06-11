@@ -170,106 +170,42 @@ export default async function handler(req, res) {
       return res.status(200).json(enriched);
     }
 
-    if (action === "apply") {
-      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id, message } = payload;
-      const prestataire_id = caller.id;
-      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
-      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      if (message && (typeof message !== "string" || message.length > 1000)) return res.status(400).json({ error: "Message trop long (max 1000 caractères)" });
-
-      // Vérifier la limite mensuelle selon le plan (lu depuis platform_settings)
-      let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
-      try {
-        const settingsRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`,
-          { headers }
-        );
-        const settingsData = await settingsRes.json();
-        if (Array.isArray(settingsData) && settingsData[0]?.value) {
-          PLAN_LIMITS = settingsData[0].value;
-        }
-      } catch {}
-      try {
-        const [userRes, profileRes] = await Promise.all([
-          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
-          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month`, { headers }),
-        ]);
-        const userData = await userRes.json();
-        const profileData = await profileRes.json();
-        let plan = userData.user_metadata?.plan_abonnement || "free";
-
-        // Vérifier l'expiry de l'abonnement — downgrade auto si expiré
-        const endDate = userData.user_metadata?.subscription_end_date;
-        if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
-          plan = "free";
-          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, {
-            method: "PUT", headers,
-            body: JSON.stringify({ user_metadata: { plan_abonnement: "free", subscription_end_date: null } }),
-          }).catch(() => {});
-        }
-
-        const limit = PLAN_LIMITS[plan] ?? 2;
-        if (limit < 999) {
-          const completedThisMonth = (Array.isArray(profileData) && profileData[0]?.missions_completed_month) || 0;
-          const assignedRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`,
-            { headers }
-          );
-          const assignedData = await assignedRes.json();
-          const currentlyAssigned = Array.isArray(assignedData) ? assignedData.length : 0;
-          const total = completedThisMonth + currentlyAssigned;
-          if (total >= limit) {
-            return res.status(403).json({
-              error: `Limite atteinte — votre plan ${plan === "free" ? "Gratuit" : plan === "premium" ? "Premium" : "Elite"} autorise ${limit} mission${limit > 1 ? "s" : ""}/mois. Passez à un plan supérieur pour continuer.`,
-              limit_reached: true,
-              plan,
-              limit,
-            });
-          }
-        }
-      } catch { /* si erreur, on laisse postuler */ }
-
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/candidatures`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ mission_id, prestataire_id, message: message || null, status: "pending" }),
-      });
-      if (!r.ok) {
-        const err = await r.text();
-        if (err.includes("unique")) return res.status(400).json({ error: "Vous avez déjà postulé à cette mission" });
-        return res.status(500).json({ error: "Erreur candidature" });
-      }
-
-      // Notifier le client qu'une candidature a été reçue
-      const missionRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,metier,sector`, { headers });
-      const missionData = await missionRes.json();
-      const missionRow = Array.isArray(missionData) && missionData[0];
-      const prestataireRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=prenom,nom`, { headers });
-      const prestataireData = await prestataireRes.json();
-      const presta = Array.isArray(prestataireData) && prestataireData[0];
-      if (missionRow?.client_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            user_id: missionRow.client_id,
-            type: "mission",
-            title: "Nouvelle candidature 📋",
-            body: `${presta ? `${presta.prenom} ${presta.nom}` : "Un prestataire"} a postulé à votre mission "${missionRow.metier || missionRow.sector}".`,
-            read: false,
-          }),
-        });
-      }
-      return res.status(200).json({ success: true });
-    }
-
     if (action === "accept") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { candidature_id, mission_id, prestataire_id } = payload;
       if (!candidature_id || !mission_id) return res.status(400).json({ error: "candidature_id et mission_id requis" });
+
+      // Vérifier la limite mensuelle du prestataire avant l'assignation
+      if (prestataire_id && isUuid(prestataire_id)) {
+        try {
+          let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+          const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+          const slData = await slRes.json();
+          if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
+
+          const [urRes, prRes] = await Promise.all([
+            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
+            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month`, { headers }),
+          ]);
+          const urData = await urRes.json();
+          const prData = await prRes.json();
+          let plan = urData.user_metadata?.plan_abonnement || "free";
+          const endDate = urData.user_metadata?.subscription_end_date;
+          if (endDate && plan !== "free" && new Date(endDate) < new Date()) plan = "free";
+
+          const limit = PLAN_LIMITS[plan] ?? 2;
+          if (limit < 999) {
+            const completed = (Array.isArray(prData) && prData[0]?.missions_completed_month) || 0;
+            const asgnRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`, { headers });
+            const asgnData = await asgnRes.json();
+            const total = completed + (Array.isArray(asgnData) ? asgnData.length : 0);
+            if (total >= limit) {
+              return res.status(403).json({ error: `Limite atteinte — le prestataire a atteint sa limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour son plan ${plan}.`, limit_reached: true });
+            }
+          }
+        } catch { /* si erreur on laisse passer */ }
+      }
 
       // Récupérer le tarif_net du prestataire depuis user_metadata
       let tarifHoraire = 0;
@@ -371,13 +307,18 @@ export default async function handler(req, res) {
       const profile = Array.isArray(profiles) && profiles[0];
       const missionsThisMonth = (profile?.missions_completed_month || 0) + 1;
 
-      // Calcul du taux selon palier (doit rester synchronisé avec CASHBACK_TIERS dans constants/plans.js)
-      const CASHBACK_TIERS = [
+      // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
+      let CASHBACK_TIERS = [
         { min:0,  max:4,        rate:0.01 },
         { min:5,  max:9,        rate:0.02 },
         { min:10, max:19,       rate:0.03 },
-        { min:20, max:Infinity, rate:0.05 },
+        { min:20, max:999,      rate:0.05 },
       ];
+      try {
+        const cbRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
+        const cbData = await cbRes.json();
+        if (Array.isArray(cbData) && Array.isArray(cbData[0]?.value)) CASHBACK_TIERS = cbData[0].value;
+      } catch {}
       const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
       const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
