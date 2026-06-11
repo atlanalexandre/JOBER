@@ -5213,6 +5213,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [missionsUsed,setMissionsUsed]=useState(0);
   const [pendingPlan,setPendingPlan]=useState(null);
   const [endDate,setEndDate]=useState(null);
+  const [planLimits,setPlanLimits]=useState(null);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -5226,11 +5227,26 @@ export function AbonnementPrestaScreen({ onBack }) {
         .eq("prestataire_id",u.id).gte("created_at",startOfMonth)
         .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
     });
+    supabase.from("platform_settings").select("value").eq("key","plan_limits").single()
+      .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
   },[]);
+
+  const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
+    const limit = planLimits?.[p.id];
+    if (limit == null) return p;
+    const features = [...p.features];
+    if (p.id === "elite") {
+      features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
+    } else {
+      const launchSuffix = p.id === "free" && isLaunchPhase() ? " (10 pendant le lancement)" : "";
+      features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+    }
+    return { ...p, missions: limit, features };
+  });
 
   const handleChangePlan = async (planId) => {
     if(planId === current) return;
-    const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planId);
+    const plan = effectivePlans.find(p=>p.id===planId);
     if(plan?.price === 0) {
       // Downgrade to free: direct update
       await supabase.auth.updateUser({ data: { plan_abonnement: planId } });
@@ -5271,7 +5287,7 @@ export function AbonnementPrestaScreen({ onBack }) {
           <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:320, width:"100%", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:12 }}>🔄</div>
             <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:8 }}>Changer de plan ?</div>
-            <div style={{ color:C.textSub, fontSize:13, marginBottom:20 }}>Passer au plan <strong style={{ color:C.violet }}>{ABONNEMENTS_PRESTA.find(p=>p.id===pendingPlan)?.label}</strong> ?</div>
+            <div style={{ color:C.textSub, fontSize:13, marginBottom:20 }}>Passer au plan <strong style={{ color:C.violet }}>{effectivePlans.find(p=>p.id===pendingPlan)?.label}</strong> ?</div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={()=>setPendingPlan(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Annuler</button>
               <Btn onClick={confirmChangePlan} disabled={saving} style={{ flex:2 }}>{saving?"…":"Confirmer"}</Btn>
@@ -5313,7 +5329,7 @@ export function AbonnementPrestaScreen({ onBack }) {
             ))}
           </div>
         </div>
-        {ABONNEMENTS_PRESTA.map(plan=>{
+        {effectivePlans.map(plan=>{
           const price=billing==="yearly"?Math.round(plan.price*0.8):plan.price;
           const active=current===plan.id;
           return (

@@ -1264,22 +1264,12 @@ export function UpgradeNudge({ onNavigate }) {
 }
 
 export function PMissionsTab({ onNavigate, homeMode = false }) {
-  const [tab, setTab]             = useState("disponibles");
-  const [missions, setMissions]   = useState([]);
-  const [candidatures, setCandidatures] = useState([]);
   const [pendingMissions, setPendingMissions] = useState([]);
+  const [assignedMissions, setAssignedMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [userId, setUserId]       = useState(null);
   const [userName, setUserName]   = useState("");
-  const [userMeta, setUserMeta]   = useState({});
-  const [assignedMissions, setAssignedMissions] = useState([]);
-  const [applying, setApplying]   = useState(null);
-  const [applied, setApplied]     = useState(new Set());
-  const [message, setMessage]     = useState("");
-  const [showMsg, setShowMsg]     = useState(null);
   const [actioning, setActioning] = useState(null);
-  const [cancelConfirm, setCancelConfirm] = useState(null);
-  const [cancelling, setCancelling]       = useState(false);
   const [confirmRefuse, setConfirmRefuse] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [expandedDetail, setExpandedDetail] = useState(null);
@@ -1308,23 +1298,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         if (!u) { setLoading(false); return; }
         setUserId(u.id);
         const meta = u.user_metadata || {};
-        setUserMeta(meta);
         setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
-        const sector = meta.secteur || meta.sector || null;
-        const { data: sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        const authH = token ? { "Authorization": `Bearer ${token}` } : {};
-        const [r1, r2] = await Promise.all([
-          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ action:"list_open", sector }) }),
-          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json", ...authH},
-            body: JSON.stringify({ action:"mes_candidatures" }) }),
-        ]);
-        const [d1, d2] = await Promise.all([r1.json().catch(()=>[]), r2.json().catch(()=>[])]);
-        setMissions(Array.isArray(d1) ? d1 : []);
-        const cands = Array.isArray(d2) ? d2 : [];
-        setCandidatures(cands);
-        setApplied(new Set(cands.map(c => c.mission_id)));
         await loadPending();
       } catch (e) {
         console.error("[PMissionsTab] load error:", e);
@@ -1338,27 +1312,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
   }, []);
-
-  const handleCancelPrestataire = async (missionId) => {
-    setCancelling(true);
-    try {
-      const { data: sd } = await supabase.auth.getSession();
-      const token = sd?.session?.access_token;
-      const r = await fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "cancel_prestataire", mission_id: missionId }),
-      });
-      if (r.ok) {
-        setCandidatures(prev => prev.map(c =>
-          c.mission_id === missionId ? { ...c, status: "rejected", mission: { ...c.mission, status: "open" } } : c
-        ));
-      }
-    } finally {
-      setCancelling(false);
-      setCancelConfirm(null);
-    }
-  };
 
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
@@ -1404,35 +1357,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     return `${String(m).padStart(2,"0")}min restant`;
   };
 
-  const handleApply = async (missionId) => {
-    if (!userId) return;
-    setApplying(missionId);
-    const { data: sd } = await supabase.auth.getSession();
-    const token = sd?.session?.access_token;
-    const res = await fetch("/api/missions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ action: "apply", mission_id: missionId, message: message.trim() || null }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setApplied(prev => new Set([...prev, missionId]));
-      setShowMsg(null);
-      setMessage("");
-    } else if (data.limit_reached) {
-      alert(data.error);
-    } else if (data.error) {
-      alert(data.error);
-    }
-    setApplying(null);
-  };
-
-  const metier = userMeta.metier || userMeta.job_title || null;
-  const matched = missions.filter(m => !metier || !m.metier || m.metier === metier);
-
-  const candStatusLabel = { pending:"En attente", accepted:"Acceptée ✅", rejected:"Refusée ❌" };
-  const candStatusColor = { pending:C.accentGold, accepted:C.success, rejected:"#F25E5E" };
-  const missionStatusLabel = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
 
   if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
 
@@ -1541,138 +1465,13 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         </div>
       )}
 
-      {/* En mode accueil : pas de liste missions disponibles, juste un lien vers l'onglet missions */}
-      {homeMode && assignedMissions.length === 0 && pendingMissions.length === 0 && (
-        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"22px 16px", textAlign:"center", marginBottom:16 }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+      {/* État vide */}
+      {assignedMissions.length === 0 && pendingMissions.length === 0 && (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
+          <div style={{ fontSize:36, marginBottom:8 }}>🔔</div>
           <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune mission en cours</div>
-          <div style={{ color:C.textMuted, fontSize:12 }}>Consultez l'onglet Missions pour voir les offres disponibles.</div>
+          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une mission.</div>
         </div>
-      )}
-
-      {/* Onglets — masqués en mode accueil */}
-      {!homeMode && <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-        {[{id:"disponibles",l:"Missions disponibles"},{id:"candidatures",l:`Mes candidatures${candidatures.length>0?` (${candidatures.length})`:""}`}].map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"9px 6px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
-        ))}
-      </div>}
-
-      {/* Missions disponibles */}
-      {!homeMode && tab === "disponibles" && (
-        matched.length === 0 ? (
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission disponible</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'une mission correspond à votre profil.</div>
-          </div>
-        ) : matched.map(m => {
-          const sector = SECTORS.find(s => s.id === m.sector);
-          const isApplied = applied.has(m.id);
-          return (
-            <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${C.border}` }}>
-              <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>
-                  {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
-                </div>
-              </div>
-              {showMsg === m.id && !isApplied && (
-                <div style={{ marginBottom:10 }}>
-                  <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Message de candidature (optionnel)…"
-                    style={{ width:"100%", minHeight:60, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", color:C.text, fontSize:12, fontFamily:"inherit", resize:"none", boxSizing:"border-box" }} />
-                </div>
-              )}
-              <div style={{ display:"flex", gap:8 }}>
-                {!isApplied && showMsg !== m.id && (
-                  <button onClick={()=>setShowMsg(m.id)} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:`${C.violet}22`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    ✉️ Postuler
-                  </button>
-                )}
-                {showMsg === m.id && !isApplied && (
-                  <>
-                    <button onClick={()=>{ setShowMsg(null); setMessage(""); }} style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
-                    <button onClick={()=>handleApply(m.id)} disabled={applying===m.id} style={{ flex:2, padding:"9px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      {applying===m.id ? "…" : "Envoyer ma candidature"}
-                    </button>
-                  </>
-                )}
-                {isApplied && (
-                  <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>✅ Candidature envoyée</div>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-
-      {/* Mes candidatures */}
-      {!homeMode && tab === "candidatures" && (
-        candidatures.length === 0 ? (
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center" }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📝</div>
-            <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune candidature</div>
-            <div style={{ color:C.textMuted, fontSize:12 }}>Vos candidatures apparaîtront ici.</div>
-          </div>
-        ) : candidatures.map(c => {
-          const m = c.mission;
-          const sector = SECTORS.find(s => s.id === m?.sector);
-          return (
-            <div key={c.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`1px solid ${candStatusColor[c.status]||C.border}30` }}>
-              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m?.metier || sector?.label || "Mission"}</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m?.date} · {m?.hours}h</div>
-                  {m?.tarif_horaire > 0 && <div style={{ color:C.textSub, fontSize:12 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
-                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>Mission : <span style={{ color:C.textSub }}>{missionStatusLabel[m?.status]||m?.status}</span></div>
-                </div>
-                <div style={{ textAlign:"right", flexShrink:0 }}>
-                  <span style={{ color:candStatusColor[c.status]||C.textMuted, fontWeight:700, fontSize:12 }}>{candStatusLabel[c.status]||c.status}</span>
-                  <div style={{ color:C.textMuted, fontSize:10, marginTop:2 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
-                </div>
-              </div>
-              {c.message && <div style={{ color:C.textMuted, fontSize:12, marginTop:8, fontStyle:"italic", borderTop:`1px solid ${C.border}`, paddingTop:8 }}>"{c.message}"</div>}
-              {c.status === "accepted" && m?.status === "assigned" && (
-                <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>🎉 Vous avez été sélectionné !</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Préparez-vous pour la mission le {m?.date}.</div>
-                  {m?.client_id && (
-                    <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
-                      style={{ marginTop:8, width:"100%", padding:"8px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      💬 Contacter le client
-                    </button>
-                  )}
-                  {cancelConfirm === c.mission_id ? (
-                    <div style={{ marginTop:8, background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:10, padding:"10px 12px" }}>
-                      <div style={{ color:"#F87171", fontWeight:700, fontSize:12, marginBottom:8 }}>Confirmer le désistement ?</div>
-                      <div style={{ color:C.textMuted, fontSize:11, marginBottom:10 }}>La mission sera réouverte et d'autres prestataires seront notifiés automatiquement.</div>
-                      <div style={{ display:"flex", gap:8 }}>
-                        <button onClick={()=>setCancelConfirm(null)} style={{ flex:1, padding:"7px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
-                        <button disabled={cancelling} onClick={()=>handleCancelPrestataire(c.mission_id)}
-                          style={{ flex:1, padding:"7px", borderRadius:8, border:"1px solid rgba(239,68,68,0.5)", background:"rgba(239,68,68,0.15)", color:"#F87171", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                          {cancelling ? "…" : "Confirmer"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={()=>setCancelConfirm(c.mission_id)}
-                      style={{ marginTop:8, width:"100%", padding:"7px", borderRadius:10, border:"1px solid rgba(239,68,68,0.3)", background:"transparent", color:"#F87171", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      Se désister de la mission
-                    </button>
-                  )}
-                </div>
-              )}
-              {c.status === "accepted" && m?.status === "completed" && (
-                <div style={{ marginTop:10, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}30`, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>✅ Mission terminée</div>
-                </div>
-              )}
-            </div>
-          );
-        })
       )}
     </div>
   );
