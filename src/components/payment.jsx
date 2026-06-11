@@ -571,28 +571,27 @@ export function InvoiceScreen({ mission, onBack }) {
   useEffect(() => {
     if (!mission) { setLoading(false); return; }
     (async () => {
-      const [{ data: cu }, { data: cp }] = await Promise.all([
-        supabase.auth.getUser(),
-        supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.client_id).single(),
-      ]);
-      const clientMeta = cu?.user?.user_metadata || {};
-      setClientInfo({
-        name:    [cp?.prenom||clientMeta.prenom, cp?.nom||clientMeta.nom].filter(Boolean).join(" ") || cu?.user?.email || "—",
-        company: cp?.societe_nom || clientMeta.societe_nom || "",
-      });
-      if (mission.prestataire_id) {
-        const [{ data: pp }, { data: pu }] = await Promise.all([
-          supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.prestataire_id).single(),
-          supabase.auth.admin ? Promise.resolve({ data: null }) :
-            fetch(`/api/bo-action`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"get_user_meta", user_id: mission.prestataire_id }) }).then(r=>r.json()).catch(()=>null),
+      try {
+        const [{ data: cu }, { data: cp }] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.client_id).single(),
         ]);
-        setPrestaInfo({
-          name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
-          company: pp?.societe_nom || "",
-          siret:   "",
+        const clientMeta = cu?.user?.user_metadata || {};
+        setClientInfo({
+          name:    [cp?.prenom||clientMeta.prenom, cp?.nom||clientMeta.nom].filter(Boolean).join(" ") || cu?.user?.email || "—",
+          company: cp?.societe_nom || clientMeta.societe_nom || "",
         });
+        if (mission.prestataire_id) {
+          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.prestataire_id).single();
+          setPrestaInfo({
+            name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
+            company: pp?.societe_nom || "",
+            siret:   "",
+          });
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     })();
   }, [mission?.id]);
 
@@ -660,7 +659,7 @@ export function InvoiceScreen({ mission, onBack }) {
                   {mission.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {mission.date}</div>}
                   {mission.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {mission.ville}</div>}
                   <div style={{ color:C.textSub, fontSize:11 }}>
-                    {mission.hours}h × {Number(mission.tarif_horaire).toFixed(2).replace(".",",")} € HT/h
+                    {mission.hours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
                   </div>
                 </div>
                 <div style={{ fontWeight:700, color:C.text, fontSize:14, minWidth:70, textAlign:"right" }}>{htFormatted} €</div>
