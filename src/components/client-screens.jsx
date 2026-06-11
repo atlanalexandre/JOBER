@@ -4543,6 +4543,12 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
           )}
 
+          {(selected.status === "completed" || selected.status === "closed") && (
+            <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", marginTop:12, padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              📄 Télécharger la facture PDF
+            </button>
+          )}
+
           {selected.status === "open" && (
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
               Clôturer la mission
