@@ -1281,7 +1281,11 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [showFilters, setShowFilters] = useState(false);
   const [jobSearch, setJobSearch] = useState("");
   const [missionDate, setMissionDate] = useState("");
-  const SURCHARGE = 2;
+  const [surcharge, setSurcharge] = useState(2);
+  useEffect(() => {
+    supabase.from("platform_settings").select("value").eq("key","urgency_surcharge").single()
+      .then(({ data }) => { if (data?.value != null) setSurcharge(Number(data.value)); });
+  }, []);
   const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
   const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
   const { providers } = useProviders();
@@ -1291,7 +1295,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     const availCount = providers.filter(p=>p.sector===s.id && p.jobTitle===name && p.available).length;
     const tarif = METIERS_TARIFS[s.id]?.[name];
     const base = tarif ? prixClient(tarif.default, s.id) : 12;
-    const price = urgentMode ? base + SURCHARGE : base;
+    const price = urgentMode ? base + surcharge : base;
     return { name, rate:`${price.toFixed(2).replace(".",",")} € HT/h`, count, availCount, base, price };
   });
 
@@ -1313,7 +1317,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const basePrice = selectedJob
     ? (() => { const t = METIERS_TARIFS[s.id]?.[selectedJob]; return t ? prixClient(t.default, s.id) : 12; })()
     : 0;
-  const urgentPrice = basePrice + SURCHARGE;
+  const urgentPrice = basePrice + surcharge;
 
   // Bouton urgence réutilisable
   const UrgentToggle = ({ showBeforeJob=false }) => (
@@ -1334,7 +1338,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             background: urgentMode ? "rgba(255,255,255,0.25)" : `${C.accent}18`,
             color: urgentMode ? C.white : C.accent,
             borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:700,
-          }}>+{SURCHARGE},00 € HT/h</span>
+          }}>+{surcharge},00 € HT/h</span>
         </div>
         <div style={{ fontSize:12, color:urgentMode?"rgba(255,255,255,0.75)":C.gray, marginTop:2 }}>
           {urgentMode
@@ -1506,7 +1510,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             </div>
             {urgentMode && (
               <div style={{ background:`${C.accent}15`, borderRadius:8, padding:"8px 10px", fontSize:12, color:C.text, lineHeight:1.5 }}>
-                ⚡ <strong>Surcoût urgence : +{SURCHARGE},00 € HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
+                ⚡ <strong>Surcoût urgence : +{surcharge},00 € HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
               </div>
             )}
           </div>
@@ -1525,7 +1529,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:6 }}>💶 Détail du tarif urgence</div>
                 {[
                   ["Tarif standard", `${basePrice.toFixed(2).replace(".",",")} € HT/h`],
-                  ["Surcoût urgence", `+${SURCHARGE},00 € HT/h`],
+                  ["Surcoût urgence", `+${surcharge},00 € HT/h`],
                   ["Tarif urgence total", `${urgentPrice.toFixed(2).replace(".",",")} € HT/h`],
                 ].map(([l,v],i)=>(
                   <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:i<2?`1px solid ${C.grayLight}`:"none" }}>
@@ -2020,6 +2024,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
+  const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -2028,6 +2033,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
       const meta = data.user.user_metadata || {};
       if (meta.adresse) setSavedAddress({ adresse: meta.adresse, ville: meta.ville || "", cp: meta.code_postal || "" });
     });
+    supabase.from("platform_settings").select("value").eq("key","frais_service").single()
+      .then(({ data }) => { if (data?.value) setFraisSettings(data.value); });
   }, []);
 
 
@@ -2042,7 +2049,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return diff > 0 ? diff : 1;
   })();
 
-  const fraisMission = isUrgent ? FRAIS_MER.urgent : (missionType === "range" ? FRAIS_MER.range : FRAIS_MER.single);
+  const fraisMission = isUrgent ? fraisSettings.urgent : (missionType === "range" ? fraisSettings.range : fraisSettings.single);
   const totalParJour = (tarifHoraire * hours).toFixed(0);
   const totalHT = tarifHoraire * hours * nbJours;
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
@@ -5214,6 +5221,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [pendingPlan,setPendingPlan]=useState(null);
   const [endDate,setEndDate]=useState(null);
   const [planLimits,setPlanLimits]=useState(null);
+  const [subPrices,setSubPrices]=useState(null);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -5229,19 +5237,28 @@ export function AbonnementPrestaScreen({ onBack }) {
     });
     supabase.from("platform_settings").select("value").eq("key","plan_limits").single()
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
+    supabase.from("platform_settings").select("value").eq("key","subscription_prices").single()
+      .then(({data})=>{ if(data?.value) setSubPrices(data.value); });
   },[]);
 
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
     const limit = planLimits?.[p.id];
-    if (limit == null) return p;
+    const monthlyPrice = subPrices?.[p.id]?.monthly;
     const features = [...p.features];
-    if (p.id === "elite") {
-      features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
-    } else {
-      const launchSuffix = p.id === "free" && isLaunchPhase() ? " (10 pendant le lancement)" : "";
-      features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+    if (limit != null) {
+      if (p.id === "elite") {
+        features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
+      } else {
+        const launchSuffix = p.id === "free" && isLaunchPhase() ? " (10 pendant le lancement)" : "";
+        features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+      }
     }
-    return { ...p, missions: limit, features };
+    return {
+      ...p,
+      ...(limit != null ? { missions: limit } : {}),
+      ...(monthlyPrice != null ? { price: monthlyPrice } : {}),
+      features,
+    };
   });
 
   const handleChangePlan = async (planId) => {
