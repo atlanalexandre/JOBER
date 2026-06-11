@@ -36,3 +36,12 @@ html, body {
 [data-alane-theme="light"] svg {
   filter: invert(1) hue-rotate(180deg);
 }
+
+/* ── Impression facture / contrat ── */
+@media print {
+  .no-print { display: none !important; }
+  html, body, #root { background: #fff !important; color: #000 !important; }
+  * { color: #000 !important; background: #fff !important;
+      border-color: #ccc !important; box-shadow: none !important; }
+  #invoice-print-area, #invoice-print-area * { padding-top: 0; }
+}

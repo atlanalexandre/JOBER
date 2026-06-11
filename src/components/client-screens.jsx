@@ -3928,7 +3928,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:40 }}>
       {/* Header */}
-      <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+      <div className="no-print" style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
@@ -3945,7 +3945,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
       </div>
 
       {/* Tabs */}
-      <div style={{ display:"flex", gap:0, padding:"16px 18px 0", borderBottom:`1px solid ${C.border}` }}>
+      <div className="no-print" style={{ display:"flex", gap:0, padding:"16px 18px 0", borderBottom:`1px solid ${C.border}` }}>
         {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"},{id:"signature",label:"✍️ Signature"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ padding:"8px 14px", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.violet:"transparent"}`, background:"transparent", color:activeTab===t.id?C.violet:C.gray, fontWeight:activeTab===t.id?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
         ))}
@@ -3989,6 +3989,11 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <div style={{ fontSize:12, color:C.textSub, lineHeight:1.75, whiteSpace:"pre-line" }}>{a.content}</div>
                 </div>
               ))}
+            </div>
+            <div className="no-print" style={{ marginTop:4 }}>
+              <Btn full onClick={()=>window.print()} style={{ padding:"14px", fontSize:14, fontWeight:700 }}>
+                🖨️ Télécharger / Imprimer PDF
+              </Btn>
             </div>
           </div>
         )}
@@ -4541,6 +4546,12 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette mission</div>
               )}
             </div>
+          )}
+
+          {(selected.status === "completed" || selected.status === "closed") && (
+            <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", marginTop:12, padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              📄 Télécharger la facture PDF
+            </button>
           )}
 
           {selected.status === "open" && (

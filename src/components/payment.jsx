@@ -555,127 +555,152 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 }
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
-export function InvoiceScreen({ provider, amount, hours, missionId, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Facture introuvable.</div>;
-  const p = provider;
-  const [invoiceNum] = useState(`ALANE-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
-  const [emailSent, setEmailSent] = useState(false);
-  const [emailSending, setEmailSending] = useState(false);
-  const [clientName, setClientName] = useState("");
-  const date = new Date().toLocaleDateString("fr-FR");
-  const ht = amount || 124;
-  const tva = 0; // auto-entrepreneur → pas de TVA
+export function InvoiceScreen({ mission, onBack }) {
+  const [clientInfo,  setClientInfo]  = useState({ name:"", company:"" });
+  const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"" });
+  const [loading,     setLoading]     = useState(true);
+
+  const missionDate = mission?.created_at ? new Date(mission.created_at) : new Date();
+  const invoiceNum  = mission
+    ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${mission.id.slice(-6).toUpperCase()}`
+    : "ALA-000000";
+  const emittedDate  = missionDate.toLocaleDateString("fr-FR");
+  const ht           = Number(mission?.montant_total || (Number(mission?.tarif_horaire||0) * Number(mission?.hours||0))) || 0;
+  const htFormatted  = ht.toFixed(2).replace(".",",");
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) {
-        const meta = data.user.user_metadata || {};
-        const name = [meta.prenom, meta.nom].filter(Boolean).join(" ") || data.user.email || "";
-        setClientName(name);
+    if (!mission) { setLoading(false); return; }
+    (async () => {
+      try {
+        const [{ data: cu }, { data: cp }] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.client_id).single(),
+        ]);
+        const clientMeta = cu?.user?.user_metadata || {};
+        setClientInfo({
+          name:    [cp?.prenom||clientMeta.prenom, cp?.nom||clientMeta.nom].filter(Boolean).join(" ") || cu?.user?.email || "—",
+          company: cp?.societe_nom || clientMeta.societe_nom || "",
+        });
+        if (mission.prestataire_id) {
+          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.prestataire_id).single();
+          setPrestaInfo({
+            name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
+            company: pp?.societe_nom || "",
+            siret:   "",
+          });
+        }
+      } finally {
+        setLoading(false);
       }
-    });
-  }, []);
+    })();
+  }, [mission?.id]);
+
+  if (!mission) return (
+    <div style={{ padding:40, textAlign:"center", color:C.textSub }}>
+      <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>
+      Facture introuvable.
+    </div>
+  );
+
   return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
+      {/* Header — masqué à l'impression */}
+      <div className="no-print" style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Facture de mission</h2>
         <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{invoiceNum}</p>
       </div>
-      <div style={{ padding:"20px 18px" }}>
-        {/* En-tête facture */}
-        <div style={{ background:"#0D1B3E", borderRadius:16, padding:"20px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-            <div>
-              <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display }}>ALANE</div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande</div>
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>FACTURE</div>
-              <div style={{ color:C.textSub, fontSize:11 }}>{invoiceNum}</div>
-              <div style={{ color:C.textSub, fontSize:11 }}>Émise le {date}</div>
-            </div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
-            <div>
-              <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4 }}>CLIENT</div>
-              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{clientName || "—"}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4 }}>PRESTATAIRE</div>
-              <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{p.name}</div>
-              <div style={{ fontSize:11, color:C.textSub }}>{p.role}</div>
-              <div style={{ fontSize:11, color:C.textSub }}>Auto-entrepreneur</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Détail mission */}
-        <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Détail de la prestation</div>
-          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-            <span style={{ color:C.textSub, fontSize:12 }}>Description</span><span style={{ color:C.textSub, fontSize:12, textAlign:"right" }}>Qté</span>
-          </div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{p.role}</div>
-              <div style={{ color:C.textSub, fontSize:11 }}>Mission du 05/05/2025 · {hours||8}h</div>
-              <div style={{ color:C.textSub, fontSize:11 }}>Tarif : {p.hourlyRate} HT</div>
-            </div>
-            <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{ht} €</div>
-          </div>
-          <div style={{ padding:"10px 0 4px" }}>
-            {[["Sous-total HT", `${ht} €`],["TVA (0% — auto-entrepreneur)","0,00 €"],["Total TTC", `${ht} €`]].map(([l,v],i)=>(
-              <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
-                <span style={{ color: i===2?C.text:C.gray, fontSize: i===2?15:13, fontWeight: i===2?900:400 }}>{l}</span>
-                <span style={{ color: i===2?C.violet:C.text, fontSize: i===2?18:13, fontWeight: i===2?900:600 }}>{v}</span>
+      {loading ? (
+        <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Chargement…</div>
+      ) : (
+        <div style={{ padding:"20px 18px" }}>
+          {/* Zone imprimable */}
+          <div id="invoice-print-area">
+            {/* En-tête */}
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"20px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
+                <div>
+                  <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display, letterSpacing:1 }}>ALANE</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>FACTURE</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>{invoiceNum}</div>
+                  <div style={{ color:C.textSub, fontSize:11 }}>Émise le {emittedDate}</div>
+                </div>
               </div>
-            ))}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Client</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{clientInfo.name}</div>
+                  {clientInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{clientInfo.company}</div>}
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Prestataire</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{prestaInfo.name}</div>
+                  {prestaInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{prestaInfo.company}</div>}
+                  {prestaInfo.siret && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {prestaInfo.siret}</div>}
+                </div>
+              </div>
+            </div>
+
+            {/* Détail mission */}
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+              <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Détail de la prestation</div>
+              <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ color:C.textSub, fontSize:12, fontWeight:600 }}>Description</span>
+                <span style={{ color:C.textSub, fontSize:12, fontWeight:600 }}>Montant HT</span>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{mission.metier || "Prestation de service"}</div>
+                  {mission.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {mission.sector}</div>}
+                  {mission.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {mission.date}</div>}
+                  {mission.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {mission.ville}</div>}
+                  <div style={{ color:C.textSub, fontSize:11 }}>
+                    {mission.hours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
+                  </div>
+                </div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14, minWidth:70, textAlign:"right" }}>{htFormatted} €</div>
+              </div>
+              <div style={{ padding:"10px 0 4px" }}>
+                {[
+                  ["Sous-total HT", `${htFormatted} €`],
+                  ["TVA (0% — art. 293 B CGI)", "0,00 €"],
+                  ["Total TTC", `${htFormatted} €`],
+                ].map(([l,v],i) => (
+                  <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
+                    <span style={{ color:i===2?C.text:C.gray, fontSize:i===2?15:13, fontWeight:i===2?900:400 }}>{l}</span>
+                    <span style={{ color:i===2?C.violet:C.text, fontSize:i===2?18:13, fontWeight:i===2?900:600 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Statut */}
+            <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px 16px", marginBottom:14, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:24 }}>✅</span>
+              <div>
+                <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Mission validée</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Paiement traité via ALANE</div>
+              </div>
+            </div>
+
+            {/* Mention légale */}
+            <div style={{ color:C.textMuted, fontSize:10, lineHeight:1.5, padding:"0 2px 4px" }}>
+              TVA non applicable — article 293 B du CGI. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.
+            </div>
+          </div>
+
+          {/* Bouton impression — masqué à l'impression */}
+          <div className="no-print" style={{ marginTop:16 }}>
+            <Btn full onClick={()=> window.print()} style={{ padding:"14px", fontSize:14, fontWeight:700 }}>
+              🖨️ Télécharger / Imprimer PDF
+            </Btn>
           </div>
         </div>
-
-        {/* Statut paiement */}
-        <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px 16px", marginBottom:14, display:"flex", gap:10, alignItems:"center" }}>
-          <span style={{ fontSize:24 }}>✅</span>
-          <div>
-            <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Paiement reçu</div>
-            <div style={{ color:C.textSub, fontSize:11 }}>Virement effectué le {date} via ALANE Escrow</div>
-          </div>
-        </div>
-
-        <div style={{ display:"flex", gap:10 }}>
-          <Btn variant="ghost" full onClick={()=>{
-            const content = [
-              `FACTURE ${invoiceNum}`,
-              `Émise le ${date}`,
-              ``,
-              `PRESTATAIRE : ${p.name} — ${p.role}`,
-              `MISSION : ${hours||8}h — Tarif ${p.hourlyRate} HT`,
-              `TOTAL TTC : ${ht} €`,
-              `STATUT : Paiement reçu via ALANE Escrow`,
-            ].join("\n");
-            const blob = new Blob([content], { type:"text/plain" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href=url; a.download=`${invoiceNum}.txt`; a.click();
-            URL.revokeObjectURL(url);
-          }} style={{ fontSize:13, padding:"13px" }}>⬇️ Télécharger</Btn>
-          <Btn full disabled={emailSending||emailSent} onClick={async()=>{
-            setEmailSending(true);
-            const { data:{ user } } = await supabase.auth.getUser();
-            if(user?.email) {
-              await fetch("/api/support", {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body: JSON.stringify({ action:"booking_confirm", clientEmail:user.email, clientName:user.user_metadata?.prenom||"", prestaName:p.name, job:p.role, hours:hours||8, total:ht }),
-              }).catch(()=>{});
-            }
-            setEmailSending(false); setEmailSent(true);
-          }} style={{ fontSize:13, padding:"13px" }}>
-            {emailSent ? "✅ Envoyé" : emailSending ? "…" : "📧 Envoyer par email"}
-          </Btn>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
