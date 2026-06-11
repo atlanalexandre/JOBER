@@ -1035,11 +1035,13 @@ export default async function handler(req, res) {
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou délai dépassé" });
 
-      const newStatus = response === "accept" ? "assigned" : "refused";
+      const patchBody = response === "accept"
+        ? { status: "assigned" }
+        : { status: "open", prestataire_id: null };
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(patchBody),
       });
 
       if (mission.client_id) {
@@ -1108,6 +1110,17 @@ export default async function handler(req, res) {
               }),
             }).catch(() => {});
           }
+        }
+
+        // Web push client
+        const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${mission.client_id}&select=endpoint,p256dh,auth`, { headers });
+        const psSubs = await psRes.json().catch(() => []);
+        if (Array.isArray(psSubs) && psSubs.length > 0) {
+          const pushTitle = isAccepted ? "Mission acceptée ✅" : "Mission refusée";
+          const pushBody  = isAccepted
+            ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
+            : `${presta_name || "Le prestataire"} a refusé. Connectez-vous pour choisir un autre prestataire.`;
+          await Promise.all(psSubs.map(s => sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" })));
         }
       }
 
