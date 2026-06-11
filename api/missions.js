@@ -537,7 +537,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id, sector } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
-      console.log("[broadcast] caller:", caller.id, "mission_id:", mission_id, "sector:", sector);
+      console.log("[broadcast] mission_id:", mission_id, "sector:", sector);
 
       // Verify caller owns this mission
       const ownerCheck = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&select=id&limit=1`, { headers });
@@ -551,7 +551,7 @@ export default async function handler(req, res) {
       );
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
-      console.log("[broadcast] mission:", mission);
+      console.log("[broadcast] mission found:", !!mission);
 
       // Fetch all approved prestataires
       const pr = await fetch(
@@ -593,7 +593,7 @@ export default async function handler(req, res) {
               const ud = userMetaMap[p.id] || {};
               const meta = ud.user_metadata || {};
               const presta_sector = meta.secteur || meta.sector;
-              console.log("[broadcast] prestataire", p.id, "presta_sector:", presta_sector, "mission sector:", sector);
+              console.log("[broadcast] checking prestataire sector:", presta_sector, "vs mission:", sector);
               if (sector && presta_sector && presta_sector !== sector) return;
 
               // In-app notification
@@ -609,7 +609,7 @@ export default async function handler(req, res) {
                 }),
               });
 
-              console.log("[broadcast] in-app notification sent to", p.id);
+              console.log("[broadcast] in-app notification sent");
 
               // Email Resend (quand app fermée)
               const RESEND_KEY_B = process.env.RESEND_API_KEY;
@@ -641,13 +641,13 @@ export default async function handler(req, res) {
               // SMS Brevo (si numéro dispo et clé configurée)
               const BREVO_KEY = process.env.BREVO_API_KEY;
               const phone = meta.telephone;
-              console.log("[broadcast] SMS check - BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+              console.log("[broadcast] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
               if (BREVO_KEY && phone) {
                 const digits = phone.replace(/\D/g, "");
                 const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
                 if (e164) {
                   const smsText = `JOBER - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler.`;
-                  console.log("[broadcast] sending SMS to", e164);
+                  console.log("[broadcast] sending SMS");
                   fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
                     headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
@@ -740,16 +740,16 @@ export default async function handler(req, res) {
           console.log("[chat_notify] email status:", er.status, JSON.stringify(eb));
         } catch (e) { console.error("[chat_notify] email error:", e.message); }
       } else {
-        console.log("[chat_notify] email skipped — RESEND_KEY:", !!RESEND_KEY, "recipientEmail:", recipientEmail);
+        console.log("[chat_notify] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!recipientEmail);
       }
 
       // SMS Brevo
       const BREVO_KEY = process.env.BREVO_API_KEY;
-      console.log("[chat_notify] phone:", phone, "BREVO_KEY set:", !!BREVO_KEY);
+      console.log("[chat_notify] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
       if (BREVO_KEY && phone) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
-        console.log("[chat_notify] SMS e164:", e164);
+        console.log("[chat_notify] sending SMS");
         if (e164) {
           try {
             const sr = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
@@ -766,7 +766,7 @@ export default async function handler(req, res) {
           } catch (e) { console.error("[chat_notify] SMS error:", e.message); }
         }
       } else {
-        console.log("[chat_notify] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+        console.log("[chat_notify] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
       }
 
       return res.status(200).json({ success: true });
@@ -1115,7 +1115,7 @@ export default async function handler(req, res) {
           }),
         }).catch(() => {});
       } else {
-        console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "clientEmail:", clientEmail);
+        console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!clientEmail);
       }
 
       const BREVO_KEY = process.env.BREVO_API_KEY;
@@ -1130,7 +1130,7 @@ export default async function handler(req, res) {
           }).then(r => r.json()).then(d => console.log("[notify_client] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_client] SMS error:", e.message));
         }
       } else {
-        console.log("[notify_client] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+        console.log("[notify_client] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
       }
 
       return res.status(200).json({ success: true });
@@ -1178,7 +1178,7 @@ export default async function handler(req, res) {
           }),
         }).catch(() => {});
       } else {
-        console.log("[notify_prestataire] email skipped — RESEND_KEY:", !!RESEND_KEY, "prestaEmail:", prestaEmail);
+        console.log("[notify_prestataire] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!prestaEmail);
       }
 
       const BREVO_KEY = process.env.BREVO_API_KEY;
@@ -1197,7 +1197,7 @@ export default async function handler(req, res) {
           }).then(r => r.json()).then(d => console.log("[notify_prestataire] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_prestataire] SMS error:", e.message));
         }
       } else {
-        console.log("[notify_prestataire] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "phone:", phone);
+        console.log("[notify_prestataire] SMS skipped — BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
       }
 
       // Web push (si souscription existante)
