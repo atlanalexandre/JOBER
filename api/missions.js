@@ -314,10 +314,10 @@ export default async function handler(req, res) {
 
       // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
       let CASHBACK_TIERS = [
-        { min:0,  max:4,        rate:0.01 },
-        { min:5,  max:9,        rate:0.02 },
-        { min:10, max:19,       rate:0.03 },
-        { min:20, max:999,      rate:0.05 },
+        { min:0,  max:2,  rate:0.005  },
+        { min:3,  max:5,  rate:0.0075 },
+        { min:6,  max:9,  rate:0.01   },
+        { min:10, max:999, rate:0.015 },
       ];
       try {
         const cbRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
