@@ -1,0 +1,14 @@
+{
+  "name": "ALANE",
+  "short_name": "ALANE",
+  "description": "Plateforme de missions pour auto-entrepreneurs en France",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050E20",
+  "theme_color": "#050E20",
+  "orientation": "portrait",
+  "lang": "fr",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
