@@ -67,6 +67,22 @@ CREATE TABLE IF NOT EXISTS documents (
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance        numeric DEFAULT 0;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS missions_completed_month integer DEFAULT 0;
 
+-- ── RLS sur profiles ──────────────────────────────────────────
+-- (la table profiles n'avait pas de RLS — correctif)
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "profiles_select" ON profiles;
+CREATE POLICY "profiles_select" ON profiles
+  FOR SELECT USING (true);  -- lecture publique nécessaire pour les listings prestataires, le parrainage, etc.
+
+DROP POLICY IF EXISTS "profiles_insert" ON profiles;
+CREATE POLICY "profiles_insert" ON profiles
+  FOR INSERT WITH CHECK (id = auth.uid());
+
+DROP POLICY IF EXISTS "profiles_update" ON profiles;
+CREATE POLICY "profiles_update" ON profiles
+  FOR UPDATE USING (id = auth.uid());
+
 -- ============================================================
 -- RLS — Row Level Security
 -- ============================================================
@@ -301,8 +317,13 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by     text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count  integer DEFAULT 0;
 
 -- ── Colonnes manquantes missions ─────────────────────────────────────
-ALTER TABLE missions ADD COLUMN IF NOT EXISTS titre           text;
-ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancelled_at    timestamptz;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS titre                text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancelled_at         timestamptz;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS date_debut           text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS date_fin             text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_nom           text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_reason  text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_penalty numeric DEFAULT 0;
 
 -- ── plan_abonnement sur profiles (sync avec user_metadata) ───────────
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement text DEFAULT 'free';
@@ -337,6 +358,8 @@ INSERT INTO platform_settings (key, value) VALUES
   ('subscription_prices',  '{"premium": {"monthly": 29, "yearly": 290}, "elite": {"monthly": 79, "yearly": 790}}'::jsonb),
   ('commission_rate',      '0.20'::jsonb),
   ('urgency_surcharge',    '5'::jsonb),
+  ('frais_service',        '{"single": 4.90, "range": 2.90, "urgent": 9.90}'::jsonb),
+  ('launch_phase',         'true'::jsonb),
   ('disabled_sectors',     '[]'::jsonb),
   ('cashback_rates',       '[{"id":"standard","min":0,"max":2,"rate":0.005},{"id":"silver","min":3,"max":5,"rate":0.0075},{"id":"gold","min":6,"max":9,"rate":0.01},{"id":"platinum","min":10,"max":999,"rate":0.015}]'::jsonb),
   ('sector_min_prestataires', '20'::jsonb)

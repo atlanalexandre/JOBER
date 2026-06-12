@@ -665,6 +665,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { isDesktop } = useResponsive();
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
+  const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  useEffect(() => {
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
+  }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
   const missionsToNext = nextTier ? nextTier.min - walletMissions : 0;
@@ -813,7 +818,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {isLaunchPhase() && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -2025,6 +2030,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
+  const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -2035,6 +2041,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     });
     supabase.from("platform_settings").select("value").eq("key","frais_service").single()
       .then(({ data }) => { if (data?.value) setFraisSettings(data.value); });
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({ data }) => { if (data?.value != null) setLaunchPhaseBooking(Boolean(data.value)); });
   }, []);
 
 
@@ -2166,7 +2174,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
             <span>📄</span> Consulter le CV de {p.name}
           </button>
 
-          {isLaunchPhase() && <LaunchBadge context="booking" />}
+          {launchPhaseBooking && <LaunchBadge context="booking" />}
 
           {/* Bandeau urgence */}
           {isUrgent && (
@@ -3576,6 +3584,21 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
+  const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  useEffect(() => {
+    Promise.all([
+      supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
+      supabase.from("platform_settings").select("value").eq("key","subscription_prices").single(),
+      supabase.from("platform_settings").select("value").eq("key","launch_phase").single(),
+    ]).then(([l, p, lp]) => {
+      setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
+    });
+  }, []);
+  const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
+    const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
+    const missions = planSettings.limits?.[p.id] ?? p.missions;
+    return { ...p, price, missions };
+  });
 
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
@@ -3604,20 +3627,22 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
-        <div style={{
-          background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
-          border:"1px solid rgba(16,217,143,0.35)",
-          borderRadius:r, padding:"12px 14px", marginBottom:20,
-          display:"flex", gap:10, alignItems:"center",
-        }}>
-          <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
-          <div>
-            <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
-            <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-              {role==="prestataire" ? "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la mission"}
+        {planSettings.launchPhase && (
+          <div style={{
+            background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
+            border:"1px solid rgba(16,217,143,0.35)",
+            borderRadius:r, padding:"12px 14px", marginBottom:20,
+            display:"flex", gap:10, alignItems:"center",
+          }}>
+            <span style={{ fontSize:18, flexShrink:0 }}>🎁</span>
+            <div>
+              <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
+              <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
+                {role==="prestataire" ? "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la mission"}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {role==="prestataire" && (
           <div style={{ marginBottom:20 }}>
@@ -3630,7 +3655,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                 Tarif transparent, prix affiché = prix réel. Choisissez le plan adapté à votre activité.
               </div>
               <div style={{ display:"flex", gap:8 }}>
-                {ABONNEMENTS_PRESTA.map(plan => (
+                {effectivePlanCards.map(plan => (
                   <div key={plan.id} style={{ flex:1, background:"#0D1B3E", borderRadius:12, padding:"10px 8px", textAlign:"center", border:`1px solid ${plan.color}33` }}>
                     <div style={{ fontSize:18, marginBottom:4 }}>{plan.icon}</div>
                     <div style={{ fontWeight:700, color:plan.color, fontSize:12 }}>{plan.label}</div>
@@ -3639,7 +3664,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                     </div>
                     {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
                     <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
-                      {plan.missions===999 ? "Illimité" : `${plan.missions} missions`}
+                      {plan.missions>=999 ? "Illimité" : `${plan.missions} missions`}
                     </div>
                   </div>
                 ))}
@@ -5222,6 +5247,7 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [endDate,setEndDate]=useState(null);
   const [planLimits,setPlanLimits]=useState(null);
   const [subPrices,setSubPrices]=useState(null);
+  const [launchActive,setLaunchActive]=useState(isLaunchPhase());
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -5239,6 +5265,8 @@ export function AbonnementPrestaScreen({ onBack }) {
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
     supabase.from("platform_settings").select("value").eq("key","subscription_prices").single()
       .then(({data})=>{ if(data?.value) setSubPrices(data.value); });
+    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
+      .then(({data})=>{ if(data?.value != null) setLaunchActive(Boolean(data.value)); });
   },[]);
 
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
@@ -5249,7 +5277,7 @@ export function AbonnementPrestaScreen({ onBack }) {
       if (p.id === "elite") {
         features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
       } else {
-        const launchSuffix = p.id === "free" && isLaunchPhase() ? " (10 pendant le lancement)" : "";
+        const launchSuffix = p.id === "free" && launchActive ? " (10 pendant le lancement)" : "";
         features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
       }
     }
@@ -5326,7 +5354,7 @@ export function AbonnementPrestaScreen({ onBack }) {
         )}
       </div>
       <div style={{ padding:"20px 18px" }}>
-        {isLaunchPhase() && (
+        {launchActive && (
           <div style={{ background:`${C.violet}18`, border:`1px solid ${C.violet}50`, borderRadius:r, padding:"13px 15px", marginBottom:20 }}>
             <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
               <span style={{ fontSize:20 }}>🚀</span>
@@ -5697,7 +5725,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const prestaSteps = [
     { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
     { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
-    { icon:"📦", title:"Postulez aux missions", desc:"Consultez les missions ouvertes dans votre secteur et candidatez en un clic. Votre plan définit le nombre de candidatures mensuelles.", color:C.success },
+    { icon:"📦", title:"Recevez des missions", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque mission proposée. Votre plan définit votre quota mensuel.", color:C.success },
     { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les missions proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
   ];
 

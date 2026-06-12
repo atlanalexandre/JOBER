@@ -28,10 +28,10 @@ export const economiePct  = (t) => Math.round(((tarifInterim(t) - t) / tarifInte
 export const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";
 
 export const CASHBACK_TIERS = [
-  { id:"bronze",   min:0,  max:4,        rate:0.01, label:"Bronze",   icon:"🥉", color:"#CD7F32" },
-  { id:"silver",   min:5,  max:9,        rate:0.02, label:"Silver",   icon:"🥈", color:"#C0C0C0" },
-  { id:"gold",     min:10, max:19,       rate:0.03, label:"Gold",     icon:"🥇", color:"#F0B429" },
-  { id:"platinum", min:20, max:Infinity, rate:0.05, label:"Platinum", icon:"💎", color:"#A89DF5" },
+  { id:"standard", min:0,  max:2,  rate:0.005,  label:"Standard", icon:"🥉", color:"#8B8FA8" },
+  { id:"silver",   min:3,  max:5,  rate:0.0075, label:"Silver",   icon:"🥈", color:"#C0C0C0" },
+  { id:"gold",     min:6,  max:9,  rate:0.01,   label:"Gold",     icon:"🥇", color:"#F0B429" },
+  { id:"platinum", min:10, max:999, rate:0.015,  label:"Platinum", icon:"💎", color:"#A89DF5" },
 ];
 export const getCashbackTier = (missions) => CASHBACK_TIERS.slice().reverse().find(t => missions >= t.min) || CASHBACK_TIERS[0];
 export const calcCashback = (amount, missions) => amount * getCashbackTier(missions).rate;
