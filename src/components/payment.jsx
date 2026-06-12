@@ -367,7 +367,8 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     setStripeError(null);
     if (method === "card") {
       const useStored = savedCard && useSavedCard;
-      if (!useStored && (!stripeRef.current || !cardElRef.current)) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+      if (!stripeRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+      if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
       setProcessing(true);
       try {
         const r = await fetch("/api/stripe-intent", {
