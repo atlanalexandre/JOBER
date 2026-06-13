@@ -861,6 +861,7 @@ export default function App() {
   const [paymentDescription,setPaymentDescription]=useState("");
   const [paymentAdresse,setPaymentAdresse]=useState("");
   const [paymentVille,setPaymentVille]=useState("");
+  const [paymentStartTime,setPaymentStartTime]=useState("08:00");
   const [bookingError,setBookingError]=useState(null);
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
@@ -1220,7 +1221,7 @@ export default function App() {
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async()=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
@@ -1244,6 +1245,7 @@ export default function App() {
                 client_id:userId, prestataire_id:selectedProvider.id,
                 sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
                 date:paymentDate||null, hours:paymentHours,
+                heure_debut:paymentStartTime||null,
                 tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
                 description:paymentDescription||null,
                 adresse:paymentAdresse||null,

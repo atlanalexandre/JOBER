@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
     try {
       const missionsRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville`,
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
         { headers }
       );
       const missionsData = await missionsRes.json();
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
 ${[
   ["💼 Poste", m.metier||"—"],
   ["📅 Date", tomorrowStr],
-  ["⏱️ Durée", `${m.hours}h`],
+  ...(m.heure_debut ? [["🕐 Heure de début", m.heure_debut], ["🕔 Heure de fin", (() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()] ] : [["⏱️ Durée", `${m.hours}h`]]),
   ["📍 Lieu", m.ville||"—"],
   toRole === "client" ? ["👷 Prestataire", prestaName] : ["🏢 Client", clientName],
 ].map(([l,v])=>`<tr><td style="color:#8B8FA8;font-size:13px;padding:6px 0;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${esc(String(v))}</td></tr>`).join("")}

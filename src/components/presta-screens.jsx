@@ -1357,6 +1357,13 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     return `${String(m).padStart(2,"0")}min restant`;
   };
 
+  const computeEndTime = (heureDebut, hours) => {
+    if (!heureDebut) return null;
+    const [h, m] = heureDebut.split(":").map(Number);
+    const endMin = h * 60 + m + Math.round(Number(hours) * 60);
+    return `${String(Math.floor(endMin / 60) % 24).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+  };
+
 
   if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
 
@@ -1380,7 +1387,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
+                    {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                   </div>
                   {deadlineLabel && (
@@ -1446,7 +1454,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
+                    {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.ville && <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                     {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
