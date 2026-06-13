@@ -2450,7 +2450,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               </div>
             ))}
           </div>
-          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -2846,7 +2846,6 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
   const [senderTag, setSenderTag] = useState("client");
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
-  const pollRef = useRef(null);
 
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString("fr", { hour:"2-digit", minute:"2-digit" });
 
@@ -2879,8 +2878,23 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
   useEffect(() => {
     if (!userId) return;
     loadMsgs(userId);
-    pollRef.current = setInterval(() => loadMsgs(userId), 4000);
-    return () => clearInterval(pollRef.current);
+    const key = buildKey(userId);
+    const channel = supabase
+      .channel(`chat:${key}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_key=eq.${key}` },
+        ({ new: newMsg }) => {
+          setMsgs(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            if (newMsg.sender_id === userId) {
+              const idx = prev.findIndex(m => String(m.id).startsWith("opt-") && m.content === newMsg.content);
+              if (idx !== -1) { const next = [...prev]; next[idx] = newMsg; return next; }
+            }
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);

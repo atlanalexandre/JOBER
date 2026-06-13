@@ -31,6 +31,7 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_rating         integer;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS presta_rating         integer;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_comment        text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS presta_comment        text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS heure_debut           text;
 
 -- ── TABLE candidatures ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS candidatures (
