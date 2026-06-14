@@ -355,7 +355,7 @@ CREATE POLICY "settings_read" ON platform_settings FOR SELECT USING (true);
 
 -- Valeurs par défaut
 INSERT INTO platform_settings (key, value) VALUES
-  ('plan_limits',          '{"free": 2, "premium": 10, "elite": 999}'::jsonb),
+  ('plan_limits',          '{"free": 2, "premium": 8, "elite": 999}'::jsonb),
   ('subscription_prices',  '{"premium": {"monthly": 29, "yearly": 290}, "elite": {"monthly": 79, "yearly": 790}}'::jsonb),
   ('commission_rate',      '0.20'::jsonb),
   ('urgency_surcharge',    '5'::jsonb),

@@ -4649,7 +4649,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ width:46, height:46, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date} · {m.hours}h · {m.ville}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${(() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return ` – ${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}` : ` · ${m.hours}h`} · {m.ville}</div>
                   {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:2 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
                 </div>
                 <div style={{ textAlign:"right" }}>
@@ -5640,7 +5640,7 @@ export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
         <button onClick={onCancel} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Annuler la demande</button>
         <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>📢 Demande diffusée</h2>
         <p style={{ color:C.textSub, fontSize:12, margin:0 }}>
-          {m.sector?.label}{m.metier?" · "+m.metier:""} · {m.date} · {m.hours}h · {m.ville}
+          {m.sector?.label}{m.metier?" · "+m.metier:""} · {m.date}{m.heure_debut ? ` · ${m.heure_debut}${(() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return ` – ${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}` : ` · ${m.hours}h`} · {m.ville}
         </p>
       </div>
 
