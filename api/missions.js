@@ -460,6 +460,22 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "rejected" }),
       });
 
+      // Consommer un slot mensuel si annulation dans les 24h précédant la mission
+      try {
+        const missionDate = new Date(mission.date);
+        const hoursUntilMission = (missionDate - new Date()) / (1000 * 60 * 60);
+        if (hoursUntilMission < 24) {
+          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month`, { headers });
+          const prData = await prRes.json();
+          const current = Array.isArray(prData) && prData[0] ? (prData[0].missions_completed_month || 0) : 0;
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ missions_completed_month: current + 1 }),
+          });
+        }
+      } catch {}
+
       // Notifier le client
       if (mission.client_id) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
