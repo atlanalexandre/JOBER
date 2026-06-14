@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
     try {
       const missionsRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville,adresse`,
         { headers }
       );
       const missionsData = await missionsRes.json();
@@ -92,11 +92,30 @@ ${[
   ["💼 Poste", m.metier||"—"],
   ["📅 Date", tomorrowStr],
   ...(m.heure_debut ? [["🕐 Heure de début", m.heure_debut], ["🕔 Heure de fin", (() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()] ] : [["⏱️ Durée", `${m.hours}h`]]),
-  ["📍 Lieu", m.ville||"—"],
+  ["📍 Lieu", [m.adresse, m.ville].filter(Boolean).join(", ")||"—"],
   toRole === "client" ? ["👷 Prestataire", prestaName] : ["🏢 Client", clientName],
 ].map(([l,v])=>`<tr><td style="color:#8B8FA8;font-size:13px;padding:6px 0;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${esc(String(v))}</td></tr>`).join("")}
 </table>
-<div style="text-align:center;margin-top:24px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma mission →</a></div>
+${(() => {
+  const appUrl = process.env.APP_URL || "https://www.alane.fr";
+  const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
+  const titleEnc = encodeURIComponent(`Mission ALANE — ${m.metier||"Mission"}`);
+  const descEnc  = encodeURIComponent(`Mission via ALANE. Voir détails : ${appUrl}`);
+  const heureDebut = m.heure_debut || "08:00";
+  const [hd, md2] = heureDebut.split(":").map(Number);
+  const endMin = hd * 60 + md2 + Math.round(Number(m.hours) * 60);
+  const heureFin = `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
+  const [y,mo,d] = tomorrowStr.split("-");
+  const gcStart = `${y}${mo}${d}T${heureDebut.replace(":","").padEnd(6,"0")}`;
+  const gcEnd   = `${y}${mo}${d}T${heureFin.replace(":","").padEnd(6,"0")}`;
+  const gcUrl   = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titleEnc}&dates=${gcStart}/${gcEnd}&details=${descEnc}&location=${loc}`;
+  const icsUrl  = `${appUrl}/api/ics?title=${titleEnc}&date=${tomorrowStr}&start=${encodeURIComponent(heureDebut)}&end=${encodeURIComponent(heureFin)}&location=${loc}&description=${descEnc}`;
+  return `<div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+<a href="${gcUrl}" style="display:inline-block;background:#4285F4;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">📅 Google Agenda</a>
+<a href="${icsUrl}" style="display:inline-block;background:#555;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">🗓 Apple / Outlook</a>
+</div>`;
+})()}
+<div style="text-align:center;margin-top:16px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma mission →</a></div>
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
