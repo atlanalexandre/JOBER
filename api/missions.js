@@ -95,7 +95,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list_open") {
       const { sector, metier } = payload;
-      let url = `${SUPABASE_URL}/rest/v1/missions?status=eq.open&order=created_at.desc`;
+      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&order=created_at.desc`;
       if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
       if (metier) url += `&metier=eq.${encodeURIComponent(metier)}`;
       const r = await fetch(url, { headers });
@@ -437,7 +437,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,hours,ville`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,hours,ville,stripe_payment_intent`,
         { headers }
       );
       const mData = await mr.json();
@@ -446,11 +446,12 @@ export default async function handler(req, res) {
       if (mission.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
 
-      // Remettre la mission en open et effacer le prestataire
+      // Si déjà payée → needs_replacement (pas de re-paiement), sinon retour open
+      const newStatus = mission.stripe_payment_intent ? "needs_replacement" : "open";
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "open", prestataire_id: null }),
+        body: JSON.stringify({ status: newStatus, prestataire_id: null }),
       });
 
       // Rejeter la candidature du prestataire désisté
@@ -460,18 +461,34 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "rejected" }),
       });
 
+      // Consommer un slot mensuel si annulation dans les 24h précédant la mission
+      try {
+        const missionDate = new Date(mission.date);
+        const hoursUntilMission = (missionDate - new Date()) / (1000 * 60 * 60);
+        if (hoursUntilMission < 24) {
+          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month`, { headers });
+          const prData = await prRes.json();
+          const current = Array.isArray(prData) && prData[0] ? (prData[0].missions_completed_month || 0) : 0;
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ missions_completed_month: current + 1 }),
+          });
+        }
+      } catch {}
+
       // Notifier le client
       if (mission.client_id) {
+        const clientTitle = mission.stripe_payment_intent
+          ? "Prestataire désisté — votre paiement est sécurisé 🔄"
+          : "Prestataire désisté — mission réouverte 🔄";
+        const clientBody = mission.stripe_payment_intent
+          ? `Votre mission "${mission.metier || mission.sector}" du ${mission.date} recherche un remplaçant. Votre paiement est conservé, aucune nouvelle facturation ne sera effectuée.`
+          : `Votre mission "${mission.metier || mission.sector}" du ${mission.date} a été réouverte automatiquement. De nouveaux prestataires vont être notifiés.`;
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            user_id: mission.client_id,
-            type: "mission",
-            title: "Prestataire désisté — mission réouverte 🔄",
-            body: `Votre mission "${mission.metier || mission.sector}" du ${mission.date} a été réouverte automatiquement. De nouveaux prestataires vont être notifiés.`,
-            read: false,
-          }),
+          body: JSON.stringify({ user_id: mission.client_id, type: "mission", title: clientTitle, body: clientBody, read: false }),
         });
       }
 

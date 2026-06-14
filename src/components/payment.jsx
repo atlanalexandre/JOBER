@@ -389,7 +389,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
         if (error) { setStripeError(error.message); setProcessing(false); return; }
         if (paymentIntent?.status === "succeeded") {
-          setDone(true); setProcessing(false); onSuccess && onSuccess();
+          setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
     } else if (method === "apple") {

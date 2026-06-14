@@ -4503,9 +4503,9 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     } catch { alert("Erreur lors de la fermeture. Réessayez."); }
   };
 
-  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée" };
-  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted };
-  const filtered = tab === "all" ? missions : missions.filter(m => m.status === tab);
+  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché" };
+  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B" };
+  const filtered = tab === "all" ? missions : tab === "open" ? missions.filter(m => m.status === "open" || m.status === "needs_replacement") : missions.filter(m => m.status === tab);
 
   if (selected) {
     const sector = SECTORS.find(s => s.id === selected.sector);
@@ -4548,6 +4548,15 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
               <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
+            </div>
+          )}
+          {selected.status === "needs_replacement" && (
+            <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
+              <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Prestataire désisté</div>
+              <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>
+                Votre paiement est conservé et sécurisé. Nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte la mission.
+              </div>
+              <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
             </div>
           )}
           {selected.status === "assigned" && !completedResult && (
@@ -5451,6 +5460,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [metier, setMetier]       = useState(preselectedJob || "");
   const [metierSearch, setMetierSearch] = useState(preselectedJob || "");
   const [date, setDate]           = useState("");
+  const [startTime, setStartTime] = useState("08:00");
   const [hours, setHours]         = useState(8);
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
@@ -5470,6 +5480,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
         const { data } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
+          heure_debut: startTime || null,
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -5529,6 +5540,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
         )}
 
         <Input label="Date de la mission *" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+        <Input label="Heure de début *" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
 
         <div style={{ marginBottom:16 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Durée estimée : <strong style={{ color:C.text }}>{hours}h</strong></label>

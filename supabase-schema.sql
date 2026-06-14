@@ -100,9 +100,9 @@ DROP POLICY IF EXISTS "missions_open_read"       ON missions;
 DROP POLICY IF EXISTS "missions_client_insert"   ON missions;
 DROP POLICY IF EXISTS "missions_client_update"   ON missions;
 
--- Tout utilisateur connecté peut voir les missions ouvertes
+-- Tout utilisateur connecté peut voir les missions ouvertes ou en recherche de remplaçant
 CREATE POLICY "missions_open_read" ON missions
-  FOR SELECT USING (status = 'open' OR client_id = auth.uid() OR prestataire_id = auth.uid());
+  FOR SELECT USING (status IN ('open', 'needs_replacement') OR client_id = auth.uid() OR prestataire_id = auth.uid());
 
 -- Un client peut créer ses propres missions
 CREATE POLICY "missions_client_insert" ON missions

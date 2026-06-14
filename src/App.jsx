@@ -1222,7 +1222,7 @@ export default function App() {
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
       {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
-      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async()=>{
+      {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
         try {
@@ -1236,7 +1236,7 @@ export default function App() {
             const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
             let missionId = selectedMissionId;
             if(missionId){
-              const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline }).eq("id",missionId);
+              const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
               if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
             } else {
               const newMissionId = crypto.randomUUID();
@@ -1251,6 +1251,7 @@ export default function App() {
                 adresse:paymentAdresse||null,
                 ville:paymentVille||null,
                 status:"pending_acceptance", acceptance_deadline:deadline,
+                ...(intentId ? { stripe_payment_intent: intentId } : {}),
               });
               if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la mission.");
               missionId=newMissionId; setSelectedMissionId(newMissionId);
