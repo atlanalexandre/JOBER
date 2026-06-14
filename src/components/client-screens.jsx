@@ -5451,6 +5451,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [metier, setMetier]       = useState(preselectedJob || "");
   const [metierSearch, setMetierSearch] = useState(preselectedJob || "");
   const [date, setDate]           = useState("");
+  const [startTime, setStartTime] = useState("08:00");
   const [hours, setHours]         = useState(8);
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
@@ -5470,6 +5471,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
         const { data } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
+          heure_debut: startTime || null,
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -5529,6 +5531,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
         )}
 
         <Input label="Date de la mission *" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+        <Input label="Heure de début *" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
 
         <div style={{ marginBottom:16 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Durée estimée : <strong style={{ color:C.text }}>{hours}h</strong></label>
