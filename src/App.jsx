@@ -79,7 +79,15 @@ function ALANELogo({ size = "md" }) {
 
 function SplashScreen({ onNext, onBackoffice }) {
   const [v,setV]=useState(false);
+  const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
+  useEffect(()=>{
+    supabase.from("profiles").select("*",{count:"exact",head:true}).eq("role","prestataire")
+      .then(({count})=>{ if(count!=null) setPrestaCount(count); });
+  },[]);
+  const MAX_LAUNCH = 100;
+  const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
+  const offerActive = isLaunchPhase() && (spotsLeft == null || spotsLeft > 0);
   return (
     <div style={{
       minHeight:"100%",
@@ -130,7 +138,7 @@ function SplashScreen({ onNext, onBackoffice }) {
         {/* Stats pills */}
         <div style={{ display:"flex", gap:8, marginBottom:36, flexWrap:"wrap" }}>
           {[
-            { v:"88+", l:"Prestataires" },
+            { v: prestaCount != null ? `${prestaCount}+` : "88+", l:"Prestataires" },
             { v:"7", l:"Secteurs" },
             { v:"<10min", l:"Réponse" },
           ].map(s=>(
@@ -146,7 +154,7 @@ function SplashScreen({ onNext, onBackoffice }) {
           ))}
         </div>
 
-        {isLaunchPhase() && (
+        {offerActive && (
           <div style={{
             background:"linear-gradient(135deg, rgba(16,217,143,0.12), rgba(16,217,143,0.06))",
             border:"1px solid rgba(16,217,143,0.35)",
@@ -156,7 +164,9 @@ function SplashScreen({ onNext, onBackoffice }) {
             <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>10 missions gratuites · Réservé aux 100 premiers prestataires inscrits</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>
+                10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
+              </div>
             </div>
           </div>
         )}
@@ -175,6 +185,14 @@ function SplashScreen({ onNext, onBackoffice }) {
 function RoleScreen({ onSelect }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
+  const [prestaCount,setPrestaCount]=useState(null);
+  useEffect(()=>{
+    supabase.from("profiles").select("*",{count:"exact",head:true}).eq("role","prestataire")
+      .then(({count})=>{ if(count!=null) setPrestaCount(count); });
+  },[]);
+  const MAX_LAUNCH = 100;
+  const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
+  const offerActive = isLaunchPhase() && (spotsLeft == null || spotsLeft > 0);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20 0%, #0A1628 50%, #162547 100%)`, display:"flex", flexDirection:"column", padding:"60px 24px 48px", position:"relative", overflow:"hidden" }}>
       <div style={{ position:"absolute", top:-80, right:-80, width:280, height:280, borderRadius:"50%", background:`radial-gradient(circle, rgba(124,111,224,0.20) 0%, transparent 65%)`, pointerEvents:"none" }} />
@@ -225,7 +243,7 @@ function RoleScreen({ onSelect }) {
         ))}
       </div>
 
-      {isLaunchPhase() && (
+      {offerActive && (
         <div style={{
           background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
           border:"1px solid rgba(16,217,143,0.30)",
@@ -235,7 +253,9 @@ function RoleScreen({ onSelect }) {
           <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>10 missions gratuites · Réservé aux 100 premiers prestataires inscrits</div>
+            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>
+              10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
+            </div>
           </div>
         </div>
       )}
