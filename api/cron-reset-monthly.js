@@ -39,43 +39,41 @@ export default async function handler(req, res) {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-
     try {
-      const missionsRes = await fetch(
+      // Charger tous les utilisateurs et profils une seule fois — utilisé par toutes les sections
+      const [usersRes, profilesRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers }),
+      ]);
+      const usersData = await usersRes.json();
+      const userMap   = {};
+      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+      const profiles  = await profilesRes.json();
+      const nameMap   = {};
+      (Array.isArray(profiles) ? profiles : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
+
+      // ── 1. Rappels de mission pour demain ────────────────────────
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+      const missionsRes  = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=eq.${tomorrowStr}&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville,adresse`,
         { headers }
       );
       const missionsData = await missionsRes.json();
-      const missions = Array.isArray(missionsData) ? missionsData : [];
-
-      if (!missions.length || !RESEND_API_KEY) {
-        return res.status(200).json({ success: true, reminders: 0 });
-      }
-
-      // Récupérer tous les utilisateurs en une requête
-      const usersRes  = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
-      const usersData = await usersRes.json();
-      const userMap   = {};
-      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
-
-      // Récupérer les noms depuis profiles
-      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
-      const profiles    = await profilesRes.json();
-      const nameMap     = {};
-      (Array.isArray(profiles) ? profiles : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
+      const missions     = Array.isArray(missionsData) ? missionsData : [];
 
       let sent = 0;
-      await Promise.all(missions.map(async (m) => {
-        const clientEmail  = userMap[m.client_id]?.email;
-        const prestaEmail  = userMap[m.prestataire_id]?.email;
-        const clientName   = nameMap[m.client_id] || "Client";
-        const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
-        const missionInfo  = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.hours}h`;
+      if (missions.length && RESEND_API_KEY) {
+        await Promise.all(missions.map(async (m) => {
+          const clientEmail  = userMap[m.client_id]?.email;
+          const prestaEmail  = userMap[m.prestataire_id]?.email;
+          const clientName   = nameMap[m.client_id] || "Client";
+          const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
+          const missionInfo  = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.hours}h`;
 
-        const emailBody = (toName, toRole) => `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+          const emailBody = (toName, toRole) => `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
@@ -120,26 +118,27 @@ ${(() => {
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
-        const sends = [];
-        if (clientEmail) sends.push(
-          fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(clientName, "client") }),
-          }).catch(()=>{})
-        );
-        if (prestaEmail) sends.push(
-          fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
-          }).catch(()=>{})
-        );
-        await Promise.all(sends);
-        sent += sends.length;
-      }));
+          const sends = [];
+          if (clientEmail) sends.push(
+            fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(clientName, "client") }),
+            }).catch(()=>{})
+          );
+          if (prestaEmail) sends.push(
+            fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
+            }).catch(()=>{})
+          );
+          await Promise.all(sends);
+          sent += sends.length;
+        }));
+      }
 
-      // ── Rappels de validation pour missions passées non validées ──────
+      // ── 2. Rappels de validation pour missions passées non validées ──
       const todayStr = new Date().toISOString().slice(0, 10);
       let validationSent = 0;
       try {
@@ -181,17 +180,22 @@ ${(() => {
             validationSent += vSends.length;
           }));
         }
-      } catch {}
+      } catch (e) { console.error("cron validation reminders error:", e); }
 
-      // ── Auto-validation après 24h si le prestataire a validé ──────────
+      // ── 3. Auto-validation après 24h si le prestataire a validé ─────
       let autoValidated = 0;
       try {
-        const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        // DST-safe : soustraire 1 jour calendaire plutôt que 86400000ms
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
         const avRes = await fetch(
           `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector`,
           { headers }
         );
         const autoMissions = await avRes.json();
+
         if (Array.isArray(autoMissions) && autoMissions.length) {
           // Charger les taux cashback depuis platform_settings
           let CASHBACK_TIERS = [
@@ -199,70 +203,73 @@ ${(() => {
             { min:6, max:9, rate:0.01 }, { min:10, max:999, rate:0.015 },
           ];
           try {
-            const cbRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
+            const cbRes  = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
             const cbData = await cbRes.json();
             if (Array.isArray(cbData) && Array.isArray(cbData[0]?.value)) CASHBACK_TIERS = cbData[0].value;
-          } catch {}
+          } catch (e) { console.error("cron cashback_rates fetch error:", e); }
 
-          // Charger les profils clients en batch
-          const clientIds = [...new Set(autoMissions.map(m => m.client_id).filter(Boolean))];
-          const clientProfiles = {};
-          if (clientIds.length) {
-            const cpRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${clientIds.join(",")})&select=id,cashback_balance,missions_completed_month`, { headers });
-            const cpData = await cpRes.json();
-            (Array.isArray(cpData) ? cpData : []).forEach(p => { clientProfiles[p.id] = p; });
-          }
+          // Traitement séquentiel pour éviter les écritures concurrentes sur le même client
+          for (const m of autoMissions) {
+            try {
+              const hours = m.hours || 0;
+              const tarif = m.tarif_horaire || 0;
+              const montantTotal = Math.round(hours * tarif * 100) / 100;
+              const mLabel = esc(m.metier || m.sector || "Mission");
+              const appUrl = process.env.APP_URL || "https://www.alane.fr";
 
-          await Promise.all(autoMissions.map(async (m) => {
-            const hours = m.hours || 0;
-            const tarif = m.tarif_horaire || 0;
-            const montantTotal = Math.round(hours * tarif * 100) / 100;
-            const profile = clientProfiles[m.client_id] || {};
-            const missionsThisMonth = (profile.missions_completed_month || 0) + 1;
-            const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
-            const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
-            const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
-            const mLabel = esc(m.metier || m.sector || "Mission");
+              // Lire le profil client au moment du traitement pour éviter les données périmées
+              const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
+              const cpData = await cpRes.json();
+              const profile = Array.isArray(cpData) && cpData[0] ? cpData[0] : {};
+              const missionsThisMonth = (profile.missions_completed_month || 0) + 1;
+              const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+              const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+              const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-            await Promise.all([
               // Marquer la mission complétée
-              fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+              const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
                 body: JSON.stringify({ status: "completed", validation_client: true, montant_total: montantTotal }),
-              }).catch(() => {}),
-              // Mettre à jour le cashback client
-              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}`, {
-                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
-              }).catch(() => {}),
-              // Notification client
-              fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Mission validée automatiquement ✅", body: `Votre mission "${mLabel}" a été validée automatiquement (délai 24h dépassé). ${cashbackEarned > 0 ? `Cashback crédité : +${cashbackEarned.toFixed(2)} €` : ""}`, read: false }),
-              }).catch(() => {}),
-              // Notification prestataire
-              m.prestataire_id && fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Mission validée ✅", body: `Votre mission "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
-              }).catch(() => {}),
-              // Email prestataire si dispo
-              (async () => {
-                if (!m.prestataire_id || !RESEND_API_KEY) return;
-                const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${m.prestataire_id}`, { headers }).catch(() => null);
-                if (!uRes?.ok) return;
-                const uData = await uRes.json().catch(() => null);
-                if (!uData?.email) return;
-                await fetch("https://api.resend.com/emails", {
-                  method: "POST",
-                  headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ from: RESEND_FROM, to: [uData.email], subject: `Mission validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Mission validée automatiquement ✅</h2><p>Bonjour ${esc(uData.user_metadata?.prenom||"Prestataire")},</p><p>Le délai de validation de 24h étant écoulé, votre mission <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p></div>` }),
-                }).catch(() => {});
-              })(),
-            ]);
-            autoValidated++;
-          }));
+              });
+              if (!patchRes.ok) {
+                console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());
+                continue;
+              }
+
+              await Promise.all([
+                // Mettre à jour le cashback client
+                fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+                }).catch(e => console.error("cron cashback update error:", e)),
+                // Notification client
+                fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Mission validée automatiquement ✅", body: `Votre mission "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${cashbackEarned.toFixed(2)} €` : ""}`, read: false }),
+                }).catch(()=>{}),
+                // Notification prestataire
+                m.prestataire_id && fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Mission validée ✅", body: `Votre mission "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
+                }).catch(()=>{}),
+                // Email prestataire — réutilise userMap déjà chargé
+                (async () => {
+                  if (!m.prestataire_id || !RESEND_API_KEY) return;
+                  const prestaEmail = userMap[m.prestataire_id]?.email;
+                  const prestaPrenom = userMap[m.prestataire_id]?.meta?.prenom || nameMap[m.prestataire_id] || "Prestataire";
+                  if (!prestaEmail) return;
+                  await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `Mission validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Mission validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre mission <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                  }).catch(()=>{});
+                })(),
+              ]);
+              autoValidated++;
+            } catch (e) { console.error(`cron auto-validate mission ${m.id} error:`, e); }
+          }
         }
-      } catch {}
+      } catch (e) { console.error("cron auto-validation error:", e); }
 
       return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, missions: missions.length });
     } catch (e) {
@@ -296,7 +303,6 @@ ${(() => {
         const meta = u.user_metadata || {};
         if (meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date) {
           if (new Date(meta.subscription_end_date) < now) {
-            // Merge pour ne pas écraser les métadonnées existantes
             await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
               method: "PUT", headers,
               body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
@@ -305,7 +311,7 @@ ${(() => {
           }
         }
       }));
-    } catch {}
+    } catch (e) { console.error("cron downgrade error:", e); }
 
     console.log(`cron-reset-monthly: missions reset, ${downgrades} abonnements expirés downgradés`);
     return res.status(200).json({ success: true, downgrades });
