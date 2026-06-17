@@ -7,6 +7,38 @@ import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divi
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
+function ContractModal({ title, contractText, onSign, onClose }) {
+  const [accepted, setAccepted] = useState(false);
+  return (
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:560, width:"100%", maxHeight:"80vh", display:"flex", flexDirection:"column" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexShrink:0 }}>
+          <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
+          <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:16 }}>
+          <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
+        </div>
+        <div style={{ flexShrink:0 }}>
+          <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", marginBottom:16 }}>
+            <div onClick={()=>setAccepted(v=>!v)} style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepted ? C.violet : "#334"}`, background: accepted ? C.violet : "transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s", marginTop:1 }}>
+              {accepted && <span style={{ color:"#fff", fontSize:13, fontWeight:800, lineHeight:1 }}>✓</span>}
+            </div>
+            <span style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>J'ai lu et j'accepte les termes de ce contrat</span>
+          </label>
+          <button
+            disabled={!accepted}
+            onClick={()=>{ if(accepted) onSign(new Date().toISOString()); }}
+            style={{ width:"100%", padding:"14px", borderRadius:12, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:15, cursor:accepted?"pointer":"not-allowed", opacity:accepted?1:0.4, fontFamily:"inherit", transition:"opacity 0.15s" }}>
+            Signer électroniquement →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // INITIAL_WALLET default (pre-existing)
 const INITIAL_WALLET = { balance: 0, missionsThisMonth: 0 };
 
@@ -2025,6 +2057,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [dateError, setDateError] = useState(false);
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
+  const [showClientContract, setShowClientContract] = useState(false);
+  const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
@@ -2075,6 +2109,35 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {/* Contrat électronique client */}
+      {showClientContract && (
+        <ContractModal
+          title="Contrat de prestation de services"
+          contractText={`CONTRAT DE PRESTATION DE SERVICES
+
+Parties :
+ALANE (plateforme) · ${p.name || ""} (prestataire) · (client)
+
+Mission :
+Métier : ${p.jobTitle || p.role || ""}
+Date : ${isUrgent ? urgentStartDate : startDate || ""}
+Durée : ${hours} heure(s)
+Tarif horaire : ${tarifHoraire.toFixed(2)} €/h
+
+En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la mission telle que définie ci-dessus.
+
+Le paiement sera libéré au prestataire après validation mutuelle de la mission.
+
+Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
+          onSign={(ts) => {
+            setClientContractSignedAt(ts);
+            setShowClientContract(false);
+            setStep(2);
+          }}
+          onClose={() => setShowClientContract(false)}
+        />
+      )}
+
       {/* Overlay CV */}
       {cvOpen && (() => {
         const cv = p.cv || CV_DATA[p.id];
@@ -2322,7 +2385,11 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
               if(missionType==="range" && !endDate){ setDateError(true); return; }
             }
             setDateError(false);
-            setStep(2);
+            if (!clientContractSignedAt) {
+              setShowClientContract(true);
+            } else {
+              setStep(2);
+            }
           }} style={{ fontSize:15, padding:"16px" }}>Continuer →</Btn>
         </>}
 

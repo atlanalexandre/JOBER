@@ -6,6 +6,38 @@ import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, 
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 
+function ContractModal({ title, contractText, onSign, onClose }) {
+  const [accepted, setAccepted] = useState(false);
+  return (
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:560, width:"100%", maxHeight:"80vh", display:"flex", flexDirection:"column" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexShrink:0 }}>
+          <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
+          <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:16 }}>
+          <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
+        </div>
+        <div style={{ flexShrink:0 }}>
+          <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", marginBottom:16 }}>
+            <div onClick={()=>setAccepted(v=>!v)} style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepted ? C.violet : "#334"}`, background: accepted ? C.violet : "transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s", marginTop:1 }}>
+              {accepted && <span style={{ color:"#fff", fontSize:13, fontWeight:800, lineHeight:1 }}>✓</span>}
+            </div>
+            <span style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>J'ai lu et j'accepte les termes de ce contrat</span>
+          </label>
+          <button
+            disabled={!accepted}
+            onClick={()=>{ if(accepted) onSign(new Date().toISOString()); }}
+            style={{ width:"100%", padding:"14px", borderRadius:12, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:15, cursor:accepted?"pointer":"not-allowed", opacity:accepted?1:0.4, fontFamily:"inherit", transition:"opacity 0.15s" }}>
+            Signer électroniquement →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2-lat1)*Math.PI/180;
@@ -1273,6 +1305,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [confirmRefuse, setConfirmRefuse] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [expandedDetail, setExpandedDetail] = useState(null);
+  const [contractMission, setContractMission] = useState(null);
+  const [contractSignedAt, setContractSignedAt] = useState({});
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1369,6 +1403,33 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   return (
     <div>
+      {/* Contrat électronique prestataire */}
+      {contractMission && (
+        <ContractModal
+          title="Attestation de réalisation de mission"
+          contractText={`ATTESTATION DE RÉALISATION DE MISSION
+
+Mission :
+Métier : ${contractMission.metier || contractMission.sector || ""}
+Date : ${contractMission.date || ""}
+Durée : ${contractMission.hours || ""} heure(s)
+Tarif horaire : ${contractMission.tarif_horaire || ""} €/h
+
+En signant cette attestation, je certifie avoir réalisé la mission conformément aux termes convenus et autorise le déblocage du paiement.
+
+Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
+          onSign={async (ts) => {
+            setContractSignedAt(prev => ({ ...prev, [contractMission.id]: ts }));
+            const mission = contractMission;
+            setContractMission(null);
+            const { data:{ session } } = await supabase.auth.getSession();
+            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:mission.id, contrat_presta_signe_at: ts }) });
+            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===mission.id?{...x,validation_prestataire:true}:x)); }
+          }}
+          onClose={() => setContractMission(null)}
+        />
+      )}
+
       {/* Missions en attente de confirmation */}
       {pendingMissions.length > 0 && (
         <div style={{ marginBottom:18 }}>
@@ -1478,9 +1539,13 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                   )}
                   {isPast && !m.validation_prestataire && (
                     <button onClick={async()=>{
-                      const { data:{ session } } = await supabase.auth.getSession();
-                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id }) });
-                      if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                      if (!contractSignedAt[m.id]) {
+                        setContractMission(m);
+                      } else {
+                        const { data:{ session } } = await supabase.auth.getSession();
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
+                        if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                      }
                     }}
                       style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                       ✅ Valider la mission

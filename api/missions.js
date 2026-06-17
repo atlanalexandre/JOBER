@@ -409,7 +409,7 @@ export default async function handler(req, res) {
     if (action === "validate_presta") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id } = payload;
+      const { mission_id, contrat_presta_signe_at } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
@@ -424,7 +424,7 @@ export default async function handler(req, res) {
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ validation_prestataire: true }),
+        body: JSON.stringify({ validation_prestataire: true, contrat_presta_signe_at: contrat_presta_signe_at || new Date().toISOString() }),
       });
       if (!patchRes.ok) return res.status(500).json({ error: "Erreur lors de la validation" });
 

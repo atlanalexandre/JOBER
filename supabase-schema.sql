@@ -397,3 +397,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS code_postal text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ville text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS siret text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS societe_nom text;
+
+-- Signatures électroniques
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_client_signe_at timestamptz;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_presta_signe_at timestamptz;
