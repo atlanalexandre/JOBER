@@ -107,6 +107,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (data?.user) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+        adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
+        siret: kbisNum.trim()||null,
       });
       await fetch("/api/support", {
         method: "POST",
@@ -716,6 +718,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     if (data?.user) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+        adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
+        societe_nom: societeNom||null, siret: kbisNum||null,
       });
       await fetch("/api/support", {
         method: "POST",
