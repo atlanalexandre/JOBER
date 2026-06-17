@@ -139,7 +139,51 @@ ${(() => {
         sent += sends.length;
       }));
 
-      return res.status(200).json({ success: true, reminders: sent, missions: missions.length });
+      // ── Rappels de validation pour missions passées non validées ──────
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let validationSent = 0;
+      try {
+        const pastRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville`,
+          { headers }
+        );
+        const pastMissions = await pastRes.json();
+        if (Array.isArray(pastMissions) && pastMissions.length && RESEND_API_KEY) {
+          await Promise.all(pastMissions.map(async (m) => {
+            const clientEmail  = userMap[m.client_id]?.email;
+            const prestaEmail  = userMap[m.prestataire_id]?.email;
+            const clientName   = nameMap[m.client_id]  || "Client";
+            const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
+            const appUrl       = process.env.APP_URL || "https://www.alane.fr";
+            const missionLabel = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.date}`;
+            const validHtml = (toName) => `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
+<tr><td style="background:linear-gradient(135deg,#F0B429,#E09B10);padding:28px;text-align:center;">
+<div style="font-size:40px;margin-bottom:10px;">✅</div>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Validez votre mission</h1>
+<p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0;">${missionLabel}</p>
+</td></tr>
+<tr><td style="padding:28px;">
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(toName)}</strong>,</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">La date de votre mission est passée. Pensez à <strong style="color:#F0B429;">valider la mission</strong> depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
+<div style="text-align:center;margin-top:20px;">
+<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider ma mission →</a>
+</div>
+</td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+</table></td></tr></table></body></html>`;
+            const vSends = [];
+            if (clientEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(clientName) }) }).catch(()=>{}));
+            if (prestaEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(prestaName) }) }).catch(()=>{}));
+            await Promise.all(vSends);
+            validationSent += vSends.length;
+          }));
+        }
+      } catch {}
+
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, missions: missions.length });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });

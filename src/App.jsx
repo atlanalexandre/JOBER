@@ -276,7 +276,7 @@ function RoleScreen({ onSelect }) {
               { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la mission. Toute contestation doit être soumise sous 48h en contactant le support." },
               { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
-              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : legal@alane.fr" },
+              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : direction@alane.fr" },
             ].map((s,i)=>(
               <div key={i} style={{ marginBottom:14 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
