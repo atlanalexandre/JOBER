@@ -560,10 +560,15 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
   );
 }
 
+// ── Informations légales ALANE (à renseigner) ────────────────────
+const ALANE_SIRET   = ""; // ex: "123 456 789 00010"
+const ALANE_ADRESSE = ""; // ex: "12 rue du Commerce, 75015 Paris"
+const ALANE_FORME   = "SAS";
+
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
 export function InvoiceScreen({ mission, onBack }) {
-  const [clientInfo,  setClientInfo]  = useState({ name:"", company:"" });
-  const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"" });
+  const [clientInfo,  setClientInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
+  const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [loading,     setLoading]     = useState(true);
 
   const missionDate = mission?.created_at ? new Date(mission.created_at) : new Date();
@@ -571,7 +576,8 @@ export function InvoiceScreen({ mission, onBack }) {
     ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${mission.id.slice(-6).toUpperCase()}`
     : "ALA-000000";
   const emittedDate  = missionDate.toLocaleDateString("fr-FR");
-  const ht           = Number(mission?.montant_total || (Number(mission?.tarif_horaire||0) * Number(mission?.hours||0))) || 0;
+  const htCalc      = Math.round(Number(mission?.hours||0) * Number(mission?.tarif_horaire||0) * 100) / 100;
+  const ht          = htCalc > 0 ? htCalc : (Number(mission?.montant_total||0));
   const htFormatted  = ht.toFixed(2).replace(".",",");
 
   useEffect(() => {
@@ -580,19 +586,26 @@ export function InvoiceScreen({ mission, onBack }) {
       try {
         const [{ data: cu }, { data: cp }] = await Promise.all([
           supabase.auth.getUser(),
-          supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.client_id).single(),
+          supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", mission.client_id).single(),
         ]);
         const clientMeta = cu?.user?.user_metadata || {};
         setClientInfo({
           name:    [cp?.prenom||clientMeta.prenom, cp?.nom||clientMeta.nom].filter(Boolean).join(" ") || cu?.user?.email || "—",
           company: cp?.societe_nom || clientMeta.societe_nom || "",
+          siret:   cp?.siret || clientMeta.kbis || "",
+          adresse: cp?.adresse || clientMeta.adresse || "",
+          cp:      cp?.code_postal || clientMeta.code_postal || "",
+          ville:   cp?.ville || clientMeta.ville || "",
         });
         if (mission.prestataire_id) {
-          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom").eq("id", mission.prestataire_id).single();
+          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", mission.prestataire_id).single();
           setPrestaInfo({
             name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
             company: pp?.societe_nom || "",
-            siret:   "",
+            siret:   pp?.siret || "",
+            adresse: pp?.adresse || "",
+            cp:      pp?.code_postal || "",
+            ville:   pp?.ville || "",
           });
         }
       } finally {
@@ -628,7 +641,9 @@ export function InvoiceScreen({ mission, onBack }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
                 <div>
                   <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display, letterSpacing:1 }}>ALANE</div>
-                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande · {ALANE_FORME}</div>
+                  {ALANE_ADRESSE && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>{ALANE_ADRESSE}</div>}
+                  {ALANE_SIRET   && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>SIRET : {ALANE_SIRET}</div>}
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>FACTURE</div>
@@ -641,12 +656,17 @@ export function InvoiceScreen({ mission, onBack }) {
                   <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Client</div>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{clientInfo.name}</div>
                   {clientInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{clientInfo.company}</div>}
+                  {clientInfo.siret   && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {clientInfo.siret}</div>}
+                  {clientInfo.adresse && <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>{clientInfo.adresse}</div>}
+                  {(clientInfo.cp || clientInfo.ville) && <div style={{ fontSize:11, color:C.textSub }}>{[clientInfo.cp, clientInfo.ville].filter(Boolean).join(" ")}</div>}
                 </div>
                 <div>
                   <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Prestataire</div>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{prestaInfo.name}</div>
                   {prestaInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{prestaInfo.company}</div>}
-                  {prestaInfo.siret && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {prestaInfo.siret}</div>}
+                  {prestaInfo.siret   && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {prestaInfo.siret}</div>}
+                  {prestaInfo.adresse && <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>{prestaInfo.adresse}</div>}
+                  {(prestaInfo.cp || prestaInfo.ville) && <div style={{ fontSize:11, color:C.textSub }}>{[prestaInfo.cp, prestaInfo.ville].filter(Boolean).join(" ")}</div>}
                 </div>
               </div>
             </div>
@@ -664,9 +684,11 @@ export function InvoiceScreen({ mission, onBack }) {
                   {mission.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {mission.sector}</div>}
                   {mission.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {mission.date}</div>}
                   {mission.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {mission.ville}</div>}
-                  <div style={{ color:C.textSub, fontSize:11 }}>
-                    {mission.hours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
-                  </div>
+                  {htCalc > 0 && (
+                    <div style={{ color:C.textSub, fontSize:11 }}>
+                      {mission.hours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
+                    </div>
+                  )}
                 </div>
                 <div style={{ fontWeight:700, color:C.text, fontSize:14, minWidth:70, textAlign:"right" }}>{htFormatted} €</div>
               </div>

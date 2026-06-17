@@ -390,3 +390,10 @@ UPDATE missions SET validation_prestataire = true WHERE status = 'assigned' AND 
 
 -- Valeurs possibles du champ status (pour référence)
 -- open | pending_acceptance | assigned | needs_replacement | completed | closed | rejected | refused | cancelled
+
+-- Migration : champs facturation sur profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS adresse text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS code_postal text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ville text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS siret text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS societe_nom text;
