@@ -4488,6 +4488,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
         setSelected(s => s ? { ...s, status: "completed" } : s);
         setCompletedResult(data);
+      } else {
+        alert(data.error || "Erreur lors de la validation. Réessayez.");
       }
     } catch { alert("Erreur lors de la validation. Réessayez."); }
     setCompleting(false);
