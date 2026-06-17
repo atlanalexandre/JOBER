@@ -1745,8 +1745,7 @@ export function SearchFiltersScreen({ onNavigate }) {
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>toggleFavSearch(p.id)} style={{ padding:"9px 14px", borderRadius:12, border:`2px solid ${favs.includes(p.id)?C.accent:C.grayLight}`, background:favs.includes(p.id)?`${C.accent}15`:C.white, cursor:"pointer", fontSize:16 }}>{favs.includes(p.id)?"❤️":"🤍"}</button>
-              <button onClick={()=>onNavigate("chat",p)} style={{ flex:1, padding:"9px", borderRadius:12, border:`2px solid ${C.violet}`, background:"transparent", color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>💬 Message</button>
-              {p.available && <button onClick={()=>onNavigate("profile",p)} style={{ flex:2, padding:"9px", borderRadius:12, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Réserver →</button>}
+              {p.available && <button onClick={()=>onNavigate("profile",p)} style={{ flex:1, padding:"9px", borderRadius:12, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Réserver →</button>}
             </div>
           </div>
         ))}
