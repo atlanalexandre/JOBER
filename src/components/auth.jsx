@@ -878,21 +878,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 3 && <>
-          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10 }}>
-            <span style={{ fontSize:18 }}>🏦</span>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
-            </div>
-          </div>
-          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
-          <div style={{ position:"relative" }}>
-            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
-            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
-          </div>
-          <PasswordStrength password={password} />
-          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:16 }}>
             <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
               {cgpsAccepted && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
             </div>
@@ -903,6 +889,20 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
             </span>
           </div>
+          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
+          <div style={{ position:"relative" }}>
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
+          </div>
+          <PasswordStrength password={password} />
+          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, marginTop:8, display:"flex", gap:10 }}>
+            <span style={{ fontSize:18 }}>🏦</span>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
+            </div>
+          </div>
+          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
         </>}
       </div>
 
