@@ -295,12 +295,13 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
       if (mission.client_id !== client_id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+      if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de mission" });
 
       const hours        = mission.hours || 0;
       const tarifHoraire = mission.tarif_horaire || 0;
@@ -402,6 +403,43 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
+    }
+
+    if (action === "validate_presta") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector,validation_prestataire`, { headers });
+      const missions = await mr.json();
+      const mission = Array.isArray(missions) && missions[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+      if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette mission" });
+
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ validation_prestataire: true }),
+      });
+      if (!patchRes.ok) return res.status(500).json({ error: "Erreur lors de la validation" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.client_id,
+          type: "mission",
+          title: "Mission à valider ✅",
+          body: `Le prestataire a confirmé la fin de mission "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
+          read: false,
+        }),
+      }).catch(() => {});
+
+      return res.status(200).json({ success: true });
     }
 
     if (action === "reject") {

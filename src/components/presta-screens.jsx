@@ -1448,8 +1448,15 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
+            const isPast = m.date && new Date(m.date) < new Date(new Date().toDateString());
             return (
-              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${C.success}44` }}>
+              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
+                {isPast && (
+                  <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", gap:8, alignItems:"center" }}>
+                    <span style={{ fontSize:16 }}>⚠️</span>
+                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Mission passée — pensez à valider !</span>
+                  </div>
+                )}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
@@ -1460,14 +1467,26 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                     {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
                   </div>
-                  <span style={{ background:`${C.success}20`, border:`1px solid ${C.success}44`, borderRadius:20, padding:"3px 9px", color:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>En cours</span>
+                  <span style={{ background:`${isPast?C.accentGold:C.success}20`, border:`1px solid ${isPast?C.accentGold:C.success}44`, borderRadius:20, padding:"3px 9px", color:isPast?C.accentGold:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>{isPast?"À valider":"En cours"}</span>
                 </div>
-                {m.client_id && (
-                  <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
-                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    💬 Contacter le client
-                  </button>
-                )}
+                <div style={{ display:"flex", gap:8 }}>
+                  {m.client_id && (
+                    <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
+                      style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      💬 Contacter le client
+                    </button>
+                  )}
+                  {isPast && (
+                    <button onClick={async()=>{
+                      const { data:{ session } } = await supabase.auth.getSession();
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id }) });
+                      if(r.ok) { setAssignedMissions(prev=>prev.filter(x=>x.id!==m.id)); }
+                    }}
+                      style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      ✅ Valider la mission
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

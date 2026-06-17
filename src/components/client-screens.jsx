@@ -3062,7 +3062,7 @@ export function FAQScreen({ onBack, role }) {
     { q:"Qu'est-ce qui me protège contre une requalification ?", a:"Trois éléments vous protègent :\n\n① Le contrat ALANE — signé électroniquement, il établit explicitement l'absence de lien de subordination et cite les critères jurisprudentiels de la Cour de Cassation.\n\n② La multi-clientèle — nos prestataires travaillent pour plusieurs entreprises via ALANE, ce qui exclut tout état de dépendance économique exclusive, critère clé dans les décisions de requalification.\n\n③ La vérification des documents — ALANE s'assure que chaque prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance).\n\nBon réflexe complémentaire : évitez de faire appel au même prestataire de manière répétée et exclusive sur le long terme." },
     { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque mission. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la mission, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de missions." },
     { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la mission annulée." },
-    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler jusqu'à 24h avant le début de la mission sans frais. En dessous de ce délai, des frais d'annulation peuvent s'appliquer selon les CGU." },
+    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler une mission depuis votre espace client. Les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission." },
     { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la mission." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ];
@@ -4184,7 +4184,7 @@ export function LegalScreen({ type, onBack }) {
         { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
         { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
         { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la mission et couvrent les coûts de traitement et de la plateforme." },
-        { title:"5. Annulations", text:"Politique d’annulation : gratuit au-delà de 48h, 50% entre 24-48h, 100% en dessous de 24h. Ces frais s’appliquent tant aux clients qu’aux prestataires." },
+        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la mission." },
         { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
       ]
@@ -4193,27 +4193,41 @@ export function LegalScreen({ type, onBack }) {
       title:"Politique de confidentialité",
       icon:"🔒",
       sections:[
-        { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : legal@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
+        { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : direction@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
         { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des missions." },
         { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de mission, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
         { title:"4. Durée de conservation", text:"Comptes actifs : données conservées pendant toute la durée de la relation contractuelle. Comptes supprimés : données effacées sous 30 jours, à l’exception des données comptables obligatoires conservées 10 ans (art. L123-22 Code de commerce). Logs de connexion : 12 mois. Données de paiement : conservées par Stripe selon leurs propres politiques." },
         { title:"5. Destinataires des données", text:"Vos données peuvent être partagées avec : Supabase Inc. (USA) — hébergement base de données, couvert par les Clauses Contractuelles Types CE ; Stripe Inc. (USA) — traitement des paiements, certifié PCI-DSS, couvert par les CCT ; Resend Inc. (USA) — envoi d’emails transactionnels, couvert par les CCT. Aucune vente de données à des tiers à des fins commerciales." },
         { title:"6. Transferts hors Union Européenne", text:"Certains sous-traitants sont établis aux États-Unis (Supabase, Stripe, Resend). Ces transferts sont encadrés par les Clauses Contractuelles Types approuvées par la Commission Européenne, offrant un niveau de protection adéquat à vos données." },
-        { title:"7. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : droit d’accès à vos données (art. 15), droit de rectification (art. 16), droit à l’effacement (art. 17) — exercez-le via Paramètres → Supprimer mon compte, droit à la limitation du traitement (art. 18), droit à la portabilité (art. 20), droit d’opposition (art. 21). Pour exercer ces droits : legal@alane.fr. Réponse sous 30 jours. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr)." },
+        { title:"7. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : droit d’accès à vos données (art. 15), droit de rectification (art. 16), droit à l’effacement (art. 17) — exercez-le via Paramètres → Supprimer mon compte, droit à la limitation du traitement (art. 18), droit à la portabilité (art. 20), droit d’opposition (art. 21). Pour exercer ces droits : direction@alane.fr. Réponse sous 30 jours. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr)." },
         { title:"8. Cookies et traceurs", text:"ALANE utilise uniquement des cookies strictement nécessaires au fonctionnement du service : cookie de session Supabase (authentification, durée de session) et préférences locales (thème, notifications). Ces cookies ne nécessitent pas votre consentement car ils sont indispensables à la fourniture du service demandé (art. 82 loi Informatique et Libertés). Aucun cookie publicitaire ou de tracking tiers n’est utilisé." },
         { title:"9. Sécurité", text:"Vos données sont protégées par : chiffrement TLS en transit, chiffrement au repos (Supabase), authentification par token signé HMAC pour l’administration, séparation stricte des clés API (clé service uniquement côté serveur). Les mots de passe ne sont jamais stockés en clair (gestion déléguée à Supabase Auth)." },
         { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en bas de cette page. Dernière mise à jour : janvier 2026." },
+      ]
+    },
+    cgps: {
+      title:"Conditions Générales de Prestation de Services",
+      icon:"📋",
+      sections:[
+        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
+        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
+        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
+        { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
+        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+        { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
+        { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
       ]
     },
     mentions_legales: {
       title:"Mentions légales",
       icon:"⚖️",
       sections:[
-        { title:"Éditeur du site", text:"Raison sociale : [À REMPLIR — ex. ALANE SAS]\nForme juridique : [À REMPLIR — ex. SAS]\nCapital social : [À REMPLIR — ex. 1 000 €]\nSIRET : [À REMPLIR]\nSiège social : [À REMPLIR — ex. 75001 Paris, France]\nEmail : legal@alane.fr\nDirecteur de la publication : [À REMPLIR]" },
+        { title:"Éditeur du site", text:"Raison sociale : [À REMPLIR — ex. ALANE SAS]\nForme juridique : [À REMPLIR — ex. SAS]\nCapital social : [À REMPLIR — ex. 1 000 €]\nSIRET : [À REMPLIR]\nSiège social : [À REMPLIR — ex. 75001 Paris, France]\nEmail : direction@alane.fr\nDirecteur de la publication : [À REMPLIR]" },
         { title:"Hébergeur", text:"Vercel Inc.\n340 Pine Street, Suite 200\nSan Francisco, CA 94104, États-Unis\nhttps://vercel.com\n\nBase de données : Supabase Inc.\n970 Toa Payoh N, Singapour\nhttps://supabase.com" },
         { title:"Propriété intellectuelle", text:"L'ensemble du contenu de la plateforme ALANE (textes, graphismes, logotype, code source) est protégé par le droit d'auteur. Toute reproduction, même partielle, est interdite sans autorisation préalable écrite de l'éditeur." },
         { title:"Médiation de la consommation", text:"Conformément aux articles L.612-1 et suivants du Code de la consommation, vous avez le droit de recourir à un médiateur de la consommation en vue de la résolution amiable d'un litige.\n\nMédiateur désigné : [À REMPLIR — ex. Médiateur du e-commerce de la FEVAD]\nAdresse : [À REMPLIR]\nSite : [À REMPLIR]\n\nVous pouvez également recourir à la plateforme européenne de règlement en ligne des litiges : https://ec.europa.eu/consumers/odr" },
-        { title:"Données personnelles", text:"Conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés, vous disposez d'un droit d'accès, de rectification et de suppression de vos données personnelles. Pour exercer ces droits : legal@alane.fr\n\nResponsable de traitement : [À REMPLIR]\nDélégué à la Protection des Données : [À REMPLIR — si applicable]" },
+        { title:"Données personnelles", text:"Conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés, vous disposez d'un droit d'accès, de rectification et de suppression de vos données personnelles. Pour exercer ces droits : direction@alane.fr\n\nResponsable de traitement : [À REMPLIR]\nDélégué à la Protection des Données : [À REMPLIR — si applicable]" },
       ]
     }
   };
@@ -4236,7 +4250,7 @@ export function LegalScreen({ type, onBack }) {
           </div>
         ))}
         <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}22`, borderRadius:r, padding:"14px 16px", marginTop:8, fontSize:12, color:C.textSub, textAlign:"center", lineHeight:1.6 }}>
-          Pour toute question : <strong style={{ color:C.violet }}>legal@alane.fr</strong>
+          Pour toute question : <strong style={{ color:C.violet }}>direction@alane.fr</strong>
         </div>
       </div>
     </div>

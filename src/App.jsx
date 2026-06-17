@@ -276,7 +276,7 @@ function RoleScreen({ onSelect }) {
               { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la mission. Toute contestation doit être soumise sous 48h en contactant le support." },
               { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
-              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : legal@alane.fr" },
+              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : direction@alane.fr" },
             ].map((s,i)=>(
               <div key={i} style={{ marginBottom:14 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
@@ -1334,7 +1334,7 @@ export default function App() {
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
-      {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role?"dashboard":"splash")} />}
+      {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ sessionStorage.removeItem("bo_token"); setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
@@ -1401,11 +1401,13 @@ export default function App() {
               { icon:"📄", label:"Mes factures",      sub:"Voir mes missions et justificatifs", action:"mission_history" },
               { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
+              { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
               { icon:"⚙️", label:"Paramètres",         sub:"Compte, sécurité, paiement",      action:"settings"      },
             ].map((item,i) => (
               <div key={i} onClick={()=>{
                 if(item.action==="legal_cgu") navigate("legal","cgu");
+                else if(item.action==="legal_cgps") navigate("legal","cgps");
                 else if(item.action==="legal_privacy") navigate("legal","privacy");
                 else if(item.action==="settings") navigate("settings");
                 else if(item.action) navigate(item.action);
@@ -1455,6 +1457,7 @@ export default function App() {
               <OnlineStatusWidget online={onlineStatus} onToggle={()=>setOnlineStatus(s=>!s)} />
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={()=>navigate("legal","cgu")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📋 CGU</button>
+                <button onClick={()=>navigate("legal","cgps")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📝 CGPS</button>
                 <button onClick={()=>navigate("legal","privacy")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>🔒 Confidentialité</button>
               </div>
             </div>

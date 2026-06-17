@@ -575,7 +575,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { title:"2. Statut prestataire & indépendance", text:"Vous intervenez en qualité d'auto-entrepreneur indépendant (art. L8221-6 Code du travail). Aucun lien de subordination n'existe entre ALANE et vous. ALANE agit exclusivement comme intermédiaire de mise en relation et n'est pas une entreprise de mise à disposition de personnel au sens de l'art. L8241-1 CT. Pour préserver votre statut d'indépendant, il est fortement recommandé de ne pas réaliser plus de 75 % de votre chiffre d'affaires via ALANE (principe de multi-clientèle). Vous êtes seul responsable du respect de vos obligations légales, fiscales et sociales." },
               { title:"3. Missions", text:"Les missions sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont directement réglés entre les parties selon les conditions convenues. ALANE prélève une commission de mise en relation selon les conditions de votre abonnement." },
-              { title:"5. Annulations", text:"Politique d'annulation : gratuit au-delà de 48h, 50% entre 24-48h, 100% en dessous de 24h. En cas de litige, ALANE propose une médiation. Tout remboursement est traité manuellement par l'équipe ALANE." },
+              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
               { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. Vous êtes couvert par votre propre assurance RC Pro (obligatoire)." },
               { title:"7. Plafond de chiffre d'affaires", text:"Le statut auto-entrepreneur est soumis à un plafond annuel de chiffre d'affaires (77 700 € pour les prestations de services en 2024, seuil révisé chaque année). Au-delà de ce seuil, vous perdez automatiquement le bénéfice du régime micro-entreprise. ALANE ne peut être tenu responsable du dépassement de ce plafond. Il vous appartient de suivre vos revenus et de consulter l'URSSAF ou un expert-comptable en cas de doute." },
               { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
@@ -878,21 +878,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 3 && <>
-          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10 }}>
-            <span style={{ fontSize:18 }}>🏦</span>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
-            </div>
-          </div>
-          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
-          <div style={{ position:"relative" }}>
-            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
-            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
-          </div>
-          <PasswordStrength password={password} />
-          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+          <div onClick={()=>setCgpsAccepted(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:16 }}>
             <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${cgpsAccepted?accentColor:C.grayLight}`, background:cgpsAccepted?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
               {cgpsAccepted && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
             </div>
@@ -903,6 +889,20 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
             </span>
           </div>
+          <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
+          <div style={{ position:"relative" }}>
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
+          </div>
+          <PasswordStrength password={password} />
+          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, marginTop:8, display:"flex", gap:10 }}>
+            <span style={{ fontSize:18 }}>🏦</span>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
+            </div>
+          </div>
+          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
         </>}
       </div>
 
@@ -926,7 +926,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
               { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
-              { title:"5. Annulations", text:"Gratuit au-delà de 48h avant la mission, 50% de frais entre 24h et 48h, 100% de frais en dessous de 24h. En cas de litige, ALANE propose une médiation. Tout remboursement est traité manuellement par l'équipe ALANE." },
+              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
               { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
               { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
               { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
