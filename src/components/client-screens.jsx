@@ -4205,6 +4205,20 @@ export function LegalScreen({ type, onBack }) {
         { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en bas de cette page. Dernière mise à jour : janvier 2026." },
       ]
     },
+    cgps: {
+      title:"Conditions Générales de Prestation de Services",
+      icon:"📋",
+      sections:[
+        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
+        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
+        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
+        { title:"5. Annulations", text:"Gratuit au-delà de 48h avant la mission, 50% de frais entre 24h et 48h, 100% de frais en dessous de 24h. En cas de litige, ALANE propose une médiation. Tout remboursement est traité manuellement par l'équipe ALANE." },
+        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+        { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
+        { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
+      ]
+    },
     mentions_legales: {
       title:"Mentions légales",
       icon:"⚖️",

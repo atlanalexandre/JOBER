@@ -183,7 +183,88 @@ ${(() => {
         }
       } catch {}
 
-      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, missions: missions.length });
+      // ── Auto-validation après 24h si le prestataire a validé ──────────
+      let autoValidated = 0;
+      try {
+        const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        const avRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector`,
+          { headers }
+        );
+        const autoMissions = await avRes.json();
+        if (Array.isArray(autoMissions) && autoMissions.length) {
+          // Charger les taux cashback depuis platform_settings
+          let CASHBACK_TIERS = [
+            { min:0, max:2, rate:0.005 }, { min:3, max:5, rate:0.0075 },
+            { min:6, max:9, rate:0.01 }, { min:10, max:999, rate:0.015 },
+          ];
+          try {
+            const cbRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
+            const cbData = await cbRes.json();
+            if (Array.isArray(cbData) && Array.isArray(cbData[0]?.value)) CASHBACK_TIERS = cbData[0].value;
+          } catch {}
+
+          // Charger les profils clients en batch
+          const clientIds = [...new Set(autoMissions.map(m => m.client_id).filter(Boolean))];
+          const clientProfiles = {};
+          if (clientIds.length) {
+            const cpRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${clientIds.join(",")})&select=id,cashback_balance,missions_completed_month`, { headers });
+            const cpData = await cpRes.json();
+            (Array.isArray(cpData) ? cpData : []).forEach(p => { clientProfiles[p.id] = p; });
+          }
+
+          await Promise.all(autoMissions.map(async (m) => {
+            const hours = m.hours || 0;
+            const tarif = m.tarif_horaire || 0;
+            const montantTotal = Math.round(hours * tarif * 100) / 100;
+            const profile = clientProfiles[m.client_id] || {};
+            const missionsThisMonth = (profile.missions_completed_month || 0) + 1;
+            const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+            const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+            const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
+            const mLabel = esc(m.metier || m.sector || "Mission");
+
+            await Promise.all([
+              // Marquer la mission complétée
+              fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ status: "completed", validation_client: true, montant_total: montantTotal }),
+              }).catch(() => {}),
+              // Mettre à jour le cashback client
+              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+              }).catch(() => {}),
+              // Notification client
+              fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Mission validée automatiquement ✅", body: `Votre mission "${mLabel}" a été validée automatiquement (délai 24h dépassé). ${cashbackEarned > 0 ? `Cashback crédité : +${cashbackEarned.toFixed(2)} €` : ""}`, read: false }),
+              }).catch(() => {}),
+              // Notification prestataire
+              m.prestataire_id && fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Mission validée ✅", body: `Votre mission "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
+              }).catch(() => {}),
+              // Email prestataire si dispo
+              (async () => {
+                if (!m.prestataire_id || !RESEND_API_KEY) return;
+                const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${m.prestataire_id}`, { headers }).catch(() => null);
+                if (!uRes?.ok) return;
+                const uData = await uRes.json().catch(() => null);
+                if (!uData?.email) return;
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ from: RESEND_FROM, to: [uData.email], subject: `Mission validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Mission validée automatiquement ✅</h2><p>Bonjour ${esc(uData.user_metadata?.prenom||"Prestataire")},</p><p>Le délai de validation de 24h étant écoulé, votre mission <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p></div>` }),
+                }).catch(() => {});
+              })(),
+            ]);
+            autoValidated++;
+          }));
+        }
+      } catch {}
+
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, missions: missions.length });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });

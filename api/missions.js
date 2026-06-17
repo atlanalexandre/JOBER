@@ -404,6 +404,41 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
     }
 
+    if (action === "validate_presta") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector`, { headers });
+      const missions = await mr.json();
+      const mission = Array.isArray(missions) && missions[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ validation_prestataire: true }),
+      });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.client_id,
+          type: "mission",
+          title: "Mission à valider ✅",
+          body: `Le prestataire a confirmé la fin de mission "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
+          read: false,
+        }),
+      }).catch(() => {});
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "reject") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });

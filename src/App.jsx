@@ -1401,11 +1401,13 @@ export default function App() {
               { icon:"📄", label:"Mes factures",      sub:"Voir mes missions et justificatifs", action:"mission_history" },
               { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
+              { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
               { icon:"⚙️", label:"Paramètres",         sub:"Compte, sécurité, paiement",      action:"settings"      },
             ].map((item,i) => (
               <div key={i} onClick={()=>{
                 if(item.action==="legal_cgu") navigate("legal","cgu");
+                else if(item.action==="legal_cgps") navigate("legal","cgps");
                 else if(item.action==="legal_privacy") navigate("legal","privacy");
                 else if(item.action==="settings") navigate("settings");
                 else if(item.action) navigate(item.action);
