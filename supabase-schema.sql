@@ -383,3 +383,10 @@ DROP POLICY IF EXISTS "push_own" ON push_subscriptions;
 CREATE POLICY "push_own" ON push_subscriptions
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+-- Compatibilité ascendante : les missions déjà assignées avant l'introduction de validation_prestataire
+-- sont considérées comme déjà validées côté prestataire pour ne pas bloquer les clients
+UPDATE missions SET validation_prestataire = true WHERE status = 'assigned' AND validation_prestataire = false;
+
+-- Valeurs possibles du champ status (pour référence)
+-- open | pending_acceptance | assigned | needs_replacement | completed | closed | rejected | refused | cancelled

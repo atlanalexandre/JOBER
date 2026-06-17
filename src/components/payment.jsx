@@ -725,11 +725,6 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
   // Calcul réel du délai avant mission
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
   const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
-  const penalty = hoursLeft < 24 ? 100 : hoursLeft < 48 ? 50 : 0;
-  const penaltyAmount = (124 * penalty / 100).toFixed(0);
-
-  const policyColor = penalty === 0 ? C.success : penalty === 50 ? C.warning : C.danger;
-  const policyLabel = penalty === 0 ? "Annulation gratuite" : penalty === 50 ? "Frais d'annulation 50%" : "Annulation tardive — frais 100%";
 
   if(step==="replacement") return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -798,31 +793,13 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
       <div style={{ padding:"20px 18px" }}>
         {/* Politique d'annulation */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:14 }}>📋 Politique d'annulation ALANE</div>
-          {[
-            { label:"Plus de 48h avant", detail:"Annulation gratuite", color:C.success, icon:"✅" },
-            { label:"Entre 24h et 48h",  detail:"Frais de 50% du montant", color:C.warning, icon:"⚠️" },
-            { label:"Moins de 24h",      detail:"Frais de 100% du montant", color:C.danger, icon:"❌" },
-          ].map((r,i) => (
-            <div key={i} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px 0", borderBottom:i<2?`1px solid ${C.grayLight}`:"none" }}>
-              <span style={{ fontSize:20 }}>{r.icon}</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{r.label}</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>{r.detail}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Votre situation */}
-        <div style={{ background:`${policyColor}15`, border:`2px solid ${policyColor}44`, borderRadius:16, padding:"16px", marginBottom:16 }}>
-          <div style={{ fontWeight:800, color:policyColor, fontSize:14, marginBottom:4 }}>{policyLabel}</div>
-          <div style={{ color:C.textSub, fontSize:13 }}>Mission dans <strong style={{ color:C.text }}>{hoursLeft}h</strong></div>
-          {penalty > 0 && (
-            <div style={{ marginTop:8, fontWeight:700, color:C.text, fontSize:14 }}>
-              Frais d'annulation : <span style={{ color:C.danger }}>{penaltyAmount} €</span>
-            </div>
-          )}
+          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:10 }}>📋 Politique d'annulation ALANE</div>
+          <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7 }}>
+            L'annulation est <strong style={{ color:C.success }}>sans retenue</strong> sur le montant de la mission. Seuls les <strong style={{ color:C.text }}>frais de service</strong> engagés restent dus.
+          </div>
+          <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.textSub }}>
+            ✅ Aucun frais d'annulation sur le montant de la mission
+          </div>
         </div>
 
         {/* Raison */}
