@@ -903,7 +903,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <span style={{ fontSize:18 }}>🏦</span>
             <div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Non obligatoire à l'inscription, mais nécessaire pour confirmer vos commandes.</p>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Utilisé uniquement pour les remboursements cashback. Le paiement des missions se fait par carte via Stripe.</p>
             </div>
           </div>
           <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
