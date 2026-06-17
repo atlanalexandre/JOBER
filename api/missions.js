@@ -224,9 +224,10 @@ export default async function handler(req, res) {
 
       // Vérifier si la mission a déjà un paiement Stripe
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,client_id`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
+      if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
 
       if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
         try {
@@ -333,7 +334,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "completed", montant_total: montantTotal }),
+        body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_client: true }),
       });
 
       // Mettre à jour le cashback du client
@@ -489,7 +490,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: newStatus, prestataire_id: null }),
+        body: JSON.stringify({ status: newStatus, prestataire_id: null, validation_prestataire: false }),
       });
 
       // Rejeter la candidature du prestataire désisté
@@ -668,7 +669,7 @@ export default async function handler(req, res) {
 
               // Email Resend (quand app fermée)
               const RESEND_KEY_B = process.env.RESEND_API_KEY;
-              const RESEND_FROM_B = process.env.RESEND_FROM || "JOBER <no-reply@jober.fr>";
+              const RESEND_FROM_B = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
               if (RESEND_KEY_B && ud.email) {
                 const missionLabel = mission?.metier || sector || "Mission";
                 fetch("https://api.resend.com/emails", {
@@ -773,7 +774,7 @@ export default async function handler(req, res) {
 
       // Email Resend (quand app fermée)
       const RESEND_KEY = process.env.RESEND_API_KEY;
-      const RESEND_FROM = process.env.RESEND_FROM || "JOBER <no-reply@jober.fr>";
+      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
       if (RESEND_KEY && recipientEmail) {
         try {
           const er = await fetch("https://api.resend.com/emails", {
@@ -1003,7 +1004,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];

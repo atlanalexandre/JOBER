@@ -4240,7 +4240,7 @@ export function LegalScreen({ type, onBack }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:28, marginBottom:8 }}>{doc.icon}</div>
         <h2 style={{ color:C.white, fontSize:19, fontWeight:800, margin:0, lineHeight:1.3 }}>{doc.title}</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : janvier 2025</p>
+        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : juin 2026</p>
       </div>
       <div style={{ padding:"20px 18px" }}>
         {doc.sections.map((s,i)=>(
@@ -4574,15 +4574,24 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
           )}
           {selected.status === "assigned" && !completedResult && (
-            <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
-              <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-                En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+            selected.validation_prestataire ? (
+              <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
+                <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                  Le prestataire a confirmé la fin de mission. En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+                </div>
+                <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                  {completing ? "Validation…" : "✅ Valider la mission"}
+                </button>
               </div>
-              <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
-                {completing ? "Validation…" : "✅ Valider la mission"}
-              </button>
-            </div>
+            ) : (
+              <div style={{ marginTop:20, background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:14, padding:"16px" }}>
+                <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
+                <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
+                  Le prestataire n'a pas encore confirmé la fin de mission. Vous pourrez valider dès qu'il aura confirmé de son côté. La mission est automatiquement validée sous 24h si le prestataire a confirmé.
+                </div>
+              </div>
+            )
           )}
 
           {completedResult && (

@@ -1448,7 +1448,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
-            const isPast = m.date && new Date(m.date) < new Date(new Date().toDateString());
+            const isPast = m.date && new Date(m.date) < new Date(new Date().setHours(0,0,0,0));
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
                 {isPast && (
@@ -1476,15 +1476,20 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
                       💬 Contacter le client
                     </button>
                   )}
-                  {isPast && (
+                  {isPast && !m.validation_prestataire && (
                     <button onClick={async()=>{
                       const { data:{ session } } = await supabase.auth.getSession();
                       const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id }) });
-                      if(r.ok) { setAssignedMissions(prev=>prev.filter(x=>x.id!==m.id)); }
+                      if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
                     }}
                       style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                       ✅ Valider la mission
                     </button>
+                  )}
+                  {isPast && m.validation_prestataire && (
+                    <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}20`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>
+                      ✅ Validé — en attente client
+                    </div>
                   )}
                 </div>
               </div>
