@@ -4995,7 +4995,7 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
       }
     } else if (n.type === "mission") {
-      onNavigate(isPresta ? "p_missions" : "dashboard");
+      onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
       onNavigate(isPresta ? "p_missions" : "search_filters");
     } else if (n.type === "cashback") {

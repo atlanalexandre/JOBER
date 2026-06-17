@@ -1509,7 +1509,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
-            const isPast = m.date && new Date(m.date) < new Date(new Date().setHours(0,0,0,0));
+            const isPast = m.date && m.date <= new Date().toISOString().slice(0, 10);
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
                 {isPast && (
