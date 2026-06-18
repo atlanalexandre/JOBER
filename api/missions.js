@@ -440,6 +440,68 @@ export default async function handler(req, res) {
         }),
       }).catch(() => {});
 
+      // Send email to client
+      fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.client_id}`, { headers })
+        .then(r => r.json())
+        .then(async clientUser => {
+          const clientEmail = clientUser?.email;
+          const clientName = clientUser?.user_metadata?.prenom || clientUser?.user_metadata?.nom || "";
+          if (!clientEmail) return;
+          const missionDetailsRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=metier,date,ville,montant_total,hours,tarif_horaire`,
+            { headers }
+          );
+          const missionDetails = await missionDetailsRes.json();
+          const md = Array.isArray(missionDetails) && missionDetails[0];
+          const metier = md?.metier || mission.metier || mission.sector || "Mission";
+          const missionDate = md?.date || "";
+          const ville = md?.ville || "";
+          const appUrl = process.env.APP_URL || "https://www.alane.fr";
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+            },
+            body: JSON.stringify({
+              from: process.env.RESEND_FROM || "onboarding@resend.dev",
+              to: clientEmail,
+              subject: `✅ Validez la fin de mission — ${metier} · ALANE`,
+              html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;background:#0A1628;color:#fff;padding:0;border-radius:20px;overflow:hidden">
+                <div style="background:linear-gradient(135deg,#1a2d5a,#0D1B3E);padding:32px 32px 24px">
+                  <div style="font-size:28px;margin-bottom:8px">✅</div>
+                  <h2 style="color:#A29BFE;margin:0 0 4px;font-size:20px;font-weight:800">Mission à valider</h2>
+                  <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px">ALANE · Plateforme de missions</p>
+                </div>
+                <div style="padding:28px 32px">
+                  ${clientName ? `<p style="margin:0 0 16px;color:rgba(255,255,255,0.85);font-size:15px">Bonjour ${clientName},</p>` : ""}
+                  <p style="margin:0 0 20px;color:rgba(255,255,255,0.85);font-size:15px;line-height:1.6">
+                    Le prestataire a confirmé la fin de la mission. Vous avez <strong style="color:#F0B429">24h pour valider</strong> depuis votre espace. Passé ce délai, la mission sera validée automatiquement.
+                  </p>
+                  <div style="background:#0D1B3E;border:1px solid rgba(162,155,254,0.15);border-radius:14px;padding:18px;margin-bottom:24px">
+                    <div style="font-size:12px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px">Détails de la mission</div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:16px">💼</span>
+                        <span style="color:#fff;font-weight:700;font-size:15px">${metier}</span>
+                      </div>
+                      ${missionDate ? `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px">📅</span><span style="color:rgba(255,255,255,0.7);font-size:13px">${missionDate}</span></div>` : ""}
+                      ${ville ? `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px">📍</span><span style="color:rgba(255,255,255,0.7);font-size:13px">${ville}</span></div>` : ""}
+                    </div>
+                  </div>
+                  <a href="${appUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#A29BFE,#6C63FF);color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;font-size:15px;letter-spacing:0.3px">
+                    Valider la mission →
+                  </a>
+                </div>
+                <div style="padding:16px 32px 24px;text-align:center">
+                  <p style="margin:0;color:rgba(255,255,255,0.25);font-size:11px">L'équipe ALANE</p>
+                </div>
+              </div>`,
+            }),
+          });
+        })
+        .catch(() => {});
+
       return res.status(200).json({ success: true });
     }
 

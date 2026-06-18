@@ -682,6 +682,7 @@ export function ClientTour({ onDone }) {
 export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
+  const [missionsToValidate, setMissionsToValidate] = useState([]);
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
@@ -749,6 +750,23 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     return ()=>{ mounted=false; };
   }, [providers]);
 
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (!user || !mounted) return;
+      supabase.from("missions")
+        .select("id,metier,sector,date,heure_debut,hours,validation_prestataire")
+        .eq("client_id", user.id)
+        .eq("status", "assigned")
+        .eq("validation_prestataire", true)
+        .then(({ data: ms }) => {
+          if (mounted && Array.isArray(ms)) setMissionsToValidate(ms);
+        });
+    });
+    return () => { mounted = false; };
+  }, []);
+
   const violetLite = "#A29BFE";
 
   const dismissTour = async () => {
@@ -766,12 +784,39 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       position:"relative",
       overflow:"hidden",
     }}>
+      {missionsToValidate.length > 0 && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, zIndex:8000,
+          background:"linear-gradient(135deg,#F0B429,#E09B10)",
+          padding:"14px 18px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+          boxShadow:"0 4px 24px rgba(240,180,41,0.4)"
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:0 }}>
+            <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
+            <div>
+              <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
+                Mission à valider ({missionsToValidate.length})
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
+                {missionsToValidate[0].metier || "Mission"} — le prestataire a confirmé la fin
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate("mission_history")}
+            style={{ background:"rgba(0,0,0,0.25)", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
+          >
+            Valider →
+          </button>
+        </div>
+      )}
       {showTour && <ClientTour onDone={dismissTour} />}
       {/* Halo violet ambiant */}
       <div style={{ position:"absolute", top:-120, right:-90, width:340, height:340, borderRadius:"50%", background:`radial-gradient(circle, ${C.violet}38 0%, transparent 65%)`, pointerEvents:"none" }} />
 
       {/* ── Header ── */}
-      <div style={{ padding:"54px 22px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"relative", zIndex:2 }}>
+      <div style={{ padding:missionsToValidate.length > 0 ? "98px 22px 8px" : "54px 22px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"relative", zIndex:2 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{
             width:38, height:38, borderRadius:12,
