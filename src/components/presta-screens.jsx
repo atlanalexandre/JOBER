@@ -1514,7 +1514,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
-            const isPast = missionEnd > 0 && missionEnd < Date.now();
+            const isPast = missionEnd > 0 && missionEnd < now;
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
                 {isPast && (
