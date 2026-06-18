@@ -138,7 +138,6 @@ ${(() => {
         }));
       }
 
-<<<<<<< HEAD
       // ── 2. Rappels de validation pour missions passées non validées ──
       const todayStr = new Date().toISOString().slice(0, 10);
       let validationSent = 0;

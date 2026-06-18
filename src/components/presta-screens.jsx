@@ -1509,7 +1509,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
-            const isPast = m.date && m.date <= new Date().toISOString().slice(0, 10);
+            const missionEnd = m.date
+              ? (m.heure_debut
+                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
+                  : new Date(m.date + 'T23:59:00').getTime())
+              : 0;
+            const isPast = missionEnd > 0 && missionEnd < Date.now();
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
                 {isPast && (

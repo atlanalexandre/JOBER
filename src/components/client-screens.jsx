@@ -2395,11 +2395,31 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
         {step===2 && <>
           <div style={{ background:"#0D1B3E", borderRadius:16, overflow:"hidden", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, display:"flex", alignItems:"center", justifyContent:"center", position:"relative" }}>
-              <div style={{ fontSize:44 }}>🗺️</div>
-              <div style={{ position:"absolute", bottom:10, right:10 }}><div style={{ background:C.violet, borderRadius:20, padding:"5px 10px", color:C.white, fontSize:11, fontWeight:700 }}>📍 Paris 75001</div></div>
+            {(adresse || ville) ? (
+              <iframe
+                title="Carte mission"
+                width="100%"
+                height="150"
+                style={{ border:"none", display:"block" }}
+                loading="lazy"
+                src={`https://www.google.com/maps?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(" "))}&output=embed`}
+              />
+            ) : (
+              <div style={{ background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ textAlign:"center", color:C.textMuted }}>
+                  <div style={{ fontSize:32, marginBottom:6 }}>📍</div>
+                  <div style={{ fontSize:12 }}>Entrez l'adresse ci-dessous</div>
+                </div>
+              </div>
+            )}
+            <div style={{ padding:14 }}>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div>
+              {(adresse || ville) && (
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`} target="_blank" rel="noreferrer" style={{ color:C.violet, fontSize:12, textDecoration:"none" }}>
+                  📍 {[adresse, ville, cp].filter(Boolean).join(", ")} →
+                </a>
+              )}
             </div>
-            <div style={{ padding:14 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div><div style={{ color:C.textSub, fontSize:12 }}>12 rue de Rivoli, 75001</div></div>
           </div>
           {savedAddress && (
             <button onClick={()=>{ setAdresse(savedAddress.adresse); setVille(savedAddress.ville); setCp(savedAddress.cp); setAdresseError(false); }} style={{ width:"100%", padding:"12px 16px", borderRadius:12, border:`1px solid ${C.indigo}55`, background:`${C.indigo}15`, color:C.text, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit", textAlign:"left", marginBottom:8, display:"flex", alignItems:"center", gap:10 }}>
@@ -2507,12 +2527,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
             {[
-              ["Plus de 48h avant","Remboursement intégral","#10D98F"],
-              ["Entre 24h et 48h","Remboursement à 50%","#F0B429"],
-              ["Moins de 24h avant","Non remboursable","#F25E5E"],
-            ].map(([delai,regle,col])=>(
-              <div key={delai} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.05)` }}>
-                <span style={{ color:C.textSub, fontSize:11 }}>{delai}</span>
+              ["Annulation prestataire", "Remboursement intégral", "#10D98F"],
+              ["Annulation client < 24h", "Frais de service retenus uniquement", "#F0B429"],
+              ["Annulation client ≥ 24h avant", "Remboursement intégral", "#10D98F"],
+            ].map(([cas, regle, col]) => (
+              <div key={cas} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.05)` }}>
+                <span style={{ color:C.textSub, fontSize:11 }}>{cas}</span>
                 <span style={{ color:col, fontWeight:700, fontSize:11 }}>{regle}</span>
               </div>
             ))}
@@ -2624,11 +2644,31 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
       <div style={{ padding:"22px 18px" }}>
         {/* Map */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r+4, overflow:"hidden", marginBottom:16 }}>
-          <div style={{ height:180, background:`linear-gradient(135deg, #0A1628, #162547)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", position:"relative" }}>
-            <div style={{ fontSize:44 }}>🗺️</div>
+          <div style={{ height:180, position:"relative", overflow:"hidden" }}>
+            {gpsPosition ? (
+              <iframe
+                title="Position prestataire"
+                width="100%"
+                height="180"
+                style={{ border:"none", display:"block" }}
+                loading="lazy"
+                src={`https://www.google.com/maps?q=${gpsPosition.lat},${gpsPosition.lng}&z=15&output=embed`}
+              />
+            ) : (
+              <div style={{ height:180, background:`linear-gradient(135deg, #0A1628, #162547)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ fontSize:36, marginBottom:6 }}>📍</div>
+                <div style={{ color:C.textMuted, fontSize:12 }}>Localisation en attente…</div>
+              </div>
+            )}
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
-              📍 {p.name} {step===0 && eta>0 ? `· ~${eta} min` : step===0 ? "· Arrive" : "· Sur place"}
+              {p.name} {step===0 && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
             </div>
+            {gpsPosition && (
+              <a href={`https://www.google.com/maps?q=${gpsPosition.lat},${gpsPosition.lng}`} target="_blank" rel="noreferrer"
+                style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.6)", borderRadius:8, padding:"4px 8px", color:"#fff", fontSize:11, textDecoration:"none", fontWeight:600 }}>
+                Ouvrir →
+              </a>
+            )}
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
             <div style={{ width:40, height:40, borderRadius:12, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
