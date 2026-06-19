@@ -4701,6 +4701,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [cancelling, setCancelling] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [accessToken, setAccessToken] = useState(null);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4708,6 +4709,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
+      if (token) setAccessToken(token);
       const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
@@ -4977,9 +4979,27 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
 
           {(selected.status === "completed" || selected.status === "closed") && (
-            <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", marginTop:12, padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              📄 Télécharger la facture PDF
-            </button>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
+              <button
+                onClick={async () => {
+                  let tok = accessToken;
+                  if (!tok) {
+                    const { data: sd } = await supabase.auth.getSession();
+                    tok = sd?.session?.access_token;
+                    if (tok) setAccessToken(tok);
+                  }
+                  if (tok) {
+                    window.open(`/api/invoice?mission_id=${encodeURIComponent(selected.id)}&token=${encodeURIComponent(tok)}`, "_blank");
+                  }
+                }}
+                style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}
+              >
+                📄 Télécharger la facture
+              </button>
+              <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", padding:"11px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                Voir la facture dans l'app
+              </button>
+            </div>
           )}
 
           {selected.status === "open" && (
