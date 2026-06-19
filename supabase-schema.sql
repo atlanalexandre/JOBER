@@ -317,6 +317,10 @@ CREATE POLICY "favorites_own" ON favorites
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referred_by     text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS referral_count  integer DEFAULT 0;
 
+-- ── Récurrence missions ──────────────────────────────────────────────
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS recurrence        text DEFAULT NULL; -- 'weekly' | 'biweekly' | 'monthly' | null
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS parent_mission_id uuid REFERENCES missions(id) ON DELETE SET NULL;
+
 -- ── Colonnes manquantes missions ─────────────────────────────────────
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS titre                text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancelled_at         timestamptz;

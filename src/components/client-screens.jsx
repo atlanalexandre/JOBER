@@ -5135,6 +5135,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:700 }}>{statusLabel[m.status]||m.status}</span>
+                  {m.recurrence && <div style={{ fontSize:10, color:C.violet, fontWeight:700, marginTop:2 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":m.recurrence==="monthly"?"Mensuel":""}</div>}
                   <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>›</div>
                 </div>
               </div>
@@ -5953,6 +5954,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
   const [ville, setVille]         = useState("");
+  const [recurrence, setRecurrence] = useState(null);
   const [sending, setSending]     = useState(false);
   const isValid = date && adresse && ville;
   const { providers:allProviders } = useProviders();
@@ -5960,7 +5962,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const mission = { sector:s, metier, date, hours, description, adresse, ville };
+    const mission = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -5969,6 +5971,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
           heure_debut: startTime || null,
+          recurrence: recurrence || null,
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -6035,6 +6038,23 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {[4,6,8,10,12].map(h=>(
               <button key={h} onClick={()=>setHours(h)} style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:hours===h?C.violet:C.grayLight, color:hours===h?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{h}h</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Récurrence <span style={{ fontWeight:400 }}>(optionnel)</span></label>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {[
+              { value: null, label: "Unique" },
+              { value: "weekly", label: "Hebdomadaire" },
+              { value: "biweekly", label: "Bi-mensuelle" },
+              { value: "monthly", label: "Mensuelle" },
+            ].map(opt => (
+              <button key={String(opt.value)} onClick={() => setRecurrence(opt.value)}
+                style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:recurrence===opt.value?C.violet:C.grayLight, color:recurrence===opt.value?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>
