@@ -1276,16 +1276,33 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
 }
 
 export function UpgradeNudge({ onNavigate }) {
-  const [plan,setPlan]=useState(null);
-  useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{
-      setPlan(data?.user?.user_metadata?.plan_abonnement||"free");
+  const [plan, setPlan] = useState(null);
+  const [trialExhausted, setTrialExhausted] = useState(false);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setPlan(data?.user?.user_metadata?.plan_abonnement || "free");
+      const uid = data?.user?.id;
+      if (uid) {
+        supabase.from("profiles").select("trial_exhausted").eq("id", uid).single()
+          .then(({ data: p }) => { if (p?.trial_exhausted) setTrialExhausted(true); });
+      }
     });
-  },[]);
-  if(plan === null) return null;
-  if(plan !== "free") return null;
+  }, []);
+  if (plan === null) return null;
+  if (plan !== "free") return null;
+  if (trialExhausted) {
+    return (
+      <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,rgba(242,94,94,0.12),rgba(240,180,41,0.08))`, border:`1px solid rgba(242,94,94,0.4)`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div>
+          <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Missions gratuites épuisées</div>
+          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux missions.</div>
+        </div>
+        <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
+      </div>
+    );
+  }
   return (
-    <div onClick={()=>onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+    <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>⚡ Passez Premium</div>
         <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
