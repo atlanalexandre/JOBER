@@ -1321,7 +1321,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       });
       const data = await r.json();
       setPendingMissions(Array.isArray(data.pending)  ? data.pending  : []);
-      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned : []);
+      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : []);
     } catch {}
   };
 
@@ -1345,6 +1345,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(loadPending, 30000);
     return () => clearInterval(t);
   }, []);
 

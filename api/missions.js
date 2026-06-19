@@ -1249,7 +1249,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
