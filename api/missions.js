@@ -116,11 +116,21 @@ export default async function handler(req, res) {
 
       const enriched = await Promise.all(missions.map(async (m) => {
         const cr = await fetch(
-          `${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&select=id,prestataire_id,status,created_at`,
+          `${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&select=id,prestataire_id,status,created_at,message`,
           { headers }
         );
         const candidatures = await cr.json();
-        return { ...m, candidatures: Array.isArray(candidatures) ? candidatures : [] };
+        const rawCandidatures = Array.isArray(candidatures) ? candidatures : [];
+        const enrichedCandidatures = await Promise.all(rawCandidatures.map(async (c) => {
+          const pr = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${c.prestataire_id}&select=prenom,nom`,
+            { headers }
+          );
+          const profiles = await pr.json();
+          const profile = Array.isArray(profiles) && profiles[0];
+          return { ...c, prenom: profile?.prenom || "", nom: profile?.nom || "" };
+        }));
+        return { ...m, candidatures: enrichedCandidatures };
       }));
       return res.status(200).json(enriched);
     }
