@@ -4568,6 +4568,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [prestaName, setPrestaName] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4714,6 +4716,26 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     setCancelling(false);
   };
 
+  const handleStopInProgress = async () => {
+    if (!selected) return;
+    setStopping(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
+      setSelected(null);
+      setShowStopConfirm(false);
+    } catch(e) { alert(e.message || "Erreur lors de l'arrêt. Réessayez."); }
+    setStopping(false);
+  };
+
   const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché", cancelled:"Annulée" };
   const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
   const filtered = tab === "all" ? missions : tab === "open" ? missions.filter(m => m.status === "open" || m.status === "needs_replacement") : missions.filter(m => m.status === tab);
@@ -4835,37 +4857,93 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </button>
           )}
 
-          {(selected.status === "open" || selected.status === "assigned" || selected.status === "pending_acceptance") && (
-            <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              ✕ Annuler la mission
-            </button>
-          )}
+          {(() => {
+            const mStart = selected.date ? new Date(`${selected.date}T${selected.heure_debut || "00:00"}`) : null;
+            const mEnd   = mStart ? new Date(mStart.getTime() + Number(selected.hours || 1) * 3600000) : null;
+            const now2   = Date.now();
+            const isStarted = mStart && mStart.getTime() < now2;
+            const isEnded   = mEnd   && mEnd.getTime()   < now2;
+            const elapsedH  = mStart && isStarted ? (now2 - mStart.getTime()) / 3600000 : 0;
+            const billedH   = Math.min(Math.ceil(elapsedH), Number(selected.hours || 1));
+            const prorata   = billedH * Number(selected.tarif_horaire || 0);
 
-          {showCancelConfirm && (
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-              <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
-                <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
-                <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la mission ?</div>
-                {selected.stripe_payment_intent ? (
-                  (() => {
-                    const missionDate = selected.date ? new Date(selected.date + "T" + (selected.heure_debut || "00:00")) : null;
-                    const hoursUntil = missionDate ? (missionDate - Date.now()) / 3600000 : Infinity;
-                    return hoursUntil >= 24
-                      ? <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à plus de 24h → <strong style={{ color:"#10D98F" }}>remboursement intégral</strong> (hors frais de service).</div>
-                      : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
-                  })()
-                ) : (
-                  <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette mission sera supprimée. Aucun paiement n'a été effectué.</div>
-                )}
-                <div style={{ display:"flex", gap:10 }}>
-                  <button onClick={()=>setShowCancelConfirm(false)} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
-                  <button onClick={handleCancel} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                    {cancelling ? "Annulation…" : "Confirmer"}
-                  </button>
+            return (<>
+              {/* Mission pas encore démarrée : annulation classique */}
+              {(selected.status === "open" || selected.status === "pending_acceptance" ||
+                (selected.status === "assigned" && !isStarted && !isEnded)) && (
+                <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ✕ Annuler la mission
+                </button>
+              )}
+
+              {/* Mission en cours : interrompre avec prorata */}
+              {selected.status === "assigned" && isStarted && !isEnded && (
+                <button onClick={()=>setShowStopConfirm(true)} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⏹ Interrompre la mission en cours
+                </button>
+              )}
+
+              {/* Modal annulation classique */}
+              {showCancelConfirm && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                  <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+                    <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la mission ?</div>
+                    {selected.stripe_payment_intent ? (
+                      (() => {
+                        const hoursUntil = mStart ? (mStart.getTime() - Date.now()) / 3600000 : Infinity;
+                        return hoursUntil >= 24
+                          ? <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à plus de 24h → <strong style={{ color:"#10D98F" }}>remboursement intégral</strong> (hors frais de service).</div>
+                          : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
+                      })()
+                    ) : (
+                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette mission sera supprimée. Aucun paiement n'a été effectué.</div>
+                    )}
+                    <div style={{ display:"flex", gap:10 }}>
+                      <button onClick={()=>setShowCancelConfirm(false)} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
+                      <button onClick={handleCancel} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                        {cancelling ? "Annulation…" : "Confirmer"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
+
+              {/* Modal arrêt en cours — prorata */}
+              {showStopConfirm && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                  <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+                    <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la mission ?</div>
+                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La mission est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
+                    <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"16px", marginBottom:18 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Durée effectuée</span>
+                        <span style={{ color:"#fff", fontWeight:700, fontSize:13 }}>{elapsedH.toFixed(1).replace(".",",")}h</span>
+                      </div>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Heures facturées</span>
+                        <span style={{ color:"#7C6FE0", fontWeight:800, fontSize:15 }}>{billedH}h <span style={{ fontSize:11, fontWeight:400 }}>(arrondi supérieur)</span></span>
+                      </div>
+                      <div style={{ display:"flex", justifyContent:"space-between", paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
+                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Montant prestataire</span>
+                        <span style={{ color:"#10D98F", fontWeight:800, fontSize:16 }}>{prorata.toFixed(2).replace(".",",")} € HT</span>
+                      </div>
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textAlign:"center", marginBottom:18, lineHeight:1.5 }}>
+                      Le prestataire sera averti par email et SMS. L'équipe ALANE traitera le remboursement partiel sous 48h.
+                    </div>
+                    <div style={{ display:"flex", gap:10 }}>
+                      <button onClick={()=>setShowStopConfirm(false)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Continuer</button>
+                      <button onClick={handleStopInProgress} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                        {stopping ? "Arrêt…" : "Interrompre"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>);
+          })()}
         </div>
       </div>
     );
