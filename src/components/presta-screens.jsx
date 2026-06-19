@@ -678,48 +678,9 @@ export function PrestaOnboarding({ onComplete, onBack }) {
 
 export function PrestaProfilTab({ onNavigate }) {
   const [meta, setMeta] = useState(null);
-  const [myRatings, setMyRatings] = useState([]);
-  const [replyOpen, setReplyOpen] = useState({});
-  const [replyText, setReplyText] = useState({});
-  const [replySaving, setReplySaving] = useState({});
-  const [replyError, setReplyError] = useState({});
-
   useEffect(()=>{
-    supabase.auth.getUser().then(async ({data})=>{
-      if(!data?.user) return;
-      setMeta(data.user.user_metadata||{});
-      const { data: rData } = await supabase
-        .from("ratings")
-        .select("id,rating,comment,prestataire_response,created_at")
-        .eq("reviewee_provider_id", data.user.id)
-        .order("created_at", { ascending: false });
-      setMyRatings(Array.isArray(rData) ? rData : []);
-    });
+    supabase.auth.getUser().then(({data})=>{ if(data?.user) setMeta(data.user.user_metadata||{}); });
   },[]);
-
-  const handleReply = async (ratingId) => {
-    const text = (replyText[ratingId] || "").trim();
-    if (!text) return;
-    setReplySaving(s => ({ ...s, [ratingId]: true }));
-    setReplyError(s => ({ ...s, [ratingId]: null }));
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ action: "respond_to_rating", rating_id: ratingId, response: text }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erreur");
-      setMyRatings(prev => prev.map(r => r.id === ratingId ? { ...r, prestataire_response: text } : r));
-      setReplyOpen(s => ({ ...s, [ratingId]: false }));
-      setReplyText(s => ({ ...s, [ratingId]: "" }));
-    } catch(e) {
-      setReplyError(s => ({ ...s, [ratingId]: e.message }));
-    } finally {
-      setReplySaving(s => ({ ...s, [ratingId]: false }));
-    }
-  };
 
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta.secteur) : null;
   const color = secteurInfo?.color || C.accentGold;
@@ -782,48 +743,6 @@ export function PrestaProfilTab({ onNavigate }) {
           <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:C.accentGold, border:"none", borderRadius:10, padding:"9px 16px", color:"#000", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Compléter mon profil →</button>
         </div>
       )}
-
-      {/* Avis reçus */}
-      <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
-        <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:12 }}>⭐ Avis reçus ({myRatings.length})</div>
-        {myRatings.length === 0 ? (
-          <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Aucun avis pour le moment.</p>
-        ) : myRatings.map((rv) => (
-          <div key={rv.id} style={{ paddingBottom:12, marginBottom:12, borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-              <div style={{ display:"flex", gap:2 }}>{[1,2,3,4,5].map(s=><span key={s} style={{ fontSize:12, color: s<=rv.rating?C.accentGold:"rgba(255,255,255,0.2)" }}>★</span>)}</div>
-              <span style={{ color:C.textMuted, fontSize:11 }}>{rv.created_at ? new Date(rv.created_at).toLocaleDateString("fr-FR",{month:"short",year:"numeric"}) : ""}</span>
-            </div>
-            {rv.comment && <p style={{ color:C.textSub, fontSize:13, margin:"0 0 8px", lineHeight:1.6, fontStyle:"italic" }}>"{rv.comment}"</p>}
-            {rv.prestataire_response ? (
-              <div style={{ background:"rgba(162,155,254,0.08)", border:`1px solid rgba(162,155,254,0.25)`, borderRadius:10, padding:"9px 12px", marginTop:6 }}>
-                <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginBottom:4 }}>Votre réponse :</div>
-                <p style={{ color:C.textSub, fontSize:12, margin:0, lineHeight:1.6 }}>{rv.prestataire_response}</p>
-                <button onClick={()=>{ setReplyOpen(s=>({...s,[rv.id]:true})); setReplyText(s=>({...s,[rv.id]:rv.prestataire_response})); }} style={{ background:"transparent", border:"none", color:C.violet, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"4px 0 0", fontWeight:600 }}>✏️ Modifier</button>
-              </div>
-            ) : (
-              !replyOpen[rv.id] && (
-                <button onClick={()=>setReplyOpen(s=>({...s,[rv.id]:true}))} style={{ background:`${C.violet}18`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 11px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginTop:4 }}>💬 Répondre</button>
-              )
-            )}
-            {replyOpen[rv.id] && (
-              <div style={{ marginTop:8 }}>
-                <textarea
-                  value={replyText[rv.id]||""}
-                  onChange={e=>setReplyText(s=>({...s,[rv.id]:e.target.value}))}
-                  placeholder="Votre réponse publique à cet avis…"
-                  style={{ width:"100%", padding:"9px 11px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:12, fontFamily:"inherit", resize:"vertical", height:70, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.5 }}
-                />
-                {replyError[rv.id] && <div style={{ color:"#F25E5E", fontSize:11, marginTop:4 }}>{replyError[rv.id]}</div>}
-                <div style={{ display:"flex", gap:8, marginTop:6 }}>
-                  <button onClick={()=>handleReply(rv.id)} disabled={replySaving[rv.id]} style={{ background:C.violet, border:"none", borderRadius:8, padding:"7px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:replySaving[rv.id]?0.6:1 }}>{replySaving[rv.id]?"Envoi…":"Publier"}</button>
-                  <button onClick={()=>{ setReplyOpen(s=>({...s,[rv.id]:false})); setReplyError(s=>({...s,[rv.id]:null})); }} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 14px", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
 
       {/* Liens fixes */}
       {[

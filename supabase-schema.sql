@@ -406,9 +406,6 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_presta_signe_at timestampt
 -- Ne se remet pas à zéro lors du reset mensuel du cron
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_exhausted boolean DEFAULT false;
 
--- ── Réponse prestataire aux avis clients ──────────────────────
-ALTER TABLE ratings ADD COLUMN IF NOT EXISTS prestataire_response text;
-
 -- ── TABLE account_blacklist ──────────────────────────────────
 -- Mémorise les identifiants des comptes prestataires supprimés
 -- pour empêcher de recréer un compte et retrouver les missions gratuites

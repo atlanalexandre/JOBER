@@ -2082,7 +2082,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
       supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",p.id).single()
         .then(({data:fd})=>setFav(!!fd));
     });
-    supabase.from("ratings").select("rating,comment,created_at,reviewer_id,prestataire_response").eq("reviewee_provider_id",p.id).order("created_at",{ascending:false}).limit(10)
+    supabase.from("ratings").select("rating,comment,created_at,reviewer_id").eq("reviewee_provider_id",p.id).order("created_at",{ascending:false}).limit(10)
       .then(({data:rd})=>{ if(rd) setReviews(rd); });
   },[p.id]);
   const toggleFav=async()=>{
@@ -2168,13 +2168,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
                 <div style={{ display:"flex", gap:2 }}>{[1,2,3,4,5].map(s=><span key={s} style={{ fontSize:12, color: s<=rv.rating?C.accentGold:"rgba(255,255,255,0.2)" }}>★</span>)}</div>
                 <span style={{ color:C.textMuted, fontSize:11 }}>{rv.created_at ? new Date(rv.created_at).toLocaleDateString("fr-FR",{month:"short",year:"numeric"}) : ""}</span>
               </div>
-              {rv.comment && <p style={{ color:C.textSub, fontSize:13, margin:"0 0 6px", lineHeight:1.6, fontStyle:"italic" }}>"{rv.comment}"</p>}
-              {rv.prestataire_response && (
-                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.22)", borderRadius:10, padding:"8px 12px", marginTop:4 }}>
-                  <span style={{ color:"rgba(162,155,254,0.9)", fontSize:11, fontWeight:700 }}>💬 Réponse du prestataire : </span>
-                  <span style={{ color:"rgba(255,255,255,0.65)", fontSize:12, fontStyle:"italic" }}>"{rv.prestataire_response}"</span>
-                </div>
-              )}
+              {rv.comment && <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6, fontStyle:"italic" }}>"{rv.comment}"</p>}
             </div>
           ))}
         </div>

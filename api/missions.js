@@ -1527,31 +1527,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
-    if (action === "respond_to_rating") {
-      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { rating_id, response } = payload;
-      if (!rating_id || !isUuid(rating_id)) return res.status(400).json({ error: "rating_id requis" });
-      if (typeof response !== "string" || response.trim().length === 0) return res.status(400).json({ error: "response requis" });
-      if (response.trim().length > 1000) return res.status(400).json({ error: "Réponse trop longue (max 1000 caractères)" });
-
-      // Vérifier que l'avis existe et appartient bien à ce prestataire
-      const rRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${rating_id}&select=id,reviewee_provider_id`, { headers });
-      const rData = await rRes.json();
-      const rating = Array.isArray(rData) && rData[0];
-      if (!rating) return res.status(404).json({ error: "Avis introuvable" });
-      if (rating.reviewee_provider_id !== caller.id) return res.status(403).json({ error: "Non autorisé — cet avis ne vous concerne pas" });
-
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${rating_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_response: response.trim() }),
-      });
-      if (!patchRes.ok) return res.status(500).json({ error: "Erreur lors de l'enregistrement" });
-
-      return res.status(200).json({ success: true });
-    }
-
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("missions error:", e);
