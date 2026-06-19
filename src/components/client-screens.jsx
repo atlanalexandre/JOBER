@@ -2067,14 +2067,6 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         </div>
 
         {/* ── Actions ── */}
-        <div onClick={()=>onNavigate("chat",p)} style={{ background:`${C.violet}15`, border:`1.5px solid ${C.violet}44`, borderRadius:r, padding:"14px 18px", marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
-          <span style={{ fontSize:20 }}>💬</span>
-          <div style={{ flex:1 }}>
-            <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Contacter avant de réserver</div>
-            <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>Posez vos questions directement au prestataire</div>
-          </div>
-          <span style={{ color:C.violet, fontSize:16 }}>›</span>
-        </div>
         {p.available && <Btn full onClick={()=>onNavigate("booking",p)} style={{ fontSize:15, padding:"15px" }}>📅 Réserver maintenant</Btn>}
       </div>
     </div>
