@@ -37,6 +37,16 @@ html, body {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* ── Animations ── */
+@keyframes shimmer {
+  0%   { left: -100%; }
+  100% { left: 150%; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.85); }
+}
+
 /* ── Impression facture / contrat ── */
 @media print {
   .no-print { display: none !important; }
