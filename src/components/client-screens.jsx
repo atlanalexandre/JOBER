@@ -5474,6 +5474,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
   const [tags, setTags] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [ratingError, setRatingError] = useState(null);
   const [userId, setUserId] = useState(null);
 
   useEffect(() => {
@@ -5566,17 +5567,17 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
 
         <Btn full disabled={rating===0||saving} onClick={async()=>{
           setSaving(true);
+          setRatingError(null);
           try {
-            // Vérifier qu'une mission complétée existe entre le client et ce prestataire
             if(userId && p.id) {
               const { data: mCheck } = await supabase.from("missions")
                 .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
               if(!mCheck?.length) {
-                alert("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
+                setRatingError("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
                 setSaving(false); return;
               }
             }
-            await supabase.from("ratings").insert({
+            const { error: insertErr } = await supabase.from("ratings").insert({
               reviewer_id: userId,
               reviewee_provider_id: p.id,
               reviewee_name: p.name,
@@ -5585,13 +5586,19 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
               comment: comment.trim()||null,
               mission_id: missionId||null,
             });
-          } catch(_) {}
+            if (insertErr) throw insertErr;
+          } catch(e) {
+            setRatingError("Une erreur est survenue. Veuillez réessayer.");
+            setSaving(false);
+            return;
+          }
           setSaving(false);
           setSubmitted(true);
         }} style={{ fontSize:15, padding:"16px" }}>
           {saving ? "Envoi…" : "⭐ Publier mon avis"}
         </Btn>
-        {rating===0 && <p style={{ textAlign:"center", color:C.textMuted, fontSize:12, marginTop:8 }}>Sélectionnez une note pour continuer</p>}
+        {ratingError && <p style={{ textAlign:"center", color:"#FF6B6B", fontSize:13, marginTop:10, fontWeight:600 }}>{ratingError}</p>}
+        {rating===0 && !ratingError && <p style={{ textAlign:"center", color:C.textMuted, fontSize:12, marginTop:8 }}>Sélectionnez une note pour continuer</p>}
       </div>
     </div>
   );
@@ -5778,7 +5785,7 @@ export function AbonnementPrestaScreen({ onBack }) {
     const plan = effectivePlans.find(p=>p.id===planId);
     if(plan?.price === 0) {
       // Downgrade to free: direct update
-      await supabase.auth.updateUser({ data: { plan_abonnement: planId } });
+      await supabase.auth.updateUser({ data: { plan_abonnement: planId, subscription_end_date: null } });
       setCurrent(planId);
       return;
     }

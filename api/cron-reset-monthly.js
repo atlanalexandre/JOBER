@@ -143,11 +143,17 @@ ${(() => {
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut`,
           { headers }
         );
-        const pastMissions = await pastRes.json();
-        if (Array.isArray(pastMissions) && pastMissions.length && RESEND_API_KEY) {
+        const pastMissionsRaw = await pastRes.json();
+        const now = Date.now();
+        const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
+          if (!m.heure_debut) return true;
+          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(m.hours || 0) * 3600000);
+          return endMs < now;
+        }) : [];
+        if (pastMissions.length && RESEND_API_KEY) {
           await Promise.all(pastMissions.map(async (m) => {
             const clientEmail  = userMap[m.client_id]?.email;
             const prestaEmail  = userMap[m.prestataire_id]?.email;
