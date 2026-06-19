@@ -1061,6 +1061,189 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "cancel_in_progress") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire`,
+        { headers }
+      );
+      const mData = await mRes.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "assigned") return res.status(400).json({ error: "La mission n'est pas en cours" });
+
+      // Vérifier que la mission a bien démarré
+      const missionStart = mission.date
+        ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
+        : null;
+      if (!missionStart || missionStart > new Date()) {
+        return res.status(400).json({ error: "La mission n'a pas encore démarré" });
+      }
+
+      // Calcul du prorata arrondi à l'heure supérieure
+      const elapsedMs = Date.now() - missionStart.getTime();
+      const elapsedHours = elapsedMs / 3600000;
+      const totalHours = Number(mission.hours) || 1;
+      const roundedHours = Math.min(Math.ceil(elapsedHours * 10) / 10, totalHours);
+      // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h)
+      const billedHours = Math.min(Math.ceil(elapsedHours), totalHours);
+      const tarifHoraire = Number(mission.tarif_horaire) || 0;
+      const proratedAmount = billedHours * tarifHoraire;
+
+      // Mettre à jour la mission
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          status: "cancelled",
+          montant_total: proratedAmount,
+          cancellation_reason: `Interrompue en cours — prorata ${billedHours}h sur ${totalHours}h prévues`,
+        }),
+      });
+
+      // Récupérer infos prestataire (email + téléphone)
+      let prestaEmail = null;
+      let prestaPhone = null;
+      let prestaName = "";
+      if (mission.prestataire_id) {
+        try {
+          const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
+          const uData = await uRes.json();
+          prestaEmail = uData.email || null;
+          prestaPhone = uData.user_metadata?.telephone || null;
+          prestaName = [uData.user_metadata?.prenom, uData.user_metadata?.nom].filter(Boolean).join(" ") || "Prestataire";
+        } catch {}
+      }
+
+      // Récupérer email client pour le ticket
+      let clientEmail = null;
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+        const uData = await uRes.json();
+        clientEmail = uData.email || null;
+      } catch {}
+
+      const missionLabel = mission.metier || mission.sector || "Mission";
+
+      // Email au prestataire
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (RESEND_API_KEY && prestaEmail) {
+        fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: prestaEmail,
+            subject: `💶 Mission interrompue — vous serez payé(e) pour ${billedHours}h`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+              <h2 style="color:#050E20">Mission interrompue par le client</h2>
+              <p style="color:#444">Bonjour ${prestaName},</p>
+              <p style="color:#444">Le client a mis fin à la mission <strong>${missionLabel}</strong> avant son terme prévu.</p>
+              <div style="background:#fff;border-radius:10px;padding:16px;margin:20px 0;border-left:4px solid #7C6FE0">
+                <table style="width:100%;font-size:14px;color:#333">
+                  <tr><td style="padding:5px 0;color:#666">Durée prévue</td><td style="font-weight:700">${totalHours}h</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">Durée effectuée</td><td style="font-weight:700">${elapsedHours.toFixed(1).replace(".",",")}h</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h (arrondi heure supérieure)</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">Tarif horaire</td><td style="font-weight:700">${tarifHoraire.toFixed(2).replace(".",",")} € HT/h</td></tr>
+                  <tr><td style="padding:5px 0;color:#666;border-top:1px solid #eee;padding-top:10px">Montant dû</td><td style="font-weight:800;color:#10D98F;font-size:17px;border-top:1px solid #eee;padding-top:10px">${proratedAmount.toFixed(2).replace(".",",")} € HT</td></tr>
+                </table>
+              </div>
+              <p style="color:#444;font-size:13px">L'équipe ALANE traite votre règlement dans les meilleurs délais. Vous recevrez un virement sous 5 jours ouvrés.</p>
+              <p style="color:#888;font-size:12px;margin-top:24px">Équipe ALANE · <a href="https://alane.fr" style="color:#7C6FE0">alane.fr</a></p>
+            </div>`,
+          }),
+        }).catch(() => {});
+      }
+
+      // SMS au prestataire via Twilio (optionnel — nécessite TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)
+      const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
+      const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+      const TWILIO_FROM  = process.env.TWILIO_FROM;
+      if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && prestaPhone) {
+        const smsAuth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
+        fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+          method: "POST",
+          headers: { "Authorization": `Basic ${smsAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            From: TWILIO_FROM,
+            To: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
+            Body: `ALANE — Mission "${missionLabel}" interrompue par le client après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
+          }).toString(),
+        }).catch(() => {});
+      }
+
+      // Notification in-app au prestataire
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "mission",
+            title: "Mission interrompue — paiement prorata 💶",
+            body: `La mission "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT). L'équipe ALANE vous contacte sous 24h.`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+
+      // Ticket admin pour traiter le remboursement partiel
+      if (mission.stripe_payment_intent) {
+        await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            subject: `[ARRÊT EN COURS] Mission ${mission_id.slice(0,8)} — paiement partiel ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
+            message: `Mission interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial : ${mission.montant_total || "—"} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. Rembourser le client partiellement sur Stripe (montant initial - prorata prestataire - frais de service)\n2. Virer le prorata au prestataire`,
+            user_email: clientEmail,
+            user_id: caller.id,
+            status: "open",
+          }),
+        }).catch(() => {});
+
+        // Email admin
+        const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+        if (RESEND_API_KEY && ADMIN_EMAIL) {
+          fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: RESEND_FROM,
+              to: ADMIN_EMAIL,
+              subject: `[ACTION REQUISE] Arrêt en cours — ${missionLabel} — ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
+              html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+                <h2 style="color:#050E20">⚠️ Mission interrompue en cours d'exécution</h2>
+                <table style="width:100%;border-collapse:collapse;font-size:14px">
+                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${missionLabel}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-weight:700">${prestaName} — ${prestaEmail||"—"}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail||caller.id}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Durée prévue</td><td>${totalHours}h</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Durée effectuée</td><td>${elapsedHours.toFixed(2)}h</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${proratedAmount.toFixed(2)} € HT</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
+                </table>
+                <p style="margin-top:16px;font-size:13px;color:#666">
+                  Actions :<br>
+                  1. Rembourser le client partiellement sur <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">Stripe</a><br>
+                  2. Virer ${proratedAmount.toFixed(2)} € HT au prestataire
+                </p>
+              </div>`,
+            }),
+          }).catch(() => {});
+        }
+      }
+
+      return res.status(200).json({ success: true, billedHours, proratedAmount });
+    }
+
     if (action === "my_missions") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
