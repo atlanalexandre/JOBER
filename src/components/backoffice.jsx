@@ -131,6 +131,8 @@ export function BOComptes() {
   const [docs, setDocs]           = useState({});
   const [docsLoading, setDocsLoading] = useState({});
   const [docVerifying, setDocVerifying] = useState(null);
+  const [validatingAll, setValidatingAll] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const [editMode, setEditMode]   = useState(null);
   const [editVals, setEditVals]   = useState({});
   const [editSaving, setEditSaving] = useState(false);
@@ -169,6 +171,23 @@ export function BOComptes() {
     setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
     setDocVerifying(null);
   };
+
+  const handleVerifyAllDocs = async (profileId) => {
+    const unverified = (docs[profileId]||[]).filter(d => !d.verified);
+    if (!unverified.length) return;
+    setValidatingAll(profileId);
+    for (const doc of unverified) {
+      await boFetch({ action:"verify_doc", profileId, docId: doc.id });
+    }
+    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => ({ ...doc, verified:true })) }));
+    setValidatingAll(null);
+  };
+
+  useEffect(() => {
+    if (!expanded) return;
+    const p = profiles.find(x => x.id === expanded);
+    if (p?.role === "prestataire" && !docs[expanded]) loadDocs(expanded);
+  }, [expanded]);
 
   const load = async () => {
     setLoading(true);
@@ -306,6 +325,18 @@ export function BOComptes() {
               <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginTop:2 }}>
                 {p.role==="prestataire"?"👷 Prestataire":"🏢 Client"} · {new Date(p.created_at).toLocaleDateString("fr-FR")}
               </div>
+              {p.role==="prestataire" && docs[p.id] && (() => {
+                const total = docs[p.id].length;
+                const ok = docs[p.id].filter(d=>d.verified).length;
+                return total > 0 ? (
+                  <div style={{ marginTop:4, display:"flex", alignItems:"center", gap:6 }}>
+                    <div style={{ height:4, flex:1, maxWidth:80, background:"rgba(255,255,255,0.1)", borderRadius:4, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${(ok/total)*100}%`, background: ok===total ? C.success : C.accentGold, borderRadius:4, transition:"width 0.3s" }} />
+                    </div>
+                    <span style={{ fontSize:10, color: ok===total ? C.success : C.accentGold, fontWeight:700 }}>{ok}/{total} docs</span>
+                  </div>
+                ) : null;
+              })()}
             </div>
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
               <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
@@ -477,19 +508,74 @@ export function BOComptes() {
               {/* ── Documents uploadés (prestataires uniquement) ── */}
               {p.role === "prestataire" && (
                 <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-                  <button onClick={()=>{ if(!docs[p.id]) loadDocs(p.id); }} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:"transparent", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:8 }}>
-                    {docsLoading[p.id] ? "Chargement…" : docs[p.id] ? `📂 ${docs[p.id].length} document(s)` : "📂 Voir les documents"}
-                  </button>
-                  {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
-                  {docs[p.id] && docs[p.id].map(doc => (
-                    <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5 }}>
-                      <span style={{ fontSize:14 }}>{doc.type==="kbis"?"🏢":doc.type==="urssaf"?"🏛️":doc.type==="cni"?"🪪":doc.type==="rib"?"💳":doc.type==="rc_pro"||doc.type==="rcpro"?"🛡️":doc.type==="photo"?"📸":doc.type==="domicile"?"🏠":doc.type==="diplomes"?"🎓":"📄"}</span>
-                      <span style={{ flex:1, fontSize:11, color:"rgba(255,255,255,0.7)", textTransform:"capitalize" }}>{doc.type}</span>
-                      <span style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700 }}>{doc.verified ? "✓ Vérifié" : "En attente"}</span>
-                      {doc.signedUrl && <a href={doc.signedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:C.violet, fontWeight:700, textDecoration:"none", padding:"3px 8px", border:`1px solid ${C.violet}44`, borderRadius:6 }}>Voir</a>}
-                      {!doc.verified && <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"3px 8px", cursor:"pointer", fontFamily:"inherit", opacity:docVerifying===doc.id?0.5:1 }}>✓ Valider</button>}
+                  {/* En-tête section docs */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                    <span style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>
+                      📂 Documents
+                      {docs[p.id] && ` (${docs[p.id].filter(d=>d.verified).length}/${docs[p.id].length} validés)`}
+                    </span>
+                    <div style={{ display:"flex", gap:6 }}>
+                      {docsLoading[p.id] && <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>Chargement…</span>}
+                      {docs[p.id] && docs[p.id].some(d=>!d.verified) && (
+                        <button onClick={()=>handleVerifyAllDocs(p.id)} disabled={validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:validatingAll===p.id?0.5:1 }}>
+                          {validatingAll===p.id ? "Validation…" : "✓ Tout valider"}
+                        </button>
+                      )}
+                      {docs[p.id] && <button onClick={()=>{ setDocs(d=>({...d,[p.id]:undefined})); loadDocs(p.id); }} style={{ fontSize:10, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>🔄</button>}
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Checklist docs requis */}
+                  {docs[p.id] && (() => {
+                    const REQ = [
+                      { type:"photo", label:"Photo de profil", icon:"📸" },
+                      { type:"cni", label:"Pièce d'identité", icon:"🪪" },
+                      { type:"kbis", label:"KBIS / SIRET", icon:"🏢" },
+                      { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
+                      { type:"rib", label:"RIB / IBAN", icon:"💳" },
+                      { type:"domicile", label:"Justificatif domicile", icon:"🏠" },
+                    ];
+                    const uploaded = docs[p.id].map(d=>d.type);
+                    const missing = REQ.filter(r => !uploaded.includes(r.type));
+                    if (!missing.length) return null;
+                    return (
+                      <div style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:8, padding:"8px 12px", marginBottom:10 }}>
+                        <div style={{ color:C.accentGold, fontSize:10, fontWeight:700, marginBottom:6 }}>⚠️ Documents manquants</div>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          {missing.map(r => (
+                            <span key={r.type} style={{ fontSize:10, color:"rgba(255,255,255,0.5)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"2px 8px" }}>{r.icon} {r.label}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
+                  {docs[p.id] && docs[p.id].map(doc => {
+                    const DOC_ICON = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+                    const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+                    const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+                    return (
+                      <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}` }}>
+                        <span style={{ fontSize:16 }}>{DOC_ICON[doc.type]||"📄"}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
+                          <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
+                        </div>
+                        {doc.signedUrl && (
+                          <button onClick={()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })} style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit" }}>
+                            {isImg ? "🖼 Voir" : "📄 Voir"}
+                          </button>
+                        )}
+                        {!doc.verified && (
+                          <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                            {docVerifying===doc.id ? "…" : "✓ Valider"}
+                          </button>
+                        )}
+                        {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
+                      </div>
+                    );
+                  })}
                   {/* Bouton valider l'accès aux missions */}
                   <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                     {p.missions_enabled ? (
@@ -559,6 +645,28 @@ export function BOComptes() {
           </div>
         </div>
       ))}
+
+      {/* ── Modal prévisualisation document ── */}
+      {previewDoc && (
+        <div onClick={()=>setPreviewDoc(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:2000, padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:16, width:"100%", maxWidth:700, maxHeight:"90vh", display:"flex", flexDirection:"column", overflow:"hidden", border:"1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontWeight:700, color:"#fff", fontSize:14 }}>{previewDoc.icon} {previewDoc.label}</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <a href={previewDoc.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:C.violet, fontWeight:700, textDecoration:"none", padding:"5px 12px", border:`1px solid ${C.violet}44`, borderRadius:8 }}>↗ Ouvrir</a>
+                <button onClick={()=>setPreviewDoc(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:13, fontFamily:"inherit", fontWeight:700 }}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300 }}>
+              {previewDoc.isImg ? (
+                <img src={previewDoc.url} alt={previewDoc.label} style={{ maxWidth:"100%", maxHeight:"75vh", display:"block", margin:"0 auto", borderRadius:8 }} />
+              ) : (
+                <iframe src={previewDoc.url} title={previewDoc.label} style={{ width:"100%", height:"75vh", border:"none", borderRadius:8, background:"#fff" }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
