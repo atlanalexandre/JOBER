@@ -12,6 +12,24 @@ function verifyBoToken(token, secret) {
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
+function formatPhone(raw) {
+  if (!raw) return null;
+  const cleaned = String(raw).replace(/[\s.\-()]/g, "");
+  if (cleaned.startsWith("+33")) return cleaned;
+  if (cleaned.startsWith("0")) return "+33" + cleaned.slice(1);
+  return null;
+}
+
+function sendSms(apiKey, to, content) {
+  const phone = formatPhone(to);
+  if (!phone) return Promise.resolve();
+  return fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+    method: "POST",
+    headers: { "api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ sender: "ALANE", recipient: phone, content }),
+  }).catch(() => {});
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
@@ -36,8 +54,10 @@ export default async function handler(req, res) {
 
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+    const RESEND_API_KEY    = process.env.RESEND_API_KEY;
+    const RESEND_FROM       = process.env.RESEND_FROM || "onboarding@resend.dev";
+    const BREVO_API_KEY = process.env.BREVO_API_KEY;
+    const smsEnabled = !!BREVO_API_KEY;
 
     try {
       // Charger tous les utilisateurs et profils une seule fois — utilisé par toutes les sections
@@ -133,6 +153,13 @@ ${(() => {
               body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
             }).catch(()=>{})
           );
+          if (smsEnabled) {
+            const smsBody = `⏰ ALANE - Rappel : votre mission ${m.metier||"Mission"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne mission !`;
+            const clientPhone = userMap[m.client_id]?.meta?.telephone;
+            const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
+            if (clientPhone) sends.push(sendSms(BREVO_API_KEY, clientPhone, smsBody));
+            if (prestaPhone) sends.push(sendSms(BREVO_API_KEY, prestaPhone, smsBody));
+          }
           await Promise.all(sends);
           sent += sends.length;
         }));
@@ -182,6 +209,13 @@ ${(() => {
             const vSends = [];
             if (clientEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(clientName) }) }).catch(()=>{}));
             if (prestaEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(prestaName) }) }).catch(()=>{}));
+            if (smsEnabled) {
+              const smsCashback = `✅ ALANE - Pensez à valider votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre cashback.`;
+              const clientPhone = userMap[m.client_id]?.meta?.telephone;
+              const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
+              if (clientPhone) vSends.push(sendSms(BREVO_API_KEY, clientPhone, smsCashback));
+              if (prestaPhone) vSends.push(sendSms(BREVO_API_KEY, prestaPhone, smsCashback));
+            }
             await Promise.all(vSends);
             validationSent += vSends.length;
           }));

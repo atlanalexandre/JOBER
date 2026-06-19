@@ -1592,27 +1592,35 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  {isPast && !m.validation_prestataire && (
-                    <button disabled={validatingMission === m.id} onClick={async()=>{
-                      if (!contractSignedAt[m.id]) {
-                        setContractMission(m);
-                      } else {
-                        setValidatingMission(m.id);
-                        const { data:{ session } } = await supabase.auth.getSession();
-                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
-                        if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
-                        setValidatingMission(null);
-                      }
-                    }}
-                      style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:validatingMission===m.id?"rgba(240,180,41,0.5)":C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:validatingMission===m.id?"default":"pointer", fontFamily:"inherit" }}>
-                      {validatingMission === m.id ? "Validation…" : "✅ Valider la mission"}
+                <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {isPast && !m.validation_prestataire && (
+                      <button disabled={validatingMission === m.id} onClick={async()=>{
+                        if (!contractSignedAt[m.id]) {
+                          setContractMission(m);
+                        } else {
+                          setValidatingMission(m.id);
+                          const { data:{ session } } = await supabase.auth.getSession();
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
+                          if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                          setValidatingMission(null);
+                        }
+                      }}
+                        style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:validatingMission===m.id?"rgba(240,180,41,0.5)":C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:validatingMission===m.id?"default":"pointer", fontFamily:"inherit" }}>
+                        {validatingMission === m.id ? "Validation…" : "✅ Valider la mission"}
+                      </button>
+                    )}
+                    {isPast && m.validation_prestataire && (
+                      <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}20`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>
+                        ✅ Validé — en attente client
+                      </div>
+                    )}
+                  </div>
+                  {m.client_id && (
+                    <button onClick={()=>onNavigate("chat", { id: m.client_id, name: "Client", avatar: "👤", color: "#4FC3F7", clientId: m.client_id })}
+                      style={{ width:"100%", padding:"9px", borderRadius:10, border:"1px solid rgba(79,195,247,0.3)", background:"rgba(79,195,247,0.08)", color:"#4FC3F7", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      💬 Chat avec le client
                     </button>
-                  )}
-                  {isPast && m.validation_prestataire && (
-                    <div style={{ flex:1, padding:"9px", borderRadius:10, background:`${C.success}20`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, textAlign:"center" }}>
-                      ✅ Validé — en attente client
-                    </div>
                   )}
                 </div>
               </div>
