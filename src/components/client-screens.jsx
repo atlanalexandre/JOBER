@@ -682,6 +682,7 @@ export function ClientTour({ onDone }) {
 export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
+  const [missionsToValidate, setMissionsToValidate] = useState([]);
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
@@ -749,6 +750,23 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     return ()=>{ mounted=false; };
   }, [providers]);
 
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (!user || !mounted) return;
+      supabase.from("missions")
+        .select("id,metier,sector,date,heure_debut,hours,validation_prestataire")
+        .eq("client_id", user.id)
+        .eq("status", "assigned")
+        .eq("validation_prestataire", true)
+        .then(({ data: ms }) => {
+          if (mounted && Array.isArray(ms)) setMissionsToValidate(ms);
+        });
+    });
+    return () => { mounted = false; };
+  }, []);
+
   const violetLite = "#A29BFE";
 
   const dismissTour = async () => {
@@ -766,12 +784,39 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       position:"relative",
       overflow:"hidden",
     }}>
+      {missionsToValidate.length > 0 && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, zIndex:8000,
+          background:"linear-gradient(135deg,#F0B429,#E09B10)",
+          padding:"14px 18px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+          boxShadow:"0 4px 24px rgba(240,180,41,0.4)"
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:0 }}>
+            <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
+            <div>
+              <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
+                Mission à valider ({missionsToValidate.length})
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
+                {missionsToValidate[0].metier || "Mission"} — le prestataire a confirmé la fin
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate("mission_history")}
+            style={{ background:"rgba(0,0,0,0.25)", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
+          >
+            Valider →
+          </button>
+        </div>
+      )}
       {showTour && <ClientTour onDone={dismissTour} />}
       {/* Halo violet ambiant */}
       <div style={{ position:"absolute", top:-120, right:-90, width:340, height:340, borderRadius:"50%", background:`radial-gradient(circle, ${C.violet}38 0%, transparent 65%)`, pointerEvents:"none" }} />
 
       {/* ── Header ── */}
-      <div style={{ padding:"54px 22px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"relative", zIndex:2 }}>
+      <div style={{ padding:missionsToValidate.length > 0 ? "98px 22px 8px" : "54px 22px 8px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"relative", zIndex:2 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <div style={{
             width:38, height:38, borderRadius:12,
@@ -2396,14 +2441,24 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         {step===2 && <>
           <div style={{ background:"#0D1B3E", borderRadius:16, overflow:"hidden", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             {(adresse || ville) ? (
-              <iframe
-                title="Carte mission"
-                width="100%"
-                height="150"
-                style={{ border:"none", display:"block" }}
-                loading="lazy"
-                src={`https://www.google.com/maps?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(" "))}&output=embed`}
-              />
+              <a
+                href={`https://maps.apple.com/?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`}
+                target="_blank" rel="noreferrer"
+                style={{ display:"block", textDecoration:"none" }}
+              >
+                <img
+                  alt="Carte"
+                  width="100%"
+                  height="150"
+                  style={{ display:"block", objectFit:"cover" }}
+                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=${encodeURIComponent([ville||"Paris", "France"].join(", "))}&zoom=15&size=480x150&markers=${encodeURIComponent([adresse, ville].filter(Boolean).join(", "))},red`}
+                  onError={e => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }}
+                />
+                <div style={{ display:"none", background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }}>
+                  <div style={{ fontSize:28 }}>📍</div>
+                  <div style={{ color:C.textMuted, fontSize:12 }}>Appuyer pour ouvrir la carte</div>
+                </div>
+              </a>
             ) : (
               <div style={{ background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <div style={{ textAlign:"center", color:C.textMuted }}>
@@ -2412,11 +2467,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 </div>
               </div>
             )}
-            <div style={{ padding:14 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div>
+            <div style={{ padding:14, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+              <div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div>
+                {(adresse || ville) && <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{[adresse, ville, cp].filter(Boolean).join(", ")}</div>}
+              </div>
               {(adresse || ville) && (
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`} target="_blank" rel="noreferrer" style={{ color:C.violet, fontSize:12, textDecoration:"none" }}>
-                  📍 {[adresse, ville, cp].filter(Boolean).join(", ")} →
+                <a href={`https://maps.apple.com/?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`} target="_blank" rel="noreferrer"
+                  style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:10, padding:"7px 12px", color:C.violet, fontWeight:700, fontSize:12, textDecoration:"none", whiteSpace:"nowrap", flexShrink:0 }}>
+                  🗺 Ouvrir →
                 </a>
               )}
             </div>
@@ -2644,16 +2703,22 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
       <div style={{ padding:"22px 18px" }}>
         {/* Map */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r+4, overflow:"hidden", marginBottom:16 }}>
-          <div style={{ height:180, position:"relative", overflow:"hidden" }}>
+          <div style={{ position:"relative", overflow:"hidden" }}>
             {gpsPosition ? (
-              <iframe
-                title="Position prestataire"
-                width="100%"
-                height="180"
-                style={{ border:"none", display:"block" }}
-                loading="lazy"
-                src={`https://www.google.com/maps?q=${gpsPosition.lat},${gpsPosition.lng}&z=15&output=embed`}
-              />
+              <a href={`https://maps.apple.com/?q=${gpsPosition.lat},${gpsPosition.lng}`} target="_blank" rel="noreferrer" style={{ display:"block", textDecoration:"none" }}>
+                <img
+                  alt="Position prestataire"
+                  width="100%"
+                  height="180"
+                  style={{ display:"block", objectFit:"cover" }}
+                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=${gpsPosition.lat},${gpsPosition.lng}&zoom=15&size=480x180&markers=${gpsPosition.lat},${gpsPosition.lng},red`}
+                  onError={e => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }}
+                />
+                <div style={{ display:"none", height:180, background:`linear-gradient(135deg, #0A1628, #162547)`, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }}>
+                  <div style={{ fontSize:36 }}>📍</div>
+                  <div style={{ color:C.textMuted, fontSize:12 }}>Appuyer pour ouvrir la carte</div>
+                </div>
+              </a>
             ) : (
               <div style={{ height:180, background:`linear-gradient(135deg, #0A1628, #162547)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
                 <div style={{ fontSize:36, marginBottom:6 }}>📍</div>
@@ -2663,12 +2728,6 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
               {p.name} {step===0 && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
             </div>
-            {gpsPosition && (
-              <a href={`https://www.google.com/maps?q=${gpsPosition.lat},${gpsPosition.lng}`} target="_blank" rel="noreferrer"
-                style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.6)", borderRadius:8, padding:"4px 8px", color:"#fff", fontSize:11, textDecoration:"none", fontWeight:600 }}>
-                Ouvrir →
-              </a>
-            )}
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
             <div style={{ width:40, height:40, borderRadius:12, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>

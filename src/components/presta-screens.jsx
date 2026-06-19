@@ -1514,7 +1514,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
-            const isPast = missionEnd > 0 && missionEnd < Date.now();
+            const isPast = missionEnd > 0 && missionEnd < now;
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
                 {isPast && (
@@ -1536,12 +1536,6 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${isPast?C.accentGold:C.success}20`, border:`1px solid ${isPast?C.accentGold:C.success}44`, borderRadius:20, padding:"3px 9px", color:isPast?C.accentGold:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>{isPast?"À valider":"En cours"}</span>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {m.client_id && (
-                    <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
-                      style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      💬 Contacter le client
-                    </button>
-                  )}
                   {isPast && !m.validation_prestataire && (
                     <button onClick={async()=>{
                       if (!contractSignedAt[m.id]) {
