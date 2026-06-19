@@ -1078,16 +1078,14 @@ export default async function handler(req, res) {
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "La mission n'est pas en cours" });
 
-      // Vérifier que la mission a bien démarré
+      // Calcul du prorata arrondi à l'heure supérieure
+      // Note: on ne vérifie pas côté serveur si la mission a démarré car
+      // le serveur Vercel est en UTC et interprète heure_debut sans timezone —
+      // le garde côté client (bouton caché si !isStarted) est suffisant.
       const missionStart = mission.date
         ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
         : null;
-      if (!missionStart || missionStart > new Date()) {
-        return res.status(400).json({ error: "La mission n'a pas encore démarré" });
-      }
-
-      // Calcul du prorata arrondi à l'heure supérieure
-      const elapsedMs = Date.now() - missionStart.getTime();
+      const elapsedMs = Math.max(0, missionStart ? Date.now() - missionStart.getTime() : 0);
       const elapsedHours = elapsedMs / 3600000;
       const totalHours = Number(mission.hours) || 1;
       const roundedHours = Math.min(Math.ceil(elapsedHours * 10) / 10, totalHours);
@@ -1249,7 +1247,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];

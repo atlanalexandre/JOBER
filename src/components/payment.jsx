@@ -300,6 +300,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
 export function StripePaymentScreen({ amount, provider, description, teamMode, teamProviders, onSuccess, onBack }) {
   const [method, setMethod] = useState("card");
   const [cardName, setCardName] = useState("");
+  const [cardNameError, setCardNameError] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
   const [stripeError, setStripeError] = useState(null);
@@ -367,6 +368,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     setStripeError(null);
     if (method === "card") {
       const useStored = savedCard && useSavedCard;
+      if (!useStored && !cardName.trim()) {
+        setCardNameError(true);
+        return;
+      }
       if (!stripeRef.current) {
         const { loadStripe } = await import("@stripe/stripe-js");
         const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
@@ -486,8 +491,16 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
               {(!savedCard || !useSavedCard) && (
                 <>
                   <div style={{ marginBottom:12 }}>
-                    <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Titulaire de la carte</label>
-                    <input value={cardName} onChange={e=>setCardName(e.target.value)} placeholder="Jean Dupont" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:C.text }} />
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:5, color: cardNameError ? "#f87171" : C.textSub }}>
+                      Titulaire de la carte <span style={{ color:"#f87171" }}>*</span>
+                    </label>
+                    <input
+                      value={cardName}
+                      onChange={e=>{ setCardName(e.target.value); if(e.target.value.trim()) setCardNameError(false); }}
+                      placeholder="Jean Dupont"
+                      style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${cardNameError ? "#f87171" : C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:C.text }}
+                    />
+                    {cardNameError && <div style={{ color:"#f87171", fontSize:11, marginTop:4 }}>Le nom du titulaire est obligatoire</div>}
                   </div>
                   <div style={{ marginBottom:12 }}>
                     <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
@@ -744,9 +757,11 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
   const { providers: allProviders } = _useProviders();
   const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
 
-  // Calcul réel du délai avant mission
+  // Calcul réel du délai avant mission + pénalité
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
   const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
+  const penalty = hoursLeft >= 24 ? 0 : 100;
+  const penaltyAmount = 0; // frais de service seulement, montant géré par l'admin
 
   if(step==="replacement") return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>

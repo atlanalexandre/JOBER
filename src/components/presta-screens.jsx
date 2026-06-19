@@ -1308,6 +1308,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [contractMission, setContractMission] = useState(null);
   const [contractSignedAt, setContractSignedAt] = useState({});
   const [contractAcceptMission, setContractAcceptMission] = useState(null);
+  const [validatingMission, setValidatingMission] = useState(null);
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1320,8 +1321,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         body: JSON.stringify({ action: "my_missions" }),
       });
       const data = await r.json();
-      setPendingMissions(Array.isArray(data.pending)  ? data.pending  : []);
-      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned : []);
+      setPendingMissions(Array.isArray(data.pending)  ? data.pending.filter(m => m.status !== "cancelled")  : []);
+      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : []);
     } catch {}
   };
 
@@ -1345,6 +1346,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(loadPending, 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -1571,17 +1577,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   {isPast && !m.validation_prestataire && (
-                    <button onClick={async()=>{
+                    <button disabled={validatingMission === m.id} onClick={async()=>{
                       if (!contractSignedAt[m.id]) {
                         setContractMission(m);
                       } else {
+                        setValidatingMission(m.id);
                         const { data:{ session } } = await supabase.auth.getSession();
                         const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                         if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                        setValidatingMission(null);
                       }
                     }}
-                      style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      ✅ Valider la mission
+                      style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:validatingMission===m.id?"rgba(240,180,41,0.5)":C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:validatingMission===m.id?"default":"pointer", fontFamily:"inherit" }}>
+                      {validatingMission === m.id ? "Validation…" : "✅ Valider la mission"}
                     </button>
                   )}
                   {isPast && m.validation_prestataire && (

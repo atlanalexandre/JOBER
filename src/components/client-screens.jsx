@@ -683,6 +683,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [urgentMode, setUrgentMode] = useState(false);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
   const [missionsToValidate, setMissionsToValidate] = useState([]);
+  const [missionsInProgress, setMissionsInProgress] = useState([]);
+  const [inProgressTick, setInProgressTick] = useState(Date.now());
+  const [inProgressDismissed, setInProgressDismissed] = useState(false);
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
@@ -767,6 +770,37 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const load = () => supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (!user || !mounted) return;
+      supabase.from("missions")
+        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id")
+        .eq("client_id", user.id)
+        .eq("status", "assigned")
+        .then(({ data: ms }) => {
+          if (!mounted || !Array.isArray(ms)) return;
+          const now = Date.now();
+          const active = ms.filter(m => {
+            const start = m.date ? new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime() : 0;
+            const end   = start  ? start + Number(m.hours || 1) * 3600000 : 0;
+            return start > 0 && start < now && end > now;
+          });
+          setMissionsInProgress(active);
+        });
+    });
+    load();
+    const t = setInterval(load, 60000);
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    if (missionsInProgress.length === 0) return;
+    const t = setInterval(() => setInProgressTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, [missionsInProgress.length]);
+
   const violetLite = "#A29BFE";
 
   const dismissTour = async () => {
@@ -812,6 +846,79 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       )}
       {showTour && <ClientTour onDone={dismissTour} />}
+
+      {/* ── Fenêtre missions en cours ── */}
+      {missionsInProgress.length > 0 && !inProgressDismissed && (
+        <div style={{
+          position:"fixed", bottom:80, left:12, right:12, zIndex:7500,
+          background:"linear-gradient(135deg,#0D1B3E,#162547)",
+          border:"1.5px solid rgba(16,217,143,0.45)",
+          borderRadius:20,
+          boxShadow:"0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(16,217,143,0.15)",
+          overflow:"hidden",
+        }}>
+          {/* Barre verte animée en haut */}
+          <div style={{ height:3, background:"linear-gradient(90deg,#10D98F,#0ABF7A)", position:"relative", overflow:"hidden" }}>
+            <div style={{
+              position:"absolute", top:0, left:"-100%", width:"60%", height:"100%",
+              background:"linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)",
+              animation:"shimmer 2s linear infinite",
+            }} />
+          </div>
+          <div style={{ padding:"14px 16px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:10, height:10, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 10px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
+                <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Mission{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
+                <span style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:20, padding:"1px 8px", color:"#10D98F", fontSize:11, fontWeight:700 }}>{missionsInProgress.length}</span>
+              </div>
+              <button onClick={() => setInProgressDismissed(true)} style={{ background:"rgba(255,255,255,0.07)", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"rgba(255,255,255,0.4)", fontSize:14, fontFamily:"inherit" }}>✕</button>
+            </div>
+            {missionsInProgress.map((m, idx) => {
+              const mStart = new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime();
+              const mEnd   = mStart + Number(m.hours || 1) * 3600000;
+              const now2   = inProgressTick;
+              const elapsed = Math.max(0, now2 - mStart);
+              const remaining = Math.max(0, mEnd - now2);
+              const elapsedH = Math.floor(elapsed / 3600000);
+              const elapsedMin = Math.floor((elapsed % 3600000) / 60000);
+              const remH = Math.floor(remaining / 3600000);
+              const remMin = Math.floor((remaining % 3600000) / 60000);
+              const pct = Math.min(100, Math.round(((now2 - mStart) / (mEnd - mStart)) * 100));
+              const sector = SECTORS?.find?.(s => s.id === m.sector);
+              return (
+                <div key={m.id} style={{ marginBottom: idx < missionsInProgress.length - 1 ? 10 : 0 }}>
+                  <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
+                    <div style={{ width:38, height:38, borderRadius:11, background:`rgba(16,217,143,0.12)`, border:"1px solid rgba(16,217,143,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon || "🏢"}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Mission"}</div>
+                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>
+                        {elapsedH > 0 ? `${elapsedH}h ${elapsedMin}min` : `${elapsedMin}min`} écoulées
+                        {" · "}
+                        {remH > 0 ? `${remH}h ${remMin}min` : `${remMin}min`} restantes
+                      </div>
+                    </div>
+                    <button onClick={() => onNavigate("mission_history")} style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"6px 12px", color:"#10D98F", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", flexShrink:0, whiteSpace:"nowrap" }}>
+                      Voir →
+                    </button>
+                  </div>
+                  {/* Barre de progression */}
+                  <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:10, overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${pct}%`, background:"linear-gradient(90deg,#10D98F,#0ABF7A)", borderRadius:10, transition:"width 1s linear" }} />
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
+                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{m.heure_debut || "—"}</span>
+                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>
+                      {(() => { const [h,min] = (m.heure_debut||"00:00").split(":").map(Number); const e=h*60+min+Math.round(Number(m.hours||1)*60); return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Halo violet ambiant */}
       <div style={{ position:"absolute", top:-120, right:-90, width:340, height:340, borderRadius:"50%", background:`radial-gradient(circle, ${C.violet}38 0%, transparent 65%)`, pointerEvents:"none" }} />
 
@@ -4011,6 +4118,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   if (!p) return null;
   const [clientSigned, setClientSigned] = useState(false);
   const [prestaSigned, setPrestaSigned] = useState(false);
+  const [prestaSignedAt, setPrestaSignedAt] = useState(null);
   const [finalised, setFinalised] = useState(false);
   const [activeTab, setActiveTab] = useState("contrat");
   const [clientName, setClientName] = useState("");
@@ -4026,6 +4134,17 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
       setClientEmail(u.email || "");
     });
   },[]);
+  useEffect(()=>{
+    if (!missionId) return;
+    supabase.from("missions").select("status,contrat_presta_signe_at").eq("id", missionId).single()
+      .then(({ data }) => {
+        if (!data) return;
+        if (data.contrat_presta_signe_at || data.status === "assigned") {
+          setPrestaSigned(true);
+          setPrestaSignedAt(data.contrat_presta_signe_at || null);
+        }
+      });
+  },[missionId]);
   const today = new Date().toLocaleDateString("fr-FR");
   const missionDate = date || today;
   const missionHours = hours || 8;
@@ -4295,21 +4414,33 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             </div>
 
             {/* Bloc signature PRESTATAIRE — lecture seule côté client */}
-            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", opacity:0.75 }}>
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${prestaSigned?C.success:C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", opacity: prestaSigned ? 1 : 0.75 }}>
               <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
-                <div style={{ width:48, height:48, borderRadius:r, background:`${C.accent}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{p.avatar}</div>
+                <div style={{ width:48, height:48, borderRadius:r, background:prestaSigned?`${C.success}18`:`${C.accent}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{p.avatar}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Prestataire</div>
                   <div style={{ color:C.textSub, fontSize:12 }}>{p.name}</div>
                 </div>
+                {prestaSigned && <div style={{ background:`${C.success}15`, borderRadius:20, padding:"4px 12px", color:C.success, fontSize:12, fontWeight:700 }}>✓ Signé</div>}
               </div>
-              <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
-                <span style={{ fontSize:18 }}>⏳</span>
-                <div>
-                  <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+              {prestaSigned ? (
+                <div style={{ background:`${C.success}10`, borderRadius:10, padding:"10px 14px" }}>
+                  <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>✓ Signature électronique apposée</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>
+                    {prestaSignedAt
+                      ? `Le ${new Date(prestaSignedAt).toLocaleDateString("fr-FR")} à ${new Date(prestaSignedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée`
+                      : "Signé lors de l'acceptation de la mission · IP masquée · Horodatée"}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
+                  <span style={{ fontSize:18 }}>⏳</span>
+                  <div>
+                    <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
+                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Statut global */}
