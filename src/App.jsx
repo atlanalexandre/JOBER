@@ -12,18 +12,23 @@ import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfi
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, ClientTour, HomeScreen, CatalogueScreen, useProviders, loadLeaflet, cityCoords, LeafletMap, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, MissionTimeline, RatingScreen, DocUploadScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, NOTIF_ICONS, NOTIF_COLORS, timeAgo, TOUR_STEPS, haversineKm, travelTimeStr, OnboardingScreen } from "./components/client-screens.jsx";
 
 export class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError:false, error:null }; }
-  static getDerivedStateFromError(e) { return { hasError:true, error:e }; }
-  componentDidCatch(e, info) { console.error("ErrorBoundary:", e, info); }
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
   render() {
-    if(!this.state.hasError) return this.props.children;
+    if (!this.state.hasError) return this.props.children;
     return (
       <div style={{ minHeight:"100vh", background:"#050E20", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
-        <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 10px" }}>Une erreur inattendue est survenue</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, marginBottom:24 }}>Rechargez la page pour continuer.</p>
-        <button onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", borderRadius:12, padding:"12px 28px", color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer" }}>
-          Recharger
+        <div style={{ fontSize:64, marginBottom:16 }}>&#128565;</div>
+        <h2 style={{ color:"#fff", fontSize:22, fontWeight:800, margin:"0 0 12px", fontFamily:"'Playfair Display',serif" }}>Oups, quelque chose s'est cassé</h2>
+        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, maxWidth:300, lineHeight:1.7, margin:"0 auto 24px" }}>
+          Une erreur inattendue s'est produite. Nos équipes sont notifiées. Essayez de recharger la page.
+        </p>
+        <button onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
+          &#128260; Recharger la page
+        </button>
+        <button onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          Réessayer sans recharger
         </button>
       </div>
     );
