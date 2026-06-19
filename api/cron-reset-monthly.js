@@ -12,6 +12,28 @@ function verifyBoToken(token, secret) {
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
+function formatPhone(raw) {
+  if (!raw) return null;
+  const cleaned = String(raw).replace(/[\s.\-()]/g, "");
+  if (cleaned.startsWith("+33")) return cleaned;
+  if (cleaned.startsWith("0")) return "+33" + cleaned.slice(1);
+  return null;
+}
+
+function sendSms(accountSid, authToken, from, to, body) {
+  const phone = formatPhone(to);
+  if (!phone) return Promise.resolve();
+  const encoded = new URLSearchParams({ From: from, To: phone, Body: body }).toString();
+  return fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      "Authorization": "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: encoded,
+  }).catch(() => {});
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
@@ -36,8 +58,12 @@ export default async function handler(req, res) {
 
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+    const RESEND_API_KEY    = process.env.RESEND_API_KEY;
+    const RESEND_FROM       = process.env.RESEND_FROM || "onboarding@resend.dev";
+    const TWILIO_ACCOUNT_SID    = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN     = process.env.TWILIO_AUTH_TOKEN;
+    const TWILIO_PHONE_NUMBER   = process.env.TWILIO_PHONE_NUMBER;
+    const twilioEnabled = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER);
 
     try {
       // Charger tous les utilisateurs et profils une seule fois — utilisé par toutes les sections
@@ -133,6 +159,13 @@ ${(() => {
               body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
             }).catch(()=>{})
           );
+          if (twilioEnabled) {
+            const smsBody = `⏰ ALANE - Rappel : votre mission ${m.metier||"Mission"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne mission !`;
+            const clientPhone  = userMap[m.client_id]?.meta?.telephone;
+            const prestaPhone  = userMap[m.prestataire_id]?.meta?.telephone;
+            if (clientPhone)  sends.push(sendSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, clientPhone, smsBody));
+            if (prestaPhone)  sends.push(sendSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, prestaPhone, smsBody));
+          }
           await Promise.all(sends);
           sent += sends.length;
         }));
@@ -182,6 +215,13 @@ ${(() => {
             const vSends = [];
             if (clientEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(clientName) }) }).catch(()=>{}));
             if (prestaEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(prestaName) }) }).catch(()=>{}));
+            if (twilioEnabled) {
+              const smsCashback = `✅ ALANE - Pensez à valider votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre cashback.`;
+              const clientPhone  = userMap[m.client_id]?.meta?.telephone;
+              const prestaPhone  = userMap[m.prestataire_id]?.meta?.telephone;
+              if (clientPhone)  vSends.push(sendSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, clientPhone, smsCashback));
+              if (prestaPhone)  vSends.push(sendSms(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, prestaPhone, smsCashback));
+            }
             await Promise.all(vSends);
             validationSent += vSends.length;
           }));
