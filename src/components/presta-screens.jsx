@@ -1536,12 +1536,6 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${isPast?C.accentGold:C.success}20`, border:`1px solid ${isPast?C.accentGold:C.success}44`, borderRadius:20, padding:"3px 9px", color:isPast?C.accentGold:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>{isPast?"À valider":"En cours"}</span>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {m.client_id && (
-                    <button onClick={()=>onNavigate("chat",{ id:userId, avatar:"👤", color:C.violet, name:"Client", clientId:m.client_id })}
-                      style={{ flex:1, padding:"9px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      💬 Contacter le client
-                    </button>
-                  )}
                   {isPast && !m.validation_prestataire && (
                     <button onClick={async()=>{
                       if (!contractSignedAt[m.id]) {
