@@ -4011,6 +4011,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   if (!p) return null;
   const [clientSigned, setClientSigned] = useState(false);
   const [prestaSigned, setPrestaSigned] = useState(false);
+  const [prestaSignedAt, setPrestaSignedAt] = useState(null);
   const [finalised, setFinalised] = useState(false);
   const [activeTab, setActiveTab] = useState("contrat");
   const [clientName, setClientName] = useState("");
@@ -4026,6 +4027,17 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
       setClientEmail(u.email || "");
     });
   },[]);
+  useEffect(()=>{
+    if (!missionId) return;
+    supabase.from("missions").select("status,contrat_presta_signe_at").eq("id", missionId).single()
+      .then(({ data }) => {
+        if (!data) return;
+        if (data.contrat_presta_signe_at || data.status === "assigned") {
+          setPrestaSigned(true);
+          setPrestaSignedAt(data.contrat_presta_signe_at || null);
+        }
+      });
+  },[missionId]);
   const today = new Date().toLocaleDateString("fr-FR");
   const missionDate = date || today;
   const missionHours = hours || 8;
@@ -4295,21 +4307,33 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             </div>
 
             {/* Bloc signature PRESTATAIRE — lecture seule côté client */}
-            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", opacity:0.75 }}>
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${prestaSigned?C.success:C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", opacity: prestaSigned ? 1 : 0.75 }}>
               <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
-                <div style={{ width:48, height:48, borderRadius:r, background:`${C.accent}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{p.avatar}</div>
+                <div style={{ width:48, height:48, borderRadius:r, background:prestaSigned?`${C.success}18`:`${C.accent}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{p.avatar}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Prestataire</div>
                   <div style={{ color:C.textSub, fontSize:12 }}>{p.name}</div>
                 </div>
+                {prestaSigned && <div style={{ background:`${C.success}15`, borderRadius:20, padding:"4px 12px", color:C.success, fontSize:12, fontWeight:700 }}>✓ Signé</div>}
               </div>
-              <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
-                <span style={{ fontSize:18 }}>⏳</span>
-                <div>
-                  <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+              {prestaSigned ? (
+                <div style={{ background:`${C.success}10`, borderRadius:10, padding:"10px 14px" }}>
+                  <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>✓ Signature électronique apposée</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>
+                    {prestaSignedAt
+                      ? `Le ${new Date(prestaSignedAt).toLocaleDateString("fr-FR")} à ${new Date(prestaSignedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée`
+                      : "Signé lors de l'acceptation de la mission · IP masquée · Horodatée"}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
+                  <span style={{ fontSize:18 }}>⏳</span>
+                  <div>
+                    <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
+                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Statut global */}
