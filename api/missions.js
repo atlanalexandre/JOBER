@@ -310,7 +310,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -371,6 +371,68 @@ export default async function handler(req, res) {
             read: false,
           }),
         });
+      }
+
+      // Création automatique de la prochaine occurrence si mission récurrente
+      if (mission.recurrence && mission.date) {
+        try {
+          const currentDate = new Date(mission.date);
+          let nextDate = new Date(currentDate);
+          if (mission.recurrence === "weekly") {
+            nextDate.setDate(nextDate.getDate() + 7);
+          } else if (mission.recurrence === "biweekly") {
+            nextDate.setDate(nextDate.getDate() + 14);
+          } else if (mission.recurrence === "monthly") {
+            const originalDay = currentDate.getDate();
+            nextDate.setMonth(nextDate.getMonth() + 1);
+            // Handle month-end edge cases (e.g. Jan 31 → Feb 28)
+            if (nextDate.getDate() !== originalDay) {
+              nextDate.setDate(0); // last day of the intended month
+            }
+          }
+          const nextDateStr = nextDate.toISOString().slice(0, 10);
+          const newMissionBody = {
+            client_id: mission.client_id,
+            sector: mission.sector,
+            metier: mission.metier || null,
+            date: nextDateStr,
+            hours: mission.hours,
+            ville: mission.ville || null,
+            adresse: mission.adresse || null,
+            description: mission.description || null,
+            heure_debut: mission.heure_debut || null,
+            tarif_horaire: mission.tarif_horaire || null,
+            recurrence: mission.recurrence,
+            parent_mission_id: mission_id,
+            status: "open",
+            prestataire_id: null,
+            stripe_payment_intent: null,
+            montant_total: null,
+          };
+          const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/missions`, {
+            method: "POST",
+            headers: { ...headers, "Prefer": "return=representation" },
+            body: JSON.stringify(newMissionBody),
+          });
+          const insertData = await insertRes.json().catch(() => null);
+          const newMissionId = Array.isArray(insertData) && insertData[0]?.id;
+
+          // Notification in-app au client
+          const recurrenceLabel = mission.recurrence === "weekly" ? "hebdomadaire" : mission.recurrence === "biweekly" ? "bi-mensuelle" : "mensuelle";
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({
+              user_id: client_id,
+              type: "mission",
+              title: "🔄 Mission récurrente planifiée",
+              body: `Votre prochaine mission ${mission.metier || mission.sector || ""} (${recurrenceLabel}) a été programmée pour le ${nextDateStr}.`,
+              read: false,
+            }),
+          }).catch(() => {});
+        } catch (recErr) {
+          console.error("[complete] recurrence creation error:", recErr.message);
+        }
       }
 
       // Notification + email au prestataire

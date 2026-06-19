@@ -1102,9 +1102,9 @@ export default function App() {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  // Web Push — enregistre le SW et s'abonne quand un prestataire est connecté
+  // Web Push — enregistre le SW et s'abonne pour clients ET prestataires
   useEffect(() => {
-    if (!supaUser || role !== "prestataire") return;
+    if (!supaUser || !role) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     if (!VAPID_PUBLIC) return;

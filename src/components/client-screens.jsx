@@ -4701,6 +4701,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [cancelling, setCancelling] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [accessToken, setAccessToken] = useState(null);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4708,6 +4709,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
+      if (token) setAccessToken(token);
       const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
@@ -4977,9 +4979,27 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
 
           {(selected.status === "completed" || selected.status === "closed") && (
-            <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", marginTop:12, padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              📄 Télécharger la facture PDF
-            </button>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
+              <button
+                onClick={async () => {
+                  let tok = accessToken;
+                  if (!tok) {
+                    const { data: sd } = await supabase.auth.getSession();
+                    tok = sd?.session?.access_token;
+                    if (tok) setAccessToken(tok);
+                  }
+                  if (tok) {
+                    window.open(`/api/invoice?mission_id=${encodeURIComponent(selected.id)}&token=${encodeURIComponent(tok)}`, "_blank");
+                  }
+                }}
+                style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}
+              >
+                📄 Télécharger la facture
+              </button>
+              <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", padding:"11px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                Voir la facture dans l'app
+              </button>
+            </div>
           )}
 
           {selected.status === "open" && (
@@ -5115,6 +5135,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:700 }}>{statusLabel[m.status]||m.status}</span>
+                  {m.recurrence && <div style={{ fontSize:10, color:C.violet, fontWeight:700, marginTop:2 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":m.recurrence==="monthly"?"Mensuel":""}</div>}
                   <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>›</div>
                 </div>
               </div>
@@ -5933,6 +5954,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
   const [ville, setVille]         = useState("");
+  const [recurrence, setRecurrence] = useState(null);
   const [sending, setSending]     = useState(false);
   const isValid = date && adresse && ville;
   const { providers:allProviders } = useProviders();
@@ -5940,7 +5962,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const mission = { sector:s, metier, date, hours, description, adresse, ville };
+    const mission = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -5949,6 +5971,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
           heure_debut: startTime || null,
+          recurrence: recurrence || null,
         }).select().single();
         if(data) mission.id = data.id;
       }
@@ -6015,6 +6038,23 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {[4,6,8,10,12].map(h=>(
               <button key={h} onClick={()=>setHours(h)} style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:hours===h?C.violet:C.grayLight, color:hours===h?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{h}h</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Récurrence <span style={{ fontWeight:400 }}>(optionnel)</span></label>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {[
+              { value: null, label: "Unique" },
+              { value: "weekly", label: "Hebdomadaire" },
+              { value: "biweekly", label: "Bi-mensuelle" },
+              { value: "monthly", label: "Mensuelle" },
+            ].map(opt => (
+              <button key={String(opt.value)} onClick={() => setRecurrence(opt.value)}
+                style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:recurrence===opt.value?C.violet:C.grayLight, color:recurrence===opt.value?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>
