@@ -4267,38 +4267,50 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
               <span style={{ color:C.textSub }}>En signant électroniquement, vous reconnaissez avoir lu et accepté l'intégralité du contrat. Cette signature a la même valeur juridique qu'une signature manuscrite conformément au règlement <strong>eIDAS n°910/2014</strong> et à la <strong>loi n°2000-230</strong> du 13 mars 2000.</span>
             </div>
 
-            {/* Blocs de signature */}
-            {[
-              { role:"Client",      name:clientName||"Client",   icon:"🏢", signed:clientSigned,  color:C.violet, onSign:()=>setClientSigned(true)  },
-              { role:"Prestataire", name:p.name,          icon:p.avatar, signed:prestaSigned, color:C.accent,  onSign:()=>setPrestaSigned(true)  },
-            ].map((s,i)=>(
-              <div key={i} style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${s.signed?C.success:C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"border 0.3s" }}>
-                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
-                  <div style={{ width:48, height:48, borderRadius:r, background:s.signed?`${C.success}18`:`${s.color}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{s.icon}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{s.role}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>{s.name}</div>
-                  </div>
-                  {s.signed && <div style={{ background:`${C.success}15`, borderRadius:20, padding:"4px 12px", color:C.success, fontSize:12, fontWeight:700 }}>✓ Signé</div>}
+            {/* Bloc signature CLIENT */}
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${clientSigned?C.success:C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"border 0.3s" }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
+                <div style={{ width:48, height:48, borderRadius:r, background:clientSigned?`${C.success}18`:`${C.violet}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>🏢</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Client</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>{clientName||"Client"}</div>
                 </div>
-
-                {s.signed ? (
-                  <div style={{ background:`${C.success}10`, borderRadius:10, padding:"10px 14px" }}>
-                    <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>✓ Signature électronique apposée</div>
-                    <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Le {today} à {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée</div>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-                      En signant, je confirme avoir pris connaissance de l'intégralité du contrat de prestation n° <strong>{contractNum}</strong> et en accepte toutes les clauses sans réserve.
-                    </div>
-                    <Btn full onClick={s.onSign} style={{ fontSize:14, padding:"14px" }}>
-                      ✍️ Signer électroniquement
-                    </Btn>
-                  </div>
-                )}
+                {clientSigned && <div style={{ background:`${C.success}15`, borderRadius:20, padding:"4px 12px", color:C.success, fontSize:12, fontWeight:700 }}>✓ Signé</div>}
               </div>
-            ))}
+              {clientSigned ? (
+                <div style={{ background:`${C.success}10`, borderRadius:10, padding:"10px 14px" }}>
+                  <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>✓ Signature électronique apposée</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Le {today} à {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+                    En signant, je confirme avoir pris connaissance de l'intégralité du contrat de prestation n° <strong>{contractNum}</strong> et en accepte toutes les clauses sans réserve.
+                  </div>
+                  <Btn full onClick={()=>setClientSigned(true)} style={{ fontSize:14, padding:"14px" }}>
+                    ✍️ Signer électroniquement
+                  </Btn>
+                </div>
+              )}
+            </div>
+
+            {/* Bloc signature PRESTATAIRE — lecture seule côté client */}
+            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", marginBottom:14, border:`2px solid ${C.grayLight}`, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", opacity:0.75 }}>
+              <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
+                <div style={{ width:48, height:48, borderRadius:r, background:`${C.accent}12`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24 }}>{p.avatar}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Prestataire</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>{p.name}</div>
+                </div>
+              </div>
+              <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, borderRadius:10, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
+                <span style={{ fontSize:18 }}>⏳</span>
+                <div>
+                  <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+                </div>
+              </div>
+            </div>
 
             {/* Statut global */}
             <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"center" }}>

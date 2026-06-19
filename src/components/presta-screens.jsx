@@ -1307,6 +1307,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [expandedDetail, setExpandedDetail] = useState(null);
   const [contractMission, setContractMission] = useState(null);
   const [contractSignedAt, setContractSignedAt] = useState({});
+  const [contractAcceptMission, setContractAcceptMission] = useState(null);
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1404,6 +1405,30 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   return (
     <div>
       {/* Contrat électronique prestataire */}
+      {/* Contrat de prestation — acceptation mission */}
+      {contractAcceptMission && (
+        <ContractModal
+          title="Contrat de prestation de service"
+          contractText={`CONTRAT DE PRESTATION DE SERVICE
+
+Mission :
+Métier : ${contractAcceptMission.metier || contractAcceptMission.sector || ""}
+Date : ${contractAcceptMission.date || ""}
+Durée : ${contractAcceptMission.hours || ""} heure(s)
+Tarif horaire : ${contractAcceptMission.tarif_horaire || ""} €/h
+
+En signant ce contrat, je m'engage à réaliser la mission dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
+
+Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
+          onSign={async () => {
+            const mission = contractAcceptMission;
+            setContractAcceptMission(null);
+            await handleAccept(mission);
+          }}
+          onClose={() => setContractAcceptMission(null)}
+        />
+      )}
+
       {contractMission && (
         <ContractModal
           title="Attestation de réalisation de mission"
@@ -1487,7 +1512,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     ) : (
                       <div style={{ display:"flex", gap:8 }}>
                         <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
-                        <button onClick={()=>handleAccept(m)} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                        <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                           {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
                         </button>
                       </div>
