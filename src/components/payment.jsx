@@ -757,9 +757,11 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
   const { providers: allProviders } = _useProviders();
   const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
 
-  // Calcul réel du délai avant mission
+  // Calcul réel du délai avant mission + pénalité
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
   const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
+  const penalty = hoursLeft >= 24 ? 0 : 100;
+  const penaltyAmount = 0; // frais de service seulement, montant géré par l'admin
 
   if(step==="replacement") return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
