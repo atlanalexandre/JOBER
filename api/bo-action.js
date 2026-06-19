@@ -621,6 +621,49 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(logs) ? logs : []);
     }
 
+    if (action === "stripe_stats") {
+      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      if (!STRIPE_KEY) {
+        return res.status(200).json({ error: "Stripe non configuré" });
+      }
+      const stripeAuth = "Basic " + Buffer.from(STRIPE_KEY + ":").toString("base64");
+      const thirtyDaysAgo = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+
+      const [balanceRes, chargesRes] = await Promise.all([
+        fetch("https://api.stripe.com/v1/balance", {
+          headers: { "Authorization": stripeAuth },
+        }),
+        fetch(`https://api.stripe.com/v1/charges?limit=100&created[gte]=${thirtyDaysAgo}`, {
+          headers: { "Authorization": stripeAuth },
+        }),
+      ]);
+
+      if (!balanceRes.ok || !chargesRes.ok) {
+        return res.status(200).json({ error: "Erreur Stripe API" });
+      }
+
+      const balanceData = await balanceRes.json();
+      const chargesData = await chargesRes.json();
+
+      const available = (balanceData.available || []).reduce((acc, b) => acc + (b.amount || 0), 0) / 100;
+      const pending   = (balanceData.pending   || []).reduce((acc, b) => acc + (b.amount || 0), 0) / 100;
+
+      const charges = Array.isArray(chargesData.data) ? chargesData.data : [];
+      const succeeded = charges.filter(c => c.status === "succeeded");
+      const volume = succeeded.reduce((acc, c) => acc + (c.amount || 0), 0) / 100;
+      const commission = Math.round(volume * 0.20 * 100) / 100;
+
+      return res.status(200).json({
+        available: Math.round(available * 100) / 100,
+        pending:   Math.round(pending   * 100) / 100,
+        last30days: {
+          count:      succeeded.length,
+          volume:     Math.round(volume     * 100) / 100,
+          commission: commission,
+        },
+      });
+    }
+
     if (action === "list_paid_missions") {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=not.is.null&status=eq.completed&select=id,montant_total,stripe_payment_intent,created_at,sector,metier&order=created_at.desc&limit=50`,

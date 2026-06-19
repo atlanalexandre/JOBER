@@ -859,6 +859,63 @@ export function BOModerationTab({ d }) {
   );
 }
 
+function StripeStatsCard() {
+  const [stats, setStats]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+
+  useEffect(() => {
+    boFetch({ action: "stripe_stats" })
+      .then(r => r.json())
+      .then(j => {
+        if (j.error) { setError(j.error); }
+        else { setStats(j); }
+        setLoading(false);
+      })
+      .catch(() => { setError("Erreur réseau"); setLoading(false); });
+  }, []);
+
+  const fmt = (n) => typeof n === "number" ? n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+
+  return (
+    <div style={{ background:"#0D1B3E", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>💳 Données Stripe en temps réel</div>
+      {loading && (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"20px 0", fontSize:13 }}>Chargement…</div>
+      )}
+      {!loading && error && (
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.35)", padding:"16px 0", fontSize:12 }}>
+          ⚠️ {error === "Stripe non configuré" ? "Stripe n'est pas configuré sur ce projet." : error}
+        </div>
+      )}
+      {!loading && !error && stats && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
+            <div style={{ fontSize:20, marginBottom:6 }}>💳</div>
+            <div style={{ fontWeight:800, color:C.success, fontSize:18 }}>{fmt(stats.available)} €</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Solde disponible</div>
+          </div>
+          <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
+            <div style={{ fontSize:20, marginBottom:6 }}>⏳</div>
+            <div style={{ fontWeight:800, color:C.accentGold, fontSize:18 }}>{fmt(stats.pending)} €</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>En attente</div>
+          </div>
+          <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
+            <div style={{ fontSize:20, marginBottom:6 }}>📊</div>
+            <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{fmt(stats.last30days.volume)} €</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> missions</div>
+          </div>
+          <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:12, padding:"14px 12px" }}>
+            <div style={{ fontSize:20, marginBottom:6 }}>💰</div>
+            <div style={{ fontWeight:800, color:"#F0B429", fontSize:18 }}>{fmt(stats.last30days.commission)} €</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Commission ALANE (20%)</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BOExportCSV({ d }) {
   const [exporting, setExporting] = useState(false);
   const doExport = async () => {
@@ -1771,6 +1828,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── FINANCE ── */}
         {tab==="finance" && <>
+          <StripeStatsCard />
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
