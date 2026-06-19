@@ -4566,6 +4566,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [userId, setUserId]       = useState(null);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [prestaName, setPrestaName] = useState("");
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4689,8 +4691,31 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     } catch { alert("Erreur lors de la fermeture. Réessayez."); }
   };
 
-  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché" };
-  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B" };
+  const handleCancel = async () => {
+    if (!selected) return;
+    setCancelling(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const missionDate = selected.date ? new Date(selected.date + "T" + (selected.heure_debut || "00:00")) : null;
+      const hoursUntil = missionDate ? (missionDate - Date.now()) / 3600000 : Infinity;
+      const penalty = !selected.stripe_payment_intent ? 0 : hoursUntil >= 24 ? 0 : 100;
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "cancel_client", mission_id: selected.id, penalty }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
+      setSelected(null);
+      setShowCancelConfirm(false);
+    } catch(e) { alert(e.message || "Erreur lors de l'annulation. Réessayez."); }
+    setCancelling(false);
+  };
+
+  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché", cancelled:"Annulée" };
+  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
   const filtered = tab === "all" ? missions : tab === "open" ? missions.filter(m => m.status === "open" || m.status === "needs_replacement") : missions.filter(m => m.status === tab);
 
   if (selected) {
@@ -4808,6 +4833,38 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
               Clôturer la mission
             </button>
+          )}
+
+          {(selected.status === "open" || selected.status === "assigned" || selected.status === "pending_acceptance") && (
+            <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              ✕ Annuler la mission
+            </button>
+          )}
+
+          {showCancelConfirm && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+                <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
+                <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la mission ?</div>
+                {selected.stripe_payment_intent ? (
+                  (() => {
+                    const missionDate = selected.date ? new Date(selected.date + "T" + (selected.heure_debut || "00:00")) : null;
+                    const hoursUntil = missionDate ? (missionDate - Date.now()) / 3600000 : Infinity;
+                    return hoursUntil >= 24
+                      ? <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à plus de 24h → <strong style={{ color:"#10D98F" }}>remboursement intégral</strong> (hors frais de service).</div>
+                      : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
+                  })()
+                ) : (
+                  <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette mission sera supprimée. Aucun paiement n'a été effectué.</div>
+                )}
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={()=>setShowCancelConfirm(false)} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
+                  <button onClick={handleCancel} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                    {cancelling ? "Annulation…" : "Confirmer"}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
