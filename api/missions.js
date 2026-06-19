@@ -186,7 +186,7 @@ export default async function handler(req, res) {
 
           const [urRes, prRes] = await Promise.all([
             fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
-            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month`, { headers }),
+            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
           ]);
           const urData = await urRes.json();
           const prData = await prRes.json();
@@ -199,7 +199,11 @@ export default async function handler(req, res) {
             fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
           }
 
-          const limit = PLAN_LIMITS[plan] ?? 2;
+          // Anti-abus : si le prestataire a déjà consommé son trial sur un compte précédent,
+          // la limite gratuite tombe à 0 (obligation de souscrire à un plan payant)
+          const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
+          const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
+          const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
           if (limit < 999) {
             const completed = (Array.isArray(prData) && prData[0]?.missions_completed_month) || 0;
             const asgnRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`, { headers });

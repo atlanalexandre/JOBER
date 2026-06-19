@@ -401,3 +401,26 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS societe_nom text;
 -- Signatures électroniques
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_client_signe_at timestamptz;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_presta_signe_at timestamptz;
+
+-- Anti-abus : flag permanent indiquant que le trial gratuit a été consommé
+-- Ne se remet pas à zéro lors du reset mensuel du cron
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_exhausted boolean DEFAULT false;
+
+-- ── TABLE account_blacklist ──────────────────────────────────
+-- Mémorise les identifiants des comptes prestataires supprimés
+-- pour empêcher de recréer un compte et retrouver les missions gratuites
+CREATE TABLE IF NOT EXISTS account_blacklist (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email      text,
+  telephone  text,
+  iban       text,
+  siret      text,
+  reason     text DEFAULT 'account_deleted',
+  created_at timestamptz DEFAULT now()
+);
+
+-- Index pour recherche rapide lors de l'approbation BO
+CREATE INDEX IF NOT EXISTS idx_blacklist_telephone ON account_blacklist(telephone) WHERE telephone IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_iban      ON account_blacklist(iban)      WHERE iban IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_siret     ON account_blacklist(siret)     WHERE siret IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_email     ON account_blacklist(email)     WHERE email IS NOT NULL;

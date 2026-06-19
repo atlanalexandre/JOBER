@@ -122,6 +122,36 @@ export default async function handler(req, res) {
 
       const userData = await userRes.json();
       const userEmail = userData.email;
+
+      // Anti-abus à l'approbation : vérifier si les identifiants du nouveau compte
+      // correspondent à un compte précédemment supprimé
+      if (action === "approve") {
+        const meta2 = userData.user_metadata || {};
+        const tel2  = meta2.telephone || null;
+        const iban2 = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
+        const siret2 = meta2.kbis || null;
+        const orFilters = [];
+        if (userEmail) orFilters.push(`email.eq.${encodeURIComponent(userEmail)}`);
+        if (tel2)     orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
+        if (iban2)    orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
+        if (siret2)   orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+        if (orFilters.length > 0) {
+          const blRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/account_blacklist?or=(${orFilters.join(",")})&select=id&limit=1`,
+            { headers }
+          );
+          const blData = await blRes.json();
+          if (Array.isArray(blData) && blData.length > 0) {
+            // Match trouvé : marquer le profil comme trial épuisé
+            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+              method: "PATCH",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ trial_exhausted: true }),
+            }).catch(() => {});
+          }
+        }
+      }
+
       if (userEmail) {
         if (status === "approved") {
           const prenom = userData.user_metadata?.prenom || "";
@@ -234,6 +264,26 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
       }).catch(() => {});
+
+      // Anti-abus : sauvegarder les identifiants dans le blacklist pour bloquer la recréation de compte
+      // Récupérer téléphone, IBAN, SIRET depuis user_metadata
+      const meta = userData.user_metadata || {};
+      const telephone = meta.telephone || null;
+      const iban      = meta.rib ? String(meta.rib).replace(/\s/g, "").toUpperCase() : null;
+      const siret     = meta.kbis || null;
+      if (userEmail || telephone || iban || siret) {
+        await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            email:     userEmail || null,
+            telephone: telephone,
+            iban:      iban,
+            siret:     siret,
+            reason:    reason ? `account_deleted: ${reason}` : "account_deleted",
+          }),
+        }).catch(() => {});
+      }
 
       // Cascade: supprimer toutes les données liées avant de supprimer le compte
       await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${profileId}`, {
