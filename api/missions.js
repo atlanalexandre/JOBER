@@ -1078,16 +1078,14 @@ export default async function handler(req, res) {
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "La mission n'est pas en cours" });
 
-      // Vérifier que la mission a bien démarré
+      // Calcul du prorata arrondi à l'heure supérieure
+      // Note: on ne vérifie pas côté serveur si la mission a démarré car
+      // le serveur Vercel est en UTC et interprète heure_debut sans timezone —
+      // le garde côté client (bouton caché si !isStarted) est suffisant.
       const missionStart = mission.date
         ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
         : null;
-      if (!missionStart || missionStart > new Date()) {
-        return res.status(400).json({ error: "La mission n'a pas encore démarré" });
-      }
-
-      // Calcul du prorata arrondi à l'heure supérieure
-      const elapsedMs = Date.now() - missionStart.getTime();
+      const elapsedMs = Math.max(0, missionStart ? Date.now() - missionStart.getTime() : 0);
       const elapsedHours = elapsedMs / 3600000;
       const totalHours = Number(mission.hours) || 1;
       const roundedHours = Math.min(Math.ceil(elapsedHours * 10) / 10, totalHours);
