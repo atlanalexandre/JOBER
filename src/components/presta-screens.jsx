@@ -1534,18 +1534,27 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
+            const missionStart = m.date
+              ? (m.heure_debut
+                  ? new Date(`${m.date}T${m.heure_debut}`).getTime()
+                  : new Date(m.date + 'T00:00:00').getTime())
+              : 0;
             const missionEnd = m.date
               ? (m.heure_debut
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
+            const isStarted = missionStart > 0 && missionStart < now;
             const isPast = missionEnd > 0 && missionEnd < now;
+            const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
+            const badgeLabel = isPast ? "À valider" : isStarted ? "En cours" : "À venir";
+            const borderColor = isPast ? C.accentGold+"88" : isStarted ? C.success+"44" : C.violet+"44";
             return (
-              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${isPast ? C.accentGold+"88" : C.success+"44"}` }}>
+              <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${borderColor}` }}>
                 {isPast && (
                   <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", gap:8, alignItems:"center" }}>
                     <span style={{ fontSize:16 }}>⚠️</span>
-                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Mission passée — pensez à valider !</span>
+                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Mission terminée — pensez à valider !</span>
                   </div>
                 )}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
@@ -1558,7 +1567,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                     {m.description && <div style={{ color:C.textMuted, fontSize:12, marginTop:4, fontStyle:"italic" }}>"{m.description}"</div>}
                   </div>
-                  <span style={{ background:`${isPast?C.accentGold:C.success}20`, border:`1px solid ${isPast?C.accentGold:C.success}44`, borderRadius:20, padding:"3px 9px", color:isPast?C.accentGold:C.success, fontSize:10, fontWeight:700, flexShrink:0 }}>{isPast?"À valider":"En cours"}</span>
+                  <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   {isPast && !m.validation_prestataire && (
