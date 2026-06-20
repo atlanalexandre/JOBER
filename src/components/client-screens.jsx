@@ -4987,16 +4987,24 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
 
           {completedResult && (
-            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center" }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
-              <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
-                Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+            <div style={{ marginTop:20 }}>
+              <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center", marginBottom:12 }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+                <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
+                  Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+                </div>
+                <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
+                  <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
+                </div>
               </div>
-              <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
-                <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
-              </div>
+              {selected.prestataire_id && !ratedMissions.has(selected.id) && (
+                <button onClick={()=>onNavigate("rating", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet, jobTitle:selected.metier||"Prestataire", _missionId:selected.id, _fromHistory:true })}
+                  style={{ width:"100%", padding:"14px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⭐ Noter le prestataire
+                </button>
+              )}
             </div>
           )}
 
