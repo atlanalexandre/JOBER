@@ -1346,8 +1346,9 @@ export function useProviders() {
               jobTitle:     p.metier,
               rateNum,
               hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
-              available:    p.dispo_immediat !== false,
-              dispon_jours: p.dispon_jours || [],
+              available:             p.dispo_immediat !== false,
+              dispon_jours:          p.dispon_jours || [],
+              dispon_jours_creneaux: p.dispon_jours_creneaux || null,
               code_postal:  p.code_postal,
               rating:       p.rating || 0,
               reviews:      p.reviews || 0,
@@ -2199,6 +2200,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [instructions, setInstructions] = useState("");
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
+  const [availError, setAvailError] = useState("");
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
@@ -2523,12 +2525,34 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
+          {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
+              // Vérification disponibilité prestataire
+              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+              const [yr,mo,dy] = startDate.split("-").map(Number);
+              const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
+              const dispoDays = p.dispon_jours || [];
+              if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
+                setAvailError(`${p.name} n'est pas disponible le ${jourFr}. Jours disponibles : ${dispoDays.join(", ")}.`);
+                return;
+              }
+              const creneaux = p.dispon_jours_creneaux || {};
+              const daySlots = creneaux[jourFr] || [];
+              if (daySlots.length > 0 && startTime) {
+                const h = parseInt(startTime.split(":")[0], 10);
+                const slotOk = (daySlots.includes("Matin (6h-13h)") && h >= 6 && h < 13) ||
+                               (daySlots.includes("Après-midi (13h-20h)") && h >= 13 && h < 20) ||
+                               (daySlots.includes("Soir/Nuit (20h-6h)") && (h >= 20 || h < 6));
+                if (!slotOk) {
+                  setAvailError(`${p.name} n'est pas disponible sur ce créneau le ${jourFr}. Créneaux déclarés : ${daySlots.join(", ")}.`);
+                  return;
+                }
+              }
             }
-            setDateError(false);
+            setDateError(false); setAvailError("");
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
@@ -4924,6 +4948,12 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               </div>
               <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
             </div>
+          )}
+          {selected.status === "assigned" && selected.prestataire_id && (
+            <button onClick={()=>onNavigate("chat", { id: selected.prestataire_id, name: prestaName || "Prestataire", avatar:"👷", color:C.violet })}
+              style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              💬 Chat avec le prestataire
+            </button>
           )}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
