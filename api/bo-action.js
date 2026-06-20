@@ -515,6 +515,12 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ verified: true }),
       });
+      // Marquer le profil comme ayant au moins un document vérifié
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ docs_verified: true }),
+      }).catch(() => {}); // Ignoré si la colonne n'existe pas encore (migration non appliquée)
       return res.status(200).json({ success: true });
     }
 

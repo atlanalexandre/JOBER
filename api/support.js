@@ -103,7 +103,7 @@ export default async function handler(req, res) {
 
   // ── booking_confirm: send booking confirmation email to client ────
   if (req.body?.action === "booking_confirm") {
-    const { clientEmail, clientName, prestaName, date, hours, total, job } = req.body;
+    const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
     if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
     if (RESEND_API_KEY) {
       const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName)||"cher client"}</strong>,</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#162547;border-radius:14px;overflow:hidden;margin-bottom:24px;border:1px solid rgba(124,111,224,0.25);"><tr><td style="padding:18px 20px;">
 <p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la mission</p>
-${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["💶 Total bloqué",total?`${esc(String(total))} €`:"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
+${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["🕐 Heure de début",esc(startTime)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["📍 Lieu",[esc(adresse),esc(ville)].filter(Boolean).join(", ")||"—"],["💶 Total bloqué",total?`${esc(String(total))} €`:"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
 </td></tr></table>
 <p style="color:#10D98F;font-size:13px;font-weight:600;margin:0 0 20px;">🔒 Votre argent est sécurisé en escrow et ne sera libéré qu'après validation mutuelle.</p>
 <div style="text-align:center;margin-top:20px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>

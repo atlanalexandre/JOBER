@@ -4783,6 +4783,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   const openCandidatures = async (mission) => {
     setSelected(mission);
+    setCompletedResult(null);
     const res = await fetch("/api/missions", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),

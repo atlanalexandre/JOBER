@@ -434,11 +434,11 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 // ── NAV BARS ──────────────────────────────────────────────────────
 function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
-    {id:"home",          icon:"🏠", label:"Accueil" },
-    {id:"catalogue",     icon:"🗂️", label:"Secteurs"},
-    {id:"search_filters",icon:"🔍", label:"Chercher"},
-    {id:"dashboard",     icon:"👤", label:"Compte"  },
-    {id:"settings",      icon:"⚙️", label:"Réglages"},
+    {id:"home",            icon:"🏠", label:"Accueil" },
+    {id:"mission_history", icon:"📋", label:"Missions"},
+    {id:"search_filters",  icon:"🔍", label:"Chercher"},
+    {id:"dashboard",       icon:"👤", label:"Compte"  },
+    {id:"settings",        icon:"⚙️", label:"Réglages"},
   ];
   return (
     <div style={{
@@ -456,7 +456,7 @@ function ClientNav({ active, onNavigate, unreadCount }) {
           <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
             <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
               {t.icon}
-              {t.id==="search_filters" && unreadCount > 0 && (
+              {t.id==="dashboard" && unreadCount > 0 && (
                 <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
               )}
             </span>
@@ -602,9 +602,8 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 
   const clientNav = [
     { id:"home",           icon:"🏠", label:"Accueil"         },
-    { id:"catalogue",      icon:"🗂️", label:"Secteurs"        },
-    { id:"search_filters", icon:"🔍", label:"Rechercher"      },
     { id:"mission_history",icon:"📋", label:"Mes missions"    },
+    { id:"search_filters", icon:"🔍", label:"Rechercher"      },
     { id:"team_booking",   icon:"👥", label:"Équipe"          },
     { id:"favorites",      icon:"❤️", label:"Favoris"         },
     { id:"notifications",  icon:"🔔", label:"Notifications"   },
@@ -1095,6 +1094,7 @@ export default function App() {
         setPaymentDescription("");
         setPaymentAdresse("");
         setPaymentVille("");
+        setPaymentStartTime("08:00");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }
@@ -1305,7 +1305,10 @@ export default function App() {
                 prestaName: selectedProvider.name||null,
                 job: selectedProvider.jobTitle||selectedProvider.role||null,
                 date: paymentDate||null,
+                startTime: paymentStartTime||null,
                 hours: paymentHours||null,
+                adresse: paymentAdresse||null,
+                ville: paymentVille||null,
                 total: paymentAmount,
               }),
             }).catch(()=>{});
