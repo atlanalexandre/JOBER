@@ -1094,6 +1094,7 @@ export default function App() {
         setPaymentDescription("");
         setPaymentAdresse("");
         setPaymentVille("");
+        setPaymentStartTime("08:00");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
         setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
       }

@@ -121,14 +121,17 @@ export default async function handler(req, res) {
         );
         const candidatures = await cr.json();
         const rawCandidatures = Array.isArray(candidatures) ? candidatures : [];
-        const enrichedCandidatures = await Promise.all(rawCandidatures.map(async (c) => {
-          const pr = await fetch(
-            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${c.prestataire_id}&select=prenom,nom`,
-            { headers }
-          );
+        const prestaIds = [...new Set(rawCandidatures.map(c => c.prestataire_id).filter(Boolean))];
+        let profileMap = {};
+        if (prestaIds.length > 0) {
+          const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${prestaIds.join(",")})&select=id,prenom,nom`, { headers });
           const profiles = await pr.json();
-          const profile = Array.isArray(profiles) && profiles[0];
-          return { ...c, prenom: profile?.prenom || "", nom: profile?.nom || "" };
+          if (Array.isArray(profiles)) profiles.forEach(p => { profileMap[p.id] = p; });
+        }
+        const enrichedCandidatures = rawCandidatures.map(c => ({
+          ...c,
+          prenom: profileMap[c.prestataire_id]?.prenom || "",
+          nom:    profileMap[c.prestataire_id]?.nom    || "",
         }));
         return { ...m, candidatures: enrichedCandidatures };
       }));
@@ -489,7 +492,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector,validation_prestataire,date,heure_debut,hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,metier,sector,validation_prestataire,date,heure_debut,hours,ville`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -497,8 +500,9 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette mission" });
       if (mission.date) {
-        const endHour = (parseInt((mission.heure_debut||"08:00").split(":")[0], 10) + Math.ceil(mission.hours||1));
-        const missionEnd = new Date(`${mission.date}T${String(endHour).padStart(2,"0")}:00:00`);
+        const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
+        const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
+        const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000);
         if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
 
@@ -528,15 +532,9 @@ export default async function handler(req, res) {
           const clientEmail = clientUser?.email;
           const clientName = clientUser?.user_metadata?.prenom || clientUser?.user_metadata?.nom || "";
           if (!clientEmail) return;
-          const missionDetailsRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=metier,date,ville,montant_total,hours,tarif_horaire`,
-            { headers }
-          );
-          const missionDetails = await missionDetailsRes.json();
-          const md = Array.isArray(missionDetails) && missionDetails[0];
-          const metier = md?.metier || mission.metier || mission.sector || "Mission";
-          const missionDate = md?.date || "";
-          const ville = md?.ville || "";
+          const metier = mission.metier || mission.sector || "Mission";
+          const missionDate = mission.date || "";
+          const ville = mission.ville || "";
           const appUrl = process.env.APP_URL || "https://www.alane.fr";
           await fetch("https://api.resend.com/emails", {
             method: "POST",
