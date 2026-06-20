@@ -154,7 +154,7 @@ ${(() => {
             }).catch(()=>{})
           );
           if (smsEnabled) {
-            const smsBody = `⏰ ALANE - Rappel : votre mission ${m.metier||"Mission"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne mission !`;
+            const smsBody = `⏰ ALANE - Rappel : votre mission ${m.metier||"Mission"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne mission ! — alane.fr`;
             const clientPhone = userMap[m.client_id]?.meta?.telephone;
             const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
             if (clientPhone) sends.push(sendSms(BREVO_API_KEY, clientPhone, smsBody));
@@ -210,7 +210,7 @@ ${(() => {
             if (clientEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(clientName) }) }).catch(()=>{}));
             if (prestaEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(prestaName) }) }).catch(()=>{}));
             if (smsEnabled) {
-              const smsCashback = `✅ ALANE - Pensez à valider votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre cashback.`;
+              const smsCashback = `✅ ALANE - Pensez à valider votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre cashback. — alane.fr`;
               const clientPhone = userMap[m.client_id]?.meta?.telephone;
               const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
               if (clientPhone) vSends.push(sendSms(BREVO_API_KEY, clientPhone, smsCashback));

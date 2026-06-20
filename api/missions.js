@@ -470,7 +470,7 @@ export default async function handler(req, res) {
                     <p>Bonjour ${prestaName},</p>
                     <p>Le client a validé votre mission <strong>${mission.metier || mission.sector || ""}</strong>.</p>
                     <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p>
-                    <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+                    <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
               }).catch(() => {});
@@ -570,7 +570,7 @@ export default async function handler(req, res) {
                   </a>
                 </div>
                 <div style="padding:16px 32px 24px;text-align:center">
-                  <p style="margin:0;color:rgba(255,255,255,0.25);font-size:11px">L'équipe ALANE</p>
+                  <p style="margin:0;color:rgba(255,255,255,0.25);font-size:11px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                 </div>
               </div>`,
             }),
@@ -818,7 +818,7 @@ export default async function handler(req, res) {
                     to: [ud.email],
                     subject: `🔔 Nouvelle mission disponible : ${missionLabel}`,
                     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-                      <h2 style="color:#4F46E5">Nouvelle mission JOBER</h2>
+                      <h2 style="color:#4F46E5">Nouvelle mission ALANE</h2>
                       <p>Une nouvelle mission correspond à votre profil :</p>
                       <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px">
                         <strong>${missionLabel}</strong><br/>
@@ -826,7 +826,8 @@ export default async function handler(req, res) {
                         📍 ${mission?.ville || "Ville à confirmer"}<br/>
                         ⏱ ${mission?.hours || "?"}h
                       </div>
-                      <p>Connectez-vous à JOBER pour postuler.</p>
+                      <p>Connectez-vous à ALANE pour postuler.</p>
+                      <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                     </div>`,
                   }),
                 }).catch(() => {});
@@ -840,7 +841,7 @@ export default async function handler(req, res) {
                 const digits = phone.replace(/\D/g, "");
                 const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
                 if (e164) {
-                  const smsText = `JOBER - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler.`;
+                  const smsText = `ALANE - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler. — alane.fr`;
                   console.log("[broadcast] sending SMS");
                   fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
@@ -923,10 +924,11 @@ export default async function handler(req, res) {
               to: [recipientEmail],
               subject: `💬 Nouveau message de ${sender_name || "votre contact"}`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-                <h2 style="color:#4F46E5">Nouveau message JOBER</h2>
+                <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
                 <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
                 <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${message_preview || ""}</div>
-                <p>Connectez-vous à JOBER pour répondre.</p>
+                <p>Connectez-vous à ALANE pour répondre.</p>
+                <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
           });
@@ -952,7 +954,7 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                 sender: "ALANE",
                 recipient: e164,
-                content: `ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)}`,
+                content: `ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)} — alane.fr`,
               }),
             });
             const sb = await sr.json().catch(() => ({}));
@@ -1113,6 +1115,7 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail || caller.id}</td></tr>
                 </table>
                 <p style="margin-top:20px;font-size:13px;color:#666">Traiter le remboursement depuis le <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">dashboard Stripe</a>.</p>
+                <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
           }).catch(() => {});
@@ -1230,7 +1233,7 @@ export default async function handler(req, res) {
                 </table>
               </div>
               <p style="color:#444;font-size:13px">L'équipe ALANE traite votre règlement dans les meilleurs délais. Vous recevrez un virement sous 5 jours ouvrés.</p>
-              <p style="color:#888;font-size:12px;margin-top:24px">Équipe ALANE · <a href="https://alane.fr" style="color:#7C6FE0">alane.fr</a></p>
+              <p style="color:#888;font-size:12px;margin-top:24px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
         }).catch(() => {});
@@ -1309,6 +1312,7 @@ export default async function handler(req, res) {
                   1. Rembourser le client partiellement sur <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">Stripe</a><br>
                   2. Virer ${proratedAmount.toFixed(2)} € HT au prestataire
                 </p>
+                <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
           }).catch(() => {});
@@ -1408,7 +1412,7 @@ export default async function handler(req, res) {
                   ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
                   : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
                 }
-                <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+                <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
             }),
           }).catch(() => {});
@@ -1426,8 +1430,8 @@ export default async function handler(req, res) {
                 sender: "ALANE",
                 recipient: e164,
                 content: isAccepted
-                  ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre.`
-                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire.`,
+                  ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
+                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`,
               }),
             }).catch(() => {});
           }
@@ -1465,8 +1469,8 @@ export default async function handler(req, res) {
         ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !`
         : `❌ ${presta_name || "Le prestataire"} a refusé la mission`;
       const smsText = isAccepted
-        ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${mission_label || ""}. Connectez-vous pour suivre la mission.`
-        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire.`;
+        ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${mission_label || ""}. Connectez-vous pour suivre la mission. — alane.fr`
+        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`;
 
       const RESEND_KEY  = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -1485,7 +1489,7 @@ export default async function handler(req, res) {
                 ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
                 : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre demande pour la mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
               }
-              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
         }).catch(() => {});
@@ -1548,7 +1552,7 @@ export default async function handler(req, res) {
                 ⏱ ${hours || "?"}h
               </div>
               <p>Connectez-vous à <strong>ALANE</strong> pour accepter ou refuser dans les délais impartis.</p>
-              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE</p>
+              <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
         }).catch(() => {});
@@ -1567,7 +1571,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               sender: "ALANE",
               recipient: e164,
-              content: `ALANE - Demande de mission : ${mission_label || "Mission"} le ${date || "?"} à ${ville || "?"} (${hours || "?"}h). Connectez-vous pour répondre !`,
+              content: `ALANE - Demande de mission : ${mission_label || "Mission"} le ${date || "?"} à ${ville || "?"} (${hours || "?"}h). Connectez-vous pour répondre ! — alane.fr`,
             }),
           }).then(r => r.json()).then(d => console.log("[notify_prestataire] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_prestataire] SMS error:", e.message));
         }
