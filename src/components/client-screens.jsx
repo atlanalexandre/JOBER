@@ -1155,7 +1155,17 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>Les premiers prestataires ALANE arrivent très prochainement.</div>
             </div>
           ) : (
-            providers.filter(p=>p.available).slice(0,3).map((p,i)=>(
+            providers
+              .filter(p=>p.available)
+              .sort((a,b) => {
+                const planDiff = (b.planRank||0) - (a.planRank||0);
+                if (planDiff !== 0) return planDiff;
+                const reviewsDiff = (b.reviews||0) - (a.reviews||0);
+                if (reviewsDiff !== 0) return reviewsDiff;
+                return (b.rating||0) - (a.rating||0);
+              })
+              .slice(0,3)
+              .map((p,i)=>(
               <div key={p.id} onClick={()=>onNavigate("profile",p)}
                 className="card-hover"
                 style={{
