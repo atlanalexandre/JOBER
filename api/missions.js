@@ -188,6 +188,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { candidature_id, mission_id, prestataire_id } = payload;
       if (!candidature_id || !mission_id) return res.status(400).json({ error: "candidature_id et mission_id requis" });
+      if (!isUuid(candidature_id) || !isUuid(mission_id)) return res.status(400).json({ error: "IDs invalides" });
 
       // Vérifier la limite mensuelle du prestataire avant l'assignation
       if (prestataire_id && isUuid(prestataire_id)) {
@@ -238,6 +239,11 @@ export default async function handler(req, res) {
           tarifHoraire = Number(ud.user_metadata?.tarif_net) || 0;
         } catch {}
       }
+
+      // Vérifier que la candidature appartient bien à cette mission
+      const candCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}&mission_id=eq.${mission_id}&select=id,prestataire_id`, { headers });
+      const candCheckData = await candCheckRes.json();
+      if (!Array.isArray(candCheckData) || !candCheckData[0]) return res.status(403).json({ error: "Candidature invalide pour cette mission" });
 
       // Vérifier si la mission a déjà un paiement Stripe
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -791,7 +797,7 @@ export default async function handler(req, res) {
               const meta = ud.user_metadata || {};
               const presta_sector = meta.secteur || meta.sector;
               console.log("[broadcast] checking prestataire sector:", presta_sector, "vs mission:", sector);
-              if (sector && presta_sector && presta_sector !== sector) return;
+              if (sector && presta_sector !== sector) return;
 
               // In-app notification
               await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -929,7 +935,7 @@ export default async function handler(req, res) {
               html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
                 <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
                 <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
-                <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${message_preview || ""}</div>
+                <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${esc(message_preview || "")}</div>
                 <p>Connectez-vous à ALANE pour répondre.</p>
                 <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
@@ -987,8 +993,11 @@ export default async function handler(req, res) {
     }
 
     if (action === "get_position") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/tracking_positions?mission_id=eq.${mission_id}&select=lat,lng,updated_at&order=updated_at.desc&limit=1`,
         { headers }

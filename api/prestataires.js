@@ -49,53 +49,47 @@ export default async function handler(req, res) {
       }
     }
 
-    // Enrich each profile with user_metadata from auth admin
-    const enriched = await Promise.all(
-      approvedProfiles.map(async (p) => {
-        try {
-          const userRes = await fetch(
-            `${SUPABASE_URL}/auth/v1/admin/users/${p.id}`,
-            { headers }
-          );
-          const userData = await userRes.json();
-          const meta = userData.user_metadata || {};
-          const provRatings = ratingsByProvider[p.id] || [];
-          const avgRating = provRatings.length
-            ? Math.round(provRatings.reduce((a, b) => a + b, 0) / provRatings.length * 10) / 10
-            : 0;
-          return {
-            id:            p.id,
-            name:          `${p.prenom || ""} ${p.nom || ""}`.trim() || "Prestataire",
-            prenom:        p.prenom || "",
-            nom:           p.nom || "",
-            secteur:          meta.secteur          || meta.sector    || null,
-            metier:           meta.metier           || meta.job_title || null,
-            niveau:           meta.niveau           || null,
-            tarif_net:        Number(meta.tarif_net) || 12,
-            langues:          meta.langues          || null,
-            dispon_jours:          meta.dispon_jours          || null,
-            dispon_jours_creneaux: meta.dispon_jours_creneaux || null,
-            dispo_immediat:        meta.dispo_immediat        || false,
-            code_postal:      meta.code_postal      || null,
-            ville:            meta.ville            || null,
-            plan_abonnement:  meta.plan_abonnement  || "free",
-            rating:           avgRating,
-            reviews:          provRatings.length,
-            cv:               meta.cv || null,
-            created_at:       p.created_at,
-          };
-        } catch {
-          return {
-            id:         p.id,
-            name:       `${p.prenom || ""} ${p.nom || ""}`.trim() || "Prestataire",
-            prenom:     p.prenom || "",
-            nom:        p.nom || "",
-            tarif_net:  12,
-            created_at: p.created_at,
-          };
-        }
-      })
-    );
+    // Fetch all auth users in one request to avoid N+1 against Supabase Auth API
+    let userMetaMap = {};
+    try {
+      const allUsersRes = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`,
+        { headers }
+      );
+      const allUsersData = await allUsersRes.json();
+      const allUsers = allUsersData.users || [];
+      for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
+    } catch {}
+
+    // Enrich each profile with user_metadata
+    const enriched = approvedProfiles.map((p) => {
+      const meta = userMetaMap[p.id] || {};
+      const provRatings = ratingsByProvider[p.id] || [];
+      const avgRating = provRatings.length
+        ? Math.round(provRatings.reduce((a, b) => a + b, 0) / provRatings.length * 10) / 10
+        : 0;
+      return {
+        id:            p.id,
+        name:          `${p.prenom || ""} ${p.nom || ""}`.trim() || "Prestataire",
+        prenom:        p.prenom || "",
+        nom:           p.nom || "",
+        secteur:          meta.secteur          || meta.sector    || null,
+        metier:           meta.metier           || meta.job_title || null,
+        niveau:           meta.niveau           || null,
+        tarif_net:        Number(meta.tarif_net) || 12,
+        langues:          meta.langues          || null,
+        dispon_jours:          meta.dispon_jours          || null,
+        dispon_jours_creneaux: meta.dispon_jours_creneaux || null,
+        dispo_immediat:        meta.dispo_immediat        || false,
+        code_postal:      meta.code_postal      || null,
+        ville:            meta.ville            || null,
+        plan_abonnement:  meta.plan_abonnement  || "free",
+        rating:           avgRating,
+        reviews:          provRatings.length,
+        cv:               meta.cv || null,
+        created_at:       p.created_at,
+      };
+    });
 
     return res.status(200).json({ prestataires: enriched });
   } catch (e) {

@@ -167,6 +167,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   if (req.body?.action === "track_referral") {
     const { newUserId, referrerUUID } = req.body;
     if (!newUserId || !referrerUUID) return res.status(400).json({ error: "Missing fields" });
+    const isUuid = v => /^[0-9a-f-]{36}$/i.test(String(v || ""));
+    if (!isUuid(newUserId) || !isUuid(referrerUUID)) return res.status(400).json({ error: "IDs invalides" });
 
     const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
     const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

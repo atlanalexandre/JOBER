@@ -22,8 +22,9 @@ export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
   const sig     = req.headers["stripe-signature"];
 
-  // Vérification signature si webhook secret configuré
-  if (STRIPE_WEBHOOK_SECRET && sig) {
+  // Vérification signature — obligatoire si STRIPE_WEBHOOK_SECRET est configuré
+  if (STRIPE_WEBHOOK_SECRET) {
+    if (!sig) return res.status(400).json({ error: "Signature manquante" });
     try {
       const crypto = await import("crypto");
       const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
@@ -102,7 +103,11 @@ export default async function handler(req, res) {
       try {
         // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
         const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
-        const existingUser = getR.ok ? await getR.json() : {};
+        if (!getR.ok) {
+          console.error("stripe-webhook: GET user failed before PUT, aborting to avoid metadata loss", getR.status);
+          return res.status(500).json({ error: "User fetch failed" });
+        }
+        const existingUser = await getR.json();
         const existingMeta = existingUser.user_metadata || {};
         const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
           method: "PUT",

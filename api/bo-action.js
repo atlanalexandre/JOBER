@@ -581,11 +581,15 @@ export default async function handler(req, res) {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
 
       const PROFILE_COLS = ["prenom", "nom", "status"];
+      const VALID_STATUSES = ["pending", "approved", "rejected"];
       const profileFields = {};
       const metaFields = {};
       for (const [k, v] of Object.entries(payload)) {
         if (PROFILE_COLS.includes(k)) profileFields[k] = v;
         else metaFields[k] = v;
+      }
+      if (profileFields.status !== undefined && !VALID_STATUSES.includes(profileFields.status)) {
+        return res.status(400).json({ error: "Statut invalide" });
       }
 
       if (Object.keys(profileFields).length > 0) {
