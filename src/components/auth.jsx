@@ -115,7 +115,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
-      await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
+      await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
       const referrerUUID = sessionStorage.getItem("alane_referrer");
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
@@ -735,7 +735,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
-      await fetch("/api/welcome-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
+      await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
       const referrerUUID = sessionStorage.getItem("alane_referrer");
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
