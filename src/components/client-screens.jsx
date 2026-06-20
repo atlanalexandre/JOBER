@@ -1155,7 +1155,17 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               <div style={{ fontSize:12, color:C.textSub, lineHeight:1.5 }}>Les premiers prestataires ALANE arrivent très prochainement.</div>
             </div>
           ) : (
-            providers.filter(p=>p.available).slice(0,3).map((p,i)=>(
+            providers
+              .filter(p=>p.available)
+              .sort((a,b) => {
+                const planDiff = (b.planRank||0) - (a.planRank||0);
+                if (planDiff !== 0) return planDiff;
+                const reviewsDiff = (b.reviews||0) - (a.reviews||0);
+                if (reviewsDiff !== 0) return reviewsDiff;
+                return (b.rating||0) - (a.rating||0);
+              })
+              .slice(0,3)
+              .map((p,i)=>(
               <div key={p.id} onClick={()=>onNavigate("profile",p)}
                 className="card-hover"
                 style={{
@@ -1346,8 +1356,9 @@ export function useProviders() {
               jobTitle:     p.metier,
               rateNum,
               hourlyRate:   `${rateNum.toFixed(2).replace(".", ",")} € HT/h`,
-              available:    p.dispo_immediat !== false,
-              dispon_jours: p.dispon_jours || [],
+              available:             p.dispo_immediat !== false,
+              dispon_jours:          p.dispon_jours || [],
+              dispon_jours_creneaux: p.dispon_jours_creneaux || null,
               code_postal:  p.code_postal,
               rating:       p.rating || 0,
               reviews:      p.reviews || 0,
@@ -2199,6 +2210,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [instructions, setInstructions] = useState("");
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
+  const [availError, setAvailError] = useState("");
   const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
@@ -2523,12 +2535,34 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
+          {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
+              // Vérification disponibilité prestataire
+              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+              const [yr,mo,dy] = startDate.split("-").map(Number);
+              const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
+              const dispoDays = p.dispon_jours || [];
+              if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
+                setAvailError(`${p.name} n'est pas disponible le ${jourFr}. Jours disponibles : ${dispoDays.join(", ")}.`);
+                return;
+              }
+              const creneaux = p.dispon_jours_creneaux || {};
+              const daySlots = creneaux[jourFr] || [];
+              if (daySlots.length > 0 && startTime) {
+                const h = parseInt(startTime.split(":")[0], 10);
+                const slotOk = (daySlots.includes("Matin (6h-13h)") && h >= 6 && h < 13) ||
+                               (daySlots.includes("Après-midi (13h-20h)") && h >= 13 && h < 20) ||
+                               (daySlots.includes("Soir/Nuit (20h-6h)") && (h >= 20 || h < 6));
+                if (!slotOk) {
+                  setAvailError(`${p.name} n'est pas disponible sur ce créneau le ${jourFr}. Créneaux déclarés : ${daySlots.join(", ")}.`);
+                  return;
+                }
+              }
             }
-            setDateError(false);
+            setDateError(false); setAvailError("");
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
@@ -4925,6 +4959,12 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
             </div>
           )}
+          {selected.status === "assigned" && selected.prestataire_id && (
+            <button onClick={()=>onNavigate("chat", { id: selected.prestataire_id, name: prestaName || "Prestataire", avatar:"👷", color:C.violet })}
+              style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              💬 Chat avec le prestataire
+            </button>
+          )}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
@@ -4947,16 +4987,24 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
 
           {completedResult && (
-            <div style={{ marginTop:20, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center" }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
-              <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
-                Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+            <div style={{ marginTop:20 }}>
+              <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center", marginBottom:12 }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+                <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
+                  Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
+                </div>
+                <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
+                  <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
+                </div>
               </div>
-              <div style={{ background:`${C.accentGold}20`, border:`1px solid ${C.accentGold}40`, borderRadius:10, padding:"12px" }}>
-                <div style={{ color:C.accentGold, fontWeight:700, fontSize:16 }}>+{completedResult.cashbackEarned?.toFixed(2).replace(".",",")} € cashback</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>crédité sur votre wallet</div>
-              </div>
+              {selected.prestataire_id && !ratedMissions.has(selected.id) && (
+                <button onClick={()=>onNavigate("rating", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet, jobTitle:selected.metier||"Prestataire", _missionId:selected.id, _fromHistory:true })}
+                  style={{ width:"100%", padding:"14px", borderRadius:r, border:"none", background:`linear-gradient(135deg,${C.accentGold},#e67e22)`, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⭐ Noter le prestataire
+                </button>
+              )}
             </div>
           )}
 

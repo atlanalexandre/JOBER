@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   if (!email || !prenom) return res.status(400).json({ error: "Missing fields" });
 
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
-  const RESEND_FROM    = process.env.RESEND_FROM;
-  if (!RESEND_API_KEY || !RESEND_FROM) return res.status(200).json({ ok: true });
+  const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+  if (!RESEND_API_KEY) return res.status(200).json({ ok: true });
 
   const isPresta = role === "prestataire";
   const html = `<!DOCTYPE html>

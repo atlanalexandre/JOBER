@@ -175,7 +175,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
           <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
-          <Input label="Adresse *" placeholder="12 rue de la Paix" icon="🏠" value={adresseRue} onChange={e=>setAdresseRue(e.target.value)} />
+          <AddressAutocomplete label="Adresse *" placeholder="12 rue de la Paix" value={adresseRue} onChange={(v)=>setAdresseRue(v)} onSelect={(data)=>{ if(data?.ville) setVilleBase(data.ville); if(data?.codePostal) setCodePostal(data.codePostal); if(data?.rue) setAdresseRue(data.rue); }} />
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ flex:"0 0 120px" }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value.replace(/\D/g,"").slice(0,5))} inputMode="numeric" /></div>
             <div style={{ flex:1 }}><Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="Ville de départ en mission" /></div>
