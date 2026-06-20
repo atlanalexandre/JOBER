@@ -15,14 +15,23 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Fetch approved prestataires from profiles
-    const profilesRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at`,
-      { headers }
-    );
-    const profiles = await profilesRes.json();
+    // Fetch approved prestataires + verified doc IDs in parallel
+    const [profilesRes, verifiedDocsRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
+    ]);
+    const profiles     = await profilesRes.json();
+    const verifiedDocs = await verifiedDocsRes.json();
 
     if (!Array.isArray(profiles) || profiles.length === 0) {
+      return res.status(200).json({ prestataires: [] });
+    }
+
+    // Only show prestataires with at least one verified document
+    const verifiedIds = new Set(Array.isArray(verifiedDocs) ? verifiedDocs.map(d => d.prestataire_id) : []);
+    const approvedProfiles = profiles.filter(p => verifiedIds.has(p.id));
+
+    if (approvedProfiles.length === 0) {
       return res.status(200).json({ prestataires: [] });
     }
 
@@ -42,7 +51,7 @@ export default async function handler(req, res) {
 
     // Enrich each profile with user_metadata from auth admin
     const enriched = await Promise.all(
-      profiles.map(async (p) => {
+      approvedProfiles.map(async (p) => {
         try {
           const userRes = await fetch(
             `${SUPABASE_URL}/auth/v1/admin/users/${p.id}`,
