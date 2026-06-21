@@ -5273,29 +5273,59 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         {tab !== "prestataires" && filtered.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
+          const acceptedCandidature = m.candidatures?.find(c=>c.status==="accepted");
+          const heureDebut = m.heure_debut || "";
+          const heureFin = (() => {
+            if (!heureDebut || !m.hours) return "";
+            const [h,min] = heureDebut.split(":").map(Number);
+            const e = h*60+min+Math.round(Number(m.hours)*60);
+            return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`;
+          })();
+          const borderColor = pending>0 ? C.violet : m.status==="assigned" ? C.violet : m.status==="completed" ? C.accentGold : m.status==="cancelled" ? "#F25E5E" : C.border;
           return (
             <div key={m.id} onClick={()=>openCandidatures(m)}
-              style={{ background:"#0D1B3E", borderRadius:16, padding:"15px 16px", marginBottom:12, cursor:"pointer",
-                border:`1px solid ${pending>0?C.violet+"66":m.status==="assigned"?C.success+"44":m.status==="completed"?C.accentGold+"33":C.border}`,
-                boxShadow: pending>0 ? `0 0 0 1px ${C.violet}22` : "none" }}>
-              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                <div style={{ width:48, height:48, borderRadius:14, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0, boxShadow:`0 2px 8px ${sector?.color||C.violet}15` }}>{sector?.icon||"📋"}</div>
+              style={{ background:"#0D1B3E", borderRadius:16, marginBottom:12, cursor:"pointer", overflow:"hidden",
+                border:`1px solid ${borderColor}44` }}>
+              {/* Bande de statut en haut */}
+              <div style={{ background:`${statusColor[m.status]||C.textMuted}18`, borderBottom:`1px solid ${statusColor[m.status]||C.textMuted}22`, padding:"7px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:800, letterSpacing:0.5, textTransform:"uppercase" }}>
+                  {pending>0 ? `🔔 ${pending} candidature${pending>1?"s":""} en attente` : statusLabel[m.status]||m.status}
+                </span>
+                {m.recurrence && <span style={{ fontSize:10, color:C.violet, fontWeight:700 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":"Mensuel"}</span>}
+              </div>
+              {/* Corps de la carte */}
+              <div style={{ padding:"13px 14px", display:"flex", gap:12, alignItems:"flex-start" }}>
+                <div style={{ width:46, height:46, borderRadius:13, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:2 }}>{m.metier || sector?.label || "Mission"}</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>
-                    {m.date && `📅 ${m.date}`}{m.heure_debut ? ` · ${m.heure_debut}${(() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return ` – ${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}` : m.hours ? ` · ${m.hours}h` : ""}{m.ville ? ` · ${m.ville}` : ""}
+                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                    {m.date && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
+                        <span style={{ width:14, textAlign:"center" }}>📅</span>
+                        <span>{m.date}</span>
+                      </div>
+                    )}
+                    {(heureDebut || m.hours) && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
+                        <span style={{ width:14, textAlign:"center" }}>🕐</span>
+                        <span>{heureDebut && heureFin ? `${heureDebut} – ${heureFin}` : heureDebut || `${m.hours}h`}</span>
+                      </div>
+                    )}
+                    {m.ville && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
+                        <span style={{ width:14, textAlign:"center" }}>📍</span>
+                        <span>{m.ville}</span>
+                      </div>
+                    )}
+                    {m.status==="assigned" && acceptedCandidature && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.success, fontSize:12, fontWeight:700, marginTop:2 }}>
+                        <span style={{ width:14, textAlign:"center" }}>✓</span>
+                        <span>{[acceptedCandidature.prenom, acceptedCandidature.nom].filter(Boolean).join(" ") || "Prestataire assigné"}</span>
+                      </div>
+                    )}
                   </div>
-                  {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:3 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
-                  {m.status === "assigned" && m.candidatures?.find(c=>c.status==="accepted") && (
-                    <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:3 }}>
-                      ✓ {[m.candidatures.find(c=>c.status==="accepted")?.prenom, m.candidatures.find(c=>c.status==="accepted")?.nom].filter(Boolean).join(" ") || "Prestataire assigné"}
-                    </div>
-                  )}
                 </div>
-                <div style={{ textAlign:"right", flexShrink:0 }}>
-                  <span style={{ display:"inline-block", background:`${statusColor[m.status]||C.textMuted}20`, color:statusColor[m.status]||C.textMuted, fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:6 }}>{statusLabel[m.status]||m.status}</span>
-                  {m.recurrence && <div style={{ fontSize:10, color:C.violet, fontWeight:700, marginTop:4 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":"Mensuel"}</div>}
-                </div>
+                <div style={{ color:C.textMuted, fontSize:18, alignSelf:"center", paddingLeft:4 }}>›</div>
               </div>
             </div>
           );
