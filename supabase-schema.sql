@@ -427,4 +427,29 @@ CREATE TABLE IF NOT EXISTS account_blacklist (
 CREATE INDEX IF NOT EXISTS idx_blacklist_telephone ON account_blacklist(telephone) WHERE telephone IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blacklist_iban      ON account_blacklist(iban)      WHERE iban IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blacklist_siret     ON account_blacklist(siret)     WHERE siret IS NOT NULL;
+
+-- RLS sur account_blacklist — lecture/écriture réservée au service_role (BO)
+-- Avec RLS activé et aucune politique, seul le service_role (bypass RLS) peut accéder
+ALTER TABLE account_blacklist ENABLE ROW LEVEL SECURITY;
+
+-- ── FONCTION atomique cashback ────────────────────────────────────────
+-- Incrémente le solde cashback de manière atomique pour éviter les race conditions
+-- Usage : SELECT increment_cashback(user_id, delta, missions_delta)
+CREATE OR REPLACE FUNCTION increment_cashback(
+  p_user_id  uuid,
+  p_delta    numeric,
+  p_missions integer DEFAULT 1
+)
+RETURNS TABLE (cashback_balance numeric, missions_completed_month integer)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE profiles
+  SET
+    cashback_balance        = COALESCE(cashback_balance, 0) + p_delta,
+    missions_completed_month = COALESCE(missions_completed_month, 0) + p_missions
+  WHERE id = p_user_id;
+  RETURN QUERY SELECT p.cashback_balance, p.missions_completed_month
+    FROM profiles p WHERE p.id = p_user_id;
+END;
+$$;
 CREATE INDEX IF NOT EXISTS idx_blacklist_email     ON account_blacklist(email)     WHERE email IS NOT NULL;

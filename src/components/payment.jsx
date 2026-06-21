@@ -397,8 +397,6 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
-    } else if (method === "apple") {
-      setStripeError("Apple Pay n'est pas disponible. Veuillez utiliser le paiement par carte.");
     } else if (method === "wire") {
       setStripeError("Le paiement par virement nécessite une confirmation manuelle. Notre équipe vous contactera pour finaliser.");
     }
@@ -453,7 +451,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>Mode de paiement</div>
           <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-            {[{id:"card",icon:"💳",label:"Carte"},{id:"apple",icon:"",label:"Apple Pay"},{id:"wire",icon:"🏦",label:"Virement"}].map(m => (
+            {[{id:"card",icon:"💳",label:"Carte bancaire"},{id:"wire",icon:"🏦",label:"Virement"}].map(m => (
               <button key={m.id} onClick={()=>setMethod(m.id)} style={{ flex:1, padding:"10px 6px", borderRadius:12, border:`2px solid ${method===m.id?C.violet:C.grayLight}`, background:method===m.id?`${C.violet}08`:C.white, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
                 <div style={{ fontSize:18 }}>{m.icon}</div>
                 <div style={{ fontSize:11, fontWeight:method===m.id?700:500, color:method===m.id?C.violet:C.gray, marginTop:2 }}>{m.label}</div>
@@ -515,13 +513,6 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
                   ⚠️ {stripeError}
                 </div>
               )}
-            </div>
-          )}
-          {method==="apple" && (
-            <div style={{ textAlign:"center", padding:"20px 0" }}>
-              <div style={{ fontSize:48, marginBottom:8 }}></div>
-              <p style={{ color:C.textSub, fontSize:14, marginBottom:12 }}>Apple Pay n'est pas disponible sur cet appareil ou ce navigateur.</p>
-              <p style={{ color:C.textSub, fontSize:12 }}>Utilisez le paiement par carte ou virement.</p>
             </div>
           )}
           {method==="wire" && (
