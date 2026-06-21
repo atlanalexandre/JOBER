@@ -1874,7 +1874,11 @@ export function SearchFiltersScreen({ onNavigate }) {
   };
 
   const filtered = providers.filter(p=>{
-    if(search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.role?.toLowerCase().includes(search.toLowerCase()) && !p.jobTitle?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+      const fields = [p.name, p.prenom, p.nom, p.jobTitle, ...(p.skills||[])].map(f=>(f||"").toLowerCase());
+      if (!terms.every(t => fields.some(f => f.includes(t)))) return false;
+    }
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
     if(dispoNow && !p.available) return false;
