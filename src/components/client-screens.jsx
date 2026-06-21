@@ -4732,6 +4732,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [userId, setUserId]       = useState(null);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [prestaName, setPrestaName] = useState("");
+  const [prestaDetails, setPrestaDetails] = useState(null); // { initials, avgRating }
+  const [prestaHistoire, setPrestaHistoire] = useState([]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
@@ -4760,10 +4762,22 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   useEffect(() => {
     if (selected?.prestataire_id) {
-      supabase.from("profiles").select("prenom,nom").eq("id", selected.prestataire_id).single()
-        .then(({ data }) => setPrestaName(data ? [data.prenom, data.nom].filter(Boolean).join(" ") : "Prestataire"));
-    } else setPrestaName("");
-  }, [selected]);
+      Promise.all([
+        supabase.from("profiles").select("prenom,nom").eq("id", selected.prestataire_id).single(),
+        supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id),
+      ]).then(([{ data: prof }, { data: ratingRows }]) => {
+        const name = prof ? [prof.prenom, prof.nom].filter(Boolean).join(" ") : "Prestataire";
+        const initials = prof ? [prof.prenom?.[0], prof.nom?.[0]].filter(Boolean).join("").toUpperCase() : "P";
+        const ratings = Array.isArray(ratingRows) ? ratingRows.map(r => r.rating).filter(Boolean) : [];
+        const avgRating = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : 0;
+        setPrestaName(name);
+        setPrestaDetails({ initials, avgRating });
+      });
+    } else {
+      setPrestaName("");
+      setPrestaDetails(null);
+    }
+  }, [selected?.id]);
 
   useEffect(() => {
     const poll = async () => {
@@ -4781,6 +4795,25 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     const t = setInterval(poll, 30000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (tab !== "prestataires") return;
+    const completed = missions.filter(m => m.status === "completed" && m.prestataire_id);
+    const byPresta = {};
+    for (const m of completed) {
+      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
+      byPresta[m.prestataire_id].missions.push(m);
+    }
+    const ids = Object.keys(byPresta);
+    if (!ids.length) { setPrestaHistoire([]); return; }
+    supabase.from("profiles").select("id,prenom,nom").in("id", ids).then(({ data }) => {
+      const nameMap = {};
+      if (Array.isArray(data)) data.forEach(p => {
+        nameMap[p.id] = { name: [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire", initials: [p.prenom?.[0], p.nom?.[0]].filter(Boolean).join("").toUpperCase() || "P" };
+      });
+      setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
+    });
+  }, [tab, missions]);
 
   const openCandidatures = async (mission) => {
     setSelected(mission);
@@ -4913,13 +4946,50 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     const sector = SECTORS.find(s => s.id === selected.sector);
     return (
       <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
-        <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
+        <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 20px", borderRadius:"0 0 26px 26px" }}>
           <button onClick={()=>setSelected(null)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-          <div style={{ fontSize:28, marginBottom:6 }}>{sector?.icon||"📋"}</div>
-          <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 2px" }}>{selected.metier || sector?.label}</h2>
-          <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>📅 {selected.date} · {selected.hours}h · {selected.ville}</p>
+          <div style={{ display:"flex", alignItems:"flex-start", gap:14, marginBottom:12 }}>
+            <div style={{ width:52, height:52, borderRadius:14, background:`${sector?.color||C.violet}30`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+            <div>
+              <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 4px" }}>{selected.metier || sector?.label}</h2>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {selected.date && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📅 {selected.date}</span>}
+                {selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
+                {selected.hours && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.hours}h</span>}
+                {selected.ville && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📍 {selected.ville}</span>}
+                {selected.tarif_horaire > 0 && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>💶 {selected.tarif_horaire} €/h</span>}
+              </div>
+            </div>
+          </div>
+          {selected.adresse && <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:4 }}>🏢 {selected.adresse}</div>}
+          {selected.description && <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.7)", lineHeight:1.5 }}>📝 {selected.description}</div>}
         </div>
         <div style={{ padding:"18px" }}>
+          {/* Carte prestataire assigné */}
+          {(selected.status === "assigned" || selected.status === "pending_acceptance") && selected.prestataire_id && prestaDetails && (
+            <div style={{ background:"linear-gradient(135deg,#162547,#1a2d5a)", borderRadius:16, padding:"16px", marginBottom:16, border:`1px solid ${C.violet}55` }}>
+              <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Prestataire assigné</div>
+              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                <div style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0 }}>
+                  {prestaDetails.initials}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}</div>
+                  {prestaDetails.avgRating > 0 && (
+                    <div style={{ color:C.accentGold, fontSize:12, fontWeight:700, marginTop:3 }}>
+                      {"⭐".repeat(Math.round(prestaDetails.avgRating))} {prestaDetails.avgRating}/5
+                    </div>
+                  )}
+                </div>
+                <button onClick={()=>{ if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet }); }}
+                  style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                  💬 Chat
+                </button>
+              </div>
+            </div>
+          )}
+          {(selected.status === "open" || selected.status === "needs_replacement") && (<>
           <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
             {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
           </p>
@@ -4961,12 +5031,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
             </div>
           )}
-          {selected.status === "assigned" && selected.prestataire_id && (
-            <button onClick={()=>onNavigate("chat", { id: selected.prestataire_id, name: prestaName || "Prestataire", avatar:"👷", color:C.violet })}
-              style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              💬 Chat avec le prestataire
-            </button>
-          )}
+          </>)}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
@@ -5159,34 +5224,77 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       </div>
       <div style={{ padding:"16px 18px 0" }}>
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"closed",l:"Fermées"}].map(t=>(
+          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"prestataires",l:"Prestataires"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
           ))}
         </div>
         {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
-        {!loading && filtered.length === 0 && (
+        {!loading && tab !== "prestataires" && filtered.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
             <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune mission</div>
             <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première mission depuis un secteur.</div>
           </div>
         )}
-        {filtered.map(m => {
+        {tab === "prestataires" && (
+          <div>
+            {prestaHistoire.length === 0 && !loading && (
+              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>👤</div>
+                <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucun prestataire</div>
+                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières missions terminées.</div>
+              </div>
+            )}
+            {prestaHistoire.map((p, i) => (
+              <div key={p.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                  <div style={{ width:50, height:50, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0 }}>
+                    {p.initials}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{p.name}</div>
+                    <div style={{ color:C.textMuted, fontSize:12, marginTop:2 }}>
+                      {p.missions.length} mission{p.missions.length > 1 ? "s" : ""} · Dernière : {p.missions[0]?.date || "—"}
+                    </div>
+                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>
+                      {p.missions.slice(0,2).map(m => m.metier || m.sector).filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onNavigate("chat", { id: p.prestataire_id, name: p.name, avatar:"👷", color:C.violet })}
+                    style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                    💬 Contacter
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab !== "prestataires" && filtered.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
           return (
-            <div key={m.id} onClick={()=>openCandidatures(m)} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, cursor:"pointer", border:`1px solid ${pending>0?C.violet+"55":C.border}` }}>
+            <div key={m.id} onClick={()=>openCandidatures(m)}
+              style={{ background:"#0D1B3E", borderRadius:16, padding:"15px 16px", marginBottom:12, cursor:"pointer",
+                border:`1px solid ${pending>0?C.violet+"66":m.status==="assigned"?C.success+"44":m.status==="completed"?C.accentGold+"33":C.border}`,
+                boxShadow: pending>0 ? `0 0 0 1px ${C.violet}22` : "none" }}>
               <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                <div style={{ width:46, height:46, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.metier || sector?.label || "Mission"}</div>
-                  <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${(() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return ` – ${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}` : ` · ${m.hours}h`} · {m.ville}</div>
-                  {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:2 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
+                <div style={{ width:48, height:48, borderRadius:14, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0, boxShadow:`0 2px 8px ${sector?.color||C.violet}15` }}>{sector?.icon||"📋"}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:2 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ color:C.textSub, fontSize:12 }}>
+                    {m.date && `📅 ${m.date}`}{m.heure_debut ? ` · ${m.heure_debut}${(() => { const [h,min] = m.heure_debut.split(":").map(Number); const e = h*60+min+Math.round(Number(m.hours)*60); return ` – ${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}` : m.hours ? ` · ${m.hours}h` : ""}{m.ville ? ` · ${m.ville}` : ""}
+                  </div>
+                  {pending > 0 && <div style={{ color:C.violet, fontSize:11, fontWeight:700, marginTop:3 }}>🔔 {pending} candidature{pending>1?"s":""} en attente</div>}
+                  {m.status === "assigned" && m.candidatures?.find(c=>c.status==="accepted") && (
+                    <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:3 }}>
+                      ✓ {[m.candidatures.find(c=>c.status==="accepted")?.prenom, m.candidatures.find(c=>c.status==="accepted")?.nom].filter(Boolean).join(" ") || "Prestataire assigné"}
+                    </div>
+                  )}
                 </div>
-                <div style={{ textAlign:"right" }}>
-                  <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:700 }}>{statusLabel[m.status]||m.status}</span>
-                  {m.recurrence && <div style={{ fontSize:10, color:C.violet, fontWeight:700, marginTop:2 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":m.recurrence==="monthly"?"Mensuel":""}</div>}
-                  <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>›</div>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <span style={{ display:"inline-block", background:`${statusColor[m.status]||C.textMuted}20`, color:statusColor[m.status]||C.textMuted, fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:6 }}>{statusLabel[m.status]||m.status}</span>
+                  {m.recurrence && <div style={{ fontSize:10, color:C.violet, fontWeight:700, marginTop:4 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":"Mensuel"}</div>}
                 </div>
               </div>
             </div>
