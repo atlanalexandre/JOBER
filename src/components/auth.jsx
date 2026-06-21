@@ -108,7 +108,6 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
-        siret: kbisNum.trim()||null,
       });
       await fetch("/api/support", {
         method: "POST",

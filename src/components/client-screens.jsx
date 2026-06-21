@@ -2805,9 +2805,10 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
       else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
 
       // Poll GPS position
+      const { data:{ session: posSession } } = await supabase.auth.getSession();
       const posRes = await fetch("/api/missions", {
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{"Content-Type":"application/json", ...(posSession?.access_token ? {"Authorization":`Bearer ${posSession.access_token}`} : {})},
         body: JSON.stringify({ action:"get_position", mission_id:missionId }),
       }).then(r=>r.json()).catch(()=>null);
       if(posRes?.lat != null && posRes?.lng != null && mounted) {

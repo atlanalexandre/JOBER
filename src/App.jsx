@@ -946,7 +946,8 @@ export default function App() {
     const subSuccess = params.get("sub_success");
     const plan = params.get("plan");
     if(subSuccess === "1" && plan) {
-      supabase.auth.updateUser({ data: { plan_abonnement: plan } }).then(()=>{
+      // Rafraîchir la session pour obtenir le plan mis à jour par le webhook Stripe (ne pas faire confiance au paramètre URL)
+      supabase.auth.refreshSession().then(()=>{
         window.history.replaceState({}, "", window.location.pathname);
       });
     }
@@ -1082,6 +1083,10 @@ export default function App() {
         if(!initialized) return;
         localStorage.removeItem("alane_stay_logged_in");
         sessionStorage.removeItem("alane_session_active");
+        sessionStorage.removeItem("bo_token");
+        setBoUnlocked(false);
+        setBoTestMode(false);
+        setClientCashback(null);
         setRole(null);
         setSelectedProvider(null);
         setSelectedSector(null);

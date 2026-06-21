@@ -22,12 +22,14 @@ export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
   const sig     = req.headers["stripe-signature"];
 
-  // Vérification signature si webhook secret configuré
-  if (STRIPE_WEBHOOK_SECRET && sig) {
+  // Vérification signature — obligatoire si STRIPE_WEBHOOK_SECRET est configuré
+  if (STRIPE_WEBHOOK_SECRET) {
+    if (!sig) return res.status(400).json({ error: "Signature manquante" });
     try {
       const crypto = await import("crypto");
       const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
       if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
+      if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
       const payload  = `${tsStr}.${rawBody.toString()}`;
       const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
       if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
@@ -56,7 +58,7 @@ export default async function handler(req, res) {
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
       try {
-        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected)`, {
           method: "PATCH", headers, body: JSON.stringify(patch),
         });
       } catch (e) {
@@ -102,7 +104,11 @@ export default async function handler(req, res) {
       try {
         // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
         const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
-        const existingUser = getR.ok ? await getR.json() : {};
+        if (!getR.ok) {
+          console.error("stripe-webhook: GET user failed before PUT, aborting to avoid metadata loss", getR.status);
+          return res.status(500).json({ error: "User fetch failed" });
+        }
+        const existingUser = await getR.json();
         const existingMeta = existingUser.user_metadata || {};
         const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
           method: "PUT",

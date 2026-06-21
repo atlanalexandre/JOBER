@@ -48,10 +48,11 @@ export default async function handler(req, res) {
   if (req.method === "GET" && req.query.ics === "1") {
     const { title = "Mission ALANE", date, start = "08:00", end = "17:00", location = "", description = "" } = req.query;
     if (!date) return res.status(400).json({ error: "date requis" });
+    const sanitizeIcs = (s) => String(s || "").replace(/[\r\n]/g, " ").replace(/,/g, "\\,");
     const toIcsDt = (dateStr, timeStr) => { const [y,m,d] = dateStr.split("-"); const [hh,mm] = timeStr.split(":"); return `${y}${m.padStart(2,"0")}${d.padStart(2,"0")}T${hh.padStart(2,"0")}${mm.padStart(2,"0")}00`; };
     const uid = `${Date.now()}@alane.fr`;
     const now = new Date().toISOString().replace(/[-:]/g,"").slice(0,15);
-    const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ALANE//Mission//FR","CALSCALE:GREGORIAN","METHOD:PUBLISH","BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${now}`,`DTSTART:${toIcsDt(date,start)}`,`DTEND:${toIcsDt(date,end)}`,`SUMMARY:${title.replace(/,/g,"\\,")}`,`LOCATION:${location.replace(/,/g,"\\,")}`,`DESCRIPTION:${description.replace(/,/g,"\\,")}`, "END:VEVENT","END:VCALENDAR"].join("\r\n");
+    const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ALANE//Mission//FR","CALSCALE:GREGORIAN","METHOD:PUBLISH","BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${now}`,`DTSTART:${toIcsDt(date,start)}`,`DTEND:${toIcsDt(date,end)}`,`SUMMARY:${sanitizeIcs(title)}`,`LOCATION:${sanitizeIcs(location)}`,`DESCRIPTION:${sanitizeIcs(description)}`, "END:VEVENT","END:VCALENDAR"].join("\r\n");
     res.setHeader("Content-Type","text/calendar; charset=utf-8");
     res.setHeader("Content-Disposition",'attachment; filename="mission-alane.ics"');
     return res.status(200).send(ics);
@@ -167,6 +168,9 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   if (req.body?.action === "track_referral") {
     const { newUserId, referrerUUID } = req.body;
     if (!newUserId || !referrerUUID) return res.status(400).json({ error: "Missing fields" });
+    const isUuid = v => /^[0-9a-f-]{36}$/i.test(String(v || ""));
+    if (!isUuid(newUserId) || !isUuid(referrerUUID)) return res.status(400).json({ error: "IDs invalides" });
+    if (newUserId === referrerUUID) return res.status(400).json({ error: "Auto-parrainage interdit" });
 
     const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
     const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

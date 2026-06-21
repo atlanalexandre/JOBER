@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   const authHeader = req.headers["authorization"] || "";
   const token = authHeader.replace("Bearer ", "");
   const cronSecret  = process.env.CRON_SECRET;
-  const boSecret    = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const boSecret    = process.env.BO_SESSION_SECRET || "";
 
   const isCron = !cronSecret || authHeader === `Bearer ${cronSecret}`;
   const isBo   = verifyBoToken(token, boSecret);

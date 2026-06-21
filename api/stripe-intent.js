@@ -61,6 +61,10 @@ export default async function handler(req, res) {
 
   // ── Récupérer les détails d'un PaymentMethod ──────────────────────
   if (action === "get_pm") {
+    const SUPABASE_URL_PM = process.env.VITE_SUPABASE_URL;
+    const SERVICE_ROLE_PM = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const callerPm = await verifyUser(req, SUPABASE_URL_PM, SERVICE_ROLE_PM);
+    if (!callerPm) return res.status(401).json({ error: "Non authentifié" });
     const { pmId } = req.body || {};
     if (!pmId) return res.status(400).json({ error: "pmId requis" });
     try {
@@ -74,6 +78,10 @@ export default async function handler(req, res) {
   }
 
   // ── Créer un PaymentIntent ────────────────────────────────────────
+  const SUPABASE_URL_PI = process.env.VITE_SUPABASE_URL;
+  const SERVICE_ROLE_PI = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const callerPi = await verifyUser(req, SUPABASE_URL_PI, SERVICE_ROLE_PI);
+  if (!callerPi) return res.status(401).json({ error: "Non authentifié" });
   if (!amount || typeof amount !== "number" || amount <= 0) return res.status(400).json({ error: "Montant invalide — doit être un nombre positif" });
   if (amount < 1) return res.status(400).json({ error: "Montant invalide (min 1€)" });
   if (amount > 50000) return res.status(400).json({ error: "Montant invalide (max 50 000€)" });

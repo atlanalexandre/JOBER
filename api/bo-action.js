@@ -5,7 +5,8 @@ function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;"
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
-  const secret = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const secret = process.env.BO_SESSION_SECRET;
+  if (!secret) return false;
   const dot = token.indexOf(".");
   if (dot === -1) return false;
   const ts  = token.slice(0, dot);
@@ -510,6 +511,10 @@ export default async function handler(req, res) {
 
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
+      // Vérifier que le document appartient bien au profil demandé
+      const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&prestataire_id=eq.${profileId}&select=id`, { headers });
+      const docCheckData = await docCheckRes.json();
+      if (!Array.isArray(docCheckData) || !docCheckData[0]) return res.status(403).json({ error: "Document non trouvé pour ce profil" });
       await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -581,11 +586,17 @@ export default async function handler(req, res) {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
 
       const PROFILE_COLS = ["prenom", "nom", "status"];
+      const VALID_STATUSES = ["pending", "approved", "rejected"];
+      // Whitelist des clés metadata autorisées (interdit plan_abonnement, subscription_end_date, trial_exhausted)
+      const META_WHITELIST = ["secteur","metier","niveau","tarif_net","langues","dispon_jours","dispon_jours_creneaux","dispo_immediat","code_postal","ville","telephone","cv","zone_km","statut_pro","experience_ans","competences"];
       const profileFields = {};
       const metaFields = {};
       for (const [k, v] of Object.entries(payload)) {
         if (PROFILE_COLS.includes(k)) profileFields[k] = v;
-        else metaFields[k] = v;
+        else if (META_WHITELIST.includes(k)) metaFields[k] = v;
+      }
+      if (profileFields.status !== undefined && !VALID_STATUSES.includes(profileFields.status)) {
+        return res.status(400).json({ error: "Statut invalide" });
       }
 
       if (Object.keys(profileFields).length > 0) {
