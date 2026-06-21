@@ -29,6 +29,7 @@ export default async function handler(req, res) {
       const crypto = await import("crypto");
       const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
       if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
+      if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
       const payload  = `${tsStr}.${rawBody.toString()}`;
       const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
       if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
       try {
-        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected)`, {
           method: "PATCH", headers, body: JSON.stringify(patch),
         });
       } catch (e) {

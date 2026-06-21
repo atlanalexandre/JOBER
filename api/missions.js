@@ -94,6 +94,8 @@ export default async function handler(req, res) {
 
   try {
     if (action === "list_open") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { sector, metier } = payload;
       let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&order=created_at.desc`;
       if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
@@ -139,8 +141,15 @@ export default async function handler(req, res) {
     }
 
     if (action === "get_candidatures") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
-      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      // Vérifier que le caller est bien le client de cette mission
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id`, { headers });
+      const mData = await mRes.json();
+      const missionCheck = Array.isArray(mData) && mData[0];
+      if (!missionCheck || missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&order=created_at.asc`,
         { headers }
@@ -190,60 +199,61 @@ export default async function handler(req, res) {
       if (!candidature_id || !mission_id) return res.status(400).json({ error: "candidature_id et mission_id requis" });
       if (!isUuid(candidature_id) || !isUuid(mission_id)) return res.status(400).json({ error: "IDs invalides" });
 
+      // Vérifier que la candidature appartient bien à cette mission et récupérer le vrai prestataire_id
+      const candCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}&mission_id=eq.${mission_id}&select=id,prestataire_id`, { headers });
+      const candCheckData = await candCheckRes.json();
+      if (!Array.isArray(candCheckData) || !candCheckData[0]) return res.status(403).json({ error: "Candidature invalide pour cette mission" });
+      // Utiliser le prestataire_id de la candidature, jamais celui du payload (évite l'assignation à un tiers)
+      const verified_prestataire_id = candCheckData[0].prestataire_id;
+
       // Vérifier la limite mensuelle du prestataire avant l'assignation
-      if (prestataire_id && isUuid(prestataire_id)) {
-        try {
-          let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
-          const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
-          const slData = await slRes.json();
-          if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
+      if (verified_prestataire_id && isUuid(verified_prestataire_id)) {
+        const limitOk = await (async () => {
+          try {
+            let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+            const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+            const slData = await slRes.json();
+            if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
 
-          const [urRes, prRes] = await Promise.all([
-            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers }),
-            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
-          ]);
-          const urData = await urRes.json();
-          const prData = await prRes.json();
-          let plan = urData.user_metadata?.plan_abonnement || "free";
-          const endDate = urData.user_metadata?.subscription_end_date;
-          if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
-            plan = "free";
-            // Sync profiles.plan_abonnement + user_metadata
-            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
-            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
-          }
-
-          // Anti-abus : si le prestataire a déjà consommé son trial sur un compte précédent,
-          // la limite gratuite tombe à 0 (obligation de souscrire à un plan payant)
-          const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
-          const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
-          const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
-          if (limit < 999) {
-            const completed = (Array.isArray(prData) && prData[0]?.missions_completed_month) || 0;
-            const asgnRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`, { headers });
-            const asgnData = await asgnRes.json();
-            const total = completed + (Array.isArray(asgnData) ? asgnData.length : 0);
-            if (total >= limit) {
-              return res.status(403).json({ error: `Limite atteinte — le prestataire a atteint sa limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour son plan ${plan}.`, limit_reached: true });
+            const [urRes, prRes] = await Promise.all([
+              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers }),
+              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
+            ]);
+            const urData = await urRes.json();
+            const prData = await prRes.json();
+            let plan = urData.user_metadata?.plan_abonnement || "free";
+            const endDate = urData.user_metadata?.subscription_end_date;
+            if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
+              plan = "free";
+              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
+              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
             }
-          }
-        } catch { /* si erreur on laisse passer */ }
+
+            const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
+            const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
+            const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
+            if (limit < 999) {
+              const completed = (Array.isArray(prData) && prData[0]?.missions_completed_month) || 0;
+              const asgnRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${verified_prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`, { headers });
+              const asgnData = await asgnRes.json();
+              const total = completed + (Array.isArray(asgnData) ? asgnData.length : 0);
+              if (total >= limit) return { error: `Limite atteinte — le prestataire a atteint sa limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour son plan ${plan}.`, limit_reached: true };
+            }
+            return null;
+          } catch { return { error: "Erreur vérification limite plan", limit_reached: false }; }
+        })();
+        if (limitOk) return res.status(403).json(limitOk);
       }
 
       // Récupérer le tarif_net du prestataire depuis user_metadata
       let tarifHoraire = 0;
-      if (prestataire_id) {
+      if (verified_prestataire_id) {
         try {
-          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers });
           const ud = await ur.json();
           tarifHoraire = Number(ud.user_metadata?.tarif_net) || 0;
         } catch {}
       }
-
-      // Vérifier que la candidature appartient bien à cette mission
-      const candCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}&mission_id=eq.${mission_id}&select=id,prestataire_id`, { headers });
-      const candCheckData = await candCheckRes.json();
-      if (!Array.isArray(candCheckData) || !candCheckData[0]) return res.status(403).json({ error: "Candidature invalide pour cette mission" });
 
       // Vérifier si la mission a déjà un paiement Stripe
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -261,7 +271,7 @@ export default async function handler(req, res) {
             currency: "eur",
             "metadata[mission]": mission_id,
             "metadata[candidature_id]": candidature_id,
-            "metadata[prestataire_id]": prestataire_id || "",
+            "metadata[prestataire_id]": verified_prestataire_id || "",
           });
           const ir = await fetch("https://api.stripe.com/v1/payment_intents", {
             method: "POST",
@@ -286,8 +296,8 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "rejected" }),
       });
       const missionPatch = { status: "assigned" };
-      if (prestataire_id) missionPatch.prestataire_id = prestataire_id;
-      if (tarifHoraire)   missionPatch.tarif_horaire  = tarifHoraire;
+      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
+      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -295,12 +305,12 @@ export default async function handler(req, res) {
       });
 
       // Notification au prestataire
-      if (prestataire_id) {
+      if (verified_prestataire_id) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
-            user_id: prestataire_id,
+            user_id: verified_prestataire_id,
             type: "mission",
             title: "Candidature acceptée ✅",
             body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.",
@@ -725,10 +735,13 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id`, { headers });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status`, { headers });
       const mData = await mRes.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission || mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (!["open", "rejected", "refused", "closed"].includes(mission.status)) {
+        return res.status(400).json({ error: "Utilisez l'annulation pour clore une mission en cours" });
+      }
 
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
@@ -1061,12 +1074,12 @@ export default async function handler(req, res) {
     if (action === "cancel_client") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id, reason, penalty } = payload;
+      const { mission_id, reason } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut`,
         { headers }
       );
       const mData = await mRes.json();
@@ -1075,6 +1088,17 @@ export default async function handler(req, res) {
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (!["open", "assigned", "pending_acceptance"].includes(mission.status)) {
         return res.status(400).json({ error: "Cette mission ne peut plus être annulée" });
+      }
+
+      // Calculer la pénalité côté serveur selon la politique d'annulation
+      let penalty = 0;
+      if (mission.stripe_payment_intent && mission.date) {
+        const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
+        const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
+        const missionStartUTC = new Date(missionStart.getTime() - 3600000);
+        const hoursUntilMission = (missionStartUTC - new Date()) / 3600000;
+        if (hoursUntilMission < 24) penalty = 100;
+        else if (hoursUntilMission < 48) penalty = 50;
       }
 
       // Récupérer l'email du client pour le ticket
@@ -1089,7 +1113,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty || 0 }),
+        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty }),
       });
 
       // Créer un ticket support prioritaire si paiement existant (remboursement traité manuellement par ALANE)
@@ -1484,6 +1508,14 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { client_id, type, mission_label, presta_name } = payload;
       if (!client_id || !isUuid(client_id)) return res.status(400).json({ error: "client_id requis" });
+
+      // Vérifier que le caller est bien le prestataire d'une mission de ce client
+      const relRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&client_id=eq.${client_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`,
+        { headers }
+      );
+      const relData = await relRes.json();
+      if (!Array.isArray(relData) || !relData[0]) return res.status(403).json({ error: "Non autorisé" });
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${client_id}`, { headers });
       const ud = await ur.json();

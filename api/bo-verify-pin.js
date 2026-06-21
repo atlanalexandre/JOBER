@@ -24,8 +24,9 @@ export default async function handler(req, res) {
   const { pin } = req.body || {};
   if (!pin || typeof pin !== "string") return res.status(400).json({ ok: false });
 
-  const BO_PASSWORD = process.env.BO_PASSWORD || "1234";
-  const BO_SECRET   = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const BO_PASSWORD = process.env.BO_PASSWORD;
+  const BO_SECRET   = process.env.BO_SESSION_SECRET;
+  if (!BO_PASSWORD || !BO_SECRET) return res.status(500).json({ ok: false, error: "Configuration BO manquante" });
 
   if (pin !== BO_PASSWORD) return res.status(401).json({ ok: false });
 
