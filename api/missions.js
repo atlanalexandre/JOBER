@@ -507,7 +507,10 @@ export default async function handler(req, res) {
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette mission" });
       if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
-        const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
+        // heure_debut is stored as French local time; server runs UTC.
+        // Subtract UTC+1 (France minimum offset) to convert to UTC conservatively.
+        const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
+        const missionStart = new Date(missionStartNaive.getTime() - 3600000);
         const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000);
         if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
@@ -1347,12 +1350,24 @@ export default async function handler(req, res) {
       const expired = pendingList.filter(m => m.acceptance_deadline && m.acceptance_deadline < nowIso);
       const stillPending = pendingList.filter(m => !m.acceptance_deadline || m.acceptance_deadline >= nowIso);
       if (expired.length > 0) {
-        await Promise.all(expired.map(m =>
-          fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+        await Promise.all(expired.map(async m => {
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
             method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
             body: JSON.stringify({ status: "open", prestataire_id: null }),
-          })
-        ));
+          });
+          // Notifier le client que le prestataire n'a pas répondu dans les temps
+          if (m.client_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({
+                user_id: m.client_id, type: "mission",
+                title: "Prestataire non disponible ⏱️",
+                body: `Le prestataire n'a pas répondu à temps pour la mission "${m.metier || m.titre || ""}". Elle est de nouveau disponible.`,
+                read: false,
+              }),
+            }).catch(() => {});
+          }
+        }));
       }
       return res.status(200).json({
         pending:  stillPending,
