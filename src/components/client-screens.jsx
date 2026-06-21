@@ -1372,6 +1372,13 @@ export function useProviders() {
               plan:         p.plan_abonnement || "free",
               planRank:     PLAN_RANK[p.plan_abonnement] ?? 0,
               cv:           p.cv || null,
+              bio:          p.bio      || null,
+              langues:      Array.isArray(p.langues) ? p.langues : [],
+              role:         p.metier   || null,
+              skills:       (p.metiers_list || []).flatMap(m =>
+                (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
+              ),
+              metiers_list: p.metiers_list || [],
             };
           });
           _providersCache = mapped;
@@ -2136,7 +2143,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
           </div>
           <div>
             <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 3px" }}>{p.name}</h2>
-            <p style={{ color:"rgba(255,255,255,0.7)", margin:"0 0 8px", fontSize:13 }}>{p.role}</p>
+            <p style={{ color:"rgba(255,255,255,0.7)", margin:"0 0 8px", fontSize:13 }}>{p.jobTitle}</p>
             <Stars rating={p.rating} size={14} /> <span style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginLeft:5 }}>{p.rating} · {p.reviews} avis · {p.distance}</span>
           </div>
         </div>
@@ -2164,16 +2171,37 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
           </div>
         )}
 
-        {[
-          { title:"À propos", content:<p style={{ color:C.textSub, lineHeight:1.7, margin:0, fontSize:14 }}>{p.bio}</p> },
-          { title:"Compétences", content:<div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{(p.skills||[]).map(sk=><Badge key={sk} color={p.color}>{sk}</Badge>)}</div> },
-          { title:"Tarif", content:<><div style={{ fontSize:30, fontWeight:800, color:C.violet }}>{p.hourlyRate} HT</div><div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Taux horaire · Auto-entrepreneur</div></> },
-        ].map(card=>(
-          <div key={card.title} style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
-            <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>{card.title}</h4>
-            {card.content}
+        {p.bio && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+            <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>À propos</h4>
+            <p style={{ color:C.textSub, lineHeight:1.7, margin:0, fontSize:14 }}>{p.bio}</p>
           </div>
-        ))}
+        )}
+        {p.skills?.length > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+            <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>Compétences & certifications</h4>
+            <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{p.skills.map(sk=><Badge key={sk} color={p.color}>{sk}</Badge>)}</div>
+          </div>
+        )}
+        <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+          <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>Tarif</h4>
+          <div style={{ fontSize:30, fontWeight:800, color:C.violet }}>{p.hourlyRate} HT</div>
+          <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Taux horaire · Auto-entrepreneur</div>
+        </div>
+        {p.langues?.length > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+            <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>🌐 Langues</h4>
+            <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{p.langues.map(l=><Badge key={l} color={C.violet} small>{l}</Badge>)}</div>
+          </div>
+        )}
+        {p.dispon_jours?.length > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+            <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>📅 Disponibilités</h4>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {p.dispon_jours.map(j=><span key={j} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:12, fontWeight:600 }}>{j}</span>)}
+            </div>
+          </div>
+        )}
         {/* ── Avis clients ── */}
         <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
           <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:700 }}>⭐ Avis clients ({reviews.length})</h4>

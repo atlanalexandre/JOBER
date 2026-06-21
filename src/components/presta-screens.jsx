@@ -1800,6 +1800,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
+  const [ratedMissions, setRatedMissions] = useState(new Set());
+  const [ratingTarget, setRatingTarget] = useState(null);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingLoading, setRatingLoading] = useState(false);
   const [profilPct,setProfilPct]=useState(0);
   const [missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
@@ -1823,7 +1828,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
-        supabase.from("missions").select("id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
       ]);
       if(prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
@@ -1840,6 +1845,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({missions:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
+      const { data: myRatings } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", u.id);
+      if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
       const { data: uploadedDocs } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
@@ -1875,6 +1882,58 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {ratingTarget && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:500, backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
+          <div style={{ background:"#0D1B3E", borderRadius:"22px 22px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, border:`1px solid ${C.border}`, borderBottom:"none" }}>
+            <div style={{ width:40, height:4, background:C.border, borderRadius:2, margin:"0 auto 20px" }} />
+            <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 4px", textAlign:"center" }}>⭐ Noter le client</h3>
+            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", margin:"0 0 20px" }}>Mission du {ratingTarget.date} — {ratingTarget.metier || ratingTarget.sector}</p>
+            <div style={{ display:"flex", justifyContent:"center", gap:10, marginBottom:20 }}>
+              {[1,2,3,4,5].map(s => (
+                <button key={s} onClick={()=>setRatingValue(s)}
+                  style={{ fontSize:32, background:"none", border:"none", cursor:"pointer", opacity: s <= ratingValue ? 1 : 0.25, transform: s <= ratingValue ? "scale(1.1)" : "scale(1)", transition:"all 0.15s" }}>
+                  ⭐
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={ratingComment}
+              onChange={e=>setRatingComment(e.target.value)}
+              placeholder="Commentaire optionnel…"
+              style={{ width:"100%", padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"#112240", color:C.text, fontSize:13, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", marginBottom:16 }}
+            />
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={()=>{ setRatingTarget(null); setRatingValue(0); setRatingComment(""); }}
+                style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"none", color:C.textSub, fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                Annuler
+              </button>
+              <button
+                disabled={ratingValue === 0 || ratingLoading}
+                onClick={async()=>{
+                  if(ratingValue === 0) return;
+                  setRatingLoading(true);
+                  const { data:{ session } } = await supabase.auth.getSession();
+                  if(!session) { setRatingLoading(false); return; }
+                  await supabase.from("ratings").upsert({
+                    reviewer_id: session.user.id,
+                    reviewee_provider_id: ratingTarget.client_id,
+                    rating: ratingValue,
+                    comment: ratingComment.trim() || null,
+                    mission_id: ratingTarget.id,
+                  });
+                  setRatedMissions(prev => new Set([...prev, ratingTarget.id]));
+                  setRatingTarget(null);
+                  setRatingValue(0);
+                  setRatingComment("");
+                  setRatingLoading(false);
+                }}
+                style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background: ratingValue === 0 ? C.grayLight : `linear-gradient(135deg,${C.violet},${C.indigo})`, color: ratingValue === 0 ? C.textMuted : C.white, fontWeight:700, fontSize:14, cursor: ratingValue === 0 ? "not-allowed" : "pointer", fontFamily:"inherit" }}>
+                {ratingLoading ? "Envoi…" : "Envoyer la note"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showTour && <PrestaTour onDone={dismissTour} />}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
@@ -2050,16 +2109,29 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 const sector=SECTORS.find(s=>s.id===m.sector);
                 const amt=getAmt(m);
                 return (
-                  <div key={m.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
-                    <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
-                      <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
+                  <div key={m.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:10 }}>
+                    <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                      <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
+                        <div style={{ color:C.textMuted, fontSize:10 }}>Versé</div>
+                      </div>
                     </div>
-                    <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
-                      <div style={{ color:C.textMuted, fontSize:10 }}>Versé</div>
-                    </div>
+                    {!ratedMissions.has(m.id) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }}
+                        style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.accentGold}44`, background:`${C.accentGold}12`, color:C.accentGold, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}
+                      >
+                        ⭐ Noter le client
+                      </button>
+                    )}
+                    {ratedMissions.has(m.id) && (
+                      <div style={{ marginTop:8, textAlign:"center", color:C.success, fontSize:11, fontWeight:600 }}>✓ Client noté</div>
+                    )}
                   </div>
                 );
               })}
