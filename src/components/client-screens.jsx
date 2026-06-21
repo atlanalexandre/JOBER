@@ -994,7 +994,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           border:`1px solid ${C.borderStrong}`,
           borderRadius:r, padding:"13px 16px",
           display:"flex", alignItems:"center", gap:12,
-          backdropFilter:"blur(12px)", cursor:"pointer",
+          backdropFilter:"blur(12px)", WebkitBackdropFilter:"blur(12px)", cursor:"pointer",
         }}>
           <span style={{ fontSize:15, opacity:0.6 }}>🔍</span>
           <span style={{ flex:1, color:C.textSub, fontSize:13.5 }}>Rechercher un service, un talent…</span>

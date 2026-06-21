@@ -449,6 +449,7 @@ function ClientNav({ active, onNavigate, unreadCount }) {
       display:"flex", padding:"10px 0 20px",
       zIndex:100,
       backdropFilter:"blur(20px)",
+      WebkitBackdropFilter:"blur(20px)",
     }}>
       {tabs.map(t=>{
         const active2 = active===t.id;
@@ -738,6 +739,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         alignItems: "center",
         justifyContent: "center",
         backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
       }}
     >
       ⚙️
@@ -914,7 +916,7 @@ export default function App() {
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [docsRefreshKey,setDocsRefreshKey]=useState(0);
-  const [cookieNotice,setCookieNotice]=useState(()=>!localStorage.getItem("alane_cookie_ok"));
+  const [cookieNotice,setCookieNotice]=useState(()=>{ try { return !localStorage.getItem("alane_cookie_ok"); } catch(e) { return false; } });
   const [clientCashback,setClientCashback]=useState(null);
 
   // Capture ?ref=, ?profil=, ?bo= URL params
@@ -922,11 +924,11 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
     if(ref && ref.length > 10) {
-      sessionStorage.setItem("alane_referrer", ref);
+      try { sessionStorage.setItem("alane_referrer", ref); } catch(e) {}
     }
     const profil = params.get("profil");
     if(profil && profil.length > 30) {
-      sessionStorage.setItem("alane_public_profil", profil);
+      try { sessionStorage.setItem("alane_public_profil", profil); } catch(e) {}
     }
     if(params.get("bo") === "1") {
       setScreen("bo_login");
@@ -936,9 +938,9 @@ export default function App() {
 
   // Public profil navigation — déclenché après que l'app est chargée
   useEffect(()=>{
-    const profilId = sessionStorage.getItem("alane_public_profil");
+    let profilId; try { profilId = sessionStorage.getItem("alane_public_profil"); } catch(e) {}
     if(!profilId) return;
-    sessionStorage.removeItem("alane_public_profil");
+    try { sessionStorage.removeItem("alane_public_profil"); } catch(e) {}
     fetch("/api/prestataires").then(r=>r.json()).then(d=>{
       const prov = (d.prestataires||[]).find(p=>p.id===profilId);
       if(prov) { setSelectedProvider(prov); setScreen("profile"); }
@@ -963,8 +965,7 @@ export default function App() {
 
   // Tracking visiteur — une seule fois par session
   useEffect(()=>{
-    if(sessionStorage.getItem("visit_tracked")) return;
-    sessionStorage.setItem("visit_tracked","1");
+    try { if(sessionStorage.getItem("visit_tracked")) return; sessionStorage.setItem("visit_tracked","1"); } catch(e) { return; }
     const sessionId = Math.random().toString(36).slice(2)+Date.now().toString(36);
     supabase.from("visits").insert({ session_id: sessionId }).then(()=>{}).catch(()=>{});
   },[]);
@@ -972,7 +973,7 @@ export default function App() {
   // Reset badge messages non lus quand le chat est ouvert
   useEffect(()=>{
     if(screen==="chat"){
-      localStorage.setItem("alane_msg_last_seen", new Date().toISOString());
+      try { localStorage.setItem("alane_msg_last_seen", new Date().toISOString()); } catch(e) {}
       setUnreadCount(0);
     }
     if(screen==="notifications") setNotifCount(0);
@@ -992,10 +993,11 @@ export default function App() {
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
-    if(!localStorage.getItem(consentKey)) {
+    let hasConsent = false; try { hasConsent = !!localStorage.getItem(consentKey); } catch(e) {}
+    if(!hasConsent) {
       const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une mission assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une mission active.\n\nAutoriser la géolocalisation ?");
       if(!ok) return;
-      localStorage.setItem(consentKey, "1");
+      try { localStorage.setItem(consentKey, "1"); } catch(e) {}
     }
     let watchId = null;
     let currentPos = null;
@@ -1029,7 +1031,8 @@ export default function App() {
     let mounted = true;
     const userId = supaUser.id;
     const poll = async()=>{
-      const lastSeen = localStorage.getItem("alane_msg_last_seen") || new Date(0).toISOString();
+      let lastSeen; try { lastSeen = localStorage.getItem("alane_msg_last_seen"); } catch(e) {}
+      lastSeen = lastSeen || new Date(0).toISOString();
       const { data, error } = await supabase
         .from("messages")
         .select("id", { count:"exact" })
@@ -1048,7 +1051,8 @@ export default function App() {
     if(!supaUser) return;
     if(screen !== "home" && screen !== "p_home") return;
     const key = `alane_onboarded_${supaUser.id}`;
-    if(!localStorage.getItem(key)) setShowOnboarding(true);
+    let onboarded; try { onboarded = localStorage.getItem(key); } catch(e) {}
+    if(!onboarded) setShowOnboarding(true);
   },[screen, supaUser]);
 
   // Charger le cashback du client quand on arrive sur le dashboard
@@ -1093,9 +1097,8 @@ export default function App() {
       if(event==="SIGNED_OUT") {
         // Ignorer le SIGNED_OUT si on est déjà sur un écran pre-login (évite les sauts au démarrage)
         if(!initialized) return;
-        localStorage.removeItem("alane_stay_logged_in");
-        sessionStorage.removeItem("alane_session_active");
-        sessionStorage.removeItem("bo_token");
+        try { localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
+        try { sessionStorage.removeItem("alane_session_active"); sessionStorage.removeItem("bo_token"); } catch(e) {}
         setBoUnlocked(false);
         setBoTestMode(false);
         setClientCashback(null);
@@ -1153,8 +1156,8 @@ export default function App() {
   const handleSplashNext = async () => {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
-      const stayLoggedIn  = localStorage.getItem("alane_stay_logged_in");
-      const sessionActive = sessionStorage.getItem("alane_session_active");
+      let stayLoggedIn; try { stayLoggedIn = localStorage.getItem("alane_stay_logged_in"); } catch(e) {}
+      let sessionActive; try { sessionActive = sessionStorage.getItem("alane_session_active"); } catch(e) {}
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
         await supabase.auth.signOut();
@@ -1203,11 +1206,11 @@ export default function App() {
       <OnboardingScreen
         role={role}
         onDone={()=>{
-          localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1");
+          try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {}
           setShowOnboarding(false);
         }}
         onNavigate={(to)=>{
-          localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1");
+          try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {}
           setShowOnboarding(false);
           navigate(to);
         }}
@@ -1224,7 +1227,7 @@ export default function App() {
           🍪 ALANE utilise uniquement des cookies nécessaires à son fonctionnement (session, préférences).
           {" "}<span onClick={()=>navigate("legal","privacy")} style={{ color:"#7C6FE0", cursor:"pointer", textDecoration:"underline" }}>En savoir plus</span>
         </p>
-        <button onClick={()=>{ localStorage.setItem("alane_cookie_ok","1"); setCookieNotice(false); }}
+        <button onClick={()=>{ try { localStorage.setItem("alane_cookie_ok","1"); } catch(e) {} setCookieNotice(false); }}
           style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 18px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
           J'ai compris
         </button>
@@ -1290,7 +1293,7 @@ export default function App() {
               const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
               if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
             } else {
-              const newMissionId = crypto.randomUUID();
+              const newMissionId = (crypto.randomUUID || (() => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16))))();
               const { error:insertErr } = await supabase.from("missions").insert({
                 id: newMissionId,
                 client_id:userId, prestataire_id:selectedProvider.id,
@@ -1371,7 +1374,7 @@ export default function App() {
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
-      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ sessionStorage.removeItem("bo_token"); setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
+      {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
