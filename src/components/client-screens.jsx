@@ -16,7 +16,7 @@ function ContractModal({ title, contractText, onSign, onClose }) {
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, marginBottom:16 }}>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
           <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
         </div>
         <div style={{ flexShrink:0 }}>
@@ -224,9 +224,9 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
     if (error) { setPassMsg({ err: true, text: error.message }); }
     else { setPassMsg({ err: false, text: "Mot de passe modifié ✓" }); setNewPass(""); setTimeout(() => setShowPassModal(false), 1500); }
   };
-  const [lightMode, setLightMode] = useState(()=>localStorage.getItem("alane_light_mode")==="1");
+  const [lightMode, setLightMode] = useState(()=>{ try { return localStorage.getItem("alane_light_mode")==="1"; } catch(e) { return false; } });
   const toggleTheme = (v) => {
-    localStorage.setItem("alane_light_mode", v ? "1" : "0");
+    try { localStorage.setItem("alane_light_mode", v ? "1" : "0"); } catch(e) {}
     document.documentElement.setAttribute("data-alane-theme", v ? "light" : "dark");
     setLightMode(v);
   };
@@ -689,7 +689,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
-    const dismissed = localStorage.getItem("alane_pwa_banner");
+    let dismissed; try { dismissed = localStorage.getItem("alane_pwa_banner"); } catch(e) {}
     if (isIOS && !isStandalone && !dismissed) setShowPwaBanner(true);
   }, []);
   const [userName, setUserName] = useState("");
@@ -714,7 +714,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     : 8;
 
   useEffect(()=>{
-    if("Notification" in window && Notification.permission === "default" && !localStorage.getItem("alane_notif_asked")) {
+    let notifAskedFlag; try { notifAskedFlag = localStorage.getItem("alane_notif_asked"); } catch(e) {}
+    if("Notification" in window && Notification.permission === "default" && !notifAskedFlag) {
       setNotifAsked(true);
     }
   },[]);
@@ -725,7 +726,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const user = data?.user;
       if (!user || !mounted) return;
       const tourKey = `alane_tour_done_${user.id}`;
-      if (!localStorage.getItem(tourKey)) setShowTour(true);
+      let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
+      if (!tourDone) setShowTour(true);
       supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
@@ -807,7 +809,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     setShowTour(false);
     const { data } = await supabase.auth.getUser();
     const user = data?.user;
-    if (user) localStorage.setItem(`alane_tour_done_${user.id}`, "1");
+    if (user) { try { localStorage.setItem(`alane_tour_done_${user.id}`, "1"); } catch(e) {} }
   };
 
   return (
@@ -1011,7 +1013,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <div style={{ fontWeight:700, color:"#fff", fontSize:13 }}>Installer l'app</div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Appuyez sur <strong style={{color:"#fff"}}>Partager</strong> puis "Sur l'écran d'accueil" pour activer les notifications.</div>
           </div>
-          <button onClick={()=>{ localStorage.setItem("alane_pwa_banner","1"); setShowPwaBanner(false); }} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", flexShrink:0 }}>✕</button>
+          <button onClick={()=>{ try { localStorage.setItem("alane_pwa_banner","1"); } catch(e) {} setShowPwaBanner(false); }} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", flexShrink:0 }}>✕</button>
         </div>
       )}
 
@@ -1024,9 +1026,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles missions</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-            <button onClick={()=>{ localStorage.setItem("alane_notif_asked","1"); setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
+            <button onClick={()=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
             <button onClick={()=>{
-              Notification.requestPermission().then(p=>{ localStorage.setItem("alane_notif_asked","1"); setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles missions.",icon:"/favicon.svg"}); });
+              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles missions.",icon:"/favicon.svg"}); });
             }} style={{ background:C.violet, border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Activer</button>
           </div>
         </div>
@@ -1642,7 +1644,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
                 <div style={{ marginBottom:14 }}>
                   <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la mission</div>
-                  <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)}
+                  <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)} placeholder="AAAA-MM-JJ"
                     style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
                   {selectedDay && <div style={{ color:s.color, fontSize:11, fontWeight:700, marginTop:4 }}>📅 {selectedDay} — uniquement les prestataires disponibles ce jour</div>}
                 </div>
@@ -2302,7 +2304,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       {cvOpen && (() => {
         const cv = p.cv || CV_DATA[p.id];
         return (
-          <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40 }}>
+          <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40, WebkitOverflowScrolling:"touch" }}>
             <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
               <div style={{ position:"absolute", top:-40, right:-40, width:200, height:200, borderRadius:"50%", background:`${p.color}15`, pointerEvents:"none" }} />
               <button onClick={()=>setCvOpen(false)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:"#fff", cursor:"pointer", fontSize:13, marginBottom:18 }}>← Retour à la réservation</button>
@@ -2438,10 +2440,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               /* ── Date unique ── */
               <div style={{ display:"flex", gap:10, marginBottom:16 }}>
                 <div style={{ flex:2 }}>
-                  <Input label="Date de début *" type="date" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }} />
+                  <Input label="Date de début *" type="date" placeholder="AAAA-MM-JJ" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }} />
                 </div>
                 <div style={{ flex:1 }}>
-                  <Input label="Heure" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
+                  <Input label="Heure" type="time" placeholder="HH:MM" value={startTime} onChange={e=>setStartTime(e.target.value)} />
                 </div>
               </div>
             ) : (
@@ -2453,13 +2455,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                     <div style={{ flex:1 }}>
                       <label style={{ display:"block", fontSize:11, color:C.textMuted, marginBottom:6, fontWeight:600 }}>Du</label>
-                      <input type="date" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }}
+                      <input type="date" value={startDate} onChange={e=>{ setStartDate(e.target.value); setDateError(false); }} placeholder="AAAA-MM-JJ"
                         style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }} />
                     </div>
                     <div style={{ display:"flex", alignItems:"flex-end", paddingBottom:12, color:C.textMuted, fontSize:18, fontWeight:300 }}>→</div>
                     <div style={{ flex:1 }}>
                       <label style={{ display:"block", fontSize:11, color:C.textMuted, marginBottom:6, fontWeight:600 }}>Au</label>
-                      <input type="date" value={endDate} onChange={e=>{ setEndDate(e.target.value); setDateError(false); }} min={startDate}
+                      <input type="date" value={endDate} onChange={e=>{ setEndDate(e.target.value); setDateError(false); }} min={startDate} placeholder="AAAA-MM-JJ"
                         style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }} />
                     </div>
                   </div>
@@ -2468,7 +2470,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <div style={{ display:"flex", gap:10, alignItems:"center" }}>
                     <div style={{ flex:1 }}>
                       <label style={{ display:"block", fontSize:11, color:C.textMuted, marginBottom:6, fontWeight:600 }}>Heure de début (chaque jour)</label>
-                      <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)}
+                      <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} placeholder="HH:MM"
                         style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box" }} />
                     </div>
                   </div>
@@ -3246,7 +3248,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
           </div>
         </div>
       </div>
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 18px", minHeight:200 }}>
+      <div style={{ flex:1, overflowY:"auto", padding:"16px 18px", minHeight:200, WebkitOverflowScrolling:"touch" }}>
         {loading && <div style={{ textAlign:"center", color:C.textMuted, fontSize:13, paddingTop:40 }}>Chargement…</div>}
         {!loading && msgs.length === 0 && (
           <div style={{ textAlign:"center", padding:"40px 20px" }}>
@@ -3782,7 +3784,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
           {/* Filtres */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>🔍 Filtrer les prestataires</div>
-            <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4, scrollbarWidth:"none" }}>
+            <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4, scrollbarWidth:"none", WebkitOverflowScrolling:"touch" }}>
               <button onClick={()=>setSector("")} style={{ padding:"7px 14px", borderRadius:20, border:"none", cursor:"pointer", background:sector===""?C.violet:C.grayLight, color:sector===""?C.white:C.gray, fontWeight:sector===""?700:500, fontSize:12, fontFamily:"inherit", whiteSpace:"nowrap" }}>Tous</button>
               {SECTORS.map(s => (
                 <button key={s.id} onClick={()=>setSector(s.id)} style={{ padding:"7px 14px", borderRadius:20, border:"none", cursor:"pointer", background:sector===s.id?C.violet:C.grayLight, color:sector===s.id?C.white:C.gray, fontWeight:sector===s.id?700:500, fontSize:12, fontFamily:"inherit", whiteSpace:"nowrap" }}>{s.icon} {s.label}</button>
@@ -3862,11 +3864,11 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Détails de la mission</div>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Date</label>
-              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} placeholder="AAAA-MM-JJ" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
             </div>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Heure de début</label>
-              <input type="time" value={timeStart} onChange={e=>setTimeStart(e.target.value)} style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
+              <input type="time" value={timeStart} onChange={e=>setTimeStart(e.target.value)} placeholder="HH:MM" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
             </div>
             <div>
               <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Durée : {hours}h</label>
@@ -6207,7 +6209,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
                     style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length>0?0:undefined }} />
                 </div>
                 {metierSearch && jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length > 0 && (
-                  <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto" }}>
+                  <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
                     {jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).map((j,i,arr)=>(
                       <button key={i} onMouseDown={()=>{ setMetier(j); setMetierSearch(j); }}
                         style={{ width:"100%", padding:"10px 14px", background:"transparent", border:"none", borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
@@ -6222,8 +6224,8 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         )}
 
-        <Input label="Date de la mission *" type="date" value={date} onChange={e=>setDate(e.target.value)} />
-        <Input label="Heure de début *" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
+        <Input label="Date de la mission *" type="date" placeholder="AAAA-MM-JJ" value={date} onChange={e=>setDate(e.target.value)} />
+        <Input label="Heure de début *" type="time" placeholder="HH:MM" value={startTime} onChange={e=>setStartTime(e.target.value)} />
 
         <div style={{ marginBottom:16 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Durée estimée : <strong style={{ color:C.text }}>{hours}h</strong></label>

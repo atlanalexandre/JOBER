@@ -7,7 +7,7 @@ import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars } fr
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
-  const token = sessionStorage.getItem("bo_token") || "";
+  let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
   return fetch("/api/bo-action", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -73,7 +73,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
       .then(r => r.json())
       .then(j => {
         setChecking(false);
-        if (j.ok) { sessionStorage.setItem("bo_token", j.token || ""); onLogin(); }
+        if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
         else { setError(true); setPwd(""); setAttempts(a => a + 1); }
       })
       .catch(() => { setChecking(false); setError(true); setPwd(""); setAttempts(a => a + 1); });
@@ -270,7 +270,7 @@ export function BOComptes() {
         <textarea value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))} rows={3}
           style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
       ) : (
-        <input type={type} value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))}
+        <input type={type} value={editVals[field] || ""} onChange={e => setEditVals(v => ({ ...v, [field]: e.target.value }))} placeholder={type==="date" ? "AAAA-MM-JJ" : type==="time" ? "HH:MM" : undefined}
           style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 10px", color: "#fff", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
       )}
     </div>
@@ -1034,8 +1034,7 @@ export function EmailTestButton() {
 function ResetOnboardingButton() {
   const [done, setDone] = useState(false);
   const handle = () => {
-    const keys = Object.keys(localStorage).filter(k => k.startsWith("alane_onboarded"));
-    keys.forEach(k => localStorage.removeItem(k));
+    try { const keys = Object.keys(localStorage).filter(k => k.startsWith("alane_onboarded")); keys.forEach(k => localStorage.removeItem(k)); } catch(e) {}
     setDone(true);
     setTimeout(() => setDone(false), 3000);
   };
@@ -1160,7 +1159,7 @@ export function BOLogs() {
   const [filterAction, setFilterAction] = useState("all");
   const [search, setSearch] = useState("");
   useEffect(()=>{
-    const token = sessionStorage.getItem("bo_token");
+    let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     fetch("/api/bo-action", {
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
@@ -1426,7 +1425,7 @@ export function BOResetMonthly() {
     if (!window.confirm("Remettre les compteurs de missions à 0 pour tous les prestataires ?")) return;
     setLoading(true); setResult(null);
     try {
-      const token = sessionStorage.getItem("bo_token") || "";
+      let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
       const r = await fetch("/api/cron-reset-monthly", {
         headers: { "Authorization": `Bearer ${token}` },
       });
@@ -1466,7 +1465,7 @@ export function BORefundSection() {
   const handleRefund = async (m) => {
     if (!window.confirm(`Rembourser ${m.montant_total} € pour la mission ${m.id.slice(0,8)} ?`)) return;
     setRefunding(m.id);
-    const token = sessionStorage.getItem("bo_token") || "";
+    let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     const r = await fetch("/api/stripe-refund", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },

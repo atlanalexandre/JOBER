@@ -270,7 +270,7 @@ function RoleScreen({ onSelect }) {
       </p>
       {showCGU && (
         <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 Conditions Générales</div>
               <button onClick={()=>setShowCGU(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
@@ -646,7 +646,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
       </div>
 
       {/* Navigation */}
-      <div style={{ flex:1, padding:"16px 12px", overflowY:"auto" }}>
+      <div style={{ flex:1, padding:"16px 12px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
         {nav.map(item => {
           const active = screen === item.id;
           return (
@@ -758,7 +758,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             </div>
           </div>
         )}
-        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden" }}>
+        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", WebkitOverflowScrolling:"touch" }}>
           {children}
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
@@ -828,7 +828,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         </div>
 
         {/* Right panel — form */}
-        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column" }}>
+        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column", WebkitOverflowScrolling:"touch" }}>
           {hybridBanner}
           <div style={{ flex:1, display:"flex", flexDirection:"column", maxWidth:560, width:"100%", margin:"0 auto", padding:"0 48px" }}>
             {children}
@@ -844,7 +844,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
       {showSidebar && (
         <DesktopSidebar screen={screen} role={role} onNavigate={onNavigate} onlineStatus={onlineStatus} onToggleOnline={onToggleOnline} />
       )}
-      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column" }}>
+      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", display:"flex", flexDirection:"column", WebkitOverflowScrolling:"touch" }}>
         {hybridBanner}
         {/* Desktop content wrapper */}
         <div style={{

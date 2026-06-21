@@ -15,7 +15,7 @@ function ContractModal({ title, contractText, onSign, onClose }) {
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, marginBottom:16 }}>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
           <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
         </div>
         <div style={{ flexShrink:0 }}>
@@ -277,7 +277,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           <Input label="Email *" type="email" placeholder="jean@exemple.fr" icon="✉️" value={infos.email} onChange={e=>setInfos({...infos,email:e.target.value})} />
           <Input label="Téléphone *" placeholder="06 12 34 56 78" icon="📱" value={infos.tel} onChange={e=>setInfos({...infos,tel:formatPhone(e.target.value)})} />
           <Input label="Mot de passe *" type="password" placeholder="Minimum 8 caractères" icon="🔒" value={infos.password} onChange={e=>setInfos({...infos,password:e.target.value})} />
-          <Input label="Date de naissance" type="date" value={infos.dateNaissance} onChange={e=>setInfos({...infos,dateNaissance:e.target.value})} />
+          <Input label="Date de naissance" type="date" placeholder="AAAA-MM-JJ" value={infos.dateNaissance} onChange={e=>setInfos({...infos,dateNaissance:e.target.value})} />
           <Input label="Lieu de naissance" placeholder="Paris" value={infos.lieuNaissance} onChange={e=>setInfos({...infos,lieuNaissance:e.target.value})} />
           <Select label="Nationalité" options={["France","Autre UE","Hors UE"]} value={infos.nationalite} onChange={e=>setInfos({...infos,nationalite:e.target.value})} />
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}33`, borderRadius:12, padding:"12px 14px", marginBottom:16 }}>
@@ -320,7 +320,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           <Input label="N° SIREN" placeholder="XXX XXX XXX" icon="🏢" value={ae.siren} onChange={e=>setAe({...ae,siren:e.target.value})} hint="Auto-rempli depuis le SIRET" />
           <Input label="Activité déclarée *" placeholder="Prestation de services…" value={ae.activite} onChange={e=>setAe({...ae,activite:e.target.value})} />
           <Input label="Code APE / NAF" placeholder="7022Z" value={ae.codeAPE} onChange={e=>setAe({...ae,codeAPE:e.target.value})} />
-          <Input label="Date de création" type="date" value={ae.dateCreation} onChange={e=>setAe({...ae,dateCreation:e.target.value})} />
+          <Input label="Date de création" type="date" placeholder="AAAA-MM-JJ" value={ae.dateCreation} onChange={e=>setAe({...ae,dateCreation:e.target.value})} />
           <Select label="Régime fiscal" options={["micro-entreprise","entreprise individuelle","autre"]} value={ae.regime} onChange={e=>setAe({...ae,regime:e.target.value})} />
           {/* Guide création micro-entreprise */}
           <div onClick={()=>setShowGuide(!showGuide)} style={{ background:showGuide?C.violet+"14":"rgba(255,255,255,0.04)", border:`1px solid ${showGuide?C.violet+"55":C.border}`, borderRadius:r, padding:"13px 15px", marginBottom:12, cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
@@ -1139,7 +1139,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
     }
     setDone(true);
     const key = `alane_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
-    localStorage.setItem(key, isIn ? "checkin" : "checkout");
+    try { localStorage.setItem(key, isIn ? "checkin" : "checkout"); } catch(e) {}
     setTimeout(() => onSuccess && onSuccess(), 2000);
   };
 
@@ -1225,7 +1225,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
 
 export function PrestaOnboardingChecklist({ onNavigate }) {
   const [meta, setMeta] = useState(null);
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem("alane_presta_checklist_dismissed") === "1");
+  const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem("alane_presta_checklist_dismissed") === "1"; } catch(e) { return false; } });
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMeta(data?.user?.user_metadata || {}));
@@ -1252,7 +1252,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
           <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Premiers pas</div>
           <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doneCount}/{items.length} étapes complétées</div>
         </div>
-        <button onClick={() => { localStorage.setItem("alane_presta_checklist_dismissed","1"); setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
+        <button onClick={() => { try { localStorage.setItem("alane_presta_checklist_dismissed","1"); } catch(e) {} setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
       </div>
       <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, marginBottom:14, overflow:"hidden" }}>
         <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.5s" }} />
@@ -1714,7 +1714,7 @@ export function PrestaClientsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
-    const blockedList = JSON.parse(localStorage.getItem("alane_blocked_clients")||"[]");
+    let blockedList = []; try { blockedList = JSON.parse(localStorage.getItem("alane_blocked_clients")||"[]"); } catch(e) {}
     setBlocked(blockedList);
     supabase.auth.getUser().then(async ({data})=>{
       const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
@@ -1743,7 +1743,7 @@ export function PrestaClientsTab() {
   const toggleBlock = (clientId) => {
     setBlocked(prev=>{
       const next = prev.includes(clientId) ? prev.filter(id=>id!==clientId) : [...prev, clientId];
-      localStorage.setItem("alane_blocked_clients", JSON.stringify(next));
+      try { localStorage.setItem("alane_blocked_clients", JSON.stringify(next)); } catch(e) {}
       return next;
     });
   };
@@ -1819,7 +1819,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
       const tourKey=`alane_presta_tour_done_${u.id}`;
-      if(!localStorage.getItem(tourKey)) setShowTour(true);
+      let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
+      if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
         supabase.from("missions").select("id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
@@ -1869,7 +1870,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     setShowTour(false);
     const {data} = await supabase.auth.getUser();
     const u = data?.user;
-    if(u) localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1");
+    if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch(e) {} }
   };
 
   return (
@@ -1944,7 +1945,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       </div>
       <div style={{ padding:"18px 18px 0" }}>
         {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
-        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto" }}>
+        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
           {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
           ))}

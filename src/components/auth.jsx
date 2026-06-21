@@ -115,17 +115,17 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
       await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
-      const referrerUUID = sessionStorage.getItem("alane_referrer");
+      let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
         }).catch(() => {});
-        sessionStorage.removeItem("alane_referrer");
+        try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}
       }
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
-      sessionStorage.setItem("alane_session_active", "1");
+      try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
     setLoading(false);
     onRegister();
@@ -165,7 +165,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       </div>
 
       {/* Content */}
-      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto" }}>
+      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
         {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
 
         {step === 1 && <>
@@ -276,7 +276,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                         {/* Modal info ACRE */}
                         {showAcreInfo && (
                           <div onClick={()=>setShowAcreInfo(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", padding:"0 0 0 0" }}>
-                            <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"100%", maxHeight:"80vh", overflowY:"auto" }}>
+                            <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"100%", maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
                               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                                 <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>🎁 L'ACRE — Exonération de charges</div>
                                 <button onClick={()=>setShowAcreInfo(false)} style={{ background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, width:32, height:32, color:C.text, cursor:"pointer", fontSize:16 }}>×</button>
@@ -575,7 +575,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       {/* Modal CGPS */}
       {showCgpsModal && (
         <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
               <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
@@ -605,7 +605,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       {/* Modal politique de confidentialité */}
       {showPrivacyModal && (
         <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
               <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
@@ -735,17 +735,17 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
       await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
-      const referrerUUID = sessionStorage.getItem("alane_referrer");
+      let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
         }).catch(() => {});
-        sessionStorage.removeItem("alane_referrer");
+        try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}
       }
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
-      sessionStorage.setItem("alane_session_active", "1");
+      try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
     setLoading(false);
     onRegister();
@@ -774,7 +774,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         </div>
       </div>
 
-      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto" }}>
+      <div style={{ flex:1, padding:"8px 24px 16px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
         {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
 
         {step === 1 && <>
@@ -928,7 +928,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       {/* Modal CGPS */}
       {showCgpsModal && (
         <div onClick={()=>setShowCgpsModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 CGPS — Conditions Générales de Prestation de Services</span>
               <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
@@ -957,7 +957,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
 
       {showPrivacyModal && (
         <div onClick={()=>setShowPrivacyModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:520, maxHeight:"75vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:16 }}>🔒 Politique de confidentialité</span>
               <button onClick={()=>setShowPrivacyModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
@@ -1037,11 +1037,9 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       return;
     }
     if (stayLoggedIn) {
-      localStorage.setItem("alane_stay_logged_in", "1");
-      sessionStorage.removeItem("alane_session_active");
+      try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
     } else {
-      sessionStorage.setItem("alane_session_active", "1");
-      localStorage.removeItem("alane_stay_logged_in");
+      try { sessionStorage.setItem("alane_session_active", "1"); localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
     }
     onLogin();
   };
@@ -1080,7 +1078,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
       }).catch(() => {});
-      sessionStorage.setItem("alane_session_active", "1");
+      try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
     setLoading(false);
     onRegister();
