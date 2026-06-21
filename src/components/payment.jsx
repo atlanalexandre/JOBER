@@ -326,10 +326,6 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     });
   }, []);
 
-  const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
-  const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
-  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
-
   useEffect(() => {
     if (method !== "card") return;
     if (savedCard && useSavedCard) {
@@ -362,6 +358,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     })();
     return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
   }, [method, useSavedCard]);
+
+  const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
+  const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
+  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
   const handlePay = async () => {
     if (processing) return;

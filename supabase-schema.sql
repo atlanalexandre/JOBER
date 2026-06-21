@@ -194,11 +194,24 @@ CREATE INDEX IF NOT EXISTS messages_created_at_idx       ON messages (created_at
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "messages_participants" ON messages;
-CREATE POLICY "messages_participants" ON messages
-  FOR ALL USING (
+DROP POLICY IF EXISTS "messages_select"       ON messages;
+DROP POLICY IF EXISTS "messages_insert"       ON messages;
+DROP POLICY IF EXISTS "messages_delete"       ON messages;
+
+-- Lecture : les deux participants de la conversation
+CREATE POLICY "messages_select" ON messages
+  FOR SELECT USING (
     sender_id = auth.uid() OR
     conversation_key LIKE '%' || auth.uid()::text || '%'
   );
+
+-- Insertion : uniquement l'auteur (sender_id vérifié côté serveur)
+CREATE POLICY "messages_insert" ON messages
+  FOR INSERT WITH CHECK (sender_id = auth.uid());
+
+-- Suppression : uniquement l'auteur du message (pas l'autre participant)
+CREATE POLICY "messages_delete" ON messages
+  FOR DELETE USING (sender_id = auth.uid());
 
 -- ── TABLE support_tickets ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS support_tickets (
