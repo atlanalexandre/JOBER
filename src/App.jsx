@@ -901,6 +901,11 @@ export default function App() {
   const [legalType,setLegalType]=useState("cgu");
   const [payslipData,setPayslipData]=useState(null);
   const [onlineStatus,setOnlineStatus]=useState(true);
+  const handleToggleOnline = async () => {
+    const next = !onlineStatus;
+    setOnlineStatus(next);
+    try { await supabase.auth.updateUser({ data: { is_online: next } }); } catch {}
+  };
   const [pendingMission,setPendingMission]=useState(null);
   const [bookingSource,setBookingSource]=useState("profile");
   const [invoiceMission,setInvoiceMission]=useState(null);
@@ -1066,6 +1071,13 @@ export default function App() {
     return ()=>{ mounted=false; clearInterval(iv); };
   },[supaUser]);
 
+  // Synchroniser onlineStatus depuis user_metadata quand le prestataire se connecte
+  useEffect(()=>{
+    if (!supaUser) return;
+    const isOnline = supaUser.user_metadata?.is_online;
+    if (typeof isOnline === "boolean") setOnlineStatus(isOnline);
+  },[supaUser?.id]);
+
   // Écouter les changements de session (déconnexion, reset password)
   // Ne pas auto-naviguer au démarrage : l'utilisateur passe toujours par le splash
   useEffect(()=>{
@@ -1221,7 +1233,7 @@ export default function App() {
     <ResponsiveLayout
       screen={screen} role={role} isLoggedIn={!!supaUser} onNavigate={navigate}
       showClientNav={showClientNav} showPrestaNav={showPrestaNav}
-      onlineStatus={onlineStatus} onToggleOnline={()=>setOnlineStatus(s=>!s)}
+      onlineStatus={onlineStatus} onToggleOnline={handleToggleOnline}
       unreadCount={unreadCount}
     >
       {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
@@ -1476,7 +1488,7 @@ export default function App() {
           }} />
           {screen==="p_dashboard" && (
             <div style={{ padding:"0 18px 18px" }}>
-              <OnlineStatusWidget online={onlineStatus} onToggle={()=>setOnlineStatus(s=>!s)} />
+              <OnlineStatusWidget online={onlineStatus} onToggle={handleToggleOnline} />
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={()=>navigate("legal","cgu")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📋 CGU</button>
                 <button onClick={()=>navigate("legal","cgps")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📝 CGPS</button>

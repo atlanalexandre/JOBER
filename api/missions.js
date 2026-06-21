@@ -363,19 +363,27 @@ export default async function handler(req, res) {
       const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-      // Marquer mission completed + montant total
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Marquer mission completed — condition sur status=assigned pour éviter le double-crédit en cas de requête concurrente
+      const completePatchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
         body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_client: true }),
       });
+      const completedRows = await completePatchRes.json().catch(() => []);
+      if (!Array.isArray(completedRows) || completedRows.length === 0) {
+        return res.status(409).json({ error: "Mission déjà validée" });
+      }
 
-      // Mettre à jour le cashback du client
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+      // Mise à jour atomique du cashback via RPC pour éviter les race conditions (double-crédit)
+      const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
       });
+      const rpcData = await rpcRes.json().catch(() => null);
+      const atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
+        ? rpcData[0].cashback_balance
+        : newBalance;
 
       // Notification cashback au client
       if (cashbackEarned > 0) {
@@ -386,7 +394,7 @@ export default async function handler(req, res) {
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
-            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${newBalance.toFixed(2)} €`,
+            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
             read: false,
           }),
         });

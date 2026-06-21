@@ -28,7 +28,11 @@ export default async function handler(req, res) {
   const BO_SECRET   = process.env.BO_SESSION_SECRET;
   if (!BO_PASSWORD || !BO_SECRET) return res.status(500).json({ ok: false, error: "Configuration BO manquante" });
 
-  if (pin !== BO_PASSWORD) return res.status(401).json({ ok: false });
+  if (pin !== BO_PASSWORD) {
+    // Délai exponentiel par tentative pour ralentir le brute-force même après cold start
+    await new Promise(r => setTimeout(r, Math.min(rec.count * 400, 3000)));
+    return res.status(401).json({ ok: false });
+  }
 
   const token = genToken(BO_SECRET);
   return res.status(200).json({ ok: true, token });

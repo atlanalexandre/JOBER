@@ -36,10 +36,10 @@ export default async function handler(req, res) {
   const authHeader = req.headers["authorization"] || "";
   const token = authHeader.replace("Bearer ", "");
   const cronSecret  = process.env.CRON_SECRET;
-  const boSecret    = process.env.BO_SESSION_SECRET || "";
+  const boSecret    = process.env.BO_SESSION_SECRET;
 
   const isCron = !cronSecret || authHeader === `Bearer ${cronSecret}`;
-  const isBo   = verifyBoToken(token, boSecret);
+  const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
   if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
@@ -231,12 +231,22 @@ ${(() => {
         const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector,date,heure_debut`,
           { headers }
         );
-        const autoMissions = await avRes.json();
+        const autoMissionsRaw = await avRes.json();
 
-        if (Array.isArray(autoMissions) && autoMissions.length) {
+        // Vérifier que 24h se sont effectivement écoulées depuis la FIN de la mission (heure_debut + hours)
+        const nowTs = Date.now();
+        const autoMissions = Array.isArray(autoMissionsRaw) ? autoMissionsRaw.filter(m => {
+          if (!m.date) return true;
+          const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
+          const missionEndMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime()
+            + Number(m.hours || 1) * 3600000;
+          return nowTs - missionEndMs >= 24 * 3600000;
+        }) : [];
+
+        if (autoMissions.length) {
           // Charger les taux cashback depuis platform_settings
           let CASHBACK_TIERS = [
             { min:0, max:2, rate:0.005 }, { min:3, max:5, rate:0.0075 },
@@ -277,10 +287,10 @@ ${(() => {
               }
 
               await Promise.all([
-                // Mettre à jour le cashback client
-                fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+                // Mise à jour atomique du cashback via RPC pour éviter les race conditions
+                fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=representation" },
+                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
                 }).catch(e => console.error("cron cashback update error:", e)),
                 // Notification client
                 fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
