@@ -145,7 +145,7 @@ export const AddressAutocomplete = ({ label, value, onChange, onSelect, placehol
   const updatePos = useCallback(() => {
     if (!inputRef.current) return;
     const rect = inputRef.current.getBoundingClientRect();
-    setDropPos({ top: rect.bottom + window.scrollY + 2, left: rect.left + window.scrollX, width: rect.width });
+    setDropPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
   }, []);
 
   useEffect(() => {
