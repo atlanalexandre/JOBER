@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { isLaunchPhase } from "../constants/plans.js";
 
@@ -138,48 +138,62 @@ export const Input = ({ label, type="text", placeholder, icon, value, onChange, 
 export const AddressAutocomplete = ({ label, value, onChange, onSelect, placeholder="12 rue de la Paix" }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top:0, left:0, width:0 });
   const timerRef = useRef(null);
-  const wrapRef = useRef(null);
-  useEffect(() => {
-    const handleClick = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+  const inputRef = useRef(null);
+
+  const updatePos = useCallback(() => {
+    if (!inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    setDropPos({ top: rect.bottom + window.scrollY + 2, left: rect.left + window.scrollX, width: rect.width });
   }, []);
+
+  useEffect(() => {
+    const close = (e) => { if (!inputRef.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close, { passive: true });
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); };
+  }, []);
+
   const handleChange = (e) => {
     const q = e.target.value;
     onChange(q);
     clearTimeout(timerRef.current);
     if (q.length < 3) { setSuggestions([]); setOpen(false); return; }
+    updatePos();
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5`);
         const data = await res.json();
-        setSuggestions(data.features || []);
-        setOpen((data.features||[]).length > 0);
+        const feats = data.features || [];
+        setSuggestions(feats);
+        if (feats.length > 0) { updatePos(); setOpen(true); }
+        else setOpen(false);
       } catch { setSuggestions([]); setOpen(false); }
     }, 300);
   };
+
   const handleSelect = (feat) => {
     const { name, postcode, city } = feat.properties;
+    onChange(name);
     onSelect({ rue: name, codePostal: postcode, ville: city });
     setSuggestions([]);
     setOpen(false);
   };
+
   return (
-    <div style={{ marginBottom:16, minWidth:0, position:"relative" }} ref={wrapRef}>
+    <div style={{ marginBottom:16, minWidth:0, position:"relative" }}>
       {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
       <div style={{ position:"relative" }}>
-        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5 }}>📍</span>
-        <input type="text" placeholder={placeholder} value={value||""} onChange={handleChange} autoComplete="off"
+        <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5, pointerEvents:"none" }}>📍</span>
+        <input ref={inputRef} type="text" placeholder={placeholder} value={value||""} onChange={handleChange} autoComplete="off"
           style={{ width:"100%", padding:"13px 14px 13px 44px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s, box-shadow 0.2s" }} />
       </div>
       {open && suggestions.length > 0 && (
-        <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:1000, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.4)", marginTop:2 }}>
+        <div style={{ position:"fixed", top:dropPos.top, left:dropPos.left, width:dropPos.width, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:9999, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.6)" }}>
           {suggestions.map((feat, i) => (
-            <button key={i} onMouseDown={()=>handleSelect(feat)}
-              style={{ width:"100%", padding:"11px 14px", background:"transparent", border:"none", borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit", display:"block", transition:"background 0.15s" }}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <button key={i} onMouseDown={()=>handleSelect(feat)} onTouchEnd={e=>{e.preventDefault();handleSelect(feat);}}
+              style={{ width:"100%", padding:"11px 14px", background:"transparent", border:"none", borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit", display:"block" }}>
               📍 {feat.properties.label}
             </button>
           ))}
