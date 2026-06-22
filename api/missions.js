@@ -114,7 +114,7 @@ export default async function handler(req, res) {
         { headers }
       );
       const missions = await r.json();
-      if (!Array.isArray(missions)) return res.status(200).json([]);
+      if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
 
       // Fetch all candidatures for all missions in parallel
       const missionIds = missions.map(m => m.id);
