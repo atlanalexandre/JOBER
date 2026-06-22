@@ -4906,13 +4906,15 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const handleAccept = async (c) => {
     setActioning(c.id);
     try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
       });
       const data = await res.json();
       if (data.payment_required) {
-        // Rediriger vers le paiement Stripe
         onNavigate("stripe_pay", { amount: data.amount, clientSecret: data.client_secret, pendingCandidature: c, pendingMissionId: selected.id });
         setActioning(null);
         return;
@@ -4951,8 +4953,11 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const handleReject = async (c) => {
     setActioning(c.id);
     try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "reject", candidature_id: c.id }),
       });
       if (!res.ok) throw new Error();
@@ -4963,8 +4968,11 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   const handleClose = async (missionId) => {
     try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "close", mission_id: missionId }),
       });
       if (!res.ok) throw new Error();
