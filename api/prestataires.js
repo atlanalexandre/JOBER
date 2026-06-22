@@ -27,13 +27,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ prestataires: [] });
     }
 
-    // Only show prestataires with at least one verified document
+    // All BO-approved prestataires are shown — verified docs is a badge, not a gate
+    // (KBIS/RIB collected at registration go to user_metadata, not the documents table)
+    const approvedProfiles = profiles;
     const verifiedIds = new Set(Array.isArray(verifiedDocs) ? verifiedDocs.map(d => d.prestataire_id) : []);
-    const approvedProfiles = profiles.filter(p => verifiedIds.has(p.id));
-
-    if (approvedProfiles.length === 0) {
-      return res.status(200).json({ prestataires: [] });
-    }
 
     // Fetch all ratings + completed missions count in parallel
     const prestaIdList = approvedProfiles.map(p => p.id);
