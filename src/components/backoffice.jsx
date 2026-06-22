@@ -1511,6 +1511,45 @@ export function BOResetMonthly() {
   );
 }
 
+export function BOReminders() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+
+  const handleTrigger = async () => {
+    setLoading(true); setResult(null);
+    try {
+      let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
+      const r = await fetch("/api/cron-reset-monthly?action=reminders", {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const j = await r.json();
+      if (j.success) {
+        const parts = [];
+        if (j.reminders)           parts.push(`${j.reminders} rappel(s) J-1`);
+        if (j.validationReminders) parts.push(`${j.validationReminders} relance(s) validation`);
+        if (j.autoValidated)       parts.push(`${j.autoValidated} auto-validée(s)`);
+        setResult(`✅ ${parts.join(" · ") || "Aucun email à envoyer"}`);
+      } else {
+        setResult(`❌ Erreur : ${j.error||"inconnue"}`);
+      }
+    } catch { setResult("❌ Erreur réseau"); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 16px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, border:`1px solid ${C.border}` }}>
+      <div>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>📧 Envoyer les relances</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Rappels J-1 + relances de validation ciblées (prestataire ou client selon qui bloque)</div>
+        {result && <div style={{ fontSize:12, marginTop:4, color: result.startsWith("✅") ? C.success : C.danger }}>{result}</div>}
+      </div>
+      <button onClick={handleTrigger} disabled={loading} style={{ background:"rgba(240,180,41,0.15)", border:"1px solid rgba(240,180,41,0.5)", color:"#F0B429", borderRadius:8, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+        {loading ? "…" : "Envoyer"}
+      </button>
+    </div>
+  );
+}
+
 export function BORefundSection() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -1655,8 +1694,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
         {tab==="dashboard" && <>
           {boLoading && <div style={{ textAlign:"center", color:C.textSub, fontSize:13, padding:"30px 0" }}>Chargement des données…</div>}
 
-          {/* Reset mensuel manuel */}
+          {/* Reset mensuel manuel + relances */}
           <BOResetMonthly />
+          <BOReminders />
 
 
           {/* Alertes dynamiques */}
