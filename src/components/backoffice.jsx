@@ -438,6 +438,14 @@ export function BOComptes() {
                     <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
                     <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
                     <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret} />
+                    {p.role === "prestataire" && p.date_naissance && (
+                      <InfoRow icon="🎂" label="Naissance" value={(() => {
+                        const dob = new Date(p.date_naissance);
+                        const today = new Date();
+                        const age = today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+                        return `${dob.toLocaleDateString("fr-FR")} (${age} ans)`;
+                      })()} />
+                    )}
                     {p.role === "prestataire" && <>
                       <InfoRow icon="🗂️" label="Secteur" value={p.secteur} />
                       <InfoRow icon="💼" label="Métier" value={p.metier} />
@@ -923,9 +931,9 @@ export function BOExportCSV({ d }) {
     try {
       const r = await boFetch({ action:"list" });
       const users = await r.json();
-      const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Téléphone","IBAN","Type compte","Société","Créé le"]];
+      const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Date naissance","Téléphone","IBAN","Type compte","Société","Créé le"]];
       (Array.isArray(users) ? users : []).forEach(u => {
-        rows.push([u.id,u.prenom||"",u.nom||"",u.email||"",u.role||"",u.status||"",u.telephone||"",u.rib||"",u.type_compte||"",u.societe_nom||"",u.created_at?.slice(0,10)||""]);
+        rows.push([u.id,u.prenom||"",u.nom||"",u.email||"",u.role||"",u.status||"",u.date_naissance||"",u.telephone||"",u.rib||"",u.type_compte||"",u.societe_nom||"",u.created_at?.slice(0,10)||""]);
       });
       const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
       const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
