@@ -125,8 +125,9 @@ export default async function handler(req, res) {
       const allCandidatures = await allCandidaturesRes.json().catch(() => []);
       const rawAll = Array.isArray(allCandidatures) ? allCandidatures : [];
 
-      // Batch profile lookup for all unique prestataire IDs
-      const allPrestaIds = [...new Set(rawAll.map(c => c.prestataire_id).filter(Boolean))];
+      // Collect ALL prestataire IDs: from candidatures + directly assigned on missions
+      const directPrestaIds = missions.map(m => m.prestataire_id).filter(Boolean);
+      const allPrestaIds = [...new Set([...rawAll.map(c => c.prestataire_id).filter(Boolean), ...directPrestaIds])];
       const profileMap = {};
       if (allPrestaIds.length > 0) {
         const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom`, { headers });
@@ -161,7 +162,13 @@ export default async function handler(req, res) {
         });
       }
 
-      const enriched = missions.map(m => ({ ...m, candidatures: candByMission[m.id] || [] }));
+      // Enrich missions: candidatures + prestataire name directly on mission (for direct assignments without candidatures)
+      const enriched = missions.map(m => ({
+        ...m,
+        candidatures: candByMission[m.id] || [],
+        prestataire_prenom: m.prestataire_id ? (profileMap[m.prestataire_id]?.prenom || "") : "",
+        prestataire_nom:    m.prestataire_id ? (profileMap[m.prestataire_id]?.nom    || "") : "",
+      }));
       return res.status(200).json(enriched);
     }
 
