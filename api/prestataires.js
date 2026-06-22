@@ -70,9 +70,9 @@ export default async function handler(req, res) {
         : 0;
       return {
         id:            p.id,
-        name:          `${p.prenom || ""} ${p.nom || ""}`.trim() || "Prestataire",
-        prenom:        p.prenom || "",
-        nom:           p.nom || "",
+        name:          `${p.prenom || meta.prenom || ""} ${p.nom || meta.nom || ""}`.trim() || "Prestataire",
+        prenom:        p.prenom || meta.prenom || "",
+        nom:           p.nom    || meta.nom    || "",
         secteur:          meta.secteur          || meta.sector    || null,
         metier:           meta.metier           || meta.job_title || null,
         niveau:           meta.niveau           || null,
