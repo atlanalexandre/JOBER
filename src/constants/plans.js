@@ -13,7 +13,7 @@ export const ABONNEMENTS_PRESTA = [
     features:["2 missions/mois","Profil visible par les clients"],
     locked:["10 missions/mois","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
     note:"🎁 Offre de lancement : 10 missions/mois offertes aux 100 premiers inscrits." },
-  { id:"premium", label:"Premium", price:29.99, color:"#7C6FE0", icon:"⚡", missions:10, popular:true,
+  { id:"premium", label:"Premium", price:29.99, color:"#7C6FE0", icon:"💎", missions:10, popular:true,
     features:["10 missions/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
     locked:["Badge 👑 Elite et position #1 garantie dans les résultats"] },
   { id:"elite",   label:"Elite",   price:69.99, color:"#F0B429", icon:"👑", missions:999, popular:false,

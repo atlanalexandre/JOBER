@@ -456,7 +456,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
                 <IbanInput label="IBAN (pour remboursements)" placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" value={cpIban} onChange={e=>setCpIban(e.target.value.toUpperCase())} />
                 <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence des besoins</label>
                 <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-                  {[{id:"ponctuel",label:"⚡ Ponctuel"},{id:"regulier",label:"📅 Régulier"},{id:"les-deux",label:"🔄 Les deux"}].map(f=>(
+                  {[{id:"ponctuel",label:"⏱ Ponctuel"},{id:"regulier",label:"📅 Régulier"},{id:"les-deux",label:"🔄 Les deux"}].map(f=>(
                     <button key={f.id} onClick={()=>setCpFrequence(f.id)} style={{ flex:1, padding:"9px 6px", borderRadius:r, border:`2px solid ${cpFrequence===f.id?C.violet:C.border}`, background:cpFrequence===f.id?`${C.violet}20`:"transparent", color:cpFrequence===f.id?C.violet:C.textSub, fontSize:11, fontWeight:cpFrequence===f.id?700:400, cursor:"pointer", fontFamily:"inherit" }}>{f.label}</button>
                   ))}
                 </div>
@@ -1721,7 +1721,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             </div>
             {urgentMode && (
               <div style={{ background:`${C.accent}15`, borderRadius:8, padding:"8px 10px", fontSize:12, color:C.text, lineHeight:1.5 }}>
-                ⚡ <strong>Surcoût urgence : +{surcharge},00 € HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
+                🚀 <strong>Surcoût urgence : +{surcharge},00 € HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
               </div>
             )}
           </div>
@@ -1729,7 +1729,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {/* ── MODE URGENCE ACTIF → pas de liste ── */}
           {urgentMode ? (
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"28px 20px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)", border:`2px solid ${C.accent}33` }}>
-              <div style={{ fontSize:52, marginBottom:12 }}>⚡</div>
+              <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
               <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Mission envoyée à tous les prestataires</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
                 Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la mission.</strong>
@@ -1752,7 +1752,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               </div>
 
               <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, urgentPrice, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
-                ⚡ Envoyer la mission maintenant
+                🚀 Envoyer la mission maintenant
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Annuler — choisir un prestataire manuellement
@@ -2484,7 +2484,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {/* Bandeau urgence */}
           {isUrgent && (
             <div style={{ background:`${C.accent}12`, border:`1px solid ${C.accent}44`, borderRadius:r, padding:"12px 14px", marginBottom:16, display:"flex", gap:10 }}>
-              <span style={{ fontSize:20, flexShrink:0 }}>⚡</span>
+              <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.accent, fontSize:13, marginBottom:3 }}>Mode Urgence actif</div>
                 <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>Date et heure automatiques · <strong style={{ color:C.text }}>Aujourd'hui à {urgentStartTime}</strong> · Seule la durée est modifiable</div>
@@ -2817,7 +2817,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             ))}
           </div>
           <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
-            {isUrgent?"⚡":"✅"} Confirmer & payer {totalGlobal} €
+            {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
 
@@ -2837,7 +2837,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 </div>
               );
             })()}
-            <div style={{ fontSize:60, marginBottom:14 }}>{isUrgent?"⚡":"✅"}</div>
+            <div style={{ fontSize:60, marginBottom:14 }}>{isUrgent?"🚀":"✅"}</div>
             <h3 style={{ color:C.text, fontSize:21, fontWeight:700, marginBottom:6, fontFamily:font.display }}>
               {isUrgent ? "Mission urgente envoyée !" : "Réservation confirmée !"}
             </h3>
@@ -3156,7 +3156,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
         <div style={{ background: bothValidated?`${C.success}15`:`${C.accentGold}15`, border:`2px solid ${bothValidated?C.success:C.accentGold}55`, borderRadius:16, padding:"16px", textAlign:"center" }}>
           {bothValidated ? (
             <div>
-              <div style={{ fontSize:32, marginBottom:8 }}>⚡</div>
+              <div style={{ fontSize:32, marginBottom:8 }}>🚀</div>
               <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>Les deux parties ont validé !</div>
               <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {totalNetPresta} € en cours vers {p.name}…</div>
             </div>
@@ -4049,7 +4049,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
           <div style={{ marginBottom:20 }}>
             <div style={{ background:`linear-gradient(135deg,${C.violet}18,${C.indigo}10)`, border:`1px solid ${C.violet}40`, borderRadius:r+4, padding:"14px 16px", marginBottom:10 }}>
               <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:6 }}>
-                <span style={{ fontSize:16 }}>⚡</span>
+                <span style={{ fontSize:16 }}>💎</span>
                 <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>Abonnements ALANE</div>
               </div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:12 }}>
@@ -4486,7 +4486,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             <div style={{ background:"#0D1B3E", borderRadius:16, padding:"18px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:12 }}>Plateforme intermédiaire</div>
               <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
-                <div style={{ width:46, height:46, borderRadius:13, background:`${C.violet}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>⚡</div>
+                <div style={{ width:46, height:46, borderRadius:13, background:`${C.violet}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💎</div>
                 <div>
                   <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>ALANE SAS</div>
                   <div style={{ color:C.textSub, fontSize:12 }}>Plateforme de mise en relation</div>
@@ -4569,7 +4569,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"center" }}>
               {bothSigned ? (
                 <div>
-                  <div style={{ fontSize:28, marginBottom:8 }}>⚡</div>
+                  <div style={{ fontSize:28, marginBottom:8 }}>🚀</div>
                   <div style={{ fontWeight:800, color:C.violet, fontSize:14 }}>Finalisation en cours…</div>
                   <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Archivage et envoi des copies par email</div>
                 </div>
@@ -5785,7 +5785,7 @@ export function MissionTimeline({ status="in_progress" }) {
     { id:"booked",    label:"Réservé",       icon:"📋", desc:"Mission confirmée"          },
     { id:"signed",    label:"Contrat signé", icon:"✍️", desc:"Les deux parties ont signé" },
     { id:"enroute",   label:"En route",      icon:"🚗", desc:"Le prestataire arrive"       },
-    { id:"in_progress",label:"En cours",    icon:"⚡", desc:"Mission en cours"            },
+    { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Mission en cours"            },
     { id:"done",      label:"Terminé",       icon:"✅", desc:"Mission effectuée"           },
     { id:"paid",      label:"Payé",          icon:"💶", desc:"Paiement libéré"             },
   ];
