@@ -89,6 +89,7 @@ export default async function handler(req, res) {
         rating:           avgRating,
         reviews:          provRatings.length,
         cv:               meta.cv || null,
+        photo_url:        meta.photo_public_auth ? (meta.photo_url || null) : null,
         created_at:       p.created_at,
       };
     });

@@ -1379,6 +1379,7 @@ export function useProviders() {
                 (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
               ),
               metiers_list: p.metiers_list || [],
+              photo_url:    p.photo_url || null,
             };
           });
           _providersCache = mapped;
@@ -2137,8 +2138,10 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
           </div>
         </div>
         <div style={{ display:"flex", gap:16, alignItems:"flex-end", marginBottom:18 }}>
-          <div style={{ width:76, height:76, borderRadius:22, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:38, border:"3px solid rgba(255,255,255,0.25)", position:"relative" }}>
-            {p.avatar}
+          <div style={{ width:76, height:76, borderRadius:22, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:38, border:"3px solid rgba(255,255,255,0.25)", position:"relative", overflow:"hidden" }}>
+            {p.photo_url
+              ? <img src={p.photo_url} alt={p.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              : p.avatar}
             {p.available && <div style={{ position:"absolute", bottom:2, right:2, width:14, height:14, borderRadius:"50%", background:C.success, border:"2px solid white" }} />}
           </div>
           <div>
@@ -4801,14 +4804,14 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const acceptedCand = (selected.candidatures || []).find(c => c.status === "accepted");
       const prenom = acceptedCand?.prenom || selected.prestataire_prenom || "";
       const nom    = acceptedCand?.nom    || selected.prestataire_nom    || "";
+      const fullProv = providers.find(p => p.id === selected.prestataire_id);
       if (prenom || nom) {
         const name = [prenom, nom].filter(Boolean).join(" ");
         const initials = [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P";
         setPrestaName(name);
-        setPrestaDetails({ initials, avgRating: 0 });
+        setPrestaDetails({ initials, avgRating: 0, photo_url: fullProv?.photo_url || null });
       } else {
-        // Ensure card shows even without a name resolved yet
-        setPrestaDetails(prev => prev || { initials: "P", avgRating: 0 });
+        setPrestaDetails(prev => prev || { initials: "P", avgRating: 0, photo_url: fullProv?.photo_url || null });
       }
       // Enrich with ratings (no RLS issue — public read)
       supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id)
@@ -5031,15 +5034,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           {/* Carte prestataire assigné */}
           {(["assigned","pending_acceptance","completed","closed"].includes(selected.status)) && selected.prestataire_id && prestaDetails && (() => {
             const fullProvider = providers.find(p => p.id === selected.prestataire_id);
+            const navToProfile = () => {
+              const p = fullProvider || { id: selected.prestataire_id, name: prestaName || "Prestataire", prenom: selected.prestataire_prenom || "", nom: selected.prestataire_nom || "", avatar: "👷", color: C.violet, photo_url: prestaDetails.photo_url || null };
+              onNavigate("profile", p);
+            };
             return (
             <div style={{ background:"linear-gradient(135deg,#162547,#1a2d5a)", borderRadius:16, padding:"16px", marginBottom:16, border:`1px solid ${C.violet}55` }}>
               <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Prestataire assigné</div>
-              <div
-                onClick={() => fullProvider && onNavigate("profile", fullProvider)}
-                style={{ display:"flex", alignItems:"center", gap:14, cursor: fullProvider ? "pointer" : "default" }}
-              >
-                <div style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0 }}>
-                  {prestaDetails.initials}
+              <div onClick={navToProfile} style={{ display:"flex", alignItems:"center", gap:14, cursor:"pointer" }}>
+                <div onClick={navToProfile} style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
+                  {prestaDetails.photo_url
+                    ? <img src={prestaDetails.photo_url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    : prestaDetails.initials}
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName}</div>
@@ -5049,7 +5055,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                       {"⭐".repeat(Math.round(prestaDetails.avgRating))} {prestaDetails.avgRating}/5
                     </div>
                   )}
-                  {fullProvider && <div style={{ color:C.violet, fontSize:11, marginTop:3 }}>Voir le profil →</div>}
+                  <div style={{ color:C.violet, fontSize:11, marginTop:3 }}>Voir le profil →</div>
                 </div>
                 <button onClick={(e)=>{ e.stopPropagation(); if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet }); }}
                   style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>

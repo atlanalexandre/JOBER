@@ -924,6 +924,9 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [saveError, setSaveError] = useState(false);
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
+  const [photoUrl, setPhotoUrl]   = useState(null);
+  const [photoAuth, setPhotoAuth] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
@@ -945,11 +948,29 @@ export function PrestaProfileEditScreen({ onBack }) {
       setRayon(m.zone_km || 20);
       setTelephone(m.telephone||"");
       setIban(m.rib||"");
+      setPhotoUrl(m.photo_url || null);
+      setPhotoAuth(m.photo_public_auth || false);
     });
   },[]);
 
   const toggle = (arr, setArr, item) =>
     setArr(prev => prev.includes(item) ? prev.filter(x=>x!==item) : [...prev, item]);
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Photo max 5 Mo"); return; }
+    setPhotoUploading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const ext = file.name.split(".").pop().toLowerCase() || "jpg";
+    const path = `${user.id}/photo_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+    if (!upErr) {
+      const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
+      setPhotoUrl(urlData.publicUrl);
+    }
+    setPhotoUploading(false);
+  };
 
   const handleSave = async () => {
     setSaving(true); setSaveError(false);
@@ -959,6 +980,7 @@ export function PrestaProfileEditScreen({ onBack }) {
       dispo_immediat: dispoImmediat,
       tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
       telephone, rib: iban, cv: meta?.cv || null,
+      photo_url: photoUrl, photo_public_auth: photoAuth,
     }});
     setSaving(false);
     if (error) { setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return; }
@@ -982,6 +1004,31 @@ export function PrestaProfileEditScreen({ onBack }) {
       </div>
 
       <div style={{ padding:"20px 18px" }}>
+        {/* Photo de profil */}
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
+            Photo de profil <span style={{ color:color, fontWeight:700 }}>●</span>
+          </label>
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
+            <div style={{ width:68, height:68, borderRadius:"50%", background:`${color}22`, border:`2px solid ${color}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0 }}>
+              {photoUrl
+                ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                : "📷"}
+            </div>
+            <div>
+              <label style={{ display:"inline-block", padding:"9px 16px", background:`${color}22`, border:`1px solid ${color}55`, borderRadius:10, color, fontWeight:700, fontSize:13, cursor: photoUploading ? "not-allowed" : "pointer" }}>
+                {photoUploading ? "Envoi en cours…" : photoUrl ? "Changer la photo" : "Ajouter une photo"}
+                <input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload} disabled={photoUploading} />
+              </label>
+              {photoUrl && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo enregistrée</div>}
+            </div>
+          </div>
+          <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
+            <input type="checkbox" checked={photoAuth} onChange={e=>setPhotoAuth(e.target.checked)} style={{ accentColor:color, width:16, height:16, marginTop:2, flexShrink:0 }} />
+            <span style={{ color:C.textSub, fontSize:13, lineHeight:1.4 }}>J'autorise l'affichage de ma photo sur mon profil public visible par les clients</span>
+          </label>
+        </div>
+
         {/* Tarif */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
