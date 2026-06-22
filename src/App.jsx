@@ -71,6 +71,25 @@ function ALANELogo({ size = "md" }) {
   );
 }
 
+function AlaneIcon({ size = 18 }) {
+  const s = size;
+  return (
+    <svg width={s * 1.45} height={s} viewBox="0 0 160 110" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <defs>
+        <linearGradient id="ai-line" x1="52" y1="55" x2="108" y2="55" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#7C6FE0"/>
+          <stop offset="100%" stopColor="#F0B429"/>
+        </linearGradient>
+      </defs>
+      <circle cx="40" cy="55" r="18" fill="#7C6FE0"/>
+      <circle cx="40" cy="55" r="7" fill="#fff"/>
+      <line x1="58" y1="55" x2="102" y2="55" stroke="url(#ai-line)" strokeWidth="3" strokeLinecap="round"/>
+      <circle cx="120" cy="55" r="18" fill="#F0B429"/>
+      <circle cx="120" cy="55" r="7" fill="#fff"/>
+    </svg>
+  );
+}
+
 
 // ── Design System, plans, hooks → imported from separate modules ─
 
@@ -474,7 +493,7 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"p_home",          icon:"🏠", label:"Accueil"   },
     {id:"p_missions",      icon:"📋", label:"Missions"  },
-    {id:"abonnement_presta",icon:"⚡", label:"Abonnement"},
+    {id:"abonnement_presta",icon:"💎", label:"Abonnement"},
     {id:"p_dashboard",     icon:"👤", label:"Profil"    },
     {id:"settings",        icon:"⚙️", label:"Réglages"  },
   ];
@@ -710,8 +729,8 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
 
   const hybridBanner = !["bo_login","bo_dashboard"].includes(screen) && (
     <div style={{ background:"linear-gradient(90deg,#4F46E5,#7C3AED)", padding:"6px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, flexShrink:0 }}>
-      <span style={{ fontSize:13 }}>⚡</span>
-      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>⚡ ALANE · Tarif transparent · Prix affiché = Prix réel</span>
+      <AlaneIcon size={16}/>
+      <span style={{ fontSize:11, fontWeight:700, color:"#fff", letterSpacing:0.5 }}>ALANE · Tarif transparent · Prix affiché = Prix réel</span>
     </div>
   );
 
@@ -807,7 +826,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
               { icon:"✅", text:"Prestataires vérifiés et approuvés" },
               { icon:"🔒", text:"Paiement sécurisé via Stripe" },
               { icon:"⭐", text:"Notes et avis après chaque mission" },
-              { icon:"⚡", text:"Tarif transparent — prix affiché = prix réel" },
+              { icon:<AlaneIcon size={15}/>, text:"Tarif transparent — prix affiché = prix réel" },
             ].map((v,i) => (
               <div key={i} style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
                 <div style={{ width:32, height:32, borderRadius:10, background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{v.icon}</div>

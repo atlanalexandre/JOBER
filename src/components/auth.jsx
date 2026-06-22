@@ -149,7 +149,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const allCompListe = [...new Set((metiers).flatMap(m => COMPETENCES_PAR_METIER[m.metier] || COMPETENCES_PAR_SECTEUR[m.sector] || []))];
 
   const STEP_TITLES = ["Votre identité","Vos métiers","Expérience","Disponibilités","Statut & Paiement","Votre abonnement","Récapitulatif"];
-  const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","⚡","✅"];
+  const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","💎","✅"];
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
@@ -852,7 +852,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
-              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⚡" },
+              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⏱" },
               { id:"regulier",  label:"Régulier",           desc:"Besoin récurrent chaque semaine ou mois",    icon:"📅" },
               { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de missions récurrentes et ponctuelles", icon:"🔄" },
             ].map(f => (
