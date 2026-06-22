@@ -1550,6 +1550,112 @@ export function BOReminders() {
   );
 }
 
+export function BOMissions() {
+  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée" };
+  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E" };
+
+  const [missions, setMissions] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState("all");
+  const [validating, setValidating] = useState(null);
+  const [result, setResult]     = useState({});
+
+  const load = async (status = filter) => {
+    setLoading(true);
+    try {
+      const res = await boFetch({ action:"list_missions", status });
+      const data = await res.json();
+      setMissions(Array.isArray(data) ? data : []);
+    } catch { setMissions([]); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(filter); }, [filter]);
+
+  const handleValidate = async (missionId) => {
+    if (!window.confirm("Valider cette mission manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
+    setValidating(missionId);
+    try {
+      const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
+      const data = await res.json();
+      if (data.success) {
+        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
+      } else {
+        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
+      }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setValidating(null);
+  };
+
+  const filtered = missions;
+
+  return (
+    <div>
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>📋 Gestion des missions</div>
+
+      {/* Filtres */}
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
+        {["all","open","pending_acceptance","assigned","completed","closed"].map(s => (
+          <button key={s} onClick={()=>setFilter(s)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${filter===s?C.violet:C.border}`, background:filter===s?`${C.violet}20`:"transparent", color:filter===s?C.violet:C.textSub, fontWeight:filter===s?700:500, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+            {s==="all"?"Toutes":STATUS_LABELS[s]||s}
+          </button>
+        ))}
+        <button onClick={()=>load(filter)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textMuted, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>🔄</button>
+      </div>
+
+      {loading && <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>}
+
+      {!loading && filtered.length === 0 && (
+        <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune mission{filter!=="all"?` avec ce statut`:""}</div>
+      )}
+
+      {filtered.map(m => {
+        const canValidate = ["assigned","pending_acceptance"].includes(m.status);
+        const montant = m.montant_total || Math.round((m.hours||0)*(m.tarif_horaire||0)*100)/100;
+        return (
+          <div key={m.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"14px 16px", marginBottom:10, border:`1px solid ${(STATUS_COLORS[m.status]||C.border)}22` }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                  <span style={{ background:`${STATUS_COLORS[m.status]||C.border}22`, color:STATUS_COLORS[m.status]||C.textMuted, fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:6, letterSpacing:0.5, textTransform:"uppercase", whiteSpace:"nowrap" }}>
+                    {STATUS_LABELS[m.status]||m.status}
+                  </span>
+                  {m.recurrence && <span style={{ fontSize:10, color:C.violet, fontWeight:600 }}>🔄 {m.recurrence}</span>}
+                </div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>
+                  {m.metier || m.sector} {m.ville ? `— ${m.ville}` : ""}
+                </div>
+                <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:12, color:C.textSub, marginBottom:4 }}>
+                  <span>📅 {m.date||"—"}</span>
+                  <span>⏱ {m.hours}h</span>
+                  {montant > 0 && <span>💶 {montant}€</span>}
+                </div>
+                <div style={{ fontSize:12, color:C.textMuted }}>
+                  👤 {m.client_name}{m.presta_name ? ` → 👷 ${m.presta_name}` : " → pas de prestataire"}
+                </div>
+                {m.status === "assigned" && (
+                  <div style={{ fontSize:11, color:C.textMuted, marginTop:4 }}>
+                    {m.validation_prestataire ? "✅ Prestataire a confirmé" : "⏳ Prestataire n'a pas encore confirmé"}
+                    {" · "}
+                    {m.validation_client ? "✅ Client a validé" : "⏳ Client n'a pas validé"}
+                  </div>
+                )}
+                {result[m.id] && <div style={{ fontSize:12, marginTop:6, color: result[m.id].startsWith("✅") ? C.success : "#F25E5E" }}>{result[m.id]}</div>}
+              </div>
+              {canValidate && !result[m.id]?.startsWith("✅") && (
+                <button onClick={()=>handleValidate(m.id)} disabled={validating===m.id} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}18`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", opacity:validating===m.id?0.5:1, flexShrink:0 }}>
+                  {validating===m.id ? "…" : "✅ Valider"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BORefundSection() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -1652,6 +1758,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           {[
             {id:"dashboard",  l:"📊 KPIs"},
             {id:"comptes",    l:"✅ Comptes"},
+            {id:"missions",   l:"📋 Missions"},
             {id:"support",    l:"🎧 Support"},
             {id:"sectors",    l:"🗂️ Secteurs"},
             {id:"users",      l:"👥 Utilisateurs"},
@@ -1680,6 +1787,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
+
+        {/* ── MISSIONS ── */}
+        {tab==="missions" && <BOMissions />}
 
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
