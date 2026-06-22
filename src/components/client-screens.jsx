@@ -5388,7 +5388,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name, prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
               const photoUrl = fullProv?.photo_url || null;
               const metier   = fullProv?.jobTitle || ph.missions[0]?.metier || "";
-              const lastDate = ph.missions[0]?.date || "—";
+              const sortedM  = [...ph.missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
+              const lastDate = sortedM[0]?.date || "—";
               const nbMissions = ph.missions.length;
               return (
               <div key={ph.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
