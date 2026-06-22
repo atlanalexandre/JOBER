@@ -137,6 +137,11 @@ export function BOComptes() {
   const [editVals, setEditVals]   = useState({});
   const [editSaving, setEditSaving] = useState(false);
   const [editResult, setEditResult] = useState(null);
+  const [contactModal, setContactModal] = useState(null);
+  const [contactSubject, setContactSubject] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
+  const [contactSending, setContactSending] = useState(false);
+  const [contactResult, setContactResult] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -206,6 +211,19 @@ export function BOComptes() {
     await boFetch({ action, profileId, reason });
     setActioning(null);
     load();
+  };
+
+  const handleContact = async () => {
+    if (!contactSubject.trim() || !contactMessage.trim()) return;
+    setContactSending(true);
+    setContactResult(null);
+    try {
+      const res = await boFetch({ action:"send_user_email", profileId: contactModal.profileId, subject: contactSubject.trim(), message: contactMessage.trim() });
+      const data = await res.json();
+      setContactResult(data.success ? "ok" : "error");
+      if (data.success) setTimeout(() => { setContactModal(null); setContactSubject(""); setContactMessage(""); setContactResult(null); }, 1500);
+    } catch { setContactResult("error"); }
+    setContactSending(false);
   };
 
   const handleDeleteConfirm = async () => {
@@ -647,6 +665,9 @@ export function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
+            <button onClick={()=>{ setContactSubject(""); setContactMessage(""); setContactResult(null); setContactModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+              📧
+            </button>
             <button onClick={()=>{ setDeleteReason(""); setDeleteModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(242,94,94,0.3)", background:"transparent", color:"rgba(242,94,94,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               {actioning===p.id+"delete" ? "…" : "🗑️"}
             </button>
@@ -671,6 +692,39 @@ export function BOComptes() {
               ) : (
                 <iframe src={previewDoc.url} title={previewDoc.label} style={{ width:"100%", height:"75vh", border:"none", borderRadius:8, background:"#fff" }} />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contactModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
+          <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:440, border:`1px solid ${C.violet}44` }}>
+            <h3 style={{ color:C.text, fontSize:15, fontWeight:800, margin:"0 0 4px" }}>📧 Contacter</h3>
+            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"0 0 16px" }}>
+              À : <strong style={{ color:"rgba(255,255,255,0.8)" }}>{contactModal.name}</strong> · {contactModal.email}
+            </p>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>SUJET *</label>
+            <input
+              value={contactSubject}
+              onChange={e=>setContactSubject(e.target.value)}
+              placeholder="Ex : Votre inscription ALANE, Demande de documents..."
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:12 }}
+            />
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>MESSAGE *</label>
+            <textarea
+              value={contactMessage}
+              onChange={e=>setContactMessage(e.target.value)}
+              placeholder="Écrivez votre message ici…"
+              style={{ width:"100%", minHeight:120, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }}
+            />
+            {contactResult === "error" && <div style={{ color:"#F25E5E", fontSize:12, marginTop:8 }}>❌ Erreur lors de l'envoi. Réessayez.</div>}
+            {contactResult === "ok"    && <div style={{ color:C.success, fontSize:12, marginTop:8 }}>✅ Email envoyé !</div>}
+            <div style={{ display:"flex", gap:10, marginTop:14 }}>
+              <button onClick={()=>setContactModal(null)} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button onClick={handleContact} disabled={contactSending||!contactSubject.trim()||!contactMessage.trim()} style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:(contactSending||!contactSubject.trim()||!contactMessage.trim())?0.5:1 }}>
+                {contactSending ? "Envoi…" : "Envoyer →"}
+              </button>
             </div>
           </div>
         </div>

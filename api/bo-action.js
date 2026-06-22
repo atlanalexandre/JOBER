@@ -474,6 +474,32 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, sent });
     }
 
+    if (action === "send_user_email") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const { subject, message } = req.body;
+      if (!subject?.trim() || !message?.trim()) return res.status(400).json({ error: "Sujet et message requis" });
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+      if (!userEmail) return res.status(404).json({ error: "Email introuvable" });
+      const prenom = userData.user_metadata?.prenom || "";
+      await sendEmail({
+        to: userEmail,
+        subject: subject.trim(),
+        html: emailHtml(`
+          <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
+          <p>${esc(message.trim()).replace(/\n/g,"<br/>")}</p>
+          <p style="color:#888;font-size:13px;">L'équipe ALANE</p>
+        `),
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "send_user_email", target_id: profileId, target_email: userEmail }),
+      }).catch(() => {});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "send_test_email") {
       const adminEmail = process.env.ADMIN_EMAIL || "direction@alane.fr";
       await sendEmail({
