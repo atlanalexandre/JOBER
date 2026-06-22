@@ -4755,6 +4755,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
 }
 
 export function MissionHistoryScreen({ onNavigate, onBack }) {
+  const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
   const [missions, setMissions]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -4796,17 +4797,23 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   useEffect(() => {
     if (selected?.prestataire_id) {
-      Promise.all([
-        supabase.from("profiles").select("prenom,nom").eq("id", selected.prestataire_id).single(),
-        supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id),
-      ]).then(([{ data: prof }, { data: ratingRows }]) => {
-        const name = prof ? [prof.prenom, prof.nom].filter(Boolean).join(" ") : "Prestataire";
-        const initials = prof ? [prof.prenom?.[0], prof.nom?.[0]].filter(Boolean).join("").toUpperCase() : "P";
-        const ratings = Array.isArray(ratingRows) ? ratingRows.map(r => r.rating).filter(Boolean) : [];
-        const avgRating = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : 0;
+      // Use name from candidatures (already enriched server-side) — avoids RLS issues
+      const acceptedCand = (selected.candidatures || []).find(c => c.status === "accepted");
+      const candPrenom = acceptedCand?.prenom || "";
+      const candNom    = acceptedCand?.nom    || "";
+      if (candPrenom || candNom) {
+        const name = [candPrenom, candNom].filter(Boolean).join(" ");
+        const initials = [candPrenom[0], candNom[0]].filter(Boolean).join("").toUpperCase() || "P";
         setPrestaName(name);
-        setPrestaDetails({ initials, avgRating });
-      });
+        setPrestaDetails({ initials, avgRating: 0 });
+      }
+      // Enrich with ratings (no RLS issue — public read)
+      supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id)
+        .then(({ data: ratingRows }) => {
+          const ratings = Array.isArray(ratingRows) ? ratingRows.map(r => r.rating).filter(Boolean) : [];
+          const avgRating = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : 0;
+          setPrestaDetails(prev => prev ? { ...prev, avgRating } : { initials: "P", avgRating });
+        });
     } else {
       setPrestaName("");
       setPrestaDetails(null);
@@ -4840,13 +4847,19 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     }
     const ids = Object.keys(byPresta);
     if (!ids.length) { setPrestaHistoire([]); return; }
-    supabase.from("profiles").select("id,prenom,nom").in("id", ids).then(({ data }) => {
-      const nameMap = {};
-      if (Array.isArray(data)) data.forEach(p => {
-        nameMap[p.id] = { name: [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire", initials: [p.prenom?.[0], p.nom?.[0]].filter(Boolean).join("").toUpperCase() || "P" };
-      });
-      setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
-    });
+    // Build names from already-loaded candidatures (server-side enriched, no RLS issue)
+    const nameMap = {};
+    for (const id of ids) {
+      const m = byPresta[id].missions[0];
+      const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
+      const prenom = acceptedCand?.prenom || "";
+      const nom    = acceptedCand?.nom    || "";
+      nameMap[id] = {
+        name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
+        initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
+      };
+    }
+    setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
   }, [tab, missions]);
 
   const openCandidatures = async (mission) => {
@@ -5000,29 +5013,36 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         </div>
         <div style={{ padding:"18px" }}>
           {/* Carte prestataire assigné */}
-          {(selected.status === "assigned" || selected.status === "pending_acceptance") && selected.prestataire_id && prestaDetails && (
+          {(selected.status === "assigned" || selected.status === "pending_acceptance") && selected.prestataire_id && prestaDetails && (() => {
+            const fullProvider = providers.find(p => p.id === selected.prestataire_id);
+            return (
             <div style={{ background:"linear-gradient(135deg,#162547,#1a2d5a)", borderRadius:16, padding:"16px", marginBottom:16, border:`1px solid ${C.violet}55` }}>
               <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Prestataire assigné</div>
-              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+              <div
+                onClick={() => fullProvider && onNavigate("profile", fullProvider)}
+                style={{ display:"flex", alignItems:"center", gap:14, cursor: fullProvider ? "pointer" : "default" }}
+              >
                 <div style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0 }}>
                   {prestaDetails.initials}
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName}</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}{selected.tarif_horaire > 0 ? ` · ${selected.tarif_horaire} €/h` : ""}</div>
                   {prestaDetails.avgRating > 0 && (
                     <div style={{ color:C.accentGold, fontSize:12, fontWeight:700, marginTop:3 }}>
                       {"⭐".repeat(Math.round(prestaDetails.avgRating))} {prestaDetails.avgRating}/5
                     </div>
                   )}
+                  {fullProvider && <div style={{ color:C.violet, fontSize:11, marginTop:3 }}>Voir le profil →</div>}
                 </div>
-                <button onClick={()=>{ if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet }); }}
+                <button onClick={(e)=>{ e.stopPropagation(); if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet }); }}
                   style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                   💬 Chat
                 </button>
               </div>
             </div>
-          )}
+            );
+          })()}
           {(selected.status === "open" || selected.status === "needs_replacement") && (<>
           <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
             {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
