@@ -165,12 +165,12 @@ ${(() => {
         }));
       }
 
-      // ── 2. Rappels de validation pour missions passées non validées ──
+      // ── 2. Rappels de validation ciblés selon qui n'a pas encore validé ──
       const todayStr = new Date().toISOString().slice(0, 10);
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut,validation_prestataire,validation_client`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
@@ -188,7 +188,29 @@ ${(() => {
             const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
             const appUrl       = process.env.APP_URL || "https://www.alane.fr";
             const missionLabel = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.date}`;
-            const validHtml = (toName) => `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+
+            // Email prestataire : uniquement s'il n'a pas encore confirmé la fin de mission
+            const prestaHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
+<tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:28px;text-align:center;">
+<div style="font-size:40px;margin-bottom:10px;">📋</div>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Confirmez la fin de votre mission</h1>
+<p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0;">${missionLabel}</p>
+</td></tr>
+<tr><td style="padding:28px;">
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(prestaName)}</strong>,</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre mission du <strong style="color:#A29BFE;">${m.date}</strong> est terminée mais vous n'avez pas encore confirmé la fin de prestation depuis votre espace.<br/><br/>Cette confirmation est <strong style="color:#fff;">indispensable pour déclencher votre paiement</strong>.</p>
+<div style="text-align:center;margin-top:20px;">
+<a href="${appUrl}" style="display:inline-block;background:#7C6FE0;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Confirmer ma mission →</a>
+</div>
+</td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+</table></td></tr></table></body></html>`;
+
+            // Email client : uniquement si le prestataire a déjà confirmé mais le client n'a pas validé
+            const clientHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
@@ -198,23 +220,29 @@ ${(() => {
 <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0;">${missionLabel}</p>
 </td></tr>
 <tr><td style="padding:28px;">
-<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(toName)}</strong>,</p>
-<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">La date de votre mission est passée. Pensez à <strong style="color:#F0B429;">valider la mission</strong> depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(clientName)}</strong>,</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestataire a confirmé la fin de la mission du <strong style="color:#F0B429;">${m.date}</strong>. Il ne vous reste plus qu'à valider depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
 <div style="text-align:center;margin-top:20px;">
-<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider ma mission →</a>
+<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider la mission →</a>
 </div>
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
+
             const vSends = [];
-            if (clientEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(clientName) }) }).catch(()=>{}));
-            if (prestaEmail) vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: validHtml(prestaName) }) }).catch(()=>{}));
+            // Relance prestataire seulement s'il n'a pas encore confirmé
+            if (!m.validation_prestataire && prestaEmail)
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`📋 Confirmez la fin de votre mission du ${m.date} — ALANE`, html: prestaHtml }) }).catch(()=>{}));
+            // Relance client seulement si prestataire a confirmé mais client n'a pas encore validé
+            if (m.validation_prestataire && !m.validation_client && clientEmail)
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: clientHtml }) }).catch(()=>{}));
             if (smsEnabled) {
-              const smsCashback = `✅ ALANE - Pensez à valider votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre cashback. — alane.fr`;
+              const smsPresta  = `📋 ALANE - Confirmez la fin de votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre paiement. — alane.fr`;
+              const smsCashback = `✅ ALANE - Votre prestataire a confirmé la mission du ${m.date}. Validez-la pour obtenir votre cashback. — alane.fr`;
               const clientPhone = userMap[m.client_id]?.meta?.telephone;
               const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
-              if (clientPhone) vSends.push(sendSms(BREVO_API_KEY, clientPhone, smsCashback));
-              if (prestaPhone) vSends.push(sendSms(BREVO_API_KEY, prestaPhone, smsCashback));
+              if (!m.validation_prestataire && prestaPhone) vSends.push(sendSms(BREVO_API_KEY, prestaPhone, smsPresta));
+              if (m.validation_prestataire && !m.validation_client && clientPhone) vSends.push(sendSms(BREVO_API_KEY, clientPhone, smsCashback));
             }
             await Promise.all(vSends);
             validationSent += vSends.length;
