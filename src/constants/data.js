@@ -540,7 +540,7 @@ export const COMPETENCES_PAR_METIER = {
   "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],
 };
 
-export const PROVIDERS_CACHE_TTL = 15 * 60 * 1000; // 15 min
+export const PROVIDERS_CACHE_TTL = 3 * 60 * 1000; // 3 min
 
 // ── LEAFLET MAP ───────────────────────────────────────────────────
 export const FR_CITY_COORDS = {
