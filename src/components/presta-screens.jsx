@@ -961,9 +961,10 @@ export function PrestaProfileEditScreen({ onBack }) {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { alert("Photo max 5 Mo"); return; }
     setPhotoUploading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData?.user) { setPhotoUploading(false); return; }
     const ext = file.name.split(".").pop().toLowerCase() || "jpg";
-    const path = `${user.id}/photo_${Date.now()}.${ext}`;
+    const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
     if (!upErr) {
       const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
