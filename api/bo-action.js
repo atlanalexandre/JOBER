@@ -591,6 +591,69 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === "list_missions") {
+      const statusFilter = req.body.status && req.body.status !== "all" ? `&status=eq.${req.body.status}` : "";
+      const [missionsRes, authRes, profilesRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence${statusFilter}&order=created_at.desc&limit=300`, { headers }),
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers }),
+      ]);
+      const missions  = await missionsRes.json();
+      const authData  = await authRes.json();
+      const profiles  = await profilesRes.json();
+      const authMap   = {};
+      (authData.users || []).forEach(u => { authMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+      const nameMap = {};
+      (Array.isArray(profiles) ? profiles : []).forEach(p => {
+        const n = `${p.prenom||""} ${p.nom||""}`.trim();
+        nameMap[p.id] = n || (authMap[p.id]?.meta?.prenom ? `${authMap[p.id].meta.prenom} ${authMap[p.id].meta.nom||""}`.trim() : "");
+      });
+      const enriched = (Array.isArray(missions) ? missions : []).map(m => ({
+        ...m,
+        client_name: nameMap[m.client_id] || "Client",
+        presta_name: m.prestataire_id ? (nameMap[m.prestataire_id] || "Prestataire") : null,
+      }));
+      return res.status(200).json(enriched);
+    }
+
+    if (action === "force_complete_mission") {
+      const { mission_id } = req.body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,tarif_horaire,metier,sector,recurrence,date,heure_debut,ville`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (!["assigned","pending_acceptance"].includes(m.status)) return res.status(400).json({ error: `Statut ${m.status} — seules les missions assigned/pending_acceptance peuvent être validées` });
+      const montantTotal = Math.round((m.hours||0) * (m.tarif_horaire||0) * 100) / 100;
+      // PATCH atomique — garde le guard status=eq.assigned pour éviter double-crédit
+      const patchStatus = m.status === "pending_acceptance" ? "pending_acceptance" : "assigned";
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.${patchStatus}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_prestataire: true, validation_client: true }),
+      });
+      const patched = await patchRes.json().catch(() => []);
+      if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Mission déjà validée ou statut changé" });
+      // Cashback client
+      let CASHBACK_TIERS = [{ min:0,max:2,rate:0.005 },{ min:3,max:5,rate:0.0075 },{ min:6,max:9,rate:0.01 },{ min:10,max:999,rate:0.015 }];
+      try { const cbR = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`,{headers}); const cbD = await cbR.json(); if(Array.isArray(cbD)&&Array.isArray(cbD[0]?.value)) CASHBACK_TIERS=cbD[0].value; } catch {}
+      const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
+      const profileD = await profileR.json();
+      const prof = Array.isArray(profileD) && profileD[0];
+      const mCount = (prof?.missions_completed_month||0)+1;
+      const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
+      const cashback = Math.round(montantTotal*rate*100)/100;
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>{});
+      // Notification prestataire
+      if (m.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement est en cours.`, read:false }) }).catch(()=>{});
+      }
+      // Notification client
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(()=>{});
+      return res.status(200).json({ success:true, montantTotal, cashback });
+    }
+
     if (action === "list_missions_export") {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`,
