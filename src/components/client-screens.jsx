@@ -4797,15 +4797,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   useEffect(() => {
     if (selected?.prestataire_id) {
-      // Use name from candidatures (already enriched server-side) — avoids RLS issues
+      // Priority 1: accepted candidature (candidature-based assignments)
       const acceptedCand = (selected.candidatures || []).find(c => c.status === "accepted");
-      const candPrenom = acceptedCand?.prenom || "";
-      const candNom    = acceptedCand?.nom    || "";
-      if (candPrenom || candNom) {
-        const name = [candPrenom, candNom].filter(Boolean).join(" ");
-        const initials = [candPrenom[0], candNom[0]].filter(Boolean).join("").toUpperCase() || "P";
+      const prenom = acceptedCand?.prenom || selected.prestataire_prenom || "";
+      const nom    = acceptedCand?.nom    || selected.prestataire_nom    || "";
+      if (prenom || nom) {
+        const name = [prenom, nom].filter(Boolean).join(" ");
+        const initials = [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P";
         setPrestaName(name);
         setPrestaDetails({ initials, avgRating: 0 });
+      } else {
+        // Ensure card shows even without a name resolved yet
+        setPrestaDetails(prev => prev || { initials: "P", avgRating: 0 });
       }
       // Enrich with ratings (no RLS issue — public read)
       supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id)
@@ -4872,12 +4875,14 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     const data = await res.json();
     const cands = Array.isArray(data) ? data : [];
     setCandidatures(cands);
-    // Mettre à jour le nom prestataire depuis get_candidatures (source la plus fraîche)
+    // Mettre à jour le nom prestataire depuis get_candidatures, avec fallback sur prestataire_prenom/nom
     if (mission.prestataire_id) {
       const accepted = cands.find(c => c.status === "accepted");
-      if (accepted?.prenom || accepted?.nom) {
-        const name = [accepted.prenom, accepted.nom].filter(Boolean).join(" ");
-        const initials = [accepted.prenom?.[0], accepted.nom?.[0]].filter(Boolean).join("").toUpperCase() || "P";
+      const prenom = accepted?.prenom || mission.prestataire_prenom || "";
+      const nom    = accepted?.nom    || mission.prestataire_nom    || "";
+      if (prenom || nom) {
+        const name = [prenom, nom].filter(Boolean).join(" ");
+        const initials = [prenom?.[0], nom?.[0]].filter(Boolean).join("").toUpperCase() || "P";
         setPrestaName(name);
         setPrestaDetails(prev => prev ? { ...prev, initials } : { initials, avgRating: 0 });
       }
