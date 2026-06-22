@@ -13,6 +13,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
+  const [dateNaissance, setDateNaissance] = useState("");
   const [metiers, setMetiers] = useState([]);
   const [newMetier, setNewMetier] = useState({sector:"", metier:"", niveau:"Confirmé", tarifNet:12, certifs:""});
   const [justAdded, setJustAdded] = useState(false);
@@ -46,6 +47,12 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 1) {
       if (!prenom.trim() || !nom.trim()) return "Prénom et nom obligatoires";
       if (telephone.replace(/[\s.\-]/g,"").length < 10) return "Numéro de téléphone obligatoire";
+      if (!dateNaissance) return "Date de naissance obligatoire";
+      const dob = new Date(dateNaissance);
+      const today = new Date();
+      const age = today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+      if (age < 16) return "Vous devez avoir au moins 16 ans pour vous inscrire";
+      if (age > 100) return "Date de naissance invalide";
       if (!adresseRue.trim()) return "Indiquez votre adresse";
       if (!codePostal.trim() || codePostal.replace(/\s/g,"").length < 5) return "Code postal invalide";
       if (!villeBase.trim()) return "Indiquez votre ville";
@@ -87,6 +94,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       options: { data: {
         role: "prestataire", prenom: prenom.trim(), nom: nom.trim(),
         telephone: telephone.replace(/[\s.\-]/g,""),
+        date_naissance: dateNaissance,
         adresse: adresseRue.trim(), code_postal: codePostal.trim(),
         ville: villeBase.trim(), zone_km: rayonKm,
         secteur: metiers[0]?.sector || "", metier: metiers[0]?.metier || "",
@@ -174,6 +182,18 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
           </div>
           <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>🎂 Date de naissance *</label>
+            <input
+              type="date"
+              value={dateNaissance}
+              onChange={e => setDateNaissance(e.target.value)}
+              max={(() => { const d = new Date(); d.setFullYear(d.getFullYear()-16); return d.toISOString().slice(0,10); })()}
+              min={(() => { const d = new Date(); d.setFullYear(d.getFullYear()-100); return d.toISOString().slice(0,10); })()}
+              style={{ width:"100%", background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", color:C.text, fontSize:14, fontFamily:"inherit", boxSizing:"border-box", colorScheme:"dark" }}
+            />
+            <div style={{ fontSize:11, color:C.textMuted, marginTop:5 }}>Requise pour les métiers soumis à restrictions d'âge (ex : service d'alcool, restauration de nuit).</div>
+          </div>
           <AddressAutocomplete label="Adresse *" placeholder="12 rue de la Paix" value={adresseRue} onChange={(v)=>setAdresseRue(v)} onSelect={(data)=>{ if(data?.ville) setVilleBase(data.ville); if(data?.codePostal) setCodePostal(data.codePostal); if(data?.rue) setAdresseRue(data.rue); }} />
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ flex:"0 0 120px" }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value.replace(/\D/g,"").slice(0,5))} inputMode="numeric" /></div>

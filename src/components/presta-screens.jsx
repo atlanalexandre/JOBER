@@ -1152,6 +1152,20 @@ export function PrestaProfileEditScreen({ onBack }) {
         {/* Coordonnées */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement</div>
+          {meta?.date_naissance && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:4 }}>🎂 Date de naissance</div>
+              <div style={{ background:"#050E20", border:`1px solid ${C.border}`, borderRadius:10, padding:"11px 14px", color:C.textMuted, fontSize:14 }}>
+                {(() => {
+                  const dob = new Date(meta.date_naissance);
+                  const today = new Date();
+                  const age = today.getFullYear() - dob.getFullYear() - (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+                  return `${dob.toLocaleDateString("fr-FR")} · ${age} ans`;
+                })()}
+              </div>
+              <div style={{ fontSize:11, color:C.textMuted, marginTop:4 }}>Non modifiable — contactez le support si erreur.</div>
+            </div>
+          )}
           <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
           <IbanInput label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" value={iban} onChange={e=>setIban(e.target.value.toUpperCase())} />
         </div>
