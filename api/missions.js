@@ -965,6 +965,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "chat_notify") {
+      const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { recipient_id, sender_name, message_preview } = payload;

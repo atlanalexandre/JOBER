@@ -2094,8 +2094,14 @@ export function CVScreen({ provider, onBack, onNavigate }) {
 }
 
 export function ProfileScreen({ provider, onNavigate, onBack }) {
-  const p = provider;
-  if (!p) return null;
+  const p = {
+    rating: 0, reviews: 0, distance: "—", available: false,
+    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
+    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
+    avatar: "👷", color: "#7C6FE0", photo_url: null,
+    ...provider
+  };
+  if (!provider) return null;
   const [fav,setFav]=useState(false);
   const [copied,setCopied]=useState(false);
   const [userId,setUserId]=useState(null);

@@ -967,7 +967,7 @@ export function PrestaProfileEditScreen({ onBack }) {
     const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
     if (!upErr) {
       const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
-      setPhotoUrl(urlData.publicUrl);
+      if (urlData?.publicUrl) setPhotoUrl(urlData.publicUrl);
     }
     setPhotoUploading(false);
   };
@@ -995,12 +995,34 @@ export function PrestaProfileEditScreen({ onBack }) {
   const sliderMax = 100;
   const compListe = COMPETENCES_PAR_METIER[meta?.metier] || COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
 
+  const hasDispos = Object.values(dispos).some(slots => slots.length > 0);
+  const completePct = (
+    (photoUrl ? 15 : 0) +
+    (meta?.bio ? 15 : 0) +
+    (tarifNet > 0 ? 10 : 0) +
+    (hasDispos ? 20 : 0) +
+    (langues.filter(l => l !== "Français").length > 0 ? 10 : 0) +
+    (telephone ? 10 : 0) +
+    (iban ? 10 : 0) +
+    (dispoImmediat ? 10 : 0)
+  );
+  const completeColor = completePct >= 80 ? "#22c55e" : completePct >= 50 ? "#f59e0b" : "#ef4444";
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:100 }}>
       <div style={{ background:`linear-gradient(135deg,${color}55,${color}22)`, padding:"52px 22px 22px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:"#fff", cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:"#fff", fontSize:20, fontWeight:700, margin:0, fontFamily:font.display }}>✏️ Modifier mon profil</h2>
         {meta?.metier && <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13, marginTop:4 }}>{secteurInfo?.label} · {meta.metier}</div>}
+        <div style={{ marginTop:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+            <span style={{ color:"rgba(255,255,255,0.75)", fontSize:12, fontWeight:600 }}>Profil complété à</span>
+            <span style={{ color:completeColor, fontSize:13, fontWeight:800 }}>{completePct}%</span>
+          </div>
+          <div style={{ height:6, borderRadius:3, background:"rgba(255,255,255,0.15)", overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${completePct}%`, background:completeColor, borderRadius:3, transition:"width 0.5s" }} />
+          </div>
+        </div>
       </div>
 
       <div style={{ padding:"20px 18px" }}>
