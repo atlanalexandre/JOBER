@@ -116,27 +116,52 @@ export default async function handler(req, res) {
       const missions = await r.json();
       if (!Array.isArray(missions)) return res.status(200).json([]);
 
-      const enriched = await Promise.all(missions.map(async (m) => {
-        const cr = await fetch(
-          `${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&select=id,prestataire_id,status,created_at,message`,
-          { headers }
-        );
-        const candidatures = await cr.json();
-        const rawCandidatures = Array.isArray(candidatures) ? candidatures : [];
-        const prestaIds = [...new Set(rawCandidatures.map(c => c.prestataire_id).filter(Boolean))];
-        let profileMap = {};
-        if (prestaIds.length > 0) {
-          const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${prestaIds.join(",")})&select=id,prenom,nom`, { headers });
-          const profiles = await pr.json();
-          if (Array.isArray(profiles)) profiles.forEach(p => { profileMap[p.id] = p; });
+      // Fetch all candidatures for all missions in parallel
+      const missionIds = missions.map(m => m.id);
+      const allCandidaturesRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/candidatures?mission_id=in.(${missionIds.join(",")})&select=id,mission_id,prestataire_id,status,created_at,message`,
+        { headers }
+      );
+      const allCandidatures = await allCandidaturesRes.json().catch(() => []);
+      const rawAll = Array.isArray(allCandidatures) ? allCandidatures : [];
+
+      // Batch profile lookup for all unique prestataire IDs
+      const allPrestaIds = [...new Set(rawAll.map(c => c.prestataire_id).filter(Boolean))];
+      const profileMap = {};
+      if (allPrestaIds.length > 0) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom`, { headers });
+        const profiles = await pr.json().catch(() => []);
+        if (Array.isArray(profiles)) profiles.forEach(p => { profileMap[p.id] = p; });
+
+        // Fallback: fetch user_metadata for profiles with empty names
+        const emptyIds = allPrestaIds.filter(id => !profileMap[id]?.prenom && !profileMap[id]?.nom);
+        if (emptyIds.length > 0) {
+          const metaMap = {};
+          await Promise.all(emptyIds.map(async id => {
+            try {
+              const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+              const u = await ur.json();
+              if (u?.user_metadata?.prenom || u?.user_metadata?.nom) {
+                metaMap[id] = { prenom: u.user_metadata.prenom || "", nom: u.user_metadata.nom || "" };
+              }
+            } catch {}
+          }));
+          Object.assign(profileMap, metaMap);
         }
-        const enrichedCandidatures = rawCandidatures.map(c => ({
+      }
+
+      // Group candidatures by mission and enrich with names
+      const candByMission = {};
+      for (const c of rawAll) {
+        if (!candByMission[c.mission_id]) candByMission[c.mission_id] = [];
+        candByMission[c.mission_id].push({
           ...c,
           prenom: profileMap[c.prestataire_id]?.prenom || "",
           nom:    profileMap[c.prestataire_id]?.nom    || "",
-        }));
-        return { ...m, candidatures: enrichedCandidatures };
-      }));
+        });
+      }
+
+      const enriched = missions.map(m => ({ ...m, candidatures: candByMission[m.id] || [] }));
       return res.status(200).json(enriched);
     }
 
