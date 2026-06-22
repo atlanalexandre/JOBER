@@ -1512,6 +1512,126 @@ export function BOResetMonthly() {
   );
 }
 
+export function BODocuments() {
+  const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄" };
+  const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre" };
+  const [docs, setDocs]       = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter]   = useState("all");   // all | pending | verified
+  const [typeFilter, setType] = useState("all");
+  const [preview, setPreview] = useState(null);
+  const [verifying, setVerifying] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs" }) });
+      const data = await r.json();
+      setDocs(Array.isArray(data) ? data : []);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleVerify = async (doc) => {
+    setVerifying(doc.id);
+    try {
+      await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
+      setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
+    } finally { setVerifying(null); }
+  };
+
+  const displayed = docs.filter(d => {
+    if (filter === "pending"  && d.verified)  return false;
+    if (filter === "verified" && !d.verified) return false;
+    if (typeFilter !== "all" && d.type !== typeFilter) return false;
+    return true;
+  });
+
+  const types = [...new Set(docs.map(d => d.type))];
+  const pendingCount = docs.filter(d => !d.verified).length;
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, gap:10, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ fontWeight:800, fontSize:16, color:C.text }}>📂 Documents prestataires</div>
+          <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{docs.length} document{docs.length>1?"s":""} · {pendingCount} en attente de validation</div>
+        </div>
+        <button onClick={load} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          {loading ? "Chargement…" : "🔄 Actualiser"}
+        </button>
+      </div>
+
+      {/* Filtres */}
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+        {["all","pending","verified"].map(f => (
+          <button key={f} onClick={()=>setFilter(f)} style={{ fontSize:11, padding:"5px 12px", borderRadius:20, border:`1px solid ${filter===f?C.violet:C.border}`, background:filter===f?`${C.violet}20`:"transparent", color:filter===f?C.violet:C.textSub, fontWeight:filter===f?700:500, cursor:"pointer", fontFamily:"inherit" }}>
+            {f==="all"?"Tous":f==="pending"?"⏳ En attente":"✅ Validés"}
+          </button>
+        ))}
+        <select value={typeFilter} onChange={e=>setType(e.target.value)} style={{ fontSize:11, padding:"5px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#112240", color:C.text, fontFamily:"inherit", cursor:"pointer" }}>
+          <option value="all">Tous types</option>
+          {types.map(t => <option key={t} value={t}>{DOC_LABEL[t]||t}</option>)}
+        </select>
+      </div>
+
+      {loading && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Chargement…</div>}
+      {!loading && displayed.length === 0 && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Aucun document{filter!=="all"?" dans ce filtre":""}</div>}
+
+      {displayed.map(doc => {
+        const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+        const name = [doc.prenom, doc.nom].filter(Boolean).join(" ") || doc.email || doc.prestataire_id?.slice(0,8);
+        return (
+          <div key={doc.id} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":C.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <span style={{ fontSize:22, flexShrink:0 }}>{DOC_ICON[doc.type]||"📄"}</span>
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontWeight:700, fontSize:13, color:C.text }}>{DOC_LABEL[doc.type]||doc.type}</div>
+              <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{name} · {new Date(doc.created_at).toLocaleDateString("fr-FR")}</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+              <span style={{ fontSize:10, fontWeight:700, color:doc.verified?C.success:C.accentGold }}>{doc.verified?"✅ Validé":"⏳ En attente"}</span>
+              {doc.signedUrl && <>
+                <button onClick={()=>setPreview({...doc, isImg, name})} style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                  {isImg?"🖼 Voir":"📄 Voir"}
+                </button>
+                <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontWeight:700, textDecoration:"none" }}>⬇ DL</a>
+              </>}
+              {!doc.verified && (
+                <button onClick={()=>handleVerify(doc)} disabled={verifying===doc.id} style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.success}44`, background:`${C.success}15`, color:C.success, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:verifying===doc.id?0.5:1 }}>
+                  {verifying===doc.id?"…":"✓ Valider"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Modal prévisualisation */}
+      {preview && (
+        <div onClick={()=>setPreview(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:9000, padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:16, width:"100%", maxWidth:780, maxHeight:"92vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.text }}>{DOC_ICON[preview.type]||"📄"} {DOC_LABEL[preview.type]||preview.type} — {preview.name}</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <a href={preview.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, textDecoration:"none" }}>⬇ Télécharger</a>
+                <a href={preview.signedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 12px", borderRadius:8, border:`1px solid ${C.border}`, color:C.text, fontWeight:700, textDecoration:"none" }}>↗ Ouvrir</a>
+                <button onClick={()=>setPreview(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:13, fontFamily:"inherit", fontWeight:700 }}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300 }}>
+              {preview.isImg
+                ? <img src={preview.signedUrl} alt={preview.name} style={{ maxWidth:"100%", maxHeight:"80vh", display:"block", margin:"0 auto", borderRadius:8 }} />
+                : <iframe src={preview.signedUrl} title={preview.name} style={{ width:"100%", height:"78vh", border:"none", borderRadius:8, background:"#fff" }} />
+              }
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BOReminders() {
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
@@ -1759,6 +1879,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           {[
             {id:"dashboard",  l:"📊 KPIs"},
             {id:"comptes",    l:"✅ Comptes"},
+            {id:"documents",  l:"📂 Documents"},
             {id:"missions",   l:"📋 Missions"},
             {id:"support",    l:"🎧 Support"},
             {id:"sectors",    l:"🗂️ Secteurs"},
@@ -1788,6 +1909,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
+
+        {/* ── DOCUMENTS ── */}
+        {tab==="documents" && <BODocuments />}
 
         {/* ── MISSIONS ── */}
         {tab==="missions" && <BOMissions />}
