@@ -2094,30 +2094,64 @@ export function CVScreen({ provider, onBack, onNavigate }) {
 }
 
 export function ProfileScreen({ provider, onNavigate, onBack }) {
-  const p = {
-    rating: 0, reviews: 0, distance: "—", available: false,
-    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
-    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
-    avatar: "👷", color: "#7C6FE0", photo_url: null,
-    ...provider
-  };
   if (!provider) return null;
   const [fav,setFav]=useState(false);
   const [copied,setCopied]=useState(false);
   const [userId,setUserId]=useState(null);
   const [reviews,setReviews]=useState([]);
+  const [enriched,setEnriched]=useState(null);
+
+  const p = {
+    rating: 0, reviews: 0, distance: "—", available: false,
+    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
+    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
+    avatar: "👷", color: "#7C6FE0", photo_url: null,
+    ...provider,
+    ...(enriched || {}),
+  };
   const cv = p.cv || CV_DATA[p.id];
+
   useEffect(()=>{
+    if (!provider?.id) return;
+    // Si les données clés manquent (navigation depuis carte mission), on les fetche
+    if (!provider.hourlyRate && !provider.jobTitle) {
+      fetch("/api/prestataires")
+        .then(r=>r.json())
+        .then(d=>{
+          const found = (d.prestataires||[]).find(x=>x.id===provider.id);
+          if (!found) return;
+          const sectorInfo = SECTORS.find(s=>s.id===found.secteur);
+          const rateNum = prixClient(found.tarif_net||12, found.secteur||"divers");
+          setEnriched({
+            jobTitle:    found.metier    || "",
+            hourlyRate:  `${rateNum.toFixed(2).replace(".",",")} € HT/h`,
+            rateNum,
+            bio:         found.bio       || null,
+            langues:     Array.isArray(found.langues) ? found.langues : [],
+            skills:      (found.metiers_list||[]).flatMap(m=>(m.certifs||"").split(",").map(c=>c.trim()).filter(Boolean)),
+            metiers_list:found.metiers_list||[],
+            dispon_jours:found.dispon_jours||[],
+            rating:      found.rating    || 0,
+            reviews:     found.reviews   || 0,
+            available:   found.dispo_immediat !== false,
+            photo_url:   found.photo_url || provider.photo_url || null,
+            color:       sectorInfo?.color || provider.color || "#7C6FE0",
+            avatar:      sectorInfo?.icon  || provider.avatar || "👷",
+            cv:          found.cv         || null,
+          });
+        })
+        .catch(()=>{});
+    }
     supabase.auth.getUser().then(({data})=>{
       const uid=data?.user?.id;
       if(!uid) return;
       setUserId(uid);
-      supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",p.id).single()
+      supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",provider.id).single()
         .then(({data:fd})=>setFav(!!fd));
     });
-    supabase.from("ratings").select("rating,comment,created_at,reviewer_id").eq("reviewee_provider_id",p.id).order("created_at",{ascending:false}).limit(10)
+    supabase.from("ratings").select("rating,comment,created_at,reviewer_id").eq("reviewee_provider_id",provider.id).order("created_at",{ascending:false}).limit(10)
       .then(({data:rd})=>{ if(rd) setReviews(rd); });
-  },[p.id]);
+  },[provider?.id]);
   const toggleFav=async()=>{
     if(!userId) return;
     if(fav) {
@@ -2196,7 +2230,9 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         )}
         <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
           <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>Tarif</h4>
-          <div style={{ fontSize:30, fontWeight:800, color:C.violet }}>{p.hourlyRate} HT</div>
+          {p.hourlyRate
+            ? <div style={{ fontSize:30, fontWeight:800, color:C.violet }}>{p.hourlyRate}</div>
+            : <div style={{ fontSize:16, color:C.textMuted }}>Non renseigné</div>}
           <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Taux horaire · Auto-entrepreneur</div>
         </div>
         {p.langues?.length > 0 && (
@@ -5340,29 +5376,38 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières missions terminées.</div>
               </div>
             )}
-            {prestaHistoire.map((p, i) => (
-              <div key={p.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
+            {prestaHistoire.map((ph) => {
+              const fullProv = providers.find(fp => fp.id === ph.prestataire_id);
+              const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name, prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
+              const photoUrl = fullProv?.photo_url || null;
+              const metier   = fullProv?.jobTitle || ph.missions[0]?.metier || "";
+              const lastDate = ph.missions[0]?.date || "—";
+              const nbMissions = ph.missions.length;
+              return (
+              <div key={ph.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                  <div style={{ width:50, height:50, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0 }}>
-                    {p.initials}
+                  <div
+                    onClick={() => onNavigate("profile", navProv)}
+                    style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
+                    {photoUrl ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
                   </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{p.name}</div>
+                  <div style={{ flex:1, minWidth:0 }} onClick={() => onNavigate("profile", navProv)} >
+                    <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{ph.name}</div>
+                    {metier && <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>{metier}</div>}
                     <div style={{ color:C.textMuted, fontSize:12, marginTop:2 }}>
-                      {p.missions.length} mission{p.missions.length > 1 ? "s" : ""} · Dernière : {p.missions[0]?.date || "—"}
+                      {nbMissions} mission{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
                     </div>
-                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>
-                      {p.missions.slice(0,2).map(m => m.metier || m.sector).filter(Boolean).join(" · ")}
-                    </div>
+                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>Voir le profil →</div>
                   </div>
                   <button
-                    onClick={() => onNavigate("chat", { id: p.prestataire_id, name: p.name, avatar:"👷", color:C.violet })}
-                    style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-                    💬 Contacter
+                    onClick={(e) => { e.stopPropagation(); onNavigate("chat", { id: ph.prestataire_id, name: ph.name, avatar:"👷", color:C.violet }); }}
+                    style={{ padding:"8px 12px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                    💬
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {tab !== "prestataires" && filtered.map(m => {
