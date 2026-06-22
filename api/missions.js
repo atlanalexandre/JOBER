@@ -114,7 +114,7 @@ export default async function handler(req, res) {
         { headers }
       );
       const missions = await r.json();
-      if (!Array.isArray(missions)) return res.status(200).json([]);
+      if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
 
       // Fetch all candidatures for all missions in parallel
       const missionIds = missions.map(m => m.id);
@@ -965,6 +965,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "chat_notify") {
+      const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { recipient_id, sender_name, message_preview } = payload;

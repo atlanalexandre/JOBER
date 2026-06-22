@@ -1933,7 +1933,9 @@ export function SearchFiltersScreen({ onNavigate }) {
         {filtered.map(p=>(
           <div key={p.id} style={{ background:"#0D1B3E", borderRadius:18, padding:"16px", marginBottom:12, boxShadow:"0 4px 20px rgba(0,0,0,0.5)", cursor:"pointer" }}>
             <div style={{ display:"flex", gap:12, marginBottom:10 }}>
-              <div onClick={()=>onNavigate("profile",p)} style={{ width:56, height:56, borderRadius:17, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, flexShrink:0 }}>{p.avatar}</div>
+              <div onClick={()=>onNavigate("profile",p)} style={{ width:56, height:56, borderRadius:17, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, flexShrink:0, overflow:"hidden" }}>
+                {p.photo_url ? <img src={p.photo_url} alt={p.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : p.avatar}
+              </div>
               <div style={{ flex:1 }} onClick={()=>onNavigate("profile",p)}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                   <div>
@@ -2092,8 +2094,14 @@ export function CVScreen({ provider, onBack, onNavigate }) {
 }
 
 export function ProfileScreen({ provider, onNavigate, onBack }) {
-  const p = provider;
-  if (!p) return null;
+  const p = {
+    rating: 0, reviews: 0, distance: "—", available: false,
+    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
+    bio: null, langues: [], skills: [], metiers_list: [], cv: null,
+    avatar: "👷", color: "#7C6FE0", photo_url: null,
+    ...provider
+  };
+  if (!provider) return null;
   const [fav,setFav]=useState(false);
   const [copied,setCopied]=useState(false);
   const [userId,setUserId]=useState(null);
@@ -4871,8 +4879,11 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const openCandidatures = async (mission) => {
     setSelected(mission);
     setCompletedResult(null);
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
     const res = await fetch("/api/missions", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
       body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
     });
     const data = await res.json();
