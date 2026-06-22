@@ -5969,7 +5969,7 @@ export function DocUploadScreen({ onBack }) {
     { id:"cni",      label:"Pièce d’identité",             icon:"🪪", required:true  },
     { id:"domicile", label:"Justificatif de domicile",     icon:"🏠", required:true  },
     { id:"rib",      label:"RIB / IBAN",                   icon:"💳", required:true  },
-    { id:"rc_pro",   label:"Attestation RC Pro",           icon:"🛡️", required:false },
+    { id:"rc_pro",   label:"Attestation RC Pro",           icon:"🛡️", required:true  },
     { id:"diplomes", label:"Diplômes & Certifications",    icon:"🎓", required:false },
   ];
 

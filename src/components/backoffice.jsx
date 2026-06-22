@@ -560,6 +560,7 @@ export function BOComptes() {
                       { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
                       { type:"rib", label:"RIB / IBAN", icon:"💳" },
                       { type:"domicile", label:"Justificatif domicile", icon:"🏠" },
+                      { type:"rc_pro", label:"RC Professionnelle", icon:"🛡️" },
                     ];
                     const uploaded = docs[p.id].map(d=>d.type);
                     const missing = REQ.filter(r => !uploaded.includes(r.type));

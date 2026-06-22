@@ -490,8 +490,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               "Carte nationale d'identité ou passeport (recto-verso)",
               "Justificatif de domicile (moins de 3 mois)",
               "RIB / Relevé d'Identité Bancaire",
+              "Attestation d'assurance RC Professionnelle (en cours de validité)",
             ].map((doc,i) => (
-              <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"5px 0", borderBottom:i<5?"1px solid rgba(255,255,255,0.05)":"none" }}>
+              <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"5px 0", borderBottom:i<6?"1px solid rgba(255,255,255,0.05)":"none" }}>
                 <span style={{ color:"#F0B429", fontSize:13, flexShrink:0, marginTop:1 }}>•</span>
                 <span style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{doc}</span>
               </div>
