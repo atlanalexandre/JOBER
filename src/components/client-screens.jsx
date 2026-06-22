@@ -4895,22 +4895,23 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   useEffect(() => {
     if (tab !== "prestataires") return;
-    const completed = missions.filter(m => m.status === "completed" && m.prestataire_id);
+    const withPresta = missions.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
     const byPresta = {};
-    for (const m of completed) {
+    for (const m of withPresta) {
       if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
       byPresta[m.prestataire_id].missions.push(m);
     }
     const ids = Object.keys(byPresta);
     if (!ids.length) { setPrestaHistoire([]); return; }
-    // Build names from already-loaded candidatures (server-side enriched, no RLS issue)
     const nameMap = {};
     for (const id of ids) {
       const m = byPresta[id].missions[0];
       const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
-      const prenom = acceptedCand?.prenom || "";
-      const nom    = acceptedCand?.nom    || "";
+      const prenom = acceptedCand?.prenom || m.prestataire_prenom || "";
+      const nom    = acceptedCand?.nom    || m.prestataire_nom    || "";
       nameMap[id] = {
+        prenom,
+        nom,
         name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
         initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
       };
