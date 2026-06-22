@@ -1379,7 +1379,8 @@ export function useProviders() {
                 (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
               ),
               metiers_list: p.metiers_list || [],
-              photo_url:    p.photo_url || null,
+              photo_url:       p.photo_url || null,
+              missions_count:  p.missions_count || 0,
             };
           });
           _providersCache = mapped;
@@ -2131,9 +2132,10 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             skills:      (found.metiers_list||[]).flatMap(m=>(m.certifs||"").split(",").map(c=>c.trim()).filter(Boolean)),
             metiers_list:found.metiers_list||[],
             dispon_jours:found.dispon_jours||[],
-            rating:      found.rating    || 0,
-            reviews:     found.reviews   || 0,
-            available:   found.dispo_immediat !== false,
+            rating:          found.rating         || 0,
+            reviews:         found.reviews        || 0,
+            missions_count:  found.missions_count || 0,
+            available:       found.dispo_immediat !== false,
             photo_url:   found.photo_url || provider.photo_url || null,
             color:       sectorInfo?.color || provider.color || "#7C6FE0",
             avatar:      sectorInfo?.icon  || provider.avatar || "👷",
@@ -2193,9 +2195,13 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
           </div>
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          {[{v:p.experience,l:"Expérience"},{v:p.missions,l:"Missions"},{v:p.responseTime,l:"Réponse"}].map((s,i)=>(
+          {[
+            { v: p.missions_count > 0 ? `${p.missions_count}` : "—", l: "Missions" },
+            { v: p.reviews > 0 ? `${p.rating}/5` : "—", l: "Note" },
+            { v: p.available ? "Oui" : "Non", l: "Dispo" },
+          ].map((s,i)=>(
             <div key={i} style={{ background:"rgba(255,255,255,0.14)", borderRadius:12, padding:"10px 8px", flex:1, textAlign:"center" }}>
-              <div style={{ color:C.white, fontWeight:800, fontSize:13 }}>{s.v}</div>
+              <div style={{ color: i===2 ? (p.available ? "#10D98F" : "rgba(255,255,255,0.5)") : C.white, fontWeight:800, fontSize:13 }}>{s.v}</div>
               <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10 }}>{s.l}</div>
             </div>
           ))}

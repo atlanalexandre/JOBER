@@ -35,12 +35,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ prestataires: [] });
     }
 
-    // Fetch all ratings to compute averages
-    const ratingsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/ratings?select=reviewee_provider_id,rating`,
-      { headers }
-    );
+    // Fetch all ratings + completed missions count in parallel
+    const prestaIdList = approvedProfiles.map(p => p.id);
+    const [ratingsRes, missionsRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/ratings?select=reviewee_provider_id,rating`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=in.(${prestaIdList.join(",")})&status=eq.completed&select=prestataire_id`, { headers }),
+    ]);
     const allRatings = await ratingsRes.json();
+    const allCompletedMissions = await missionsRes.json().catch(() => []);
+    const missionCountByProvider = {};
+    if (Array.isArray(allCompletedMissions)) {
+      for (const m of allCompletedMissions) {
+        missionCountByProvider[m.prestataire_id] = (missionCountByProvider[m.prestataire_id] || 0) + 1;
+      }
+    }
     const ratingsByProvider = {};
     if (Array.isArray(allRatings)) {
       for (const r of allRatings) {
@@ -88,6 +96,7 @@ export default async function handler(req, res) {
         plan_abonnement:  meta.plan_abonnement  || "free",
         rating:           avgRating,
         reviews:          provRatings.length,
+        missions_count:   missionCountByProvider[p.id] || 0,
         cv:               meta.cv || null,
         photo_url:        meta.photo_public_auth ? (meta.photo_url || null) : null,
         created_at:       p.created_at,
