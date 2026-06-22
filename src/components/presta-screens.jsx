@@ -571,7 +571,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
         </>}
         {step===7 && <>
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:18 }}>
-            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>⚡ Choisissez votre plan ALANE</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>Choisissez votre plan ALANE</div>
             <div style={{ color:C.textSub, fontSize:12 }}>Tarif transparent · prix affiché = prix réel. Changez de plan à tout moment.</div>
           </div>
           <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:r, padding:"10px 14px", marginBottom:14, fontSize:12, color:C.textSub }}>
@@ -652,7 +652,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${DOCS_REQUIS.length} chargés`]},
             {title:"💼 Métiers & taux nets",items:metiers.map(m=>m.tarifNet?`${m.metier} — ${formatE(m.tarifNet)} net`:m.metier)},
             {title:"📅 Disponibilités",items:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j} : ${(dispos[j]||[]).map(p=>p.split(" ")[0]).join(", ")}`)},
-            ...[{title:"⚡ Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}],
+            ...[{title:"💎 Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}],
           ].map(section=>(
             <div key={section.title} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:8 }}>{section.title}</div>
@@ -731,7 +731,7 @@ export function PrestaProfilTab({ onNavigate }) {
               {meta.dispon_creneaux.map(c=><span key={c} style={{ background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 8px", color:C.textSub, fontSize:11 }}>{c.split(" ")[0]}</span>)}
             </div>
           )}
-          {meta.dispo_immediat && <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:8 }}>⚡ Disponible immédiatement</div>}
+          {meta.dispo_immediat && <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:8 }}>🟢 Disponible immédiatement</div>}
         </div>
       )}
 
@@ -748,7 +748,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"⚡",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -1388,7 +1388,7 @@ export function UpgradeNudge({ onNavigate }) {
   return (
     <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
-        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>⚡ Passez Premium</div>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
         <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
       </div>
       <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
@@ -2098,7 +2098,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           <UpgradeNudge onNavigate={onNavigate} />
           {(planActuel==="premium"||planActuel==="elite") && (
             <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:16 }}>⚡</span>
+              <span style={{ fontSize:16 }}>💎</span>
               <div>
                 <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Missions urgentes activées</div>
                 <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les missions urgentes de votre secteur.</div>
