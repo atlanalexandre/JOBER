@@ -535,6 +535,48 @@ export default async function handler(req, res) {
       return res.status(200).json(withUrls);
     }
 
+    if (action === "list_all_docs") {
+      // Récupère tous les documents + infos prestataire
+      const docsRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?select=*&order=created_at.desc`, { headers });
+      const allDocs = await docsRes.json();
+      if (!Array.isArray(allDocs)) return res.status(200).json([]);
+
+      // Récupère les profils pour les noms
+      const ids = [...new Set(allDocs.map(d => d.prestataire_id))];
+      let profileMap = {};
+      if (ids.length) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`, { headers });
+        const profs = await pr.json();
+        if (Array.isArray(profs)) profs.forEach(p => { profileMap[p.id] = p; });
+      }
+
+      // Récupère les emails depuis auth.users
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers: { ...headers, "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
+      const usersData = await usersRes.json();
+      let emailMap = {};
+      if (usersData?.users) usersData.users.forEach(u => { emailMap[u.id] = u.email; });
+
+      // Génère les signed URLs
+      const withUrls = await Promise.all(allDocs.map(async (doc) => {
+        let signedUrl = null;
+        try {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/documents/${doc.storage_path}`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ expiresIn: 3600 }),
+          });
+          const sj = await sr.json();
+          signedUrl = sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null;
+        } catch {}
+        const prof = profileMap[doc.prestataire_id] || {};
+        const meta = usersData?.users?.find(u => u.id === doc.prestataire_id)?.user_metadata || {};
+        const prenom = prof.prenom || meta.prenom || "";
+        const nom = prof.nom || meta.nom || "";
+        return { ...doc, signedUrl, prenom, nom, email: emailMap[doc.prestataire_id] || "" };
+      }));
+      return res.status(200).json(withUrls);
+    }
+
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
       // Vérifier que le document appartient bien au profil demandé
