@@ -182,14 +182,28 @@ export default async function handler(req, res) {
       const candidatures = await r.json();
       if (!Array.isArray(candidatures)) return res.status(200).json([]);
 
-      const enriched = await Promise.all(candidatures.map(async (c) => {
-        const pr = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${c.prestataire_id}&select=prenom,nom`,
-          { headers }
-        );
-        const profiles = await pr.json();
-        const profile = Array.isArray(profiles) && profiles[0];
-        return { ...c, prenom: profile?.prenom || "", nom: profile?.nom || "" };
+      const prestaIds = [...new Set(candidatures.map(c => c.prestataire_id).filter(Boolean))];
+      const nameMap = {};
+      if (prestaIds.length > 0) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${prestaIds.join(",")})&select=id,prenom,nom`, { headers });
+        const profiles = await pr.json().catch(() => []);
+        if (Array.isArray(profiles)) profiles.forEach(p => { nameMap[p.id] = { prenom: p.prenom || "", nom: p.nom || "" }; });
+        // Fallback user_metadata for empty names
+        const emptyIds = prestaIds.filter(id => !nameMap[id]?.prenom && !nameMap[id]?.nom);
+        await Promise.all(emptyIds.map(async id => {
+          try {
+            const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+            const u = await ur.json();
+            if (u?.user_metadata?.prenom || u?.user_metadata?.nom) {
+              nameMap[id] = { prenom: u.user_metadata.prenom || "", nom: u.user_metadata.nom || "" };
+            }
+          } catch {}
+        }));
+      }
+      const enriched = candidatures.map(c => ({
+        ...c,
+        prenom: nameMap[c.prestataire_id]?.prenom || "",
+        nom:    nameMap[c.prestataire_id]?.nom    || "",
       }));
       return res.status(200).json(enriched);
     }

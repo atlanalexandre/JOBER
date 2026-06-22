@@ -4870,7 +4870,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
     });
     const data = await res.json();
-    setCandidatures(Array.isArray(data) ? data : []);
+    const cands = Array.isArray(data) ? data : [];
+    setCandidatures(cands);
+    // Mettre à jour le nom prestataire depuis get_candidatures (source la plus fraîche)
+    if (mission.prestataire_id) {
+      const accepted = cands.find(c => c.status === "accepted");
+      if (accepted?.prenom || accepted?.nom) {
+        const name = [accepted.prenom, accepted.nom].filter(Boolean).join(" ");
+        const initials = [accepted.prenom?.[0], accepted.nom?.[0]].filter(Boolean).join("").toUpperCase() || "P";
+        setPrestaName(name);
+        setPrestaDetails(prev => prev ? { ...prev, initials } : { initials, avgRating: 0 });
+      }
+    }
   };
 
   const handleAccept = async (c) => {
@@ -5013,7 +5024,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         </div>
         <div style={{ padding:"18px" }}>
           {/* Carte prestataire assigné */}
-          {(selected.status === "assigned" || selected.status === "pending_acceptance") && selected.prestataire_id && prestaDetails && (() => {
+          {(["assigned","pending_acceptance","completed","closed"].includes(selected.status)) && selected.prestataire_id && prestaDetails && (() => {
             const fullProvider = providers.find(p => p.id === selected.prestataire_id);
             return (
             <div style={{ background:"linear-gradient(135deg,#162547,#1a2d5a)", borderRadius:16, padding:"16px", marginBottom:16, border:`1px solid ${C.violet}55` }}>
