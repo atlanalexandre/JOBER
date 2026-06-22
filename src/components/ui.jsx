@@ -139,46 +139,30 @@ export const Input = ({ label, type="text", placeholder, icon, value, onChange, 
 export const AddressAutocomplete = ({ label, value, onChange, onSelect, placeholder="12 rue de la Paix" }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
-  const [dropPos, setDropPos] = useState({ top:0, left:0, width:0, above:false });
+  const [dropPos, setDropPos] = useState({ top:0, left:0, width:0 });
   const timerRef = useRef(null);
   const inputRef = useRef(null);
+  const dropRef  = useRef(null);
 
   const updatePos = useCallback(() => {
     if (!inputRef.current) return;
     const rect = inputRef.current.getBoundingClientRect();
-    // On iOS Safari, position:fixed is relative to layout viewport, but
-    // getBoundingClientRect() is relative to visual viewport. When keyboard
-    // opens, visualViewport.offsetTop compensates for the difference.
-    const vvTop  = window.visualViewport?.offsetTop  || 0;
-    const vvLeft = window.visualViewport?.offsetLeft || 0;
-    const viewH  = window.visualViewport?.height || window.innerHeight;
-    const dropH  = 220;
-    const spaceBelow = viewH - rect.bottom;
-    const above = spaceBelow < dropH && rect.top > dropH;
-    setDropPos({
-      top:   above ? rect.top + vvTop - dropH - 2 : rect.bottom + vvTop + 2,
-      left:  rect.left + vvLeft,
-      width: rect.width,
-      above,
-    });
+    setDropPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
   }, []);
 
   useEffect(() => {
-    const close = (e) => { if (!inputRef.current?.contains(e.target)) setOpen(false); };
+    // Close when touching/clicking outside BOTH the input AND the portal dropdown
+    const close = (e) => {
+      if (!inputRef.current?.contains(e.target) && !dropRef.current?.contains(e.target))
+        setOpen(false);
+    };
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close, { passive: true });
-    // Reposition when iOS virtual keyboard resizes or scrolls the visual viewport
-    const vv = window.visualViewport;
-    if (vv) {
-      vv.addEventListener("resize", updatePos);
-      vv.addEventListener("scroll", updatePos);
-    }
     return () => {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("touchstart", close);
-      if (vv) { vv.removeEventListener("resize", updatePos); vv.removeEventListener("scroll", updatePos); }
     };
-  }, [updatePos]);
+  }, []);
 
   const handleChange = (e) => {
     const q = e.target.value;
@@ -211,11 +195,12 @@ export const AddressAutocomplete = ({ label, value, onChange, onSelect, placehol
       {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
       <div style={{ position:"relative" }}>
         <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5, pointerEvents:"none" }}>📍</span>
-        <input ref={inputRef} type="text" placeholder={placeholder} value={value||""} onChange={handleChange} autoComplete="off"
+        <input ref={inputRef} type="text" placeholder={placeholder} value={value||""} onChange={handleChange}
+          autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
           style={{ width:"100%", padding:"13px 14px 13px 44px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s, box-shadow 0.2s" }} />
       </div>
       {open && suggestions.length > 0 && createPortal(
-        <div style={{ position:"fixed", top:dropPos.top, left:dropPos.left, width:dropPos.width, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:99999, overflow:"hidden", maxHeight:220, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,0.6)" }}>
+        <div ref={dropRef} style={{ position:"fixed", top:dropPos.top, left:dropPos.left, width:dropPos.width, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:99999, overflow:"hidden", maxHeight:220, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,0.6)" }}>
           {suggestions.map((feat, i) => (
             <button key={i} onMouseDown={()=>handleSelect(feat)} onTouchEnd={e=>{e.preventDefault();handleSelect(feat);}}
               style={{ width:"100%", padding:"11px 14px", background:"transparent", border:"none", borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit", display:"block" }}>
