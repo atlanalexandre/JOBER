@@ -356,6 +356,33 @@ body {
 .ov-desc { font-size:13px; color:rgba(255,255,255,0.65); line-height:1.5; }
 
 /* ══════════════════════════════════════
+   SOUS-TITRES STYLE TIKTOK
+══════════════════════════════════════ */
+.caption {
+  position:absolute; left:0; right:0;
+  padding:0 18px; z-index:10;
+  text-align:center;
+}
+.caption.top { top:56px; }
+.caption.bottom { bottom:18px; }
+.caption-bubble {
+  display:inline-block;
+  background:rgba(0,0,0,0.82);
+  border-radius:10px; padding:10px 16px;
+  font-size:17px; font-weight:800; color:#fff;
+  line-height:1.35; letter-spacing:-0.2px;
+  max-width:320px;
+}
+.caption-bubble b { color:#FFE566; }
+.caption-bubble.hook {
+  font-size:20px; font-weight:900;
+  background:rgba(0,0,0,0.88);
+  border-left:4px solid var(--v);
+  text-align:left; border-radius:0 10px 10px 0;
+}
+.caption-bubble.red b { color:#FF7070; }
+
+/* ══════════════════════════════════════
    BARRE PROGRESSION + PLAY
 ══════════════════════════════════════ */
 #prog { position:absolute; bottom:0; left:0; height:3px; background:var(--v); width:0; z-index:100; transition:width linear; }
@@ -389,6 +416,9 @@ body {
 
 <!-- ── S1 SPLASH ── -->
 <div class="scene active" id="s1">
+  <div class="caption top">
+    <div class="caption-bubble hook">T'as besoin d'un prestataire demain matin et <b>t'as personne ?</b></div>
+  </div>
   <div class="s1-logo" id="s1logo">A</div>
   <div class="s1-brand">ALANE</div>
   <div class="s1-tag">La plateforme qui connecte<br><b>entreprises</b> et <b>prestataires indépendants</b></div>
@@ -407,6 +437,9 @@ body {
     <div><div class="rl">Je suis Prestataire</div><div class="rs">Je propose mes services</div></div>
   </div>
   <div class="gratuit-badge" id="gb">✅ Inscription client 100% gratuite</div>
+  <div class="caption bottom">
+    <div class="caption-bubble red">Les agences d'intérim : <b>40% de commission</b>. En 2025, y'a mieux.</div>
+  </div>
 </div>
 
 <!-- ── S3 CATALOGUE ── -->
@@ -422,9 +455,7 @@ body {
     <div class="sec-card" id="sc4"><div class="si">🏨</div><div class="sn">Hôtellerie</div><div class="sc"><span class="sdot"></span>12 dispo.</div></div>
   </div>
   <div class="overlay">
-    <div class="ov-chip">Étape 1</div>
-    <div class="ov-title">Choisissez votre secteur</div>
-    <div class="ov-desc">7 secteurs · Toute la France</div>
+    <div class="caption-bubble" style="display:inline-block;text-align:left">Tu publies ta prestation. Les prestataires certifiés près de toi reçoivent une <b>notif instantanée</b>.</div>
   </div>
 </div>
 
@@ -461,9 +492,7 @@ body {
     </div>
   </div>
   <div class="overlay">
-    <div class="ov-chip">Étape 2</div>
-    <div class="ov-title">Profils 100% vérifiés</div>
-    <div class="ov-desc">KBIS · RC Pro · URSSAF · Identité</div>
+    <div class="caption-bubble" style="display:inline-block;text-align:left">Tous les profils sont vérifiés : <b>KBIS, RC Pro, URSSAF, pièce d'identité</b>. Zéro surprise.</div>
   </div>
 </div>
 
@@ -486,6 +515,9 @@ body {
     </div>
   </div>
   <div class="urg-note">Le tarif majoré de <b>+30%</b> rémunère le déplacement immédiat du prestataire.</div>
+  <div class="caption bottom">
+    <div class="caption-bubble">Mode urgence : un prestataire chez toi <b>dans l'heure</b>.</div>
+  </div>
 </div>
 
 <!-- ── S6 CHAT ── -->
@@ -510,9 +542,7 @@ body {
     <div class="chat-send">➤</div>
   </div>
   <div class="overlay">
-    <div class="ov-chip">Tchat intégré</div>
-    <div class="ov-title">Communiquez directement</div>
-    <div class="ov-desc">Sans quitter l'application</div>
+    <div class="caption-bubble" style="display:inline-block;text-align:left">Tu tchattes <b>directement</b> avec le prestataire — sans quitter l'app.</div>
   </div>
 </div>
 
@@ -521,6 +551,9 @@ body {
   <div style="width:100%">
     <div style="font-size:22px;font-weight:900;color:var(--tx)">Tarifs transparents</div>
     <div style="font-size:13px;color:var(--sub);margin-top:4px">Simple et sans surprise</div>
+  </div>
+  <div class="caption top" style="top:12px">
+    <div class="caption-bubble">Pour les clients ? <b>Complètement gratuit.</b> Les prestataires choisissent leur abonnement.</div>
   </div>
   <div class="tarif-tabs">
     <div class="tarif-tab active">🏢 Clients</div>
@@ -575,6 +608,9 @@ body {
     <div class="stripe-lck">🔒</div>
     <div class="stripe-txt">Paiement sécurisé <b>Stripe</b> — zéro risque client</div>
   </div>
+  <div class="caption bottom">
+    <div class="caption-bubble">Tu paies via Stripe. Fonds bloqués jusqu'à validation. <b>Zéro risque.</b></div>
+  </div>
 </div>
 
 <!-- ── S9 CTA ── -->
@@ -589,6 +625,9 @@ body {
   </div>
   <button class="cta-btn">Commencer gratuitement →</button>
   <div class="cta-link">👇 Lien en bio · <b>alane.fr</b></div>
+  <div class="caption bottom" style="bottom:8px">
+    <div class="caption-bubble">Lien en bio. <b>Première prestation en 5 minutes.</b></div>
+  </div>
 </div>
 
 <div id="prog"></div>
