@@ -1465,7 +1465,7 @@ export function BOSettingsTab() {
                 <div key={period} style={{ flex:1 }}>
                   <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>{plabel}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    <input type="number" min={1} value={localSp[plan]?.[period] ?? ""} onChange={e => setLocalSp(p => ({ ...p, [plan]: { ...p[plan], [period]: Number(e.target.value) } }))}
+                    <input type="text" inputMode="decimal" value={localSp[plan]?.[period] ?? ""} onChange={e => setLocalSp(p => ({ ...p, [plan]: { ...p[plan], [period]: e.target.value } }))}
                       style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
                     <span style={{ color:C.textSub, fontSize:12 }}>€</span>
                   </div>
@@ -1474,7 +1474,12 @@ export function BOSettingsTab() {
             </div>
           </div>
         ))}
-        <SaveBtn k="subscription_prices" onClick={() => save("subscription_prices", localSp)} />
+        <SaveBtn k="subscription_prices" onClick={() => {
+          const parsed = Object.fromEntries(Object.entries(localSp).map(([plan, periods]) => [
+            plan, Object.fromEntries(Object.entries(periods).map(([period, v]) => [period, parseFloat(String(v).replace(",", ".")) || 0]))
+          ]));
+          save("subscription_prices", parsed);
+        }} />
       </div>
 
       {/* ── Secteurs ── */}
