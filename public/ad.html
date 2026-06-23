@@ -433,7 +433,7 @@ body {
     <div><div class="rl">Je suis Client</div><div class="rs">Je cherche des prestataires qualifiés</div></div>
   </div>
   <div class="role-card presta" id="rc2">
-    <span class="ic">⚡</span>
+    <span class="ic" style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--v),var(--v2));display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff;flex-shrink:0">A</span>
     <div><div class="rl">Je suis Prestataire</div><div class="rs">Je propose mes services</div></div>
   </div>
   <div class="gratuit-badge" id="gb">✅ Inscription client 100% gratuite</div>
@@ -449,10 +449,13 @@ body {
     <div style="font-size:13px;color:var(--sub);margin-top:4px">Prestataires disponibles près de vous</div>
   </div>
   <div class="sec-grid">
-    <div class="sec-card" id="sc1"><div class="si">🧹</div><div class="sn">Propreté</div><div class="sc"><span class="sdot"></span>24 dispo.</div></div>
-    <div class="sec-card" id="sc2"><div class="si">📦</div><div class="sn">Logistique</div><div class="sc"><span class="sdot"></span>18 dispo.</div></div>
-    <div class="sec-card" id="sc3"><div class="si">🍽️</div><div class="sn">Restauration</div><div class="sc"><span class="sdot"></span>31 dispo.</div></div>
-    <div class="sec-card" id="sc4"><div class="si">🏨</div><div class="sn">Hôtellerie</div><div class="sc"><span class="sdot"></span>12 dispo.</div></div>
+    <div class="sec-card" id="sc1"><div class="si">🧹</div><div class="sn">Propreté</div><div class="sc"><span class="sdot"></span>15 dispo.</div></div>
+    <div class="sec-card" id="sc2"><div class="si">📦</div><div class="sn">Logistique</div><div class="sc"><span class="sdot"></span>24 dispo.</div></div>
+    <div class="sec-card" id="sc3"><div class="si">🍽️</div><div class="sn">Restauration</div><div class="sc"><span class="sdot"></span>29 dispo.</div></div>
+    <div class="sec-card" id="sc4"><div class="si">🏨</div><div class="sn">Hôtellerie</div><div class="sc"><span class="sdot"></span>22 dispo.</div></div>
+    <div class="sec-card" id="sc5"><div class="si">💼</div><div class="sn">Commercial</div><div class="sc"><span class="sdot"></span>23 dispo.</div></div>
+    <div class="sec-card" id="sc6"><div class="si">🛒</div><div class="sn">Grande Distrib.</div><div class="sc"><span class="sdot"></span>26 dispo.</div></div>
+    <div class="sec-card" id="sc7" style="grid-column:1/-1"><div class="si">✨</div><div class="sn">Divers</div><div class="sc"><span class="sdot"></span>22 dispo.</div></div>
   </div>
   <div class="overlay">
     <div class="caption-bubble" style="display:inline-block;text-align:left">Tu publies ta prestation. Les prestataires certifiés près de toi reçoivent une <b>notif instantanée</b>.</div>
@@ -555,37 +558,45 @@ body {
   <div class="caption top" style="top:12px">
     <div class="caption-bubble">Pour les clients ? <b>Complètement gratuit.</b> Les prestataires choisissent leur abonnement.</div>
   </div>
-  <div class="tarif-tabs">
-    <div class="tarif-tab active">🏢 Clients</div>
-    <div class="tarif-tab inactive">⚡ Prestataires</div>
+  <div class="tarif-tabs" id="tarif-tabs">
+    <div class="tarif-tab active" id="tab-client">🏢 Clients</div>
+    <div class="tarif-tab inactive" id="tab-presta"><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:var(--v);font-size:9px;font-weight:900;color:#fff;line-height:14px;text-align:center;margin-right:4px">A</span>Prestataires</div>
   </div>
-  <div class="free-card" id="fcard">
-    <div class="free-title">🎁 Gratuit pour les clients</div>
-    <div class="free-sub">Aucun abonnement · Aucune commission cachée</div>
-    <div class="free-feat">Accès à tous les prestataires certifiés</div>
-    <div class="free-feat">Paiement sécurisé via Stripe</div>
-    <div class="free-feat">Tchat intégré · Mode urgence</div>
-    <div class="free-feat">Cashback sur chaque prestation</div>
+
+  <!-- Contenu onglet Clients -->
+  <div id="tab-content-client">
+    <div class="free-card" id="fcard">
+      <div class="free-title">🎁 Gratuit pour les clients</div>
+      <div class="free-sub">Aucun abonnement · Aucune commission cachée</div>
+      <div class="free-feat">Accès à tous les prestataires certifiés</div>
+      <div class="free-feat">Paiement sécurisé via Stripe</div>
+      <div class="free-feat">Tchat intégré · Mode urgence</div>
+      <div class="free-feat">Cashback sur chaque prestation</div>
+    </div>
   </div>
-  <div class="plans-row">
-    <div class="plan-card" id="pl1">
-      <div class="plan-icon">🆓</div>
-      <div class="plan-name">Gratuit</div>
-      <div class="plan-price">0 €<span>/mois</span></div>
-      <div class="plan-feat">2 prestations/mois · Profil visible</div>
-    </div>
-    <div class="plan-card pop" id="pl2">
-      <div class="pop-badge">Populaire</div>
-      <div class="plan-icon">💎</div>
-      <div class="plan-name">Premium</div>
-      <div class="plan-price">29<span style="font-size:14px">,99 €</span><span>/mois</span></div>
-      <div class="plan-feat">10 prestations · Badge certifié · Urgences</div>
-    </div>
-    <div class="plan-card" id="pl3">
-      <div class="plan-icon">👑</div>
-      <div class="plan-name">Elite</div>
-      <div class="plan-price">79<span style="font-size:14px">,99 €</span><span>/mois</span></div>
-      <div class="plan-feat">Illimité · Position #1 · Badge Elite</div>
+
+  <!-- Contenu onglet Prestataires (caché au départ) -->
+  <div id="tab-content-presta" style="display:none;width:100%">
+    <div class="plans-row">
+      <div class="plan-card" id="pl1">
+        <div class="plan-icon">🆓</div>
+        <div class="plan-name">Gratuit</div>
+        <div class="plan-price">0 €<span>/mois</span></div>
+        <div class="plan-feat">2 prestations/mois<br>Profil visible</div>
+      </div>
+      <div class="plan-card pop" id="pl2">
+        <div class="pop-badge">Populaire</div>
+        <div class="plan-icon">💎</div>
+        <div class="plan-name">Premium</div>
+        <div class="plan-price">29<span style="font-size:13px">,99 €</span><span>/mois</span></div>
+        <div class="plan-feat">10 prestations<br>Badge certifié · Urgences</div>
+      </div>
+      <div class="plan-card" id="pl3">
+        <div class="plan-icon">👑</div>
+        <div class="plan-name">Elite</div>
+        <div class="plan-price">79<span style="font-size:13px">,99 €</span><span>/mois</span></div>
+        <div class="plan-feat">Illimité<br>Position #1 · Badge Elite</div>
+      </div>
     </div>
   </div>
 </div>
@@ -648,7 +659,7 @@ const scenes = [
   { id:'s4', dur:8000,  enter:enterS4 },
   { id:'s5', dur:7000,  enter:enterS5 },
   { id:'s6', dur:8000,  enter:enterS6 },
-  { id:'s7', dur:9000,  enter:enterS7 },
+  { id:'s7', dur:11000, enter:enterS7 },
   { id:'s8', dur:6500,  enter:enterS8 },
   { id:'s9', dur:5500,  enter:enterS9 },
 ];
@@ -719,7 +730,7 @@ function enterS2(){
   schedDelay(()=>show('gb'),500);
 }
 function enterS3(){
-  ['sc1','sc2','sc3','sc4'].forEach((id,i)=>schedDelay(()=>show(id),100+i*100));
+  ['sc1','sc2','sc3','sc4','sc5','sc6','sc7'].forEach((id,i)=>schedDelay(()=>show(id),100+i*90));
 }
 function enterS4(){ schedDelay(()=>show('pcard'),200); }
 function enterS5(){}
@@ -730,10 +741,31 @@ function enterS6(){
   schedDelay(()=>show('m4'),2200);
 }
 function enterS7(){
+  // Onglet Clients visible d'abord
+  const tcEl = document.getElementById('tab-content-client');
+  const tpEl = document.getElementById('tab-content-presta');
+  const tabC = document.getElementById('tab-client');
+  const tabP = document.getElementById('tab-presta');
+  if(tcEl) tcEl.style.display='block';
+  if(tpEl) tpEl.style.display='none';
+  if(tabC){ tabC.className='tarif-tab active'; }
+  if(tabP){ tabP.className='tarif-tab inactive'; }
   schedDelay(()=>show('fcard'),200);
-  schedDelay(()=>show('pl1'),450);
-  schedDelay(()=>show('pl2'),600);
-  schedDelay(()=>show('pl3'),750);
+
+  // Switch vers Prestataires après 4.5s
+  schedDelay(()=>{
+    if(tcEl) { tcEl.style.transition='opacity 0.3s'; tcEl.style.opacity='0'; }
+    schedDelay(()=>{
+      if(tcEl) tcEl.style.display='none';
+      if(tpEl){ tpEl.style.display='flex'; tpEl.style.opacity='0'; tpEl.style.transition='opacity 0.3s'; }
+      if(tabC) tabC.className='tarif-tab inactive';
+      if(tabP) tabP.className='tarif-tab active';
+      schedDelay(()=>{ if(tpEl) tpEl.style.opacity='1'; }, 50);
+      schedDelay(()=>show('pl1'),150);
+      schedDelay(()=>show('pl2'),300);
+      schedDelay(()=>show('pl3'),450);
+    }, 300);
+  }, 4500);
 }
 function enterS8(){
   schedDelay(()=>show('okc'),150);
