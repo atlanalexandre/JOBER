@@ -1408,7 +1408,7 @@ export function BOSettingsTab() {
       setLoading(false);
     }).catch(() => setLoading(false));
     // Charger les compteurs par secteur
-    fetch("/api/prestations", {
+    fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "get_sector_status" }),
@@ -1949,7 +1949,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
   const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
   const d = boData || {
     users:    { clients:0, prestataires:0, total:0, pending:0 },
-    prestations: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
+    missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
     finance:  { caTotal:0, caMoyen:0 },
     tickets:  { open:0, total:0 },
     sectors:  [],
