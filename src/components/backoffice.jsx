@@ -142,6 +142,7 @@ export function BOComptes() {
   const [contactMessage, setContactMessage] = useState("");
   const [contactSending, setContactSending] = useState(false);
   const [contactResult, setContactResult] = useState(null);
+  const [docModal, setDocModal] = useState(null); // { profileId, name }
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -666,6 +667,9 @@ export function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
+            <button onClick={()=>{ setDocModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email }); if(!docs[p.id]) loadDocs(p.id); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid rgba(255,255,255,0.15)`, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+              📂
+            </button>
             <button onClick={()=>{ setContactSubject(""); setContactMessage(""); setContactResult(null); setContactModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               📧
             </button>
@@ -697,6 +701,105 @@ export function BOComptes() {
           </div>
         </div>
       )}
+
+      {docModal && (() => {
+        const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+        const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+        const REQ = [
+          { type:"photo", label:"Photo de profil", icon:"📸" },
+          { type:"cni", label:"Pièce d'identité", icon:"🪪" },
+          { type:"kbis", label:"KBIS / SIRET", icon:"🏢" },
+          { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
+          { type:"rib", label:"RIB / IBAN", icon:"💳" },
+          { type:"domicile", label:"Justif. domicile", icon:"🏠" },
+          { type:"rc_pro", label:"RC Professionnelle", icon:"🛡️" },
+        ];
+        const userDocs = docs[docModal.profileId];
+        const isLoading = docsLoading[docModal.profileId];
+        return (
+          <div onClick={()=>setDocModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1500, padding:"0" }}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:600, maxHeight:"88vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)", borderBottom:"none" }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)", flexShrink:0 }}>
+                <div>
+                  <div style={{ fontWeight:800, color:"#fff", fontSize:15 }}>📂 Documents</div>
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:12, marginTop:2 }}>{docModal.name}</div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={()=>{ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); }} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>🔄</button>
+                  <button onClick={()=>setDocModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:14, fontFamily:"inherit", fontWeight:700 }}>✕</button>
+                </div>
+              </div>
+              {/* Content */}
+              <div style={{ flex:1, overflowY:"auto", padding:"16px 18px" }}>
+                {isLoading && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0" }}>Chargement…</div>}
+                {!isLoading && !userDocs && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0" }}>Aucun document</div>}
+                {!isLoading && userDocs && (() => {
+                  const uploaded = userDocs.map(d=>d.type);
+                  const missing = REQ.filter(r=>!uploaded.includes(r.type));
+                  return (
+                    <>
+                      {missing.length > 0 && (
+                        <div style={{ background:"rgba(240,180,41,0.07)", border:"1px solid rgba(240,180,41,0.22)", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
+                          <div style={{ color:"#F0B429", fontSize:11, fontWeight:700, marginBottom:6 }}>⚠️ Documents manquants ({missing.length})</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                            {missing.map(r=>(
+                              <span key={r.type} style={{ fontSize:11, color:"rgba(255,255,255,0.5)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 9px" }}>{r.icon} {r.label}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {userDocs.length === 0 && (
+                        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"16px 0", fontSize:13 }}>Aucun document uploadé</div>
+                      )}
+                      {userDocs.length > 0 && (
+                        <div style={{ marginBottom:8 }}>
+                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>
+                            Documents uploadés ({userDocs.filter(d=>d.verified).length}/{userDocs.length} validés)
+                          </div>
+                          {userDocs.map(doc => {
+                            const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+                            return (
+                              <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}` }}>
+                                <span style={{ fontSize:20 }}>{DOC_ICON[doc.type]||"📄"}</span>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
+                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}</div>
+                                </div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  {doc.signedUrl && (
+                                    <button onClick={()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })} style={{ fontSize:11, color:C.violet, fontWeight:700, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit" }}>
+                                      {isImg ? "🖼" : "📄"} Voir
+                                    </button>
+                                  )}
+                                  {doc.signedUrl && (
+                                    <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                                  )}
+                                  {!doc.verified && (
+                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
+                                      {docVerifying===doc.id ? "…" : "✓"}
+                                    </button>
+                                  )}
+                                  {doc.verified && <span style={{ fontSize:16 }}>✅</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {userDocs.some(d=>!d.verified) && (
+                            <button onClick={()=>handleVerifyAllDocs(docModal.profileId)} disabled={validatingAll===docModal.profileId} style={{ width:"100%", marginTop:4, padding:"10px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:validatingAll===docModal.profileId?0.5:1 }}>
+                              {validatingAll===docModal.profileId ? "Validation en cours…" : "✓ Tout valider"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {contactModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
