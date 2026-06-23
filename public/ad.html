@@ -5,498 +5,740 @@
 <meta name="viewport" content="width=375,initial-scale=1">
 <title>ALANE — Pub</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#000;
+  display:flex; justify-content:center; align-items:center;
+  min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+#stage {
+  width:375px; height:812px;
+  position:relative; overflow:hidden;
+  background:#050E20;
+}
+.scene {
+  position:absolute; inset:0; opacity:0;
+  pointer-events:none;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  transition:opacity 0.45s ease;
+}
+.scene.active { opacity:1; pointer-events:auto; }
 
-  * { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --v:#7C6FE0; --v2:#5B4FD0;
+  --gold:#F0B429;
+  --ok:#10D98F;
+  --red:#F25E5E;
+  --orange:#F97316;
+  --navy:#0A1628;
+  --surf:#0D1B3E;
+  --bdr:rgba(255,255,255,0.08);
+  --tx:#E2E8F0; --sub:#94A3B8; --muted:#64748B;
+}
 
-  body {
-    background:#000;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height:100vh;
-    font-family:'Inter',sans-serif;
-  }
+/* ══════════════════════════════════════
+   SCÈNE 1 — SPLASH
+══════════════════════════════════════ */
+#s1 { background:radial-gradient(ellipse at 50% 40%,#1a1060 0%,#050E20 70%); }
+.s1-logo {
+  width:110px; height:110px; border-radius:28px;
+  background:linear-gradient(135deg,var(--v),var(--v2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:48px; font-weight:900; color:#fff; letter-spacing:-2px;
+  box-shadow:0 0 80px rgba(124,111,224,0.5);
+  margin-bottom:22px;
+  opacity:0; transform:scale(0.5);
+  transition:all 0.6s cubic-bezier(0.34,1.56,0.64,1);
+}
+.s1-logo.show { opacity:1; transform:scale(1); }
+.s1-brand { font-size:38px; font-weight:900; color:var(--tx); letter-spacing:-1.5px; margin-bottom:10px; }
+.s1-tag { font-size:14px; color:var(--sub); text-align:center; line-height:1.6; padding:0 36px; }
+.s1-tag b { color:var(--v); }
 
-  #stage {
-    width:375px;
-    height:812px;
-    position:relative;
-    overflow:hidden;
-    background:#050E20;
-  }
+/* ══════════════════════════════════════
+   SCÈNE 2 — RÔLE CLIENT
+══════════════════════════════════════ */
+#s2 { background:linear-gradient(170deg,#0A1628,#050E20); }
+.s2-head { font-size:24px; font-weight:900; color:var(--tx); margin-bottom:6px; }
+.s2-sub { font-size:13px; color:var(--sub); margin-bottom:32px; }
+.role-card {
+  width:300px; padding:20px 18px; border-radius:18px;
+  display:flex; align-items:center; gap:14px; margin-bottom:12px;
+  opacity:0; transform:translateY(24px);
+  transition:all 0.4s ease;
+}
+.role-card.show { opacity:1; transform:translateY(0); }
+.role-card.client { background:linear-gradient(135deg,var(--v),var(--v2)); box-shadow:0 8px 28px rgba(124,111,224,0.4); }
+.role-card.presta { background:var(--surf); border:1.5px solid var(--bdr); }
+.role-card .ic { font-size:30px; flex-shrink:0; }
+.role-card .rl { font-size:16px; font-weight:800; color:#fff; }
+.role-card .rs { font-size:11px; color:rgba(255,255,255,0.65); margin-top:3px; }
+.gratuit-badge {
+  margin-top:10px; background:rgba(16,217,143,0.12);
+  border:1px solid rgba(16,217,143,0.3);
+  border-radius:10px; padding:8px 16px;
+  font-size:12px; color:var(--ok); font-weight:700;
+  display:flex; align-items:center; gap:6px;
+  opacity:0; transform:translateY(10px);
+  transition:all 0.4s ease 0.4s;
+}
+.gratuit-badge.show { opacity:1; transform:translateY(0); }
 
-  /* ---- SCÈNES ---- */
-  .scene {
-    position:absolute;
-    inset:0;
-    opacity:0;
-    transition:opacity 0.5s ease;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-  }
-  .scene.active { opacity:1; }
+/* ══════════════════════════════════════
+   SCÈNE 3 — CATALOGUE
+══════════════════════════════════════ */
+#s3 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:56px 18px 0; }
+.sec-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; margin-top:18px; }
+.sec-card {
+  border-radius:14px; padding:15px 13px;
+  background:var(--surf); border:1px solid var(--bdr);
+  opacity:0; transform:scale(0.9);
+  transition:all 0.35s ease;
+}
+.sec-card.show { opacity:1; transform:scale(1); }
+.sec-card .si { font-size:26px; margin-bottom:6px; }
+.sec-card .sn { font-size:13px; font-weight:700; color:var(--tx); }
+.sec-card .sc { font-size:11px; color:var(--sub); margin-top:2px; }
+.sec-card .sdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--ok); margin-right:4px; vertical-align:middle; }
 
-  /* ---- COULEURS ---- */
-  :root {
-    --violet:#7C6FE0;
-    --gold:#F0B429;
-    --success:#10D98F;
-    --navy:#0A1628;
-    --surface:#0D1B3E;
-    --border:rgba(255,255,255,0.08);
-    --text:#E2E8F0;
-    --sub:#94A3B8;
-  }
+/* ══════════════════════════════════════
+   SCÈNE 4 — PROFIL PRESTATAIRE (vraie photo)
+══════════════════════════════════════ */
+#s4 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:52px 18px 0; }
+.pc {
+  width:100%; background:var(--surf);
+  border:1px solid var(--bdr); border-radius:20px; overflow:hidden;
+  opacity:0; transform:translateY(20px);
+  transition:all 0.5s ease;
+}
+.pc.show { opacity:1; transform:translateY(0); }
+.pc-head {
+  background:linear-gradient(135deg,rgba(124,111,224,0.15),rgba(91,79,208,0.08));
+  padding:20px; display:flex; gap:14px; align-items:center;
+}
+.pc-avatar {
+  width:68px; height:68px; border-radius:20px;
+  overflow:hidden; flex-shrink:0;
+  border:2px solid rgba(124,111,224,0.4);
+}
+.pc-avatar img { width:100%; height:100%; object-fit:cover; }
+.pc-name { font-size:18px; font-weight:800; color:var(--tx); }
+.pc-loc { font-size:12px; color:var(--sub); margin-top:3px; }
+.cert-badge {
+  display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+  background:rgba(16,217,143,0.12); border:1px solid rgba(16,217,143,0.25);
+  border-radius:7px; padding:3px 8px;
+  font-size:11px; font-weight:700; color:var(--ok);
+}
+.pc-body { padding:16px; }
+.stars-row { display:flex; align-items:center; gap:8px; }
+.stars { color:var(--gold); font-size:15px; letter-spacing:1px; }
+.rating { font-size:12px; color:var(--sub); }
+.tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.tag {
+  background:rgba(124,111,224,0.1); border:1px solid rgba(124,111,224,0.2);
+  border-radius:7px; padding:3px 9px;
+  font-size:11px; font-weight:600; color:var(--v);
+}
+.price-row { display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid var(--bdr); }
+.price-lbl { font-size:12px; color:var(--sub); }
+.price-val { font-size:24px; font-weight:900; color:var(--tx); }
+.book-btn {
+  width:100%; margin-top:12px; padding:14px;
+  background:linear-gradient(135deg,var(--v),var(--v2));
+  border:none; border-radius:12px;
+  font-size:14px; font-weight:700; color:#fff;
+  font-family:inherit; cursor:pointer;
+}
 
-  /* ---- SCÈNE 1 : SPLASH ---- */
-  #s1 { background:linear-gradient(160deg,#0A1628 0%,#050E20 60%,#0A0D1F 100%); }
-  .logo-ring {
-    width:120px; height:120px;
-    border-radius:32px;
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    display:flex; align-items:center; justify-content:center;
-    box-shadow:0 0 60px rgba(124,111,224,0.4);
-    margin-bottom:28px;
-    animation: popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards;
-  }
-  .logo-text { font-size:42px; font-weight:900; color:#fff; letter-spacing:-2px; }
-  .brand { font-size:36px; font-weight:900; color:var(--text); letter-spacing:-1px; margin-bottom:10px; }
-  .tagline { font-size:15px; color:var(--sub); text-align:center; line-height:1.5; padding:0 30px; }
-  .tagline strong { color:var(--violet); }
+/* ══════════════════════════════════════
+   SCÈNE 5 — MODE URGENCE
+══════════════════════════════════════ */
+#s5 { background:radial-gradient(ellipse at 50% 30%, #3a0a0a 0%, #050E20 70%); }
+.urg-badge {
+  background:linear-gradient(135deg,var(--red),#c0392b);
+  border-radius:14px; padding:8px 18px;
+  font-size:13px; font-weight:800; color:#fff;
+  letter-spacing:0.5px; margin-bottom:20px;
+  display:flex; align-items:center; gap:6px;
+}
+.urg-title { font-size:26px; font-weight:900; color:var(--tx); margin-bottom:8px; text-align:center; line-height:1.2; }
+.urg-sub { font-size:14px; color:var(--sub); text-align:center; margin-bottom:28px; line-height:1.5; padding:0 24px; }
+.urg-card {
+  width:300px; background:var(--surf);
+  border:1px solid rgba(242,94,94,0.3);
+  border-radius:16px; padding:16px 18px;
+  display:flex; align-items:center; gap:14px;
+}
+.urg-avatar {
+  width:50px; height:50px; border-radius:14px;
+  overflow:hidden; flex-shrink:0;
+  border:2px solid rgba(242,94,94,0.3);
+}
+.urg-avatar img { width:100%; height:100%; object-fit:cover; }
+.urg-name { font-size:14px; font-weight:700; color:var(--tx); }
+.urg-info { font-size:11px; color:var(--sub); margin-top:2px; }
+.urg-price {
+  margin-left:auto; text-align:right; flex-shrink:0;
+}
+.urg-price .up { font-size:18px; font-weight:900; color:var(--tx); }
+.urg-price .ul { font-size:10px; color:var(--red); font-weight:700; }
+.urg-note {
+  margin-top:16px; font-size:11px; color:var(--sub);
+  text-align:center; line-height:1.5;
+  padding:0 30px;
+}
+.urg-note b { color:var(--orange); }
 
-  /* ---- SCÈNE 2 : RÔLE ---- */
-  #s2 { background:linear-gradient(160deg,#0A1628,#050E20); }
-  .role-title { font-size:22px; font-weight:800; color:var(--text); margin-bottom:8px; text-align:center; }
-  .role-sub { font-size:13px; color:var(--sub); margin-bottom:36px; text-align:center; }
-  .role-btn {
-    width:300px; padding:18px 20px;
-    border-radius:16px; margin-bottom:14px;
-    display:flex; align-items:center; gap:14px;
-    cursor:pointer; border:none;
-    animation: slideUp 0.4s ease forwards;
-    opacity:0;
-  }
-  .role-btn.client {
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    box-shadow:0 8px 24px rgba(124,111,224,0.35);
-    animation-delay:0.1s;
-  }
-  .role-btn.presta {
-    background:linear-gradient(135deg,#162547,#0D1B3E);
-    border:1.5px solid var(--border);
-    animation-delay:0.2s;
-  }
-  .role-icon { font-size:28px; }
-  .role-label { font-size:16px; font-weight:700; color:#fff; }
-  .role-desc { font-size:11px; color:rgba(255,255,255,0.65); margin-top:2px; }
+/* ══════════════════════════════════════
+   SCÈNE 6 — CHAT
+══════════════════════════════════════ */
+#s6 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:0; }
+.chat-header {
+  width:100%; background:var(--surf);
+  border-bottom:1px solid var(--bdr);
+  padding:52px 18px 14px;
+  display:flex; align-items:center; gap:12px;
+}
+.chat-av {
+  width:40px; height:40px; border-radius:12px;
+  overflow:hidden; flex-shrink:0;
+}
+.chat-av img { width:100%; height:100%; object-fit:cover; }
+.chat-nm { font-size:14px; font-weight:700; color:var(--tx); }
+.chat-st { font-size:11px; color:var(--ok); margin-top:1px; font-weight:600; }
+.chat-body { width:100%; flex:1; padding:16px 18px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+.msg {
+  max-width:76%; padding:10px 13px; border-radius:14px;
+  font-size:13px; line-height:1.5;
+  opacity:0; transform:translateY(10px);
+  transition:all 0.35s ease;
+}
+.msg.show { opacity:1; transform:translateY(0); }
+.msg.them { background:var(--surf); border:1px solid var(--bdr); color:var(--tx); align-self:flex-start; border-bottom-left-radius:4px; }
+.msg.me { background:linear-gradient(135deg,var(--v),var(--v2)); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+.msg-time { font-size:10px; color:var(--muted); margin-top:3px; }
+.chat-input {
+  width:100%; background:var(--surf); border-top:1px solid var(--bdr);
+  padding:14px 18px; display:flex; align-items:center; gap:10px;
+}
+.chat-field {
+  flex:1; background:#162547; border:1px solid var(--bdr);
+  border-radius:20px; padding:9px 14px;
+  font-size:13px; color:var(--muted);
+}
+.chat-send {
+  width:36px; height:36px; border-radius:50%;
+  background:var(--v); border:none;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; cursor:pointer; flex-shrink:0;
+}
 
-  /* ---- SCÈNE 3 : CATALOGUE ---- */
-  #s3 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
-  .screen-title { font-size:22px; font-weight:800; color:var(--text); margin-bottom:6px; width:100%; }
-  .screen-sub { font-size:13px; color:var(--sub); margin-bottom:24px; width:100%; }
-  .sectors-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
-  .sector-card {
-    border-radius:14px; padding:16px 14px;
-    display:flex; flex-direction:column; gap:6px;
-    border:1px solid var(--border);
-    animation: fadeIn 0.3s ease forwards; opacity:0;
-  }
-  .sector-icon { font-size:26px; }
-  .sector-name { font-size:13px; font-weight:700; color:var(--text); }
-  .sector-count { font-size:11px; color:var(--sub); }
+/* ══════════════════════════════════════
+   SCÈNE 7 — TARIFS
+══════════════════════════════════════ */
+#s7 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:52px 18px 0; }
+.tarif-tabs { display:flex; gap:8px; width:100%; margin:12px 0 16px; }
+.tarif-tab {
+  flex:1; padding:9px; border-radius:10px; text-align:center;
+  font-size:12px; font-weight:700;
+  cursor:pointer;
+}
+.tarif-tab.active { background:var(--v); color:#fff; }
+.tarif-tab.inactive { background:var(--surf); color:var(--sub); border:1px solid var(--bdr); }
+.free-card {
+  width:100%; background:linear-gradient(135deg,rgba(16,217,143,0.08),rgba(16,217,143,0.03));
+  border:1px solid rgba(16,217,143,0.2); border-radius:16px; padding:20px;
+  margin-bottom:14px;
+  opacity:0; transform:translateY(16px);
+  transition:all 0.4s ease;
+}
+.free-card.show { opacity:1; transform:translateY(0); }
+.free-title { font-size:18px; font-weight:800; color:var(--ok); margin-bottom:4px; }
+.free-sub { font-size:13px; color:var(--sub); margin-bottom:12px; }
+.free-feat { font-size:12px; color:var(--tx); margin-bottom:5px; display:flex; align-items:center; gap:7px; }
+.free-feat::before { content:"✓"; color:var(--ok); font-weight:700; font-size:13px; }
+.plans-row { display:flex; gap:8px; width:100%; }
+.plan-card {
+  flex:1; border-radius:14px; padding:14px 12px;
+  border:1px solid var(--bdr); background:var(--surf);
+  opacity:0; transform:translateY(16px);
+  transition:all 0.4s ease;
+}
+.plan-card.show { opacity:1; transform:translateY(0); }
+.plan-card.pop { border-color:rgba(124,111,224,0.5); background:linear-gradient(135deg,rgba(124,111,224,0.1),var(--surf)); }
+.plan-icon { font-size:18px; margin-bottom:4px; }
+.plan-name { font-size:11px; font-weight:800; color:var(--tx); margin-bottom:2px; }
+.plan-price { font-size:18px; font-weight:900; color:var(--tx); }
+.plan-price span { font-size:11px; color:var(--sub); font-weight:400; }
+.plan-feat { font-size:10px; color:var(--sub); margin-top:6px; line-height:1.5; }
+.pop-badge {
+  display:inline-block; background:var(--v);
+  border-radius:4px; padding:1px 6px;
+  font-size:9px; font-weight:800; color:#fff;
+  margin-bottom:4px; text-transform:uppercase;
+}
 
-  /* ---- SCÈNE 4 : PROFIL ---- */
-  #s4 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
-  .profile-card {
-    width:100%; background:var(--surface);
-    border:1px solid var(--border); border-radius:20px;
-    overflow:hidden;
-  }
-  .profile-header {
-    background:linear-gradient(135deg,var(--violet)22,#162547);
-    padding:24px; display:flex; gap:16px; align-items:center;
-  }
-  .avatar {
-    width:64px; height:64px; border-radius:18px;
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    display:flex; align-items:center; justify-content:center;
-    font-size:28px; flex-shrink:0;
-  }
-  .profile-name { font-size:18px; font-weight:800; color:var(--text); }
-  .profile-meta { font-size:12px; color:var(--sub); margin-top:3px; }
-  .badge-cert {
-    display:inline-flex; align-items:center; gap:4px;
-    background:rgba(16,217,143,0.15); border:1px solid rgba(16,217,143,0.3);
-    border-radius:8px; padding:3px 8px; font-size:11px; font-weight:700; color:var(--success);
-    margin-top:6px;
-  }
-  .profile-body { padding:18px; }
-  .stars { color:var(--gold); font-size:16px; letter-spacing:2px; }
-  .rating-text { font-size:12px; color:var(--sub); margin-top:2px; }
-  .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; }
-  .tag {
-    background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25);
-    border-radius:8px; padding:4px 10px; font-size:11px; color:var(--violet); font-weight:600;
-  }
-  .price-row { display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-  .price-label { font-size:12px; color:var(--sub); }
-  .price-val { font-size:22px; font-weight:900; color:var(--text); }
-  .book-btn {
-    width:100%; margin-top:14px; padding:14px;
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    border:none; border-radius:12px;
-    font-size:15px; font-weight:700; color:#fff; cursor:pointer;
-    font-family:inherit;
-  }
+/* ══════════════════════════════════════
+   SCÈNE 8 — CONFIRMATION
+══════════════════════════════════════ */
+#s8 { background:radial-gradient(ellipse at 50% 35%,#0a2a1a 0%,#050E20 70%); }
+.ok-circle {
+  width:96px; height:96px; border-radius:50%;
+  background:linear-gradient(135deg,var(--ok),#0DB877);
+  display:flex; align-items:center; justify-content:center;
+  font-size:44px; margin-bottom:22px;
+  box-shadow:0 0 50px rgba(16,217,143,0.35);
+  opacity:0; transform:scale(0.5);
+  transition:all 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+.ok-circle.show { opacity:1; transform:scale(1); }
+.ok-title { font-size:24px; font-weight:900; color:var(--tx); margin-bottom:8px; text-align:center; }
+.ok-sub { font-size:13px; color:var(--sub); text-align:center; line-height:1.6; padding:0 28px; margin-bottom:24px; }
+.ok-card {
+  width:290px; background:var(--surf);
+  border:1px solid rgba(16,217,143,0.2); border-radius:16px;
+  padding:14px 16px; display:flex; align-items:center; gap:12px;
+  opacity:0; transform:translateY(12px);
+  transition:all 0.4s ease 0.3s;
+}
+.ok-card.show { opacity:1; transform:translateY(0); }
+.ok-av { width:46px; height:46px; border-radius:12px; overflow:hidden; flex-shrink:0; }
+.ok-av img { width:100%; height:100%; object-fit:cover; }
+.ok-name { font-size:14px; font-weight:700; color:var(--tx); }
+.ok-status { font-size:11px; color:var(--ok); margin-top:2px; font-weight:600; }
+.stripe-row { margin-top:16px; display:flex; align-items:center; gap:8px; }
+.stripe-lck { font-size:20px; }
+.stripe-txt { font-size:11px; color:var(--sub); line-height:1.4; }
+.stripe-txt b { color:var(--tx); }
 
-  /* ---- SCÈNE 5 : CRÉER PRESTATION ---- */
-  #s5 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
-  .form-card { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px; }
-  .form-title { font-size:14px; font-weight:700; color:var(--text); margin-bottom:16px; }
-  .form-row { margin-bottom:14px; }
-  .form-label { font-size:10px; color:var(--sub); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:5px; }
-  .form-field {
-    background:#162547; border:1px solid var(--border); border-radius:10px;
-    padding:11px 13px; font-size:13px; color:var(--text); width:100%;
-  }
-  .form-field.filled { border-color:rgba(124,111,224,0.4); color:var(--text); }
-  .submit-btn {
-    width:100%; padding:14px;
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    border:none; border-radius:12px;
-    font-size:15px; font-weight:700; color:#fff;
-    font-family:inherit; margin-top:4px;
-  }
+/* ══════════════════════════════════════
+   SCÈNE 9 — CTA
+══════════════════════════════════════ */
+#s9 { background:radial-gradient(ellipse at 50% 40%,#1a1060 0%,#050E20 70%); }
+.cta-brand { font-size:48px; font-weight:900; color:#fff; letter-spacing:-2px; margin-bottom:10px; }
+.cta-sub { font-size:15px; color:var(--sub); text-align:center; line-height:1.6; margin-bottom:32px; padding:0 28px; }
+.cta-pills { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-bottom:30px; }
+.cta-pill {
+  background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25);
+  border-radius:20px; padding:6px 14px;
+  font-size:12px; font-weight:600; color:var(--v);
+}
+.cta-btn {
+  background:linear-gradient(135deg,var(--v),var(--v2));
+  border:none; border-radius:16px; padding:16px 44px;
+  font-size:17px; font-weight:800; color:#fff; font-family:inherit;
+  cursor:pointer; margin-bottom:12px;
+  box-shadow:0 8px 30px rgba(124,111,224,0.4);
+}
+.cta-link { font-size:13px; color:var(--sub); }
+.cta-link b { color:var(--v); }
 
-  /* ---- SCÈNE 6 : CONFIRMÉ ---- */
-  #s6 { background:linear-gradient(160deg,#0A1628,#050E20); }
-  .confirm-circle {
-    width:100px; height:100px; border-radius:50%;
-    background:linear-gradient(135deg,var(--success),#0DB877);
-    display:flex; align-items:center; justify-content:center;
-    font-size:44px; margin-bottom:24px;
-    box-shadow:0 0 40px rgba(16,217,143,0.4);
-    animation: popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;
-  }
-  .confirm-title { font-size:24px; font-weight:900; color:var(--text); margin-bottom:8px; text-align:center; }
-  .confirm-sub { font-size:14px; color:var(--sub); text-align:center; line-height:1.6; padding:0 30px; }
-  .confirm-card {
-    margin-top:28px; background:var(--surface);
-    border:1px solid rgba(16,217,143,0.2); border-radius:16px;
-    padding:16px 20px; width:300px;
-    display:flex; align-items:center; gap:14px;
-  }
-  .presta-mini { width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg,var(--violet),#5B4FD0); display:flex; align-items:center; justify-content:center; font-size:22px; }
-  .presta-name { font-size:14px; font-weight:700; color:var(--text); }
-  .presta-status { font-size:11px; color:var(--success); margin-top:2px; font-weight:600; }
+/* ══════════════════════════════════════
+   OVERLAYS
+══════════════════════════════════════ */
+.overlay {
+  position:absolute; bottom:0; left:0; right:0;
+  padding:24px 22px 28px;
+  background:linear-gradient(to top,rgba(5,14,32,0.96) 0%,rgba(5,14,32,0.5) 60%,transparent 100%);
+}
+.ov-chip {
+  display:inline-flex; align-items:center; gap:5px;
+  background:var(--v); border-radius:7px;
+  padding:3px 10px; font-size:10px; font-weight:800;
+  color:#fff; text-transform:uppercase; letter-spacing:0.8px;
+  margin-bottom:7px;
+}
+.ov-chip.urg { background:var(--red); }
+.ov-title { font-size:21px; font-weight:900; color:#fff; line-height:1.2; margin-bottom:4px; }
+.ov-desc { font-size:13px; color:rgba(255,255,255,0.65); line-height:1.5; }
 
-  /* ---- SCÈNE 7 : CTA ---- */
-  #s7 { background:linear-gradient(160deg,#0A1628 0%,#050E20 60%); }
-  .cta-logo { font-size:48px; font-weight:900; color:#fff; letter-spacing:-2px; margin-bottom:12px; }
-  .cta-sub { font-size:16px; color:var(--sub); margin-bottom:40px; text-align:center; }
-  .cta-btn {
-    background:linear-gradient(135deg,var(--violet),#5B4FD0);
-    border:none; border-radius:16px; padding:16px 40px;
-    font-size:17px; font-weight:800; color:#fff;
-    font-family:inherit; cursor:pointer;
-    box-shadow:0 8px 30px rgba(124,111,224,0.4);
-    margin-bottom:16px;
-  }
-  .cta-link { font-size:13px; color:var(--sub); }
-  .cta-link span { color:var(--violet); font-weight:700; }
+/* ══════════════════════════════════════
+   BARRE PROGRESSION + PLAY
+══════════════════════════════════════ */
+#prog { position:absolute; bottom:0; left:0; height:3px; background:var(--v); width:0; z-index:100; transition:width linear; }
 
-  /* ---- OVERLAYS ---- */
-  .overlay {
-    position:absolute; bottom:0; left:0; right:0;
-    padding:28px 24px;
-    background:linear-gradient(to top, rgba(5,14,32,0.95) 0%, transparent 100%);
-  }
-  .over-chip {
-    display:inline-block;
-    background:var(--violet); border-radius:8px;
-    padding:4px 10px; font-size:11px; font-weight:800; color:#fff;
-    text-transform:uppercase; letter-spacing:0.8px;
-    margin-bottom:8px;
-  }
-  .over-title { font-size:22px; font-weight:900; color:#fff; line-height:1.2; margin-bottom:6px; }
-  .over-desc { font-size:13px; color:rgba(255,255,255,0.7); line-height:1.5; }
+#play {
+  position:absolute; inset:0; background:rgba(0,0,0,0.75);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  cursor:pointer; z-index:200;
+}
+#play .pi {
+  width:76px; height:76px; border-radius:50%; background:var(--v);
+  display:flex; align-items:center; justify-content:center;
+  font-size:30px; margin-bottom:14px;
+}
+#play p { color:#fff; font-size:15px; font-weight:700; }
+#play small { color:var(--sub); font-size:12px; margin-top:5px; }
 
-  /* ---- BARRE DE PROGRESSION ---- */
-  #progress-bar {
-    position:absolute; bottom:0; left:0; height:3px;
-    background:var(--violet); width:0%; transition:width linear;
-    z-index:100;
-  }
-
-  /* ---- ANIMATIONS ---- */
-  @keyframes popIn {
-    from { transform:scale(0.5); opacity:0; }
-    to   { transform:scale(1); opacity:1; }
-  }
-  @keyframes slideUp {
-    from { transform:translateY(30px); opacity:0; }
-    to   { transform:translateY(0); opacity:1; }
-  }
-  @keyframes fadeIn {
-    from { opacity:0; transform:translateY(12px); }
-    to   { opacity:1; transform:translateY(0); }
-  }
-  @keyframes pulse {
-    0%,100% { box-shadow:0 0 40px rgba(16,217,143,0.4); }
-    50%      { box-shadow:0 0 70px rgba(16,217,143,0.7); }
-  }
-
-  /* ---- BOUTON PLAY ---- */
-  #play-btn {
-    position:absolute; inset:0;
-    background:rgba(0,0,0,0.7);
-    display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
-    cursor:pointer; z-index:200;
-  }
-  #play-btn .play-icon {
-    width:80px; height:80px; border-radius:50%;
-    background:var(--violet);
-    display:flex; align-items:center; justify-content:center;
-    font-size:32px; margin-bottom:16px;
-  }
-  #play-btn p { color:#fff; font-size:15px; font-weight:600; }
-  #play-btn small { color:var(--sub); font-size:12px; margin-top:6px; }
+/* restart button */
+#restart {
+  position:absolute; bottom:20px; right:16px;
+  background:rgba(255,255,255,0.08); border:1px solid var(--bdr);
+  border-radius:20px; padding:6px 14px;
+  color:var(--sub); font-size:12px; font-weight:600;
+  cursor:pointer; z-index:50; display:none;
+  font-family:inherit;
+}
 </style>
 </head>
 <body>
 <div id="stage">
 
-  <!-- SCÈNE 1 : SPLASH -->
-  <div class="scene active" id="s1">
-    <div class="logo-ring"><span class="logo-text">A</span></div>
-    <div class="brand">ALANE</div>
-    <div class="tagline">La plateforme qui connecte <strong>entreprises</strong> et <strong>prestataires indépendants</strong> certifiés</div>
+<!-- ── S1 SPLASH ── -->
+<div class="scene active" id="s1">
+  <div class="s1-logo" id="s1logo">A</div>
+  <div class="s1-brand">ALANE</div>
+  <div class="s1-tag">La plateforme qui connecte<br><b>entreprises</b> et <b>prestataires indépendants</b></div>
+</div>
+
+<!-- ── S2 RÔLE CLIENT ── -->
+<div class="scene" id="s2">
+  <div class="s2-head">Bienvenue sur ALANE</div>
+  <div class="s2-sub">Choisissez votre espace</div>
+  <div class="role-card client" id="rc1">
+    <span class="ic">🏢</span>
+    <div><div class="rl">Je suis Client</div><div class="rs">Je cherche des prestataires qualifiés</div></div>
   </div>
-
-  <!-- SCÈNE 2 : RÔLE -->
-  <div class="scene" id="s2">
-    <div class="role-title">Bienvenue sur ALANE</div>
-    <div class="role-sub">Vous êtes...</div>
-    <button class="role-btn client">
-      <span class="role-icon">🏢</span>
-      <div>
-        <div class="role-label">Je suis Client</div>
-        <div class="role-desc">Je cherche des prestataires qualifiés</div>
-      </div>
-    </button>
-    <button class="role-btn presta">
-      <span class="role-icon">⚡</span>
-      <div>
-        <div class="role-label">Je suis Prestataire</div>
-        <div class="role-desc">Je propose mes services</div>
-      </div>
-    </button>
-    <div class="overlay">
-      <div class="over-chip">Étape 1</div>
-      <div class="over-title">Choisissez votre espace</div>
-      <div class="over-desc">Inscription en 2 minutes — gratuit</div>
-    </div>
+  <div class="role-card presta" id="rc2">
+    <span class="ic">⚡</span>
+    <div><div class="rl">Je suis Prestataire</div><div class="rs">Je propose mes services</div></div>
   </div>
+  <div class="gratuit-badge" id="gb">✅ Inscription client 100% gratuite</div>
+</div>
 
-  <!-- SCÈNE 3 : CATALOGUE -->
-  <div class="scene" id="s3">
-    <div class="screen-title">Nos secteurs</div>
-    <div class="screen-sub">Prestataires disponibles près de vous</div>
-    <div class="sectors-grid">
-      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.05s">
-        <span class="sector-icon">🧹</span>
-        <div class="sector-name">Propreté</div>
-        <div class="sector-count">24 disponibles</div>
-      </div>
-      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.1s">
-        <span class="sector-icon">📦</span>
-        <div class="sector-name">Logistique</div>
-        <div class="sector-count">18 disponibles</div>
-      </div>
-      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.15s">
-        <span class="sector-icon">🍽️</span>
-        <div class="sector-name">Restauration</div>
-        <div class="sector-count">31 disponibles</div>
-      </div>
-      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.2s">
-        <span class="sector-icon">🏨</span>
-        <div class="sector-name">Hôtellerie</div>
-        <div class="sector-count">12 disponibles</div>
-      </div>
-    </div>
-    <div class="overlay">
-      <div class="over-chip">Étape 2</div>
-      <div class="over-title">Choisissez votre secteur</div>
-      <div class="over-desc">Tous les prestataires sont vérifiés et certifiés ALANE</div>
-    </div>
+<!-- ── S3 CATALOGUE ── -->
+<div class="scene" id="s3">
+  <div style="width:100%">
+    <div style="font-size:22px;font-weight:900;color:var(--tx)">Nos secteurs</div>
+    <div style="font-size:13px;color:var(--sub);margin-top:4px">Prestataires disponibles près de vous</div>
   </div>
-
-  <!-- SCÈNE 4 : PROFIL PRESTATAIRE -->
-  <div class="scene" id="s4">
-    <div class="screen-title" style="margin-bottom:16px">Profil prestataire</div>
-    <div class="profile-card">
-      <div class="profile-header">
-        <div class="avatar">👨‍💼</div>
-        <div>
-          <div class="profile-name">Thomas M.</div>
-          <div class="profile-meta">Nettoyage · Paris 8e</div>
-          <div class="badge-cert">✓ Certifié ALANE</div>
-        </div>
-      </div>
-      <div class="profile-body">
-        <div class="stars">★★★★★</div>
-        <div class="rating-text">4.9 · 47 avis clients</div>
-        <div class="tags">
-          <span class="tag">KBIS vérifié</span>
-          <span class="tag">RC Pro</span>
-          <span class="tag">URSSAF à jour</span>
-        </div>
-        <div class="price-row">
-          <span class="price-label">Tarif horaire</span>
-          <span class="price-val">18 €<span style="font-size:14px;color:var(--sub)">/h</span></span>
-        </div>
-        <button class="book-btn">Réserver Thomas →</button>
-      </div>
-    </div>
-    <div class="overlay" style="background:none; padding:12px 18px;">
-      <div class="over-chip">Étape 3</div>
-      <div class="over-title" style="font-size:18px">Profils 100% vérifiés</div>
-    </div>
+  <div class="sec-grid">
+    <div class="sec-card" id="sc1"><div class="si">🧹</div><div class="sn">Propreté</div><div class="sc"><span class="sdot"></span>24 dispo.</div></div>
+    <div class="sec-card" id="sc2"><div class="si">📦</div><div class="sn">Logistique</div><div class="sc"><span class="sdot"></span>18 dispo.</div></div>
+    <div class="sec-card" id="sc3"><div class="si">🍽️</div><div class="sn">Restauration</div><div class="sc"><span class="sdot"></span>31 dispo.</div></div>
+    <div class="sec-card" id="sc4"><div class="si">🏨</div><div class="sn">Hôtellerie</div><div class="sc"><span class="sdot"></span>12 dispo.</div></div>
   </div>
-
-  <!-- SCÈNE 5 : CRÉER PRESTATION -->
-  <div class="scene" id="s5">
-    <div class="screen-title" style="margin-bottom:16px">Nouvelle prestation</div>
-    <div class="form-card">
-      <div class="form-title">📋 Détails de votre besoin</div>
-      <div class="form-row">
-        <div class="form-label">Secteur</div>
-        <div class="form-field filled">🧹 Propreté</div>
-      </div>
-      <div class="form-row">
-        <div class="form-label">Date</div>
-        <div class="form-field filled">Demain — 09h00 à 13h00</div>
-      </div>
-      <div class="form-row">
-        <div class="form-label">Ville</div>
-        <div class="form-field filled">Paris (75008)</div>
-      </div>
-      <div class="form-row">
-        <div class="form-label">Tarif horaire</div>
-        <div class="form-field filled">18 € / heure</div>
-      </div>
-      <button class="submit-btn">Envoyer la demande →</button>
-    </div>
-    <div class="overlay">
-      <div class="over-chip">Étape 4</div>
-      <div class="over-title">Publiez en 30 secondes</div>
-      <div class="over-desc">Les prestataires disponibles reçoivent une notification immédiate</div>
-    </div>
-  </div>
-
-  <!-- SCÈNE 6 : CONFIRMÉ -->
-  <div class="scene" id="s6">
-    <div class="confirm-circle" style="animation-play-state:paused">✓</div>
-    <div class="confirm-title">Prestataire assigné !</div>
-    <div class="confirm-sub">Paiement sécurisé via Stripe.<br>Libéré après validation de la prestation.</div>
-    <div class="confirm-card">
-      <div class="presta-mini">👨‍💼</div>
-      <div>
-        <div class="presta-name">Thomas M.</div>
-        <div class="presta-status">✓ Confirmé · Arrive demain 9h</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SCÈNE 7 : CTA -->
-  <div class="scene" id="s7">
-    <div class="cta-logo">ALANE</div>
-    <div class="cta-sub">Prestataires certifiés · Paiement sécurisé<br>Zéro démarche administrative</div>
-    <button class="cta-btn">Commencer gratuitement</button>
-    <div class="cta-link">👇 Lien en bio · <span>alane.fr</span></div>
-  </div>
-
-  <!-- BARRE DE PROGRESSION -->
-  <div id="progress-bar"></div>
-
-  <!-- BOUTON PLAY -->
-  <div id="play-btn">
-    <div class="play-icon">▶</div>
-    <p>Appuyer pour lancer la pub</p>
-    <small>45 secondes · Format TikTok</small>
+  <div class="overlay">
+    <div class="ov-chip">Étape 1</div>
+    <div class="ov-title">Choisissez votre secteur</div>
+    <div class="ov-desc">7 secteurs · Toute la France</div>
   </div>
 </div>
 
+<!-- ── S4 PROFIL ── -->
+<div class="scene" id="s4">
+  <div style="width:100%;font-size:13px;color:var(--sub);margin-bottom:12px">← Résultats · Propreté</div>
+  <div class="pc" id="pcard">
+    <div class="pc-head">
+      <div class="pc-avatar">
+        <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Thomas M." onerror="this.parentElement.innerHTML='👨‍💼';this.parentElement.style.display='flex';this.parentElement.style.alignItems='center';this.parentElement.style.justifyContent='center';this.parentElement.style.fontSize='28px'">
+      </div>
+      <div>
+        <div class="pc-name">Thomas M.</div>
+        <div class="pc-loc">📍 Paris 8e · Agent de propreté</div>
+        <div class="cert-badge">✓ Certifié ALANE</div>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="stars-row">
+        <div class="stars">★★★★★</div>
+        <div class="rating">4.9 · 47 avis</div>
+      </div>
+      <div class="tags">
+        <span class="tag">KBIS vérifié</span>
+        <span class="tag">RC Pro</span>
+        <span class="tag">URSSAF ✓</span>
+        <span class="tag">CNI validée</span>
+      </div>
+      <div class="price-row">
+        <span class="price-lbl">Tarif horaire</span>
+        <span class="price-val">18 €<span style="font-size:14px;color:var(--sub)">/h</span></span>
+      </div>
+      <button class="book-btn">Réserver Thomas →</button>
+    </div>
+  </div>
+  <div class="overlay">
+    <div class="ov-chip">Étape 2</div>
+    <div class="ov-title">Profils 100% vérifiés</div>
+    <div class="ov-desc">KBIS · RC Pro · URSSAF · Identité</div>
+  </div>
+</div>
+
+<!-- ── S5 URGENCE ── -->
+<div class="scene" id="s5">
+  <div class="urg-badge">⚡ MODE URGENCE</div>
+  <div class="urg-title">Besoin<br>d'un prestataire<br>maintenant ?</div>
+  <div class="urg-sub">Activez le mode urgence — un prestataire disponible dans l'heure.</div>
+  <div class="urg-card">
+    <div class="urg-avatar">
+      <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="Sophie L." onerror="this.style.display='none'">
+    </div>
+    <div>
+      <div class="urg-name">Sophie L.</div>
+      <div class="urg-info">Disponible maintenant · Paris 9e</div>
+    </div>
+    <div class="urg-price">
+      <div class="up">21 €/h</div>
+      <div class="ul">⚡ +30%</div>
+    </div>
+  </div>
+  <div class="urg-note">Le tarif majoré de <b>+30%</b> rémunère le déplacement immédiat du prestataire.</div>
+</div>
+
+<!-- ── S6 CHAT ── -->
+<div class="scene" id="s6" style="justify-content:flex-start">
+  <div class="chat-header">
+    <div class="chat-av">
+      <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="">
+    </div>
+    <div>
+      <div class="chat-nm">Thomas M.</div>
+      <div class="chat-st">● En ligne</div>
+    </div>
+  </div>
+  <div class="chat-body">
+    <div class="msg them" id="m1">Bonjour, je confirme ma présence demain à 9h.<div class="msg-time">09:12</div></div>
+    <div class="msg me" id="m2">Parfait ! Portail B, code 4521.<div class="msg-time">09:13</div></div>
+    <div class="msg them" id="m3">Noté, à demain 👍<div class="msg-time">09:13</div></div>
+    <div class="msg me" id="m4">Merci Thomas !<div class="msg-time">09:14</div></div>
+  </div>
+  <div class="chat-input">
+    <div class="chat-field">Message...</div>
+    <div class="chat-send">➤</div>
+  </div>
+  <div class="overlay">
+    <div class="ov-chip">Tchat intégré</div>
+    <div class="ov-title">Communiquez directement</div>
+    <div class="ov-desc">Sans quitter l'application</div>
+  </div>
+</div>
+
+<!-- ── S7 TARIFS ── -->
+<div class="scene" id="s7">
+  <div style="width:100%">
+    <div style="font-size:22px;font-weight:900;color:var(--tx)">Tarifs transparents</div>
+    <div style="font-size:13px;color:var(--sub);margin-top:4px">Simple et sans surprise</div>
+  </div>
+  <div class="tarif-tabs">
+    <div class="tarif-tab active">🏢 Clients</div>
+    <div class="tarif-tab inactive">⚡ Prestataires</div>
+  </div>
+  <div class="free-card" id="fcard">
+    <div class="free-title">🎁 Gratuit pour les clients</div>
+    <div class="free-sub">Aucun abonnement · Aucune commission cachée</div>
+    <div class="free-feat">Accès à tous les prestataires certifiés</div>
+    <div class="free-feat">Paiement sécurisé via Stripe</div>
+    <div class="free-feat">Tchat intégré · Mode urgence</div>
+    <div class="free-feat">Cashback sur chaque prestation</div>
+  </div>
+  <div class="plans-row">
+    <div class="plan-card" id="pl1">
+      <div class="plan-icon">🆓</div>
+      <div class="plan-name">Gratuit</div>
+      <div class="plan-price">0 €<span>/mois</span></div>
+      <div class="plan-feat">2 prestations/mois · Profil visible</div>
+    </div>
+    <div class="plan-card pop" id="pl2">
+      <div class="pop-badge">Populaire</div>
+      <div class="plan-icon">💎</div>
+      <div class="plan-name">Premium</div>
+      <div class="plan-price">29<span style="font-size:14px">,99 €</span><span>/mois</span></div>
+      <div class="plan-feat">10 prestations · Badge certifié · Urgences</div>
+    </div>
+    <div class="plan-card" id="pl3">
+      <div class="plan-icon">👑</div>
+      <div class="plan-name">Elite</div>
+      <div class="plan-price">79<span style="font-size:14px">,99 €</span><span>/mois</span></div>
+      <div class="plan-feat">Illimité · Position #1 · Badge Elite</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── S8 CONFIRMATION ── -->
+<div class="scene" id="s8">
+  <div class="ok-circle" id="okc">✓</div>
+  <div class="ok-title">Prestation confirmée !</div>
+  <div class="ok-sub">Paiement sécurisé via Stripe.<br>Libéré uniquement après validation.</div>
+  <div class="ok-card" id="okcard">
+    <div class="ok-av">
+      <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="">
+    </div>
+    <div>
+      <div class="ok-name">Thomas M.</div>
+      <div class="ok-status">✓ Confirmé · Arrive demain à 9h</div>
+    </div>
+  </div>
+  <div class="stripe-row" style="margin-top:16px">
+    <div class="stripe-lck">🔒</div>
+    <div class="stripe-txt">Paiement sécurisé <b>Stripe</b> — zéro risque client</div>
+  </div>
+</div>
+
+<!-- ── S9 CTA ── -->
+<div class="scene" id="s9">
+  <div class="cta-brand">ALANE</div>
+  <div class="cta-sub">Prestataires certifiés · Paiement sécurisé<br>Zéro démarche administrative</div>
+  <div class="cta-pills">
+    <span class="cta-pill">✓ Gratuit pour les clients</span>
+    <span class="cta-pill">⚡ Mode urgence</span>
+    <span class="cta-pill">💬 Tchat intégré</span>
+    <span class="cta-pill">🔒 Stripe</span>
+  </div>
+  <button class="cta-btn">Commencer gratuitement →</button>
+  <div class="cta-link">👇 Lien en bio · <b>alane.fr</b></div>
+</div>
+
+<div id="prog"></div>
+<button id="restart" onclick="startAd()">↩ Rejouer</button>
+
+<!-- PLAY -->
+<div id="play">
+  <div class="pi">▶</div>
+  <p>Lancer la pub ALANE</p>
+  <small>~60 secondes · Format TikTok 9:16</small>
+</div>
+
 <script>
-  const scenes = [
-    { id:'s1', duration:3500 },
-    { id:'s2', duration:7000 },
-    { id:'s3', duration:8000 },
-    { id:'s4', duration:8000 },
-    { id:'s5', duration:8000 },
-    { id:'s6', duration:7500 },
-    { id:'s7', duration:5000 },
-  ];
+const scenes = [
+  { id:'s1', dur:3500,  enter:enterS1 },
+  { id:'s2', dur:6500,  enter:enterS2 },
+  { id:'s3', dur:7000,  enter:enterS3 },
+  { id:'s4', dur:8000,  enter:enterS4 },
+  { id:'s5', dur:7000,  enter:enterS5 },
+  { id:'s6', dur:8000,  enter:enterS6 },
+  { id:'s7', dur:9000,  enter:enterS7 },
+  { id:'s8', dur:6500,  enter:enterS8 },
+  { id:'s9', dur:5500,  enter:enterS9 },
+];
 
-  const total = scenes.reduce((a,s)=>a+s.duration,0);
-  let current = 0;
-  let elapsed = 0;
-  let startTime = null;
-  let running = false;
+const total = scenes.reduce((a,s)=>a+s.dur,0);
+let cur=0, elapsed=0, startTs=null, raf=null;
 
-  function showScene(idx) {
-    document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
-    const el = document.getElementById(scenes[idx].id);
-    el.classList.add('active');
+function el(id){ return document.getElementById(id); }
+function delay(fn,ms){ return setTimeout(fn,ms); }
+function show(id){ el(id)?.classList.add('show'); }
 
-    // Relance les animations CSS
-    el.querySelectorAll('[style*="animation-delay"], .role-btn, .sector-card').forEach(el=>{
-      el.style.animation='none';
-      el.offsetHeight;
-      el.style.animation='';
-    });
+function enterS1(){
+  delay(()=>show('s1logo'),100);
+}
+function enterS2(){
+  delay(()=>show('rc1'),150);
+  delay(()=>show('rc2'),300);
+  delay(()=>show('gb'),500);
+}
+function enterS3(){
+  ['sc1','sc2','sc3','sc4'].forEach((id,i)=>delay(()=>show(id),100+i*100));
+}
+function enterS4(){
+  delay(()=>show('pcard'),200);
+}
+function enterS5(){} // static
+function enterS6(){
+  delay(()=>show('m1'),300);
+  delay(()=>show('m2'),900);
+  delay(()=>show('m3'),1500);
+  delay(()=>show('m4'),2200);
+}
+function enterS7(){
+  delay(()=>show('fcard'),200);
+  delay(()=>show('pl1'),450);
+  delay(()=>show('pl2'),600);
+  delay(()=>show('pl3'),750);
+}
+function enterS8(){
+  delay(()=>show('okc'),150);
+  delay(()=>show('okcard'),500);
+}
+function enterS9(){} // static
 
-    // Animation spéciale scène 6
-    if(scenes[idx].id==='s6'){
-      const circle = el.querySelector('.confirm-circle');
-      if(circle){ circle.style.animationPlayState='running'; }
+function showScene(idx){
+  document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
+  const sc = scenes[idx];
+  const sEl = el(sc.id);
+  sEl.classList.add('active');
+
+  // Reset show classes
+  sEl.querySelectorAll('.show').forEach(e=>e.classList.remove('show'));
+
+  sc.enter();
+}
+
+let timers = [];
+function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+
+const _origDelay = delay;
+function schedDelay(fn,ms){ const t=setTimeout(fn,ms); timers.push(t); return t; }
+
+// Override delay inside enter functions
+function enterS1(){ schedDelay(()=>show('s1logo'),100); }
+function enterS2(){
+  schedDelay(()=>show('rc1'),150);
+  schedDelay(()=>show('rc2'),300);
+  schedDelay(()=>show('gb'),500);
+}
+function enterS3(){
+  ['sc1','sc2','sc3','sc4'].forEach((id,i)=>schedDelay(()=>show(id),100+i*100));
+}
+function enterS4(){ schedDelay(()=>show('pcard'),200); }
+function enterS5(){}
+function enterS6(){
+  schedDelay(()=>show('m1'),300);
+  schedDelay(()=>show('m2'),900);
+  schedDelay(()=>show('m3'),1500);
+  schedDelay(()=>show('m4'),2200);
+}
+function enterS7(){
+  schedDelay(()=>show('fcard'),200);
+  schedDelay(()=>show('pl1'),450);
+  schedDelay(()=>show('pl2'),600);
+  schedDelay(()=>show('pl3'),750);
+}
+function enterS8(){
+  schedDelay(()=>show('okc'),150);
+  schedDelay(()=>show('okcard'),500);
+}
+function enterS9(){}
+
+function tick(ts){
+  if(!startTs) startTs=ts;
+  const dt=ts-startTs; startTs=ts;
+  elapsed+=dt;
+
+  const pct=Math.min(elapsed/total*100,100);
+  el('prog').style.width=pct+'%';
+  el('prog').style.transitionDuration=(1000/60)+'ms';
+
+  let acc=0;
+  for(let i=0;i<scenes.length;i++){
+    acc+=scenes[i].dur;
+    if(elapsed<acc){
+      if(i!==cur){ clearTimers(); cur=i; showScene(i); }
+      break;
     }
   }
 
-  function tick(ts) {
-    if(!startTime) startTime = ts;
-    const dt = ts - startTime;
-    startTime = ts;
-    elapsed += dt;
-
-    const pct = Math.min(elapsed/total*100, 100);
-    document.getElementById('progress-bar').style.width = pct+'%';
-
-    let acc=0;
-    for(let i=0;i<scenes.length;i++){
-      acc += scenes[i].duration;
-      if(elapsed < acc){
-        if(i !== current){ current=i; showScene(i); }
-        break;
-      }
-    }
-
-    if(elapsed < total) requestAnimationFrame(tick);
+  if(elapsed<total){
+    raf=requestAnimationFrame(tick);
+  } else {
+    el('restart').style.display='block';
   }
+}
 
-  document.getElementById('play-btn').addEventListener('click', ()=>{
-    document.getElementById('play-btn').style.display='none';
-    running = true;
-    elapsed = 0;
-    current = 0;
-    startTime = null;
-    showScene(0);
-    requestAnimationFrame(tick);
-  });
+function startAd(){
+  el('play').style.display='none';
+  el('restart').style.display='none';
+  if(raf) cancelAnimationFrame(raf);
+  clearTimers();
+  elapsed=0; cur=0; startTs=null;
+  el('prog').style.width='0%';
+  showScene(0);
+  raf=requestAnimationFrame(tick);
+}
+
+el('play').addEventListener('click', startAd);
 </script>
 </body>
 </html>
