@@ -196,7 +196,7 @@ function DeleteAccountSection({ onLogout }) {
         <div style={{ background:`${C.danger}12`, border:`1px solid ${C.danger}44`, borderRadius:14, padding:"14px 16px" }}>
           <div style={{ fontWeight:700, color:C.danger, fontSize:13, marginBottom:8 }}>⚠️ Cette action est irréversible</div>
           <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:14 }}>
-            Vos données personnelles seront supprimées conformément au RGPD art. 17 (droit à l'effacement). L'historique des missions sera anonymisé. Cette action ne peut pas être annulée.
+            Vos données personnelles seront supprimées conformément au RGPD art. 17 (droit à l'effacement). L'historique des prestations sera anonymisé. Cette action ne peut pas être annulée.
           </div>
           {deleteError && <div style={{ color:C.danger, fontSize:12, marginBottom:10, fontWeight:600 }}>⚠️ {deleteError}</div>}
           <div style={{ display:"flex", gap:10 }}>
@@ -641,7 +641,7 @@ export const TOUR_STEPS = [
   {
     icon:"📅",
     title:"2. Réservez & payez",
-    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la mission n'est pas validée.",
+    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la prestation n'est pas validée.",
     color:"#F0B429",
   },
   {
@@ -652,8 +652,8 @@ export const TOUR_STEPS = [
   },
   {
     icon:"✅",
-    title:"4. Validez la mission",
-    desc:"Une fois la mission terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
+    title:"4. Validez la prestation",
+    desc:"Une fois la prestation terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
     color:"#F06292",
   },
 ];
@@ -848,10 +848,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
             <div>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
-                Mission à valider ({missionsToValidate.length})
+                Prestation à valider ({missionsToValidate.length})
               </div>
               <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
-                {missionsToValidate[0].metier || "Mission"} — le prestataire a confirmé la fin
+                {missionsToValidate[0].metier || "Prestation"} — le prestataire a confirmé la fin
               </div>
             </div>
           </div>
@@ -865,7 +865,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       )}
       {showTour && <ClientTour onDone={dismissTour} />}
 
-      {/* ── Fenêtre missions en cours ── */}
+      {/* ── Fenêtre prestations en cours ── */}
       {missionsInProgress.length > 0 && !inProgressDismissed && (
         <div style={{
           position:"fixed", bottom:80, left:12, right:12, zIndex:7500,
@@ -887,7 +887,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <div style={{ width:10, height:10, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 10px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
-                <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Mission{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
+                <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Prestation{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
                 <span style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:20, padding:"1px 8px", color:"#10D98F", fontSize:11, fontWeight:700 }}>{missionsInProgress.length}</span>
               </div>
               <button onClick={() => setInProgressDismissed(true)} style={{ background:"rgba(255,255,255,0.07)", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"rgba(255,255,255,0.4)", fontSize:14, fontFamily:"inherit" }}>✕</button>
@@ -909,7 +909,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                   <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
                     <div style={{ width:38, height:38, borderRadius:11, background:`rgba(16,217,143,0.12)`, border:"1px solid rgba(16,217,143,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon || "🏢"}</div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Mission"}</div>
+                      <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Prestation"}</div>
                       <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>
                         {elapsedH > 0 ? `${elapsedH}h ${elapsedMin}min` : `${elapsedMin}min`} écoulées
                         {" · "}
@@ -988,9 +988,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         <div style={{ padding:"0 22px 16px", position:"relative", zIndex:2 }}>
           <div style={{ display:"flex", gap:8 }}>
             {[
-              { icon:"📋", value: liveStats.openMissions, label:"missions ouvertes" },
+              { icon:"📋", value: liveStats.openMissions, label:"prestations ouvertes" },
               { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
-              { icon:"✅", value: liveStats.completedMonth, label:"missions réalisées" },
+              { icon:"✅", value: liveStats.completedMonth, label:"prestations réalisées" },
             ].map((s,i)=>(
               <div key={i} style={{
                 flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
@@ -1039,12 +1039,12 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <span style={{ fontSize:20, flexShrink:0 }}>🔔</span>
           <div style={{ flex:1 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Activer les notifications</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles missions</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles prestations</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <button onClick={()=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
             <button onClick={()=>{
-              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles missions.",icon:"/favicon.svg"}); });
+              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles prestations.",icon:"/favicon.svg"}); });
             }} style={{ background:C.violet, border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Activer</button>
           </div>
         </div>
@@ -1082,7 +1082,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               </div>
               <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.6)" }}>
                 {nextTier
-                  ? <>{missionsToNext} mission{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
+                  ? <>{missionsToNext} prestation{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
                   : <>Vous êtes au palier maximum 🎉</>}
               </div>
             </div>
@@ -1328,7 +1328,7 @@ export function useSectorStatus() {
   const [status, setStatus] = useState(_sectorStatusCache || {});
   useEffect(() => {
     if (_sectorStatusCache && Date.now() - _sectorStatusCacheTs < 60_000) return;
-    fetch("/api/missions", {
+    fetch("/api/prestations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "get_sector_status" }),
@@ -1569,7 +1569,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
         </div>
         <div style={{ fontSize:12, color:urgentMode?"rgba(255,255,255,0.75)":C.gray, marginTop:2 }}>
           {urgentMode
-            ? "Actif — le 1er prestataire disponible accepte la mission"
+            ? "Actif — le 1er prestataire disponible accepte la prestation"
             : "Prestataire disponible dans l’heure · Surcoût affiché au récapitulatif"}
         </div>
       </div>
@@ -1668,7 +1668,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             {showFilters && (
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
                 <div style={{ marginBottom:14 }}>
-                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la mission</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la prestation</div>
                   <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)} placeholder="AAAA-MM-JJ"
                     style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
                   {selectedDay && <div style={{ color:s.color, fontSize:11, fontWeight:700, marginTop:4 }}>📅 {selectedDay} — uniquement les prestataires disponibles ce jour</div>}
@@ -1715,7 +1715,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             <div style={{ width:44, height:44, borderRadius:12, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🚀</div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Ne pas choisir le prestataire</div>
-              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez votre demande · Le premier disponible accepte la mission</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez votre demande · Le premier disponible accepte la prestation</div>
             </div>
             <span style={{ color:C.violet, fontSize:20, fontWeight:300 }}>›</span>
           </div>
@@ -1746,9 +1746,9 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {urgentMode ? (
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"28px 20px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)", border:`2px solid ${C.accent}33` }}>
               <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
-              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Mission envoyée à tous les prestataires</h3>
+              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Prestation envoyée à tous les prestataires</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
-                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la mission.</strong>
+                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la prestation.</strong>
               </p>
 
               {/* Détail surcoût */}
@@ -1768,7 +1768,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               </div>
 
               <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, urgentPrice, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
-                🚀 Envoyer la mission maintenant
+                🚀 Envoyer la prestation maintenant
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Annuler — choisir un prestataire manuellement
@@ -2014,7 +2014,7 @@ export function CVScreen({ provider, onBack, onNavigate }) {
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <Badge color="rgba(255,255,255,0.9)" small>⭐ {p.rating}/5</Badge>
-          <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} missions</Badge>
+          <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} prestations</Badge>
           <Badge color="rgba(255,255,255,0.9)" small>🕐 {p.experience}</Badge>
         </div>
       </div>
@@ -2120,7 +2120,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
   const p = {
     rating: 0, reviews: 0, distance: "—", available: false,
-    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
+    jobTitle: "", experience: "—", prestations: "—", responseTime: "—",
     bio: null, langues: [], skills: [], metiers_list: [], cv: null,
     avatar: "👷", color: "#7C6FE0", photo_url: null,
     ...provider,
@@ -2130,7 +2130,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
   useEffect(()=>{
     if (!provider?.id) return;
-    // Si les données clés manquent (navigation depuis carte mission), on les fetche
+    // Si les données clés manquent (navigation depuis carte prestation), on les fetche
     if (!provider.hourlyRate && !provider.jobTitle) {
       fetch("/api/prestataires")
         .then(r=>r.json())
@@ -2212,7 +2212,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           {[
-            { v: p.missions_count > 0 ? `${p.missions_count}` : "—", l: "Missions" },
+            { v: p.missions_count > 0 ? `${p.missions_count}` : "—", l: "Prestations" },
             { v: p.reviews > 0 ? `${p.rating}/5` : "—", l: "Note" },
             { v: p.available ? "Oui" : "Non", l: "Dispo" },
           ].map((s,i)=>(
@@ -2377,15 +2377,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
 Parties :
 ALANE (plateforme) · ${p.name || ""} (prestataire) · (client)
 
-Mission :
+Prestation :
 Métier : ${p.jobTitle || p.role || ""}
 Date : ${isUrgent ? urgentStartDate : startDate || ""}
 Durée : ${hours} heure(s)
 Tarif horaire : ${tarifHoraire.toFixed(2)} €/h
 
-En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la mission telle que définie ci-dessus.
+En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la prestation telle que définie ci-dessus.
 
-Le paiement sera libéré au prestataire après validation mutuelle de la mission.
+Le paiement sera libéré au prestataire après validation mutuelle de la prestation.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={(ts) => {
@@ -2414,7 +2414,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                 <Badge color="rgba(255,255,255,0.9)" small>⭐ {p.rating}/5</Badge>
-                <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} missions</Badge>
+                <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} prestations</Badge>
                 <Badge color="rgba(255,255,255,0.9)" small>🕐 {p.experience}</Badge>
               </div>
             </div>
@@ -2475,7 +2475,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       })()}
 
       <StepHeader step={step} total={4}
-        title={["Détails mission","Localisation","Paiement","Confirmation"][step-1]}
+        title={["Détails prestation","Localisation","Paiement","Confirmation"][step-1]}
         onBack={step===1?onBack:()=>setStep(s=>s-1)} />
       <div style={{ padding:"22px 18px" }}>
 
@@ -2509,9 +2509,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           )}
 
           {!isUrgent && <>
-            {/* Toggle mission simple / plage de dates */}
+            {/* Toggle prestation simple / plage de dates */}
             <div style={{ marginBottom:16 }}>
-              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de mission</label>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de prestation</label>
               <div style={{ display:"flex", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
                 {[
                   { id:"single", icon:"📅", label:"Date unique"      },
@@ -2547,7 +2547,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               /* ── Plage de dates ── */
               <>
                 <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-                  <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:12, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Période de la mission</label>
+                  <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:12, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Période de la prestation</label>
 
                   <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                     <div style={{ flex:1 }}>
@@ -2605,7 +2605,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {/* Durée par jour */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:10, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>
-              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la mission"}
+              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la prestation"}
             </label>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
@@ -2631,9 +2631,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {/* Description */}
           <div style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Description de la mission</label>
+            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Description de la prestation</label>
             <textarea value={description} onChange={e=>setDescription(e.target.value)}
-              placeholder="Décrivez la mission en détail…"
+              placeholder="Décrivez la prestation en détail…"
               style={{ width:"100%", padding:"13px 15px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.6 }} />
           </div>
 
@@ -2705,7 +2705,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             )}
             <div style={{ padding:14, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
               <div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la prestation</div>
                 {(adresse || ville) && <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{[adresse, ville, cp].filter(Boolean).join(", ")}</div>}
               </div>
               {(adresse || ville) && (
@@ -2778,7 +2778,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:18 }}>{totalGlobal} €</span>
             </div>
 
-            {/* Cashback gagné sur cette mission */}
+            {/* Cashback gagné sur cette prestation */}
             {(() => {
               const tier = getCashbackTier(walletInfo.missionsThisMonth);
               const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
@@ -2812,12 +2812,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {isUrgent && (
             <div style={{ background:`${C.accent}10`, border:`1px solid ${C.accent}30`, borderRadius:r, padding:"11px 14px", marginBottom:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🚨 <strong>Mission urgente</strong> — Le premier prestataire disponible qui accepte assure la mission. Intervention prévue dans l'heure.
+              🚨 <strong>Prestation urgente</strong> — Le premier prestataire disponible qui accepte assure la prestation. Intervention prévue dans l'heure.
             </div>
           )}
 
           <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-            🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la mission
+            🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la prestation
           </div>
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
@@ -2855,19 +2855,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             })()}
             <div style={{ fontSize:60, marginBottom:14 }}>{isUrgent?"🚀":"✅"}</div>
             <h3 style={{ color:C.text, fontSize:21, fontWeight:700, marginBottom:6, fontFamily:font.display }}>
-              {isUrgent ? "Mission urgente envoyée !" : "Réservation confirmée !"}
+              {isUrgent ? "Prestation urgente envoyée !" : "Réservation confirmée !"}
             </h3>
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
-                ? <>Votre mission a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
+                ? <>Votre prestation a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
                 : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera libéré après validation mutuelle.</>
               }
             </p>
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"left" }}>
               <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:800 }}>📋 Prochaines étapes</h4>
               {(isUrgent
-                ? ["Un prestataire accepte la mission","Vous recevez une notification immédiate","Suivez son arrivée en temps réel","Validation + paiement libéré"]
-                : ["Le prestataire confirme sa venue","Suivez son arrivée en temps réel","Mission effectuée → Validation mutuelle","Paiement libéré automatiquement"]
+                ? ["Un prestataire accepte la prestation","Vous recevez une notification immédiate","Suivez son arrivée en temps réel","Validation + paiement libéré"]
+                : ["Le prestataire confirme sa venue","Suivez son arrivée en temps réel","Prestation effectuée → Validation mutuelle","Paiement libéré automatiquement"]
               ).map((s,i)=>(
                 <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:i<3?`1px solid ${C.grayLight}`:"none" }}>
                   <div style={{ width:24, height:24, borderRadius:"50%", background:`${isUrgent?C.accent:C.violet}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, color:isUrgent?C.accent:C.violet, flexShrink:0 }}>{i+1}</div>
@@ -2893,14 +2893,14 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
   const [step, setStep] = useState(0);
   const [gpsPosition, setGpsPosition] = useState(null);
 
-  // Poll mission status + prestataire GPS every 20s
+  // Poll prestation status + prestataire GPS every 20s
   useEffect(()=>{
     if(!missionId) return;
     let mounted = true;
 
     const poll = async () => {
       if(!mounted) return;
-      // Poll mission status
+      // Poll prestation status
       const { data } = await supabase.from("missions").select("status").eq("id",missionId).single();
       if(!mounted || !data) return;
       if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
@@ -2909,7 +2909,7 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
 
       // Poll GPS position
       const { data:{ session: posSession } } = await supabase.auth.getSession();
-      const posRes = await fetch("/api/missions", {
+      const posRes = await fetch("/api/prestations", {
         method:"POST",
         headers:{"Content-Type":"application/json", ...(posSession?.access_token ? {"Authorization":`Bearer ${posSession.access_token}`} : {})},
         body: JSON.stringify({ action:"get_position", mission_id:missionId }),
@@ -2925,7 +2925,7 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
     return ()=>{ mounted=false; clearInterval(iv); };
   },[missionId]);
 
-  const statusLabels = ["En route vers vous","Arrivé sur place","Mission en cours","Mission terminée"];
+  const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -2978,7 +2978,7 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
 
         {/* Timeline */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la mission</div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la prestation</div>
           <MissionTimeline status={timelineStatus} />
         </div>
 
@@ -3003,7 +3003,7 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
 
         {step===3 && (
           <Btn full variant="success" onClick={()=>onNavigate("validation",provider)} style={{ fontSize:15, padding:"16px" }}>
-            ✅ Valider la mission
+            ✅ Valider la prestation
           </Btn>
         )}
       </div>
@@ -3066,7 +3066,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
           }).eq("id", user.id);
           await supabase.from("notifications").insert({
             user_id: user.id, type:"payment",
-            title:"Paiement libéré", body:`Mission validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
+            title:"Paiement libéré", body:`Prestation validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
           });
         }
       }
@@ -3082,7 +3082,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
       <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{totalNetPresta} €</strong> ont été virés sur le compte de {p.name}.</p>
       <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
-        {["✅ Mission validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
+        {["✅ Prestation validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
         ))}
       </div>
@@ -3093,9 +3093,9 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <StepHeader title="Validation de mission" subtitle="Les deux parties doivent valider pour déclencher le paiement" onBack={()=>onNavigate("home")} />
+      <StepHeader title="Validation de prestation" subtitle="Les deux parties doivent valider pour déclencher le paiement" onBack={()=>onNavigate("home")} />
       <div style={{ padding:"22px 18px" }}>
-        {/* Info mission */}
+        {/* Info prestation */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
             <div style={{ fontSize:32 }}>{p.avatar}</div>
@@ -3117,7 +3117,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
               <span style={{ fontSize:20 }}>🏢</span>
               <div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Validation Client</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez que la mission est terminée</div>
+                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez que la prestation est terminée</div>
               </div>
             </div>
             {clientValidated ? <Badge color={C.success} small>✓ Validé</Badge> : <Badge color={C.gray} small>En attente</Badge>}
@@ -3129,13 +3129,13 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                 {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setClientRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=clientRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
               </div>
             </div>
-            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
+            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Signaler</button>
               <Btn variant="success" disabled={clientRating===0} onClick={()=>{ persistValidation("client",clientRating,clientComment); setClientValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Valider</Btn>
             </div>
           </> : (
-            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Mission validée — Note : {"★".repeat(clientRating)}</div>
+            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Prestation validée — Note : {"★".repeat(clientRating)}</div>
           )}
         </div>
 
@@ -3158,7 +3158,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                 {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setPrestaRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=prestaRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
               </div>
             </div>
-            <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
+            <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Litige</button>
               <Btn variant="success" disabled={prestaRating===0} onClick={()=>{ persistValidation("presta",prestaRating,prestaComment); setPrestaValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Confirmer</Btn>
@@ -3211,8 +3211,8 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                   const user = authData?.user;
                   const refNum = "LIT-" + new Date().getFullYear() + "-" + Math.floor(Math.random()*9000+1000);
                   await supabase.from("support_tickets").insert({
-                    subject: `Litige mission — ${refNum}`,
-                    message: `Mission avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
+                    subject: `Litige prestation — ${refNum}`,
+                    message: `Prestation avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
                     user_id: user?.id || null,
                     user_email: user?.email || null,
                     user_name: user?.user_metadata?.prenom || null,
@@ -3319,7 +3319,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       const senderDisplayName = `${meMeta.prenom || ""} ${meMeta.nom || ""}`.trim() || (senderTag === "client" ? "Un client" : "Un prestataire");
       supabase.auth.getSession().then(({ data: sd }) => {
         const token = sd?.session?.access_token;
-        fetch("/api/missions", {
+        fetch("/api/prestations", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "chat_notify", recipient_id: recipientId, sender_name: senderDisplayName, message_preview: content }),
@@ -3450,23 +3450,23 @@ export function FavoritesScreen({ onNavigate, onBack }) {
 export function FAQScreen({ onBack, role }) {
   const [open, setOpen] = useState(null);
   const faqs = role === "prestataire" ? [
-    { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin de prestataires dans votre secteur. Vous recevez des propositions de missions correspondant à votre profil et vous choisissez d'accepter ou non." },
-    { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée directement sur votre IBAN après validation de la mission par le client. Le délai habituel est de 3 à 5 jours ouvrés." },
+    { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin de prestataires dans votre secteur. Vous recevez des propositions de prestations correspondant à votre profil et vous choisissez d'accepter ou non." },
+    { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée directement sur votre IBAN après validation de la prestation par le client. Le délai habituel est de 3 à 5 jours ouvrés." },
     { q:"Quels documents dois-je fournir ?", a:"Pour être validé sur ALANE vous devez fournir : un KBIS ou extrait D1 (auto-entrepreneur), une attestation URSSAF à jour, une RC Professionnelle, et un RIB." },
     { q:"Comment changer ou upgrader mon abonnement ?", a:"Rendez-vous dans l'onglet Abonnement de votre espace prestataire. Vous pouvez changer de plan à tout moment, le changement est immédiat." },
-    { q:"Que se passe-t-il si je refuse une mission ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la mission à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
+    { q:"Que se passe-t-il si je refuse une prestation ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la prestation à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
     { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage à d'autres prestataires. Dès que 3 de vos filleuls souscrivent un abonnement Premium, vous recevez 1 mois Premium offert automatiquement." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ] : [
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des prestataires qualifiés dans votre secteur, vérifiés et assurés. Vous choisissez le profil, la date et l'horaire — ALANE s'occupe du reste." },
     { q:"Comment réserver un prestataire ?", a:"Parcourez les profils disponibles, sélectionnez celui qui correspond à vos besoins, choisissez le créneau et confirmez la réservation. Vous recevez une confirmation immédiate." },
     { q:"Le prix affiché est-il le prix final ?", a:"Oui. ALANE applique un tarif transparent : le prix affiché est le prix réel, sans frais cachés ni commission supplémentaire." },
-    { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque mission est encadrée par un contrat de prestation signé électroniquement, le prestataire travaille pour plusieurs clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
+    { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque prestation est encadrée par un contrat de prestation signé électroniquement, le prestataire travaille pour plusieurs clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
     { q:"Qu'est-ce qui me protège contre une requalification ?", a:"Trois éléments vous protègent :\n\n① Le contrat ALANE — signé électroniquement, il établit explicitement l'absence de lien de subordination et cite les critères jurisprudentiels de la Cour de Cassation.\n\n② La multi-clientèle — nos prestataires travaillent pour plusieurs entreprises via ALANE, ce qui exclut tout état de dépendance économique exclusive, critère clé dans les décisions de requalification.\n\n③ La vérification des documents — ALANE s'assure que chaque prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance).\n\nBon réflexe complémentaire : évitez de faire appel au même prestataire de manière répétée et exclusive sur le long terme." },
-    { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque mission. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la mission, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de missions." },
-    { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la mission annulée." },
-    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler une mission depuis votre espace client. Les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission." },
-    { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la mission." },
+    { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque prestation. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la prestation, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de prestations." },
+    { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la prestation annulée." },
+    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler une prestation depuis votre espace client. Les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation." },
+    { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la prestation." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ];
 
@@ -3640,16 +3640,16 @@ export function CalendarScreen() {
   const [viewYear,  setViewYear]  = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-based
   const [meta, setMeta]           = useState(null);
-  const [missions, setMissions]   = useState([]);
+  const [prestations, setMissions]   = useState([]);
   const [selected, setSelected]   = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       const u = data?.user; if (!u) return;
       setMeta(u.user_metadata || {});
-      // Charger les missions depuis la DB
+      // Charger les prestations depuis la DB
       const { data: m } = await supabase
-        .from("missions")
+        .from("prestations")
         .select("id,titre,client_nom,date_debut,date_fin,status,montant_total")
         .eq("prestataire_id", u.id)
         .in("status", ["assigned","open","completed"])
@@ -3685,9 +3685,9 @@ export function CalendarScreen() {
     (meta?.dispon_jours || []).map(j => JOURS_TO_DOW[j]).filter(x => x !== undefined)
   );
 
-  // Missions sur ce mois
+  // Prestations sur ce mois
   const missionsByDay = {};
-  missions.forEach(m => {
+  prestations.forEach(m => {
     if (!m.date_debut) return;
     const d = new Date(m.date_debut);
     if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
@@ -3703,8 +3703,8 @@ export function CalendarScreen() {
   const MONTH_NAMES = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   const moisLabel = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
 
-  // Missions du mois sélectionné à afficher
-  const moisMissions = missions.filter(m => {
+  // Prestations du mois sélectionné à afficher
+  const moisMissions = prestations.filter(m => {
     if (!m.date_debut) return false;
     const d = new Date(m.date_debut);
     return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
@@ -3719,7 +3719,7 @@ export function CalendarScreen() {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>Planning</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et missions</p>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et prestations</p>
       </div>
 
       <div style={{ padding:"18px 18px 0" }}>
@@ -3732,7 +3732,7 @@ export function CalendarScreen() {
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <div style={{ width:10, height:10, borderRadius:3, background:C.violet }} />
-              <span style={{ color:C.textSub, fontSize:11 }}>Mission</span>
+              <span style={{ color:C.textSub, fontSize:11 }}>Prestation</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold }} />
@@ -3792,23 +3792,23 @@ export function CalendarScreen() {
               <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderTop:i>0?`1px solid ${C.border}`:"none" }}>
                 <div style={{ width:4, height:36, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
                 <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Mission"}</div>
+                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Prestation"}</div>
                   <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                 </div>
                 <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
               </div>
             )) : (
               <div style={{ color:C.textMuted, fontSize:12 }}>
-                {availDow.has(dow(selected)) ? "✅ Disponible — aucune mission prévue" : "❌ Non disponible selon vos préférences"}
+                {availDow.has(dow(selected)) ? "✅ Disponible — aucune prestation prévue" : "❌ Non disponible selon vos préférences"}
               </div>
             )}
           </div>
         )}
 
-        {/* Missions du mois */}
+        {/* Prestations du mois */}
         {moisMissions.length > 0 ? (
           <>
-            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Missions de {MONTH_NAMES[viewMonth]}</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Prestations de {MONTH_NAMES[viewMonth]}</div>
             {moisMissions.map((m,i) => {
               const d = new Date(m.date_debut);
               const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
@@ -3816,7 +3816,7 @@ export function CalendarScreen() {
                 <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:4, height:44, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Mission"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
@@ -3830,8 +3830,8 @@ export function CalendarScreen() {
         ) : (
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:14, padding:"28px", textAlign:"center" }}>
             <div style={{ fontSize:32, marginBottom:10 }}>📅</div>
-            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucune mission ce mois</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos missions confirmées apparaîtront ici une fois planifiées.</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucune prestation ce mois</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos prestations confirmées apparaîtront ici une fois planifiées.</div>
           </div>
         )}
       </div>
@@ -3938,7 +3938,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
                 </div>
               </div>
               <Btn full onClick={()=>setStep("configure")} style={{ padding:"13px", fontSize:14 }}>
-                Configurer la mission →
+                Configurer la prestation →
               </Btn>
             </div>
           )}
@@ -3958,7 +3958,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
           </div>
 
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Détails de la mission</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Détails de la prestation</div>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Date</label>
               <input type="date" value={date} onChange={e=>setDate(e.target.value)} placeholder="AAAA-MM-JJ" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
@@ -4013,23 +4013,23 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
-    const missions = planSettings.limits?.[p.id] ?? p.missions;
-    return { ...p, price, missions };
+    const prestations = planSettings.limits?.[p.id] ?? p.missions;
+    return { ...p, price, prestations };
   });
 
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
-    { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre mission en détail.", color:C.indigo },
-    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la mission soit validée par les deux parties.", color:C.accentGold },
-    { icon:"✅", title:"Validez & notez", desc:"Une fois la mission terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
+    { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre prestation en détail.", color:C.indigo },
+    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la prestation soit validée par les deux parties.", color:C.accentGold },
+    { icon:"✅", title:"Validez & notez", desc:"Une fois la prestation terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
 
   const prestaSteps = [
     { icon:"📝", title:"Inscrivez-vous", desc:"Créez votre profil auto-entrepreneur en quelques minutes. Renseignez vos métiers, vos documents et vos disponibilités.", color:C.accent },
-    { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de missions.", color:C.accentGold },
-    { icon:"📋", title:"Acceptez des missions", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
-    { icon:"💶", title:"Encaissez", desc:"Après validation mutuelle de la mission, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
+    { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de prestations.", color:C.accentGold },
+    { icon:"📋", title:"Acceptez des prestations", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
+    { icon:"💶", title:"Encaissez", desc:"Après validation mutuelle de la prestation, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;
@@ -4055,7 +4055,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire" ? "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la mission"}
+                {role==="prestataire" ? "10 prestations gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
               </div>
             </div>
           </div>
@@ -4081,7 +4081,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                     </div>
                     {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
                     <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
-                      {plan.missions>=999 ? "Illimité" : `${plan.missions} missions`}
+                      {plan.missions>=999 ? "Illimité" : `${plan.missions} prestations`}
                     </div>
                   </div>
                 ))}
@@ -4100,7 +4100,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:4 }}>Tarification transparente</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
-                Les prestataires ALANE sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la mission.
+                Les prestataires ALANE sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la prestation.
               </div>
             </div>
           </div>
@@ -4196,7 +4196,7 @@ export function ClientOnboarding({ onComplete, onBack }) {
             {[
               {id:"carte",      icon:"💳", label:"Carte bancaire",          sub:"Visa, Mastercard, Amex"          },
               {id:"virement",   icon:"🏦", label:"Virement SEPA",            sub:"Délai 1-2 jours"                 },
-              {id:"prelevement",icon:"🔄", label:"Prélèvement automatique",  sub:"Pour les missions récurrentes"   },
+              {id:"prelevement",icon:"🔄", label:"Prélèvement automatique",  sub:"Pour les prestations récurrentes"   },
             ].map(m=>(
               <div key={m.id} onClick={()=>setFacturation({...facturation,mode:m.id})} style={{
                 border:`1px solid ${facturation.mode===m.id ? C.violet+"88" : C.border}`,
@@ -4322,7 +4322,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
       <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:20 }}>✍️</div>
       <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Contrat signé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto 24px" }}>
-        Le contrat <strong>{contractNum}</strong> est signé électroniquement et archivé. La mission peut démarrer.
+        Le contrat <strong>{contractNum}</strong> est signé électroniquement et archivé. La prestation peut démarrer.
       </p>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", marginBottom:28, width:"100%", maxWidth:300, textAlign:"left" }}>
         {[
@@ -4330,7 +4330,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
           "📁 Archivé dans vos espaces respectifs",
           "⏱️ Horodaté et certifié",
           "🔒 Fonds sécurisés via Stripe",
-          "✅ Mission autorisée à démarrer",
+          "✅ Prestation autorisée à démarrer",
         ].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:12, padding:"5px 0", borderBottom:i<4?"1px solid rgba(255,255,255,0.15)":"none" }}>{s}</div>
         ))}
@@ -4342,39 +4342,39 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const articles = [
     {
       title:"Article 1 — Objet du contrat",
-      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la mission : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
+      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
     },
     {
       title:"Article 2 — Indépendance du prestataire",
-      content:`Le Prestataire intervient en tant que travailleur indépendant au sens de l'article L8221-6 du Code du travail, lequel établit une présomption de non-salariat pour les personnes immatriculées en tant qu'auto-entrepreneur.\n\nConformément aux critères jurisprudentiels de la Chambre Sociale de la Cour de Cassation (notamment Cass. Soc. 13 novembre 1996 et Cass. Soc. 25 février 2003), la qualification de contrat de travail requiert la réunion cumulative de trois conditions : l'exécution d'un travail, le versement d'une rémunération, et l'existence d'un lien de subordination juridique caractérisé. Ce dernier élément, seul discriminant, est expressément exclu du présent accord.\n\n• Le Prestataire n'est soumis à aucune directive du Client sur les moyens d'exécution, uniquement sur les résultats attendus.\n• Le Prestataire organise librement son intervention dans le cadre horaire de la mission.\n• Le Prestataire exerce son activité auprès de plusieurs clients via la plateforme ALANE, ce qui exclut tout état de dépendance économique exclusive.\n• Le Prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance fournie à ALANE).\n• ALANE intervient en qualité de plateforme d'intermédiation et ne saurait être qualifiée d'employeur au sens du Code du travail.\n\nAucune requalification en contrat de travail ne saurait résulter du présent accord. Les parties reconnaissent expressément que leur relation est exclusivement de nature commerciale.`
+      content:`Le Prestataire intervient en tant que travailleur indépendant au sens de l'article L8221-6 du Code du travail, lequel établit une présomption de non-salariat pour les personnes immatriculées en tant qu'auto-entrepreneur.\n\nConformément aux critères jurisprudentiels de la Chambre Sociale de la Cour de Cassation (notamment Cass. Soc. 13 novembre 1996 et Cass. Soc. 25 février 2003), la qualification de contrat de travail requiert la réunion cumulative de trois conditions : l'exécution d'un travail, le versement d'une rémunération, et l'existence d'un lien de subordination juridique caractérisé. Ce dernier élément, seul discriminant, est expressément exclu du présent accord.\n\n• Le Prestataire n'est soumis à aucune directive du Client sur les moyens d'exécution, uniquement sur les résultats attendus.\n• Le Prestataire organise librement son intervention dans le cadre horaire de la prestation.\n• Le Prestataire exerce son activité auprès de plusieurs clients via la plateforme ALANE, ce qui exclut tout état de dépendance économique exclusive.\n• Le Prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance fournie à ALANE).\n• ALANE intervient en qualité de plateforme d'intermédiation et ne saurait être qualifiée d'employeur au sens du Code du travail.\n\nAucune requalification en contrat de travail ne saurait résulter du présent accord. Les parties reconnaissent expressément que leur relation est exclusivement de nature commerciale.`
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
-      content:`Le Prestataire s'engage à :\n• Exécuter la mission avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et ALANE de tout empêchement dans un délai minimum de 4h avant la mission\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de mission\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
+      content:`Le Prestataire s'engage à :\n• Exécuter la prestation avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et ALANE de tout empêchement dans un délai minimum de 4h avant la prestation\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de prestation\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
     },
     {
       title:"Article 5 — Obligations du client",
-      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la mission\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la mission dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme ALANE pour des missions futures avec le même prestataire`
+      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la prestation\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la prestation dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme ALANE pour des prestations futures avec le même prestataire`
     },
     {
       title:"Article 6 — Politique d’annulation",
-      content:`Annulation par le Client :\n• Plus de 48h avant la mission : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, ALANE propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine mission\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, ALANE s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
+      content:`Annulation par le Client :\n• Plus de 48h avant la prestation : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, ALANE propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine prestation\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, ALANE s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
     },
     {
       title:"Article 7 — Responsabilité et assurance",
-      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa mission et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nALANE agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de mission. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
+      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa prestation et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nALANE agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de prestation. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
     },
     {
       title:"Article 8 — Confidentialité",
-      content:`Le Prestataire s'engage à maintenir strictement confidentielle toute information relative à l'activité, aux clients, aux procédés, aux données ou à la stratégie du Client dont il aurait connaissance dans le cadre de la mission.\n\nCette obligation de confidentialité s'applique pendant toute la durée de la mission et pendant une période de 2 ans suivant sa fin, sans limitation géographique.\n\nEn cas de violation de cette clause, le Client pourra réclamer des dommages et intérêts proportionnels au préjudice subi.`
+      content:`Le Prestataire s'engage à maintenir strictement confidentielle toute information relative à l'activité, aux clients, aux procédés, aux données ou à la stratégie du Client dont il aurait connaissance dans le cadre de la prestation.\n\nCette obligation de confidentialité s'applique pendant toute la durée de la prestation et pendant une période de 2 ans suivant sa fin, sans limitation géographique.\n\nEn cas de violation de cette clause, le Client pourra réclamer des dommages et intérêts proportionnels au préjudice subi.`
     },
     {
       title:"Article 9 — Propriété intellectuelle",
-      content:`Toute création, production ou livrable réalisé par le Prestataire dans le cadre de la mission appartient intégralement au Client, sauf accord contraire stipulé par écrit.\n\nLe Prestataire cède au Client l'intégralité des droits patrimoniaux sur les œuvres créées dans le cadre de la mission, pour toute exploitation, sur tous supports, pour le monde entier et pour toute la durée légale de protection.`
+      content:`Toute création, production ou livrable réalisé par le Prestataire dans le cadre de la prestation appartient intégralement au Client, sauf accord contraire stipulé par écrit.\n\nLe Prestataire cède au Client l'intégralité des droits patrimoniaux sur les œuvres créées dans le cadre de la prestation, pour toute exploitation, sur tous supports, pour le monde entier et pour toute la durée légale de protection.`
     },
     {
       title:"Article 10 — Règlement des litiges",
@@ -4393,7 +4393,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
-            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>✍️ Contrat de mission</h2>
+            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>✍️ Contrat de prestation</h2>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>{contractNum} · Généré le {today}</p>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -4426,9 +4426,9 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 <div style={{ fontSize:11, color:C.textSub }}>N° {contractNum} · Établi le {today}</div>
               </div>
 
-              {/* Résumé mission */}
+              {/* Résumé prestation */}
               <div style={{ background:C.bg, borderRadius:12, padding:"14px", marginBottom:16 }}>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>Résumé de la mission</div>
+                <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>Résumé de la prestation</div>
                 {[
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
@@ -4509,7 +4509,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la mission.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la prestation.
               </div>
             </div>
           </div>
@@ -4567,7 +4567,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>
                     {prestaSignedAt
                       ? `Le ${new Date(prestaSignedAt).toLocaleDateString("fr-FR")} à ${new Date(prestaSignedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée`
-                      : "Signé lors de l'acceptation de la mission · IP masquée · Horodatée"}
+                      : "Signé lors de l'acceptation de la prestation · IP masquée · Horodatée"}
                   </div>
                 </div>
               ) : (
@@ -4575,7 +4575,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <span style={{ fontSize:18 }}>⏳</span>
                   <div>
                     <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
-                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la prestation</div>
                   </div>
                 </div>
               )}
@@ -4597,14 +4597,14 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                      !clientSigned ? "En attente de la signature client" :
                      "En attente de la signature prestataire"}
                   </div>
-                  <div style={{ color:C.textSub, fontSize:11, marginTop:4 }}>La mission ne peut démarrer qu'après signature des deux parties</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginTop:4 }}>La prestation ne peut démarrer qu'après signature des deux parties</div>
                 </div>
               )}
             </div>
 
             {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la prestation.
             </div>
           </div>
         )}
@@ -4621,9 +4621,9 @@ export function LegalScreen({ type, onBack }) {
       sections:[
         { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme ALANE, service de mise en relation entre clients et prestataires de services. En utilisant ALANE, vous acceptez sans réserve les présentes conditions." },
         { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
-        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
-        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la mission et couvrent les coûts de traitement et de la plateforme." },
-        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la mission." },
+        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la prestation incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la prestation et couvrent les coûts de traitement et de la plateforme." },
+        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la prestation." },
         { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
       ]
@@ -4633,8 +4633,8 @@ export function LegalScreen({ type, onBack }) {
       icon:"🔒",
       sections:[
         { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : direction@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
-        { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des missions." },
-        { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de mission, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
+        { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des prestations." },
+        { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de prestation, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
         { title:"4. Durée de conservation", text:"Comptes actifs : données conservées pendant toute la durée de la relation contractuelle. Comptes supprimés : données effacées sous 30 jours, à l’exception des données comptables obligatoires conservées 10 ans (art. L123-22 Code de commerce). Logs de connexion : 12 mois. Données de paiement : conservées par Stripe selon leurs propres politiques." },
         { title:"5. Destinataires des données", text:"Vos données peuvent être partagées avec : Supabase Inc. (USA) — hébergement base de données, couvert par les Clauses Contractuelles Types CE ; Stripe Inc. (USA) — traitement des paiements, certifié PCI-DSS, couvert par les CCT ; Resend Inc. (USA) — envoi d’emails transactionnels, couvert par les CCT. Aucune vente de données à des tiers à des fins commerciales." },
         { title:"6. Transferts hors Union Européenne", text:"Certains sous-traitants sont établis aux États-Unis (Supabase, Stripe, Resend). Ces transferts sont encadrés par les Clauses Contractuelles Types approuvées par la Commission Européenne, offrant un niveau de protection adéquat à vos données." },
@@ -4648,12 +4648,12 @@ export function LegalScreen({ type, onBack }) {
       title:"Conditions Générales de Prestation de Services",
       icon:"📋",
       sections:[
-        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
-        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
-        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des prestations." },
+        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les prestations conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
+        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les prestations dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
         { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
-        { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
-        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+        { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation. En cas de litige, ALANE propose une médiation." },
+        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
         { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
       ]
@@ -4696,10 +4696,10 @@ export function LegalScreen({ type, onBack }) {
   );
 }
 
-export function PayslipScreen({ provider, mission, onBack }) {
+export function PayslipScreen({ provider, prestation, onBack }) {
   const p = provider;
   if (!p) return null;
-  const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
+  const m = prestation || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
   const brut = m.tarifNet * m.hours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
   const [downloaded, setDownloaded] = useState(false);
@@ -4724,7 +4724,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:40 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Attestation de mission</h2>
+        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Attestation de prestation</h2>
         <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>{num}</p>
       </div>
 
@@ -4734,7 +4734,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16, paddingBottom:16, borderBottom:`1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:C.violet, fontFamily:font.display }}>ALANE</div>
-              <div style={{ fontSize:10, color:C.textSub }}>Attestation de mission</div>
+              <div style={{ fontSize:10, color:C.textSub }}>Attestation de prestation</div>
             </div>
             <div style={{ textAlign:"right" }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.text }}>{num}</div>
@@ -4755,11 +4755,11 @@ export function PayslipScreen({ provider, mission, onBack }) {
             </div>
           </div>
 
-          {/* Détails mission */}
+          {/* Détails prestation */}
           <div style={{ marginBottom:14 }}>
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>DÉTAILS DE LA MISSION</div>
             {[
-              ["Client",m.client],["Mission",m.role],["Date",m.date],["Durée",`${m.hours} heures`],["Lieu","Paris, France"],
+              ["Client",m.client],["Prestation",m.role],["Date",m.date],["Durée",`${m.hours} heures`],["Lieu","Paris, France"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{l}</span>
@@ -4826,7 +4826,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
 export function MissionHistoryScreen({ onNavigate, onBack }) {
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
-  const [missions, setMissions]   = useState([]);
+  const [prestations, setMissions]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
   const [candidatures, setCandidatures] = useState([]);
@@ -4851,7 +4851,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
       if (token) setAccessToken(token);
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "list_client" }),
@@ -4897,7 +4897,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "list_client" }),
@@ -4911,10 +4911,10 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   useEffect(() => {
     if (tab !== "prestataires") return;
-    const withPresta = missions.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
+    const withPresta = prestations.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
     const byPresta = {};
     for (const m of withPresta) {
-      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
+      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, prestations: [] };
       byPresta[m.prestataire_id].missions.push(m);
     }
     const ids = Object.keys(byPresta);
@@ -4933,26 +4933,26 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       };
     }
     setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
-  }, [tab, missions]);
+  }, [tab, prestations]);
 
-  const openCandidatures = async (mission) => {
-    setSelected(mission);
+  const openCandidatures = async (prestation) => {
+    setSelected(prestation);
     setCompletedResult(null);
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const res = await fetch("/api/missions", {
+    const res = await fetch("/api/prestations", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
+      body: JSON.stringify({ action: "get_candidatures", mission_id: prestation.id }),
     });
     const data = await res.json();
     const cands = Array.isArray(data) ? data : [];
     setCandidatures(cands);
     // Mettre à jour le nom prestataire depuis get_candidatures, avec fallback sur prestataire_prenom/nom
-    if (mission.prestataire_id) {
+    if (prestation.prestataire_id) {
       const accepted = cands.find(c => c.status === "accepted");
-      const prenom = accepted?.prenom || mission.prestataire_prenom || "";
-      const nom    = accepted?.nom    || mission.prestataire_nom    || "";
+      const prenom = accepted?.prenom || prestation.prestataire_prenom || "";
+      const nom    = accepted?.nom    || prestation.prestataire_nom    || "";
       if (prenom || nom) {
         const name = [prenom, nom].filter(Boolean).join(" ");
         const initials = [prenom?.[0], nom?.[0]].filter(Boolean).join("").toUpperCase() || "P";
@@ -4967,7 +4967,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
@@ -4992,7 +4992,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "complete", mission_id: selected.id }),
@@ -5014,7 +5014,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "reject", candidature_id: c.id }),
@@ -5029,7 +5029,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "close", mission_id: missionId }),
@@ -5048,7 +5048,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const missionDate = selected.date ? new Date(selected.date + "T" + (selected.heure_debut || "00:00")) : null;
       const hoursUntil = missionDate ? (missionDate - Date.now()) / 3600000 : Infinity;
       const penalty = !selected.stripe_payment_intent ? 0 : hoursUntil >= 24 ? 0 : 100;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "cancel_client", mission_id: selected.id, penalty }),
@@ -5068,7 +5068,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/missions", {
+      const res = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id }),
@@ -5084,7 +5084,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
   const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché", cancelled:"Annulée" };
   const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
-  const filtered = tab === "all" ? missions : tab === "open" ? missions.filter(m => m.status === "open" || m.status === "needs_replacement") : missions.filter(m => m.status === tab);
+  const filtered = tab === "all" ? prestations : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement") : prestations.filter(m => m.status === tab);
 
   if (selected) {
     const sector = SECTORS.find(s => s.id === selected.sector);
@@ -5180,7 +5180,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
               <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Prestataire désisté</div>
               <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>
-                Votre paiement est conservé et sécurisé. Nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte la mission.
+                Votre paiement est conservé et sécurisé. Nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte la prestation.
               </div>
               <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
             </div>
@@ -5189,19 +5189,19 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Prestation terminée ?</div>
                 <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-                  Le prestataire a confirmé la fin de mission. En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+                  Le prestataire a confirmé la fin de prestation. En validant, vous confirmez que la prestation s'est bien déroulée. Le cashback sera crédité sur votre wallet.
                 </div>
                 <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
-                  {completing ? "Validation…" : "✅ Valider la mission"}
+                  {completing ? "Validation…" : "✅ Valider la prestation"}
                 </button>
               </div>
             ) : (
               <div style={{ marginTop:20, background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:14, padding:"16px" }}>
                 <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
                 <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
-                  Le prestataire n'a pas encore confirmé la fin de mission. Vous pourrez valider dès qu'il aura confirmé de son côté. La mission est automatiquement validée sous 24h si le prestataire a confirmé.
+                  Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. La prestation est automatiquement validée sous 24h si le prestataire a confirmé.
                 </div>
               </div>
             )
@@ -5211,7 +5211,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             <div style={{ marginTop:20 }}>
               <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center", marginBottom:12 }}>
                 <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Prestation validée !</div>
                 <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
                   Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
                 </div>
@@ -5232,7 +5232,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           {selected.status === "completed" && !completedResult && (
             <div style={{ marginTop:20 }}>
               <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center", marginBottom:10 }}>
-                <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
+                <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Prestation terminée et validée</div>
                 {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
               </div>
               {selected.prestataire_id && !ratedMissions.has(selected.id) && (
@@ -5242,7 +5242,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </button>
               )}
               {ratedMissions.has(selected.id) && (
-                <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette mission</div>
+                <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette prestation</div>
               )}
             </div>
           )}
@@ -5273,7 +5273,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
           {selected.status === "open" && (
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              Clôturer la mission
+              Clôturer la prestation
             </button>
           )}
 
@@ -5288,18 +5288,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             const prorata   = billedH * Number(selected.tarif_horaire || 0);
 
             return (<>
-              {/* Mission pas encore démarrée : annulation classique */}
+              {/* Prestation pas encore démarrée : annulation classique */}
               {(selected.status === "open" || selected.status === "pending_acceptance" ||
                 (selected.status === "assigned" && !isStarted && !isEnded)) && (
                 <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ✕ Annuler la mission
+                  ✕ Annuler la prestation
                 </button>
               )}
 
-              {/* Mission en cours : interrompre avec prorata */}
+              {/* Prestation en cours : interrompre avec prorata */}
               {selected.status === "assigned" && isStarted && !isEnded && (
                 <button onClick={()=>setShowStopConfirm(true)} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ⏹ Interrompre la mission en cours
+                  ⏹ Interrompre la prestation en cours
                 </button>
               )}
 
@@ -5308,7 +5308,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
-                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la mission ?</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
                     {selected.stripe_payment_intent ? (
                       (() => {
                         const hoursUntil = mStart ? (mStart.getTime() - Date.now()) / 3600000 : Infinity;
@@ -5317,7 +5317,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                           : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
                       })()
                     ) : (
-                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette mission sera supprimée. Aucun paiement n'a été effectué.</div>
+                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette prestation sera supprimée. Aucun paiement n'a été effectué.</div>
                     )}
                     <div style={{ display:"flex", gap:10 }}>
                       <button onClick={()=>setShowCancelConfirm(false)} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
@@ -5334,8 +5334,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
-                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la mission ?</div>
-                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La mission est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la prestation ?</div>
+                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La prestation est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
                     <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"16px", marginBottom:18 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                         <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Durée effectuée</span>
@@ -5373,8 +5373,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes missions</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} mission{missions.length!==1?"s":""} au total</p>
+        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes prestations</h2>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{prestations.length} prestation{prestations.length!==1?"s":""} au total</p>
       </div>
       <div style={{ padding:"16px 18px 0" }}>
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
@@ -5386,8 +5386,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         {!loading && tab !== "prestataires" && filtered.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune mission</div>
-            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première mission depuis un secteur.</div>
+            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune prestation</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première prestation depuis un secteur.</div>
           </div>
         )}
         {tab === "prestataires" && (
@@ -5396,7 +5396,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>👤</div>
                 <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucun prestataire</div>
-                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières missions terminées.</div>
+                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières prestations terminées.</div>
               </div>
             )}
             {prestaHistoire.map((ph) => {
@@ -5419,7 +5419,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                     <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{ph.name}</div>
                     {metier && <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>{metier}</div>}
                     <div style={{ color:C.textMuted, fontSize:12, marginTop:2 }}>
-                      {nbMissions} mission{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
+                      {nbMissions} prestation{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
                     </div>
                     <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>Voir le profil →</div>
                   </div>
@@ -5461,7 +5461,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ padding:"13px 14px", display:"flex", gap:12, alignItems:"flex-start" }}>
                 <div style={{ width:46, height:46, borderRadius:13, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Prestation"}</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                     {m.date && (
                       <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
@@ -5527,7 +5527,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           const rate = getCashbackTier(profile?.missions_completed_month || 0).rate;
           const cashback = Math.round(montant * rate * 100) / 100;
           return {
-            mission: m.metier || sector?.label || "Mission",
+            prestation: m.metier || sector?.label || "Prestation",
             date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
             amount: montant,
             cashback,
@@ -5586,7 +5586,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
             { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
-            { label:"Ce mois",       value:`${w.missionsThisMonth} mission${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
+            { label:"Ce mois",       value:`${w.missionsThisMonth} prestation${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:`${s.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17 }}>{s.icon}</div>
@@ -5612,7 +5612,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
           {nextTier ? (
             <p style={{ color:C.textSub, fontSize:12 }}>
-              Encore <strong style={{ color:C.text }}>{missionsToNext} mission{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
+              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
               <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({(nextTier.rate*100).toFixed(0)}%)</strong>
             </p>
           ) : (
@@ -5640,7 +5640,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         {!wLoading && history.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"24px", textAlign:"center", marginBottom:12 }}>
             <div style={{ fontSize:28, marginBottom:8 }}>💸</div>
-            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première mission pour gagner du cashback.</div>
+            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première prestation pour gagner du cashback.</div>
           </div>
         )}
         {history.map((h,i)=>(
@@ -5649,8 +5649,8 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
               {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.mission}</div>
-              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Mission {h.amount} €</div>
+              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {h.amount} €</div>
             </div>
             <div style={{ textAlign:"right", flexShrink:0 }}>
               <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
@@ -5665,15 +5665,15 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
         {/* Info expiration */}
         <div style={{ background:"#162547", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque mission. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
+          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque prestation. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
         </div>
       </div>
     </div>
   );
 }
 
-export const NOTIF_ICONS = { payment:"💶", mission:"📋", urgent:"🚨", cashback:"💰", rating:"⭐", reminder:"⏰", contract:"✍️", system:"🔔" };
-export const NOTIF_COLORS = { payment:C.success, mission:C.violet, urgent:C.accent, cashback:C.accentGold, rating:C.accentGold, reminder:C.textSub, contract:C.violet, system:C.textMuted };
+export const NOTIF_ICONS = { payment:"💶", prestation:"📋", urgent:"🚨", cashback:"💰", rating:"⭐", reminder:"⏰", contract:"✍️", system:"🔔" };
+export const NOTIF_COLORS = { payment:C.success, prestation:C.violet, urgent:C.accent, cashback:C.accentGold, rating:C.accentGold, reminder:C.textSub, contract:C.violet, system:C.textMuted };
 
 export function timeAgo(ts) {
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
@@ -5736,7 +5736,7 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
         // Le client voit un message du prestataire : ref_id = prestataire_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
       }
-    } else if (n.type === "mission") {
+    } else if (n.type === "prestation") {
       onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
       onNavigate(isPresta ? "p_missions" : "search_filters");
@@ -5798,11 +5798,11 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
 
 export function MissionTimeline({ status="in_progress" }) {
   const steps = [
-    { id:"booked",    label:"Réservé",       icon:"📋", desc:"Mission confirmée"          },
+    { id:"booked",    label:"Réservé",       icon:"📋", desc:"Prestation confirmée"          },
     { id:"signed",    label:"Contrat signé", icon:"✍️", desc:"Les deux parties ont signé" },
     { id:"enroute",   label:"En route",      icon:"🚗", desc:"Le prestataire arrive"       },
-    { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Mission en cours"            },
-    { id:"done",      label:"Terminé",       icon:"✅", desc:"Mission effectuée"           },
+    { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Prestation en cours"            },
+    { id:"done",      label:"Terminé",       icon:"✅", desc:"Prestation effectuée"           },
     { id:"paid",      label:"Payé",          icon:"💶", desc:"Paiement libéré"             },
   ];
   const activeIdx = steps.findIndex(s=>s.id===status);
@@ -5870,7 +5870,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Noter la mission</h2>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Noter la prestation</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Votre avis aide la communauté ALANE</p>
       </div>
 
@@ -5886,7 +5886,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
 
         {/* Étoiles géantes */}
         <div style={{ textAlign:"center", marginBottom:24 }}>
-          <p style={{ color:C.textSub, fontSize:13, marginBottom:14, letterSpacing:0.3 }}>Comment s'est passée la mission ?</p>
+          <p style={{ color:C.textSub, fontSize:13, marginBottom:14, letterSpacing:0.3 }}>Comment s'est passée la prestation ?</p>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:10 }}>
             {[1,2,3,4,5].map(i => (
               <span key={i}
@@ -5946,7 +5946,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
               const { data: mCheck } = await supabase.from("missions")
                 .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
               if(!mCheck?.length) {
-                setRatingError("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
+                setRatingError("Vous ne pouvez noter un prestataire qu'après une prestation complétée ensemble.");
                 setSaving(false); return;
               }
             }
@@ -6235,15 +6235,15 @@ export function AbonnementPrestaScreen({ onBack }) {
     const features = [...p.features];
     if (limit != null) {
       if (p.id === "elite") {
-        features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
+        features[0] = limit >= 999 ? "Prestations illimitées" : `${limit} prestations/mois`;
       } else {
         const launchSuffix = p.id === "free" && launchActive ? " (10 pendant le lancement)" : "";
-        features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
       }
     }
     return {
       ...p,
-      ...(limit != null ? { missions: limit } : {}),
+      ...(limit != null ? { prestations: limit } : {}),
       ...(monthlyPrice != null ? { price: monthlyPrice } : {}),
       features,
     };
@@ -6320,7 +6320,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 missions/mois gratuites</strong>.<br/>Plan Gratuit : 2 missions/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 prestations/mois gratuites</strong>.<br/>Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
               </div>
             </div>
           </div>
@@ -6358,11 +6358,11 @@ export function AbonnementPrestaScreen({ onBack }) {
                 <div style={{ marginTop:10, background:plan.color+"10", border:`1px solid ${plan.color}30`, borderRadius:10, padding:"9px 12px" }}>
                   <div style={{ fontSize:11, color:C.textSub, marginBottom:4 }}>💡 Rentabilité estimée</div>
                   <div style={{ fontSize:12, color:C.text, lineHeight:1.6 }}>
-                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère mission</strong><br/>
+                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère prestation</strong><br/>
                     <span style={{ color:C.textSub, fontSize:11 }}>
                       {plan.id==="premium"
-                        ? `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€`
-                        : `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€ · Position #1 + Manager dédié`
+                        ? `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€`
+                        : `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€ · Position #1 + Manager dédié`
                       }
                     </span>
                   </div>
@@ -6371,7 +6371,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               {plan.missions < 999 && active && (
                 <div style={{ marginTop:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub, marginBottom:4 }}>
-                    <span>Missions ce mois</span>
+                    <span>Prestations ce mois</span>
                     <span style={{ color: missionsUsed >= plan.missions ? C.danger : C.success }}>{missionsUsed} / {plan.missions}</span>
                   </div>
                   <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:4 }}>
@@ -6410,7 +6410,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const mission = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
+    const prestation = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -6421,11 +6421,11 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           heure_debut: startTime || null,
           recurrence: recurrence || null,
         }).select().single();
-        if(data) mission.id = data.id;
+        if(data) prestation.id = data.id;
       }
-    } catch(e){ console.error("mission insert error", e); }
+    } catch(e){ console.error("prestation insert error", e); }
     setSending(false);
-    onSubmit(mission);
+    onSubmit(prestation);
   };
 
   return (
@@ -6433,7 +6433,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:32, marginBottom:6 }}>{s.icon||"📢"}</div>
-        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Commander une mission</h2>
+        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Commander une prestation</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{s.label}{preselectedJob ? ` · ${preselectedJob}` : ""} · {matchCount} prestataire{matchCount>1?"s":""} disponible{matchCount>1?"s":""}</p>
       </div>
 
@@ -6478,7 +6478,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         )}
 
-        <Input label="Date de la mission *" type="date" placeholder="AAAA-MM-JJ" value={date} onChange={e=>setDate(e.target.value)} />
+        <Input label="Date de la prestation *" type="date" placeholder="AAAA-MM-JJ" value={date} onChange={e=>setDate(e.target.value)} />
         <Input label="Heure de début *" type="time" placeholder="HH:MM" value={startTime} onChange={e=>setStartTime(e.target.value)} />
 
         <div style={{ marginBottom:16 }}>
@@ -6507,11 +6507,11 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         </div>
 
-        <AddressAutocomplete label="Adresse de la mission *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
+        <AddressAutocomplete label="Adresse de la prestation *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
         <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
 
         <div style={{ marginBottom:20 }}>
-          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Description de la mission <span style={{ fontWeight:400 }}>(optionnel)</span></label>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Description de la prestation <span style={{ fontWeight:400 }}>(optionnel)</span></label>
           <textarea placeholder="Tâches attendues, matériel fourni, accès, consignes…" value={description} onChange={e=>setDesc(e.target.value)}
             style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text, background:"#0D1B3E" }} />
         </div>
@@ -6524,8 +6524,8 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   );
 }
 
-export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
-  const m = mission || {};
+export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
+  const m = prestation || {};
   const { providers } = useProviders();
   const [notifiedCount, setNotifiedCount] = useState(0);
   const [candidatures, setCandidatures]   = useState([]);
@@ -6549,7 +6549,7 @@ export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
     setBroadcasted(true);
     supabase.auth.getSession().then(({ data:sd }) => {
       const token = sd?.session?.access_token;
-      fetch("/api/missions", {
+      fetch("/api/prestations", {
         method:"POST",
         headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
         body: JSON.stringify({ action:"broadcast", mission_id:m.id, sector:m.sector?.id||m.sector }),
@@ -6699,16 +6699,16 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
 
   const clientSteps = [
     { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
-    { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
-    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
-    { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
+    { icon:"📋", title:"Publiez votre prestation", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la prestation. Zéro risque.", color:C.success },
+    { icon:"⭐", title:"Validez et notez", desc:"Une fois la prestation terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
   const prestaSteps = [
-    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
+    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de prestations.", color:C.violet },
     { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
-    { icon:"📦", title:"Recevez des missions", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque mission proposée. Votre plan définit votre quota mensuel.", color:C.success },
-    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les missions proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
+    { icon:"📦", title:"Recevez des prestations", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque prestation proposée. Votre plan définit votre quota mensuel.", color:C.success },
+    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les prestations proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;

@@ -611,18 +611,18 @@ export function BOComptes() {
                       </div>
                     );
                   })}
-                  {/* Bouton valider l'accès aux missions */}
+                  {/* Bouton valider l'accès aux prestations */}
                   <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                     {p.missions_enabled ? (
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Missions activées</div>
+                        <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Prestations activées</div>
                         <button onClick={()=>handleAction(p.id,"disable_missions")} disabled={!!actioning} style={{ padding:"7px 14px", borderRadius:10, border:`1px solid rgba(240,80,80,0.4)`, background:"rgba(240,80,80,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
                           {actioning===p.id+"disable_missions" ? "…" : "🚫 Désactiver"}
                         </button>
                       </div>
                     ) : (
                       <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
-                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux missions"}
+                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux prestations"}
                       </button>
                     )}
                   </div>
@@ -1081,7 +1081,7 @@ function StripeStatsCard() {
           <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>📊</div>
             <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{fmt(stats.last30days.volume)} €</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> missions</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> prestations</div>
           </div>
           <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>💰</div>
@@ -1127,10 +1127,10 @@ export function BOExportMissions() {
     setExporting(true);
     try {
       const r = await boFetch({ action: "list_missions_export" });
-      const missions = await r.json();
+      const prestations = await r.json();
       const COMMISSION = 0.20;
-      const rows = [["ID","Date création","Date mission","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
-      (Array.isArray(missions) ? missions : []).forEach(m => {
+      const rows = [["ID","Date création","Date prestation","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
+      (Array.isArray(prestations) ? prestations : []).forEach(m => {
         const montant = Number(m.montant_total) || 0;
         const comm    = Math.round(montant * COMMISSION * 100) / 100;
         const net     = Math.round((montant - comm) * 100) / 100;
@@ -1140,7 +1140,7 @@ export function BOExportMissions() {
       const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href = url; a.download = `alane-missions-comptable-${new Date().toISOString().slice(0,10)}.csv`;
+      a.href = url; a.download = `alane-prestations-comptable-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
     } catch(_) {}
     setExporting(false);
@@ -1172,7 +1172,7 @@ export function BOExportPDF({ d }) {
       `Taux completion : ${d.missions?.tauxCompletion || 0}%`,
       "",
       "── FINANCE ──",
-      `CA Total (missions terminées) : ${d.finance?.caTotal || 0} €`,
+      `CA Total (prestations terminées) : ${d.finance?.caTotal || 0} €`,
       "",
       "── TICKETS SUPPORT ──",
       `Ouverts : ${d.tickets?.open || 0}`,
@@ -1228,7 +1228,7 @@ export function BOTest({ onNavigate }) {
     id:"bo-test-001", name:"Jean Demo", jobTitle:"Agent de démonstration", role:"Agent de démonstration",
     avatar:"🧪", color:C.violet, rating:4.8, reviews:42, hourlyRate:"20 €/h HT", rateNum:20, tarifNet:15,
     available:true, sector:"logistique", skills:["Test","Démo","Présentation"], experience:"5 ans",
-    distance:"0,5 km", responseTime:"~2 min", missions:42, bio:"Prestataire fictif pour les tests BO.",
+    distance:"0,5 km", responseTime:"~2 min", prestations:42, bio:"Prestataire fictif pour les tests BO.",
   };
 
   const clientScreens = [
@@ -1236,11 +1236,11 @@ export function BOTest({ onNavigate }) {
     { id:"catalogue",         label:"Catalogue secteurs",      icon:"🗂️" },
     { id:"search_filters",    label:"Recherche / filtres",     icon:"🔍" },
     { id:"dashboard",         label:"Dashboard client",        icon:"📊" },
-    { id:"mission_history",   label:"Historique missions",     icon:"📋" },
+    { id:"mission_history",   label:"Historique prestations",     icon:"📋" },
     { id:"cashback",          label:"Wallet cashback",         icon:"💰" },
     { id:"notifications",     label:"Notifications",           icon:"🔔" },
     { id:"favorites",         label:"Favoris",                 icon:"❤️" },
-    { id:"mission_request",   label:"Créer une mission",       icon:"➕" },
+    { id:"mission_request",   label:"Créer une prestation",       icon:"➕" },
     { id:"team_booking",      label:"Réservation équipe",      icon:"👥" },
     { id:"settings",          label:"Paramètres",              icon:"⚙️" },
   ];
@@ -1250,8 +1250,8 @@ export function BOTest({ onNavigate }) {
     { id:"cv",          label:"CV prestataire",        icon:"📄", data:MOCK_P },
     { id:"booking",     label:"Réservation",           icon:"📅", data:MOCK_P },
     { id:"contract",    label:"Contrat",               icon:"✍️", data:MOCK_P },
-    { id:"tracking",    label:"Suivi mission",         icon:"📍", data:MOCK_P },
-    { id:"validation",  label:"Validation mission",    icon:"✅", data:MOCK_P },
+    { id:"tracking",    label:"Suivi prestation",         icon:"📍", data:MOCK_P },
+    { id:"validation",  label:"Validation prestation",    icon:"✅", data:MOCK_P },
     { id:"rating",      label:"Noter le prestataire",  icon:"⭐", data:MOCK_P },
     { id:"cancellation",label:"Annulation",            icon:"❌", data:MOCK_P },
     { id:"invoice",     label:"Facture",               icon:"🧾", data:MOCK_P },
@@ -1260,7 +1260,7 @@ export function BOTest({ onNavigate }) {
 
   const prestaScreens = [
     { id:"p_home",              label:"Accueil prestataire",  icon:"🏠" },
-    { id:"p_missions",          label:"Missions disponibles", icon:"📦" },
+    { id:"p_missions",          label:"Prestations disponibles", icon:"📦" },
     { id:"p_dashboard",         label:"Dashboard presta",     icon:"📊" },
     { id:"calendar",            label:"Calendrier",           icon:"📅" },
     { id:"abonnement_presta",   label:"Abonnement",           icon:"💳" },
@@ -1408,7 +1408,7 @@ export function BOSettingsTab() {
       setLoading(false);
     }).catch(() => setLoading(false));
     // Charger les compteurs par secteur
-    fetch("/api/missions", {
+    fetch("/api/prestations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "get_sector_status" }),
@@ -1441,14 +1441,14 @@ export function BOSettingsTab() {
     <div style={{ paddingBottom:40 }}>
 
       {/* ── Plans & Limites ── */}
-      <SectionTitle>📦 Plans & Limites missions/mois</SectionTitle>
+      <SectionTitle>📦 Plans & Limites prestations/mois</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
         {[["free","🆓 Gratuit"],["premium","⭐ Premium"],["elite","👑 Elite"]].map(([plan, label]) => (
           <div key={plan} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:120 }}>{label}</span>
             <input type="number" min={1} max={9999} value={localPl[plan]} onChange={e => setLocalPl(p => ({ ...p, [plan]: Number(e.target.value) }))}
               style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
-            <span style={{ color:C.textSub, fontSize:12 }}>missions/mois</span>
+            <span style={{ color:C.textSub, fontSize:12 }}>prestations/mois</span>
           </div>
         ))}
         <SaveBtn k="plan_limits" onClick={() => save("plan_limits", localPl)} />
@@ -1566,7 +1566,7 @@ export function BOSettingsTab() {
       {/* ── Phase de lancement ── */}
       <SectionTitle>🚀 Phase de lancement</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 10 missions gratuites sur toute la plateforme.</div>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 10 prestations gratuites sur toute la plateforme.</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <button onClick={()=>setLaunchPhase(v=>!v)} style={{ width:48, height:28, borderRadius:99, border:"none", cursor:"pointer", background:launchPhase?"#4CC99B":"rgba(255,255,255,0.15)", transition:"background 0.2s", position:"relative" }}>
             <div style={{ position:"absolute", top:4, left:launchPhase?22:4, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -1582,7 +1582,7 @@ export function BOSettingsTab() {
         {localCbr.map((tier, i) => (
           <div key={tier.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:90 }}>{tier.id}</span>
-            <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} missions</span>
+            <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} prestations</span>
             <input type="number" min={0} max={100} step={0.1} value={tier.rate} onChange={e => setLocalCbr(prev => prev.map((t, j) => j === i ? { ...t, rate: e.target.value } : t))}
               style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
             <span style={{ color:C.textSub, fontSize:12 }}>%</span>
@@ -1600,7 +1600,7 @@ export function BOResetMonthly() {
   const [result, setResult]   = useState(null);
 
   const handleReset = async () => {
-    if (!window.confirm("Remettre les compteurs de missions à 0 pour tous les prestataires ?")) return;
+    if (!window.confirm("Remettre les compteurs de prestations à 0 pour tous les prestataires ?")) return;
     setLoading(true); setResult(null);
     try {
       let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -1790,7 +1790,7 @@ export function BOMissions() {
   const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée" };
   const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E" };
 
-  const [missions, setMissions] = useState([]);
+  const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState("all");
   const [validating, setValidating] = useState(null);
@@ -1809,7 +1809,7 @@ export function BOMissions() {
   useEffect(() => { load(filter); }, [filter]);
 
   const handleValidate = async (missionId) => {
-    if (!window.confirm("Valider cette mission manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
+    if (!window.confirm("Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
     setValidating(missionId);
     try {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
@@ -1824,11 +1824,11 @@ export function BOMissions() {
     setValidating(null);
   };
 
-  const filtered = missions;
+  const filtered = prestations;
 
   return (
     <div>
-      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>📋 Gestion des missions</div>
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>📋 Gestion des prestations</div>
 
       {/* Filtres */}
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
@@ -1843,7 +1843,7 @@ export function BOMissions() {
       {loading && <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>}
 
       {!loading && filtered.length === 0 && (
-        <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune mission{filter!=="all"?` avec ce statut`:""}</div>
+        <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune prestation{filter!=="all"?` avec ce statut`:""}</div>
       )}
 
       {filtered.map(m => {
@@ -1893,7 +1893,7 @@ export function BOMissions() {
 }
 
 export function BORefundSection() {
-  const [missions, setMissions] = useState([]);
+  const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [refunding, setRefunding] = useState(null);
   const [done, setDone]         = useState({});
@@ -1906,7 +1906,7 @@ export function BORefundSection() {
   }, []);
 
   const handleRefund = async (m) => {
-    if (!window.confirm(`Rembourser ${m.montant_total} € pour la mission ${m.id.slice(0,8)} ?`)) return;
+    if (!window.confirm(`Rembourser ${m.montant_total} € pour la prestation ${m.id.slice(0,8)} ?`)) return;
     setRefunding(m.id);
     let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     const r = await fetch("/api/stripe-refund", {
@@ -1921,12 +1921,12 @@ export function BORefundSection() {
   };
 
   if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"12px 0" }}>Chargement remboursements…</div>;
-  if (!missions.length) return null;
+  if (!prestations.length) return null;
 
   return (
     <div style={{ background:"#0D1B3E", borderRadius:16, padding:16, marginTop:4 }}>
       <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>↩ Remboursements Stripe</div>
-      {missions.map(m => (
+      {prestations.map(m => (
         <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
           <div>
             <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {m.montant_total} €</div>
@@ -1949,7 +1949,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
   const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
   const d = boData || {
     users:    { clients:0, prestataires:0, total:0, pending:0 },
-    missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
+    prestations: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
     finance:  { caTotal:0, caMoyen:0 },
     tickets:  { open:0, total:0 },
     sectors:  [],
@@ -1995,7 +1995,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"dashboard",  l:"📊 KPIs"},
             {id:"comptes",    l:"✅ Comptes"},
             {id:"documents",  l:"📂 Documents"},
-            {id:"missions",   l:"📋 Missions"},
+            {id:"prestations",   l:"📋 Prestations"},
             {id:"support",    l:"🎧 Support"},
             {id:"sectors",    l:"🗂️ Secteurs"},
             {id:"users",      l:"👥 Utilisateurs"},
@@ -2029,7 +2029,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
         {tab==="documents" && <BODocuments />}
 
         {/* ── MISSIONS ── */}
-        {tab==="missions" && <BOMissions />}
+        {tab==="prestations" && <BOMissions />}
 
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
@@ -2068,9 +2068,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           {/* KPIs grid */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"14px 0" }}>
             <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`${d.users.pending} en attente`} color={C.violet} />
-            <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
-            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Missions complétées" color={C.accentGold} />
-            <KPICard icon="📦" label="Missions actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
+            <KPICard icon="✅" label="Prestations terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
+            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Prestations complétées" color={C.accentGold} />
+            <KPICard icon="📦" label="Prestations actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
           </div>
 
           {/* Visiteurs */}
@@ -2121,9 +2121,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             })()}
           </div>
 
-          {/* Missions par statut */}
+          {/* Prestations par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des missions</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des prestations</div>
             <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
               {[
                 {l:"Ouvertes",  v:d.missions.open,      c:"#F0B429"},
@@ -2143,13 +2143,13 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             </div>
           </div>
 
-          {/* Missions créées par mois */}
+          {/* Prestations créées par mois */}
           {d.monthLabels.length > 0 && (() => {
             const vals = d.monthLabels.map((_,i) => Object.values(d.missionsByMonth)[i] || 0);
             const max = Math.max(...vals, 1);
             return (
               <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-                <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Missions créées par mois</div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Prestations créées par mois</div>
                 <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:48, marginBottom:6 }}>
                   {vals.map((v,i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
@@ -2186,13 +2186,13 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ display:"flex", gap:16, alignItems:"center", marginBottom:20 }}>
             <DonutChart sectors={d.sectors.length > 0 ? d.sectors : [{pct:100,color:"#162547"}]} />
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des missions</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} missions</div>
+              <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des prestations</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} prestations</div>
               {d.sectors[0] && <div style={{ marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textSub }}>Secteur #1</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{d.sectors[0].icon} {d.sectors[0].label} ({d.sectors[0].pct}%)</div>
               </div>}
-              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune mission pour l'instant</div>}
+              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune prestation pour l'instant</div>}
             </div>
           </div>
           {d.sectors.map((s,i) => (
@@ -2202,7 +2202,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
                   <div style={{ width:34, height:34, borderRadius:10, background:`${s.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{s.icon}</div>
                   <div>
                     <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{s.label}</div>
-                    <div style={{ color:C.textSub, fontSize:11 }}>{s.missions} missions</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{s.missions} prestations</div>
                   </div>
                 </div>
                 <div style={{ fontWeight:800, color:s.color, fontSize:16 }}>{s.pct}%</div>
@@ -2283,11 +2283,11 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Missions complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Prestations complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
+            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Prestations terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Prestations actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
