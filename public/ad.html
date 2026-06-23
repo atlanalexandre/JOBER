@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=375,initial-scale=1">
+<title>ALANE — Pub</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background:#000;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+  }
+
+  #stage {
+    width:375px;
+    height:812px;
+    position:relative;
+    overflow:hidden;
+    background:#050E20;
+  }
+
+  /* ---- SCÈNES ---- */
+  .scene {
+    position:absolute;
+    inset:0;
+    opacity:0;
+    transition:opacity 0.5s ease;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+  .scene.active { opacity:1; }
+
+  /* ---- COULEURS ---- */
+  :root {
+    --violet:#7C6FE0;
+    --gold:#F0B429;
+    --success:#10D98F;
+    --navy:#0A1628;
+    --surface:#0D1B3E;
+    --border:rgba(255,255,255,0.08);
+    --text:#E2E8F0;
+    --sub:#94A3B8;
+  }
+
+  /* ---- SCÈNE 1 : SPLASH ---- */
+  #s1 { background:linear-gradient(160deg,#0A1628 0%,#050E20 60%,#0A0D1F 100%); }
+  .logo-ring {
+    width:120px; height:120px;
+    border-radius:32px;
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 60px rgba(124,111,224,0.4);
+    margin-bottom:28px;
+    animation: popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  .logo-text { font-size:42px; font-weight:900; color:#fff; letter-spacing:-2px; }
+  .brand { font-size:36px; font-weight:900; color:var(--text); letter-spacing:-1px; margin-bottom:10px; }
+  .tagline { font-size:15px; color:var(--sub); text-align:center; line-height:1.5; padding:0 30px; }
+  .tagline strong { color:var(--violet); }
+
+  /* ---- SCÈNE 2 : RÔLE ---- */
+  #s2 { background:linear-gradient(160deg,#0A1628,#050E20); }
+  .role-title { font-size:22px; font-weight:800; color:var(--text); margin-bottom:8px; text-align:center; }
+  .role-sub { font-size:13px; color:var(--sub); margin-bottom:36px; text-align:center; }
+  .role-btn {
+    width:300px; padding:18px 20px;
+    border-radius:16px; margin-bottom:14px;
+    display:flex; align-items:center; gap:14px;
+    cursor:pointer; border:none;
+    animation: slideUp 0.4s ease forwards;
+    opacity:0;
+  }
+  .role-btn.client {
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    box-shadow:0 8px 24px rgba(124,111,224,0.35);
+    animation-delay:0.1s;
+  }
+  .role-btn.presta {
+    background:linear-gradient(135deg,#162547,#0D1B3E);
+    border:1.5px solid var(--border);
+    animation-delay:0.2s;
+  }
+  .role-icon { font-size:28px; }
+  .role-label { font-size:16px; font-weight:700; color:#fff; }
+  .role-desc { font-size:11px; color:rgba(255,255,255,0.65); margin-top:2px; }
+
+  /* ---- SCÈNE 3 : CATALOGUE ---- */
+  #s3 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
+  .screen-title { font-size:22px; font-weight:800; color:var(--text); margin-bottom:6px; width:100%; }
+  .screen-sub { font-size:13px; color:var(--sub); margin-bottom:24px; width:100%; }
+  .sectors-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%; }
+  .sector-card {
+    border-radius:14px; padding:16px 14px;
+    display:flex; flex-direction:column; gap:6px;
+    border:1px solid var(--border);
+    animation: fadeIn 0.3s ease forwards; opacity:0;
+  }
+  .sector-icon { font-size:26px; }
+  .sector-name { font-size:13px; font-weight:700; color:var(--text); }
+  .sector-count { font-size:11px; color:var(--sub); }
+
+  /* ---- SCÈNE 4 : PROFIL ---- */
+  #s4 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
+  .profile-card {
+    width:100%; background:var(--surface);
+    border:1px solid var(--border); border-radius:20px;
+    overflow:hidden;
+  }
+  .profile-header {
+    background:linear-gradient(135deg,var(--violet)22,#162547);
+    padding:24px; display:flex; gap:16px; align-items:center;
+  }
+  .avatar {
+    width:64px; height:64px; border-radius:18px;
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    display:flex; align-items:center; justify-content:center;
+    font-size:28px; flex-shrink:0;
+  }
+  .profile-name { font-size:18px; font-weight:800; color:var(--text); }
+  .profile-meta { font-size:12px; color:var(--sub); margin-top:3px; }
+  .badge-cert {
+    display:inline-flex; align-items:center; gap:4px;
+    background:rgba(16,217,143,0.15); border:1px solid rgba(16,217,143,0.3);
+    border-radius:8px; padding:3px 8px; font-size:11px; font-weight:700; color:var(--success);
+    margin-top:6px;
+  }
+  .profile-body { padding:18px; }
+  .stars { color:var(--gold); font-size:16px; letter-spacing:2px; }
+  .rating-text { font-size:12px; color:var(--sub); margin-top:2px; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; }
+  .tag {
+    background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25);
+    border-radius:8px; padding:4px 10px; font-size:11px; color:var(--violet); font-weight:600;
+  }
+  .price-row { display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+  .price-label { font-size:12px; color:var(--sub); }
+  .price-val { font-size:22px; font-weight:900; color:var(--text); }
+  .book-btn {
+    width:100%; margin-top:14px; padding:14px;
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    border:none; border-radius:12px;
+    font-size:15px; font-weight:700; color:#fff; cursor:pointer;
+    font-family:inherit;
+  }
+
+  /* ---- SCÈNE 5 : CRÉER PRESTATION ---- */
+  #s5 { background:#050E20; padding:24px 18px; justify-content:flex-start; padding-top:60px; }
+  .form-card { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px; }
+  .form-title { font-size:14px; font-weight:700; color:var(--text); margin-bottom:16px; }
+  .form-row { margin-bottom:14px; }
+  .form-label { font-size:10px; color:var(--sub); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:5px; }
+  .form-field {
+    background:#162547; border:1px solid var(--border); border-radius:10px;
+    padding:11px 13px; font-size:13px; color:var(--text); width:100%;
+  }
+  .form-field.filled { border-color:rgba(124,111,224,0.4); color:var(--text); }
+  .submit-btn {
+    width:100%; padding:14px;
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    border:none; border-radius:12px;
+    font-size:15px; font-weight:700; color:#fff;
+    font-family:inherit; margin-top:4px;
+  }
+
+  /* ---- SCÈNE 6 : CONFIRMÉ ---- */
+  #s6 { background:linear-gradient(160deg,#0A1628,#050E20); }
+  .confirm-circle {
+    width:100px; height:100px; border-radius:50%;
+    background:linear-gradient(135deg,var(--success),#0DB877);
+    display:flex; align-items:center; justify-content:center;
+    font-size:44px; margin-bottom:24px;
+    box-shadow:0 0 40px rgba(16,217,143,0.4);
+    animation: popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  .confirm-title { font-size:24px; font-weight:900; color:var(--text); margin-bottom:8px; text-align:center; }
+  .confirm-sub { font-size:14px; color:var(--sub); text-align:center; line-height:1.6; padding:0 30px; }
+  .confirm-card {
+    margin-top:28px; background:var(--surface);
+    border:1px solid rgba(16,217,143,0.2); border-radius:16px;
+    padding:16px 20px; width:300px;
+    display:flex; align-items:center; gap:14px;
+  }
+  .presta-mini { width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg,var(--violet),#5B4FD0); display:flex; align-items:center; justify-content:center; font-size:22px; }
+  .presta-name { font-size:14px; font-weight:700; color:var(--text); }
+  .presta-status { font-size:11px; color:var(--success); margin-top:2px; font-weight:600; }
+
+  /* ---- SCÈNE 7 : CTA ---- */
+  #s7 { background:linear-gradient(160deg,#0A1628 0%,#050E20 60%); }
+  .cta-logo { font-size:48px; font-weight:900; color:#fff; letter-spacing:-2px; margin-bottom:12px; }
+  .cta-sub { font-size:16px; color:var(--sub); margin-bottom:40px; text-align:center; }
+  .cta-btn {
+    background:linear-gradient(135deg,var(--violet),#5B4FD0);
+    border:none; border-radius:16px; padding:16px 40px;
+    font-size:17px; font-weight:800; color:#fff;
+    font-family:inherit; cursor:pointer;
+    box-shadow:0 8px 30px rgba(124,111,224,0.4);
+    margin-bottom:16px;
+  }
+  .cta-link { font-size:13px; color:var(--sub); }
+  .cta-link span { color:var(--violet); font-weight:700; }
+
+  /* ---- OVERLAYS ---- */
+  .overlay {
+    position:absolute; bottom:0; left:0; right:0;
+    padding:28px 24px;
+    background:linear-gradient(to top, rgba(5,14,32,0.95) 0%, transparent 100%);
+  }
+  .over-chip {
+    display:inline-block;
+    background:var(--violet); border-radius:8px;
+    padding:4px 10px; font-size:11px; font-weight:800; color:#fff;
+    text-transform:uppercase; letter-spacing:0.8px;
+    margin-bottom:8px;
+  }
+  .over-title { font-size:22px; font-weight:900; color:#fff; line-height:1.2; margin-bottom:6px; }
+  .over-desc { font-size:13px; color:rgba(255,255,255,0.7); line-height:1.5; }
+
+  /* ---- BARRE DE PROGRESSION ---- */
+  #progress-bar {
+    position:absolute; bottom:0; left:0; height:3px;
+    background:var(--violet); width:0%; transition:width linear;
+    z-index:100;
+  }
+
+  /* ---- ANIMATIONS ---- */
+  @keyframes popIn {
+    from { transform:scale(0.5); opacity:0; }
+    to   { transform:scale(1); opacity:1; }
+  }
+  @keyframes slideUp {
+    from { transform:translateY(30px); opacity:0; }
+    to   { transform:translateY(0); opacity:1; }
+  }
+  @keyframes fadeIn {
+    from { opacity:0; transform:translateY(12px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow:0 0 40px rgba(16,217,143,0.4); }
+    50%      { box-shadow:0 0 70px rgba(16,217,143,0.7); }
+  }
+
+  /* ---- BOUTON PLAY ---- */
+  #play-btn {
+    position:absolute; inset:0;
+    background:rgba(0,0,0,0.7);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    cursor:pointer; z-index:200;
+  }
+  #play-btn .play-icon {
+    width:80px; height:80px; border-radius:50%;
+    background:var(--violet);
+    display:flex; align-items:center; justify-content:center;
+    font-size:32px; margin-bottom:16px;
+  }
+  #play-btn p { color:#fff; font-size:15px; font-weight:600; }
+  #play-btn small { color:var(--sub); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- SCÈNE 1 : SPLASH -->
+  <div class="scene active" id="s1">
+    <div class="logo-ring"><span class="logo-text">A</span></div>
+    <div class="brand">ALANE</div>
+    <div class="tagline">La plateforme qui connecte <strong>entreprises</strong> et <strong>prestataires indépendants</strong> certifiés</div>
+  </div>
+
+  <!-- SCÈNE 2 : RÔLE -->
+  <div class="scene" id="s2">
+    <div class="role-title">Bienvenue sur ALANE</div>
+    <div class="role-sub">Vous êtes...</div>
+    <button class="role-btn client">
+      <span class="role-icon">🏢</span>
+      <div>
+        <div class="role-label">Je suis Client</div>
+        <div class="role-desc">Je cherche des prestataires qualifiés</div>
+      </div>
+    </button>
+    <button class="role-btn presta">
+      <span class="role-icon">⚡</span>
+      <div>
+        <div class="role-label">Je suis Prestataire</div>
+        <div class="role-desc">Je propose mes services</div>
+      </div>
+    </button>
+    <div class="overlay">
+      <div class="over-chip">Étape 1</div>
+      <div class="over-title">Choisissez votre espace</div>
+      <div class="over-desc">Inscription en 2 minutes — gratuit</div>
+    </div>
+  </div>
+
+  <!-- SCÈNE 3 : CATALOGUE -->
+  <div class="scene" id="s3">
+    <div class="screen-title">Nos secteurs</div>
+    <div class="screen-sub">Prestataires disponibles près de vous</div>
+    <div class="sectors-grid">
+      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.05s">
+        <span class="sector-icon">🧹</span>
+        <div class="sector-name">Propreté</div>
+        <div class="sector-count">24 disponibles</div>
+      </div>
+      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.1s">
+        <span class="sector-icon">📦</span>
+        <div class="sector-name">Logistique</div>
+        <div class="sector-count">18 disponibles</div>
+      </div>
+      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.15s">
+        <span class="sector-icon">🍽️</span>
+        <div class="sector-name">Restauration</div>
+        <div class="sector-count">31 disponibles</div>
+      </div>
+      <div class="sector-card" style="background:linear-gradient(135deg,#1a2a4a,#0D1B3E);animation-delay:0.2s">
+        <span class="sector-icon">🏨</span>
+        <div class="sector-name">Hôtellerie</div>
+        <div class="sector-count">12 disponibles</div>
+      </div>
+    </div>
+    <div class="overlay">
+      <div class="over-chip">Étape 2</div>
+      <div class="over-title">Choisissez votre secteur</div>
+      <div class="over-desc">Tous les prestataires sont vérifiés et certifiés ALANE</div>
+    </div>
+  </div>
+
+  <!-- SCÈNE 4 : PROFIL PRESTATAIRE -->
+  <div class="scene" id="s4">
+    <div class="screen-title" style="margin-bottom:16px">Profil prestataire</div>
+    <div class="profile-card">
+      <div class="profile-header">
+        <div class="avatar">👨‍💼</div>
+        <div>
+          <div class="profile-name">Thomas M.</div>
+          <div class="profile-meta">Nettoyage · Paris 8e</div>
+          <div class="badge-cert">✓ Certifié ALANE</div>
+        </div>
+      </div>
+      <div class="profile-body">
+        <div class="stars">★★★★★</div>
+        <div class="rating-text">4.9 · 47 avis clients</div>
+        <div class="tags">
+          <span class="tag">KBIS vérifié</span>
+          <span class="tag">RC Pro</span>
+          <span class="tag">URSSAF à jour</span>
+        </div>
+        <div class="price-row">
+          <span class="price-label">Tarif horaire</span>
+          <span class="price-val">18 €<span style="font-size:14px;color:var(--sub)">/h</span></span>
+        </div>
+        <button class="book-btn">Réserver Thomas →</button>
+      </div>
+    </div>
+    <div class="overlay" style="background:none; padding:12px 18px;">
+      <div class="over-chip">Étape 3</div>
+      <div class="over-title" style="font-size:18px">Profils 100% vérifiés</div>
+    </div>
+  </div>
+
+  <!-- SCÈNE 5 : CRÉER PRESTATION -->
+  <div class="scene" id="s5">
+    <div class="screen-title" style="margin-bottom:16px">Nouvelle prestation</div>
+    <div class="form-card">
+      <div class="form-title">📋 Détails de votre besoin</div>
+      <div class="form-row">
+        <div class="form-label">Secteur</div>
+        <div class="form-field filled">🧹 Propreté</div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">Date</div>
+        <div class="form-field filled">Demain — 09h00 à 13h00</div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">Ville</div>
+        <div class="form-field filled">Paris (75008)</div>
+      </div>
+      <div class="form-row">
+        <div class="form-label">Tarif horaire</div>
+        <div class="form-field filled">18 € / heure</div>
+      </div>
+      <button class="submit-btn">Envoyer la demande →</button>
+    </div>
+    <div class="overlay">
+      <div class="over-chip">Étape 4</div>
+      <div class="over-title">Publiez en 30 secondes</div>
+      <div class="over-desc">Les prestataires disponibles reçoivent une notification immédiate</div>
+    </div>
+  </div>
+
+  <!-- SCÈNE 6 : CONFIRMÉ -->
+  <div class="scene" id="s6">
+    <div class="confirm-circle" style="animation-play-state:paused">✓</div>
+    <div class="confirm-title">Prestataire assigné !</div>
+    <div class="confirm-sub">Paiement sécurisé via Stripe.<br>Libéré après validation de la prestation.</div>
+    <div class="confirm-card">
+      <div class="presta-mini">👨‍💼</div>
+      <div>
+        <div class="presta-name">Thomas M.</div>
+        <div class="presta-status">✓ Confirmé · Arrive demain 9h</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCÈNE 7 : CTA -->
+  <div class="scene" id="s7">
+    <div class="cta-logo">ALANE</div>
+    <div class="cta-sub">Prestataires certifiés · Paiement sécurisé<br>Zéro démarche administrative</div>
+    <button class="cta-btn">Commencer gratuitement</button>
+    <div class="cta-link">👇 Lien en bio · <span>alane.fr</span></div>
+  </div>
+
+  <!-- BARRE DE PROGRESSION -->
+  <div id="progress-bar"></div>
+
+  <!-- BOUTON PLAY -->
+  <div id="play-btn">
+    <div class="play-icon">▶</div>
+    <p>Appuyer pour lancer la pub</p>
+    <small>45 secondes · Format TikTok</small>
+  </div>
+</div>
+
+<script>
+  const scenes = [
+    { id:'s1', duration:3500 },
+    { id:'s2', duration:7000 },
+    { id:'s3', duration:8000 },
+    { id:'s4', duration:8000 },
+    { id:'s5', duration:8000 },
+    { id:'s6', duration:7500 },
+    { id:'s7', duration:5000 },
+  ];
+
+  const total = scenes.reduce((a,s)=>a+s.duration,0);
+  let current = 0;
+  let elapsed = 0;
+  let startTime = null;
+  let running = false;
+
+  function showScene(idx) {
+    document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
+    const el = document.getElementById(scenes[idx].id);
+    el.classList.add('active');
+
+    // Relance les animations CSS
+    el.querySelectorAll('[style*="animation-delay"], .role-btn, .sector-card').forEach(el=>{
+      el.style.animation='none';
+      el.offsetHeight;
+      el.style.animation='';
+    });
+
+    // Animation spéciale scène 6
+    if(scenes[idx].id==='s6'){
+      const circle = el.querySelector('.confirm-circle');
+      if(circle){ circle.style.animationPlayState='running'; }
+    }
+  }
+
+  function tick(ts) {
+    if(!startTime) startTime = ts;
+    const dt = ts - startTime;
+    startTime = ts;
+    elapsed += dt;
+
+    const pct = Math.min(elapsed/total*100, 100);
+    document.getElementById('progress-bar').style.width = pct+'%';
+
+    let acc=0;
+    for(let i=0;i<scenes.length;i++){
+      acc += scenes[i].duration;
+      if(elapsed < acc){
+        if(i !== current){ current=i; showScene(i); }
+        break;
+      }
+    }
+
+    if(elapsed < total) requestAnimationFrame(tick);
+  }
+
+  document.getElementById('play-btn').addEventListener('click', ()=>{
+    document.getElementById('play-btn').style.display='none';
+    running = true;
+    elapsed = 0;
+    current = 0;
+    startTime = null;
+    showScene(0);
+    requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>
