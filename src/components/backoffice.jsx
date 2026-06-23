@@ -584,23 +584,23 @@ export function BOComptes() {
                     const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
                     const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
                     return (
-                      <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}` }}>
+                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
                         <span style={{ fontSize:16 }}>{DOC_ICON[doc.type]||"📄"}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
                           <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
                         </div>
-                        {doc.signedUrl && (
-                          <button onClick={()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })} style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit" }}>
-                            {isImg ? "🖼 Voir" : "📄 Voir"}
-                          </button>
-                        )}
-                        {!doc.verified && (
-                          <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
-                            {docVerifying===doc.id ? "…" : "✓ Valider"}
-                          </button>
-                        )}
-                        {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
+                        <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5 }}>
+                          {doc.signedUrl && (
+                            <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                          )}
+                          {!doc.verified && (
+                            <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                              {docVerifying===doc.id ? "…" : "✓"}
+                            </button>
+                          )}
+                          {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
+                        </div>
                       </div>
                     );
                   })}
@@ -760,18 +760,13 @@ export function BOComptes() {
                           {userDocs.map(doc => {
                             const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
                             return (
-                              <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}` }}>
+                              <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
                                 <span style={{ fontSize:20 }}>{DOC_ICON[doc.type]||"📄"}</span>
                                 <div style={{ flex:1, minWidth:0 }}>
                                   <div style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
-                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}</div>
+                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}{doc.signedUrl?" · Appuyer pour voir":""}</div>
                                 </div>
-                                <div style={{ display:"flex", gap:6 }}>
-                                  {doc.signedUrl && (
-                                    <button onClick={()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })} style={{ fontSize:11, color:C.violet, fontWeight:700, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit" }}>
-                                      {isImg ? "🖼" : "📄"} Voir
-                                    </button>
-                                  )}
+                                <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:6 }}>
                                   {doc.signedUrl && (
                                     <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                                   )}
