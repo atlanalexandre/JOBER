@@ -294,7 +294,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           <Select label="Pays" options={["France","Belgique","Suisse","Luxembourg"]} value={adresse.pays} onChange={e=>setAdresse({...adresse,pays:e.target.value})} />
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>🗺️ Rayon d'intervention</div>
-            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Distance max pour une mission</p>
+            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Distance max pour une prestation</p>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {["5","10","20","30","50","100"].map(km=><button key={km} onClick={()=>setAdresse({...adresse,rayon:km})} style={{ padding:"9px 16px", borderRadius:20, border:"none", cursor:"pointer", background:adresse.rayon===km?C.violet:C.grayLight, color:adresse.rayon===km?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{km} km</button>)}
             </div>
@@ -517,9 +517,9 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                     const charges = Math.round(net * 0.22 * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
                     const scenarios = [
-                      { label:"Mission 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
-                      { label:"Mission 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
-                      { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
+                      { label:"Prestation 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Prestation 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"4 prestations/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
                     ];
                     return (
                       <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid ${C.success}25`, borderRadius:12, padding:"13px 14px", marginTop:12 }}>
@@ -622,11 +622,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             })}
           </div>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <p style={{ fontWeight:800, color:C.text, fontSize:14, margin:"0 0 14px" }}>⚙️ Préférences de mission</p>
+            <p style={{ fontWeight:800, color:C.text, fontSize:14, margin:"0 0 14px" }}>⚙️ Préférences de prestation</p>
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de missions souhaitées</label>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de prestations souhaitées</label>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                {["Journée complète","Demi-journée","Semaine complète","Missions urgentes","Week-end"].map(type=>(
+                {["Journée complète","Demi-journée","Semaine complète","Prestations urgentes","Week-end"].map(type=>(
                   <button key={type} onClick={()=>setPrefs(p=>({ ...p, contrat:p.contrat===type?"":type }))} style={{ padding:"9px 14px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:prefs.contrat===type?700:500, background:prefs.contrat===type?C.violet:"rgba(255,255,255,0.06)", color:prefs.contrat===type?C.white:C.textSub, transition:"all 0.2s" }}>
                     {type}
                   </button>
@@ -739,7 +739,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {meta && !meta.secteur && (
         <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}35`, borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
           <div style={{ fontWeight:700, color:C.accentGold, fontSize:13, marginBottom:6 }}>⚠️ Profil incomplet</div>
-          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Complétez votre profil pour apparaître dans les résultats et recevoir des missions.</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Complétez votre profil pour apparaître dans les résultats et recevoir des prestations.</div>
           <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:C.accentGold, border:"none", borderRadius:10, padding:"9px 16px", color:"#000", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Compléter mon profil →</button>
         </div>
       )}
@@ -748,7 +748,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 prestations/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -1187,7 +1187,7 @@ export function PrestaProfileEditScreen({ onBack }) {
 }
 
 export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestation introuvable.</div>;
   const p = provider;
   const expectedCode = genMissionCode(p.id, type);
   const isIn = type === "in";
@@ -1232,7 +1232,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
       <div style={{ fontSize:72, marginBottom:16 }}>{isIn ? "✅" : "🏁"}</div>
       <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>{isIn ? "Arrivée confirmée !" : "Départ confirmé !"}</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto" }}>
-        {isIn ? "Votre présence est enregistrée. Bonne mission !" : "Mission terminée. En attente de validation."}
+        {isIn ? "Votre présence est enregistrée. Bonne prestation !" : "Prestation terminée. En attente de validation."}
       </p>
     </div>
   );
@@ -1257,7 +1257,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
               <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Vérification GPS</div>
               <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>
                 {gpsStatus==="loading" && "Localisation en cours…"}
-                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de mission)`}
+                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de prestation)`}
                 {gpsStatus==="warning" && `Vous semblez éloigné du lieu (${gpsDistance} km). Vérifiez votre position.`}
                 {gpsStatus==="error" && "GPS indisponible. Continuez avec le code client."}
               </div>
@@ -1378,8 +1378,8 @@ export function UpgradeNudge({ onNavigate }) {
     return (
       <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,rgba(242,94,94,0.12),rgba(240,180,41,0.08))`, border:`1px solid rgba(242,94,94,0.4)`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div>
-          <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Missions gratuites épuisées</div>
-          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux missions.</div>
+          <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Prestations gratuites épuisées</div>
+          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux prestations.</div>
         </div>
         <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
       </div>
@@ -1389,7 +1389,7 @@ export function UpgradeNudge({ onNavigate }) {
     <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Prestations illimitées · Badge vérifié · Urgences</div>
       </div>
       <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
     </div>
@@ -1416,7 +1416,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     const token = sd?.session?.access_token;
     if (!token) return;
     try {
-      const r = await fetch("/api/missions", {
+      const r = await fetch("/api/prestations", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ action: "my_missions" }),
@@ -1459,7 +1459,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_acc");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const r = await fetch("/api/missions", {
+    const r = await fetch("/api/prestations", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "accept", presta_name: userName }),
@@ -1477,7 +1477,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_ref");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const r = await fetch("/api/missions", {
+    const r = await fetch("/api/prestations", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "refuse", presta_name: userName }),
@@ -1512,25 +1512,25 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   return (
     <div>
       {/* Contrat électronique prestataire */}
-      {/* Contrat de prestation — acceptation mission */}
+      {/* Contrat de prestation — acceptation prestation */}
       {contractAcceptMission && (
         <ContractModal
           title="Contrat de prestation de service"
           contractText={`CONTRAT DE PRESTATION DE SERVICE
 
-Mission :
+Prestation :
 Métier : ${contractAcceptMission.metier || contractAcceptMission.sector || ""}
 Date : ${contractAcceptMission.date || ""}
 Durée : ${contractAcceptMission.hours || ""} heure(s)
 Tarif horaire : ${contractAcceptMission.tarif_horaire || ""} €/h
 
-En signant ce contrat, je m'engage à réaliser la mission dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
+En signant ce contrat, je m'engage à réaliser la prestation dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={async () => {
-            const mission = contractAcceptMission;
+            const prestation = contractAcceptMission;
             setContractAcceptMission(null);
-            await handleAccept(mission);
+            await handleAccept(prestation);
           }}
           onClose={() => setContractAcceptMission(null)}
         />
@@ -1538,31 +1538,31 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
       {contractMission && (
         <ContractModal
-          title="Attestation de réalisation de mission"
+          title="Attestation de réalisation de prestation"
           contractText={`ATTESTATION DE RÉALISATION DE MISSION
 
-Mission :
+Prestation :
 Métier : ${contractMission.metier || contractMission.sector || ""}
 Date : ${contractMission.date || ""}
 Durée : ${contractMission.hours || ""} heure(s)
 Tarif horaire : ${contractMission.tarif_horaire || ""} €/h
 
-En signant cette attestation, je certifie avoir réalisé la mission conformément aux termes convenus et autorise le déblocage du paiement.
+En signant cette attestation, je certifie avoir réalisé la prestation conformément aux termes convenus et autorise le déblocage du paiement.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={async (ts) => {
             setContractSignedAt(prev => ({ ...prev, [contractMission.id]: ts }));
-            const mission = contractMission;
+            const prestation = contractMission;
             setContractMission(null);
             const { data:{ session } } = await supabase.auth.getSession();
-            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:mission.id, contrat_presta_signe_at: ts }) });
-            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===mission.id?{...x,validation_prestataire:true}:x)); }
+            const r = await fetch("/api/prestations", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
+            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
           }}
           onClose={() => setContractMission(null)}
         />
       )}
 
-      {/* Missions en attente de confirmation */}
+      {/* Prestations en attente de confirmation */}
       {pendingMissions.length > 0 && (
         <div style={{ marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
@@ -1579,7 +1579,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
@@ -1605,7 +1605,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                 )}
                 {expired ? (
-                  <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette mission a été annulée automatiquement</div>
+                  <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette prestation a été annulée automatiquement</div>
                 ) : (
                   <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
                     {confirmRefuse === m.id ? (
@@ -1620,7 +1620,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <div style={{ display:"flex", gap:8 }}>
                         <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
                         <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                          {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
+                          {actioning===m.id+"_acc" ? "…" : "✅ Accepter la prestation"}
                         </button>
                       </div>
                     )}
@@ -1632,12 +1632,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </div>
       )}
 
-      {/* Missions en cours (assignées) */}
+      {/* Prestations en cours (assignées) */}
       {assignedMissions.length > 0 && (
         <div style={{ marginBottom:18 }}>
           <p style={{ fontWeight:800, color:C.success, fontSize:13, margin:"0 0 10px", display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ width:8, height:8, borderRadius:"50%", background:C.success, display:"inline-block" }} />
-            Mission{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
+            Prestation{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
@@ -1661,13 +1661,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {isPast && (
                   <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", gap:8, alignItems:"center" }}>
                     <span style={{ fontSize:16 }}>⚠️</span>
-                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Mission terminée — pensez à valider !</span>
+                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Prestation terminée — pensez à valider !</span>
                   </div>
                 )}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.ville && <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>}
@@ -1685,13 +1685,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         } else {
                           setValidatingMission(m.id);
                           const { data:{ session } } = await supabase.auth.getSession();
-                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
+                          const r = await fetch("/api/prestations", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
                           setValidatingMission(null);
                         }
                       }}
                         style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:validatingMission===m.id?"rgba(240,180,41,0.5)":C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:validatingMission===m.id?"default":"pointer", fontFamily:"inherit" }}>
-                        {validatingMission === m.id ? "Validation…" : "✅ Valider la mission"}
+                        {validatingMission === m.id ? "Validation…" : "✅ Valider la prestation"}
                       </button>
                     )}
                     {isPast && m.validation_prestataire && (
@@ -1717,8 +1717,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       {assignedMissions.length === 0 && pendingMissions.length === 0 && (
         <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🔔</div>
-          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune mission en cours</div>
-          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une mission.</div>
+          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune prestation en cours</div>
+          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une prestation.</div>
         </div>
       )}
     </div>
@@ -1742,19 +1742,19 @@ const PRESTA_TOUR_STEPS = [
   {
     icon:"🔔",
     title:"2. Recevez des demandes",
-    desc:"Un client vous choisit directement et vous envoie une demande de mission. Vous recevez une notification immédiate sur votre téléphone.",
+    desc:"Un client vous choisit directement et vous envoie une demande de prestation. Vous recevez une notification immédiate sur votre téléphone.",
     color:"#F0B429",
   },
   {
     icon:"⏱️",
     title:"3. Acceptez ou refusez",
-    desc:"Vous avez 1 heure (mission du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la mission est automatiquement annulée.",
+    desc:"Vous avez 1 heure (prestation du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la prestation est automatiquement annulée.",
     color:"#F06292",
   },
   {
     icon:"💶",
     title:"4. Réalisez & soyez payé",
-    desc:"Effectuez la mission, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
+    desc:"Effectuez la prestation, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
     color:"#81C784",
   },
 ];
@@ -1802,10 +1802,10 @@ export function PrestaClientsTab() {
     setBlocked(blockedList);
     supabase.auth.getUser().then(async ({data})=>{
       const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
-      const {data:missions} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
-      if(!missions){ setLoading(false); return; }
+      const {data:prestations} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
+      if(!prestations){ setLoading(false); return; }
       const seen = new Map();
-      for(const m of missions){
+      for(const m of prestations){
         if(!seen.has(m.client_id)) seen.set(m.client_id, { clientId:m.client_id, lastDate:m.date, sector:m.sector, metier:m.metier, missionCount:0, total:0 });
         const c = seen.get(m.client_id);
         c.missionCount++;
@@ -1837,7 +1837,7 @@ export function PrestaClientsTab() {
   return (
     <div>
       <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-        👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses missions.
+        👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses prestations.
       </div>
       {clients.length === 0 ? (
         <div style={{ textAlign:"center", padding:"28px 16px", color:C.textSub, fontSize:13 }}>
@@ -1855,10 +1855,10 @@ export function PrestaClientsTab() {
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:isBlocked?C.accent:C.text, fontSize:14 }}>{c.name||"Client"}</div>
               <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
-                {c.missionCount} mission{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
+                {c.missionCount} prestation{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
                 {c.total>0 && ` · ${c.total.toFixed(0)} €`}
               </div>
-              {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière mission : {c.lastDate}</div>}
+              {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière prestation : {c.lastDate}</div>}
             </div>
             <button onClick={()=>toggleBlock(c.clientId)} style={{ padding:"7px 11px", borderRadius:9, border:`1px solid ${isBlocked?"rgba(242,94,94,0.5)":C.border}`, background:isBlocked?"rgba(242,94,94,0.12)":"rgba(255,255,255,0.05)", color:isBlocked?C.accent:C.textSub, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
               {isBlocked?"Débloquer":"Bloquer"}
@@ -1871,7 +1871,7 @@ export function PrestaClientsTab() {
 }
 
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
-  const [tab,setTab]=useState("missions");
+  const [tab,setTab]=useState("prestations");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
@@ -1881,7 +1881,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [missionsEnabled,setMissionsEnabled]=useState(false);
   const [dispoRapide,setDispoRapide]=useState(true);
   const [showTour,setShowTour]=useState(false);
-  const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
+  const [statsData,setStatsData]=useState({prestations:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [ratedMissions, setRatedMissions] = useState(new Set());
@@ -1895,7 +1895,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
-    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
+    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
   },[activeScreen]);
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -1927,7 +1927,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const avgNote=rList.length?(rList.reduce((a,b)=>a+b,0)/rList.length):null;
       const totalR=done.length+refused.length;
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
-      setStatsData({missions:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
+      setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
       const { data: myRatings } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", u.id);
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
@@ -1971,7 +1971,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           <div style={{ background:"#0D1B3E", borderRadius:"22px 22px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, border:`1px solid ${C.border}`, borderBottom:"none" }}>
             <div style={{ width:40, height:4, background:C.border, borderRadius:2, margin:"0 auto 20px" }} />
             <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 4px", textAlign:"center" }}>⭐ Noter le client</h3>
-            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", margin:"0 0 20px" }}>Mission du {ratingTarget.date} — {ratingTarget.metier || ratingTarget.sector}</p>
+            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", margin:"0 0 20px" }}>Prestation du {ratingTarget.date} — {ratingTarget.metier || ratingTarget.sector}</p>
             <div style={{ display:"flex", justifyContent:"center", gap:10, marginBottom:20 }}>
               {[1,2,3,4,5].map(s => (
                 <button key={s} onClick={()=>setRatingValue(s)}
@@ -2038,7 +2038,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </button>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[{l:"Missions",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(
+          {[{l:"Prestations",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(
             <div key={s.l} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center" }}>
               <div style={{ fontSize:16 }}>{s.i}</div><div style={{ color:C.white, fontWeight:800, fontSize:12 }}>{s.v}</div><div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
             </div>
@@ -2089,54 +2089,54 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       <div style={{ padding:"18px 18px 0" }}>
         {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-          {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
+          {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
           ))}
         </div>
-        {tab==="missions" && <>
+        {tab==="prestations" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <UpgradeNudge onNavigate={onNavigate} />
           {(planActuel==="premium"||planActuel==="elite") && (
             <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:16 }}>💎</span>
               <div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Missions urgentes activées</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les missions urgentes de votre secteur.</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Prestations urgentes activées</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les prestations urgentes de votre secteur.</div>
               </div>
             </div>
           )}
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
-              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
+              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
             </div>
           )}
           {(() => {
             const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
-            const limit = plan.missions === 999 ? null : plan.missions;
+            const limit = plan.prestations === 999 ? null : plan.missions;
             if(!limit) return null;
             const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
             const remaining = Math.max(0, limit - missionsUsedMonth);
             return (
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${remaining===0?"#F25E5E44":C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:12, color:C.textSub }}>Missions ce mois</span>
+                  <span style={{ fontSize:12, color:C.textSub }}>Prestations ce mois</span>
                   <span style={{ fontSize:12, fontWeight:700, color:remaining===0?"#F25E5E":C.text }}>{missionsUsedMonth}/{limit}</span>
                 </div>
                 <div style={{ height:5, borderRadius:99, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
                   <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:remaining===0?"#F25E5E":C.violet, transition:"width .3s" }} />
                 </div>
                 {remaining===0 && <div style={{ marginTop:6, fontSize:11, color:"#F25E5E" }}>Limite atteinte — passez en {planActuel==="free"?"Premium":"Elite"} pour continuer</div>}
-                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} mission{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
+                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} prestation{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
               </div>
             );
           })()}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes missions" : "🔔 Missions disponibles"}</p>
+          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes prestations" : "🔔 Prestations disponibles"}</p>
           {!missionsEnabled ? (
             <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
-              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux missions en attente</div>
+              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux prestations en attente</div>
               <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
-                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux missions.<br/>
+                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux prestations.<br/>
                 Assurez-vous d'avoir uploadé tous vos documents dans l'onglet <strong>Docs</strong>.
               </p>
               <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:"rgba(240,180,41,0.2)", border:`1px solid rgba(240,180,41,0.5)`, borderRadius:r, padding:"10px 18px", color:C.accentGold, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
@@ -2176,7 +2176,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
                 <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucun revenu pour le moment</div>
-                <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières missions complétées.</div>
+                <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières prestations complétées.</div>
               </div>
             ) : <>
               <div style={{ background:`linear-gradient(135deg,${C.success}22,${C.success}10)`, border:`1px solid ${C.success}44`, borderRadius:16, padding:"16px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -2185,7 +2185,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   <div style={{ color:C.success, fontWeight:800, fontSize:22 }}>{total.toFixed(2).replace(".",",")} €</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Missions</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Prestations</div>
                   <div style={{ color:C.text, fontWeight:800, fontSize:18 }}>{completedMissions.length}</div>
                 </div>
               </div>
@@ -2197,7 +2197,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     <div style={{ display:"flex", gap:12, alignItems:"center" }}>
                       <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
+                        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Prestation"}</div>
                         <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -2221,7 +2221,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               })}
             </>}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
-              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
+              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque prestation.
             </div>
             <div style={{ background:"rgba(239,68,68,0.10)", border:"1px solid rgba(239,68,68,0.35)", borderRadius:12, padding:"12px 14px", fontSize:12, color:C.text, marginBottom:12, lineHeight:1.6 }}>
               <span style={{ fontWeight:700 }}>⚠️ Plafond auto-entrepreneur</span><br/>

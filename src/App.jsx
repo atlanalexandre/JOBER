@@ -156,7 +156,7 @@ function SplashScreen({ onNext, onBackoffice }) {
         </h1>
 
         <p style={{ color:C.textSub, fontSize:15, lineHeight:1.7, marginBottom:48, maxWidth:300 }}>
-          Trouvez des prestataires qualifiés et vérifiés pour vos missions ponctuelles — en quelques minutes.
+          Trouvez des prestataires qualifiés et vérifiés pour vos prestations ponctuelles — en quelques minutes.
         </p>
 
         {/* Stats pills */}
@@ -189,7 +189,7 @@ function SplashScreen({ onNext, onBackoffice }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>
-                10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
+                10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
               </div>
             </div>
           </div>
@@ -278,7 +278,7 @@ function RoleScreen({ onSelect }) {
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
             <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>
-              10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
+              10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
             </div>
           </div>
         </div>
@@ -297,9 +297,9 @@ function RoleScreen({ onSelect }) {
             {[
               { title:"1. Objet", text:"ALANE est une plateforme de mise en relation entre clients professionnels et prestataires qualifiés. L'utilisation de la plateforme implique l'acceptation des présentes conditions." },
               { title:"2. Inscription", text:"L'accès aux services nécessite la création d'un compte. Les informations fournies doivent être exactes et à jour. ALANE se réserve le droit de refuser ou suspendre tout compte." },
-              { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
-              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la mission. Toute contestation doit être soumise sous 48h en contactant le support." },
-              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
+              { title:"3. Prestations", text:"Les prestations sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
+              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la prestation. Toute contestation doit être soumise sous 48h en contactant le support." },
+              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des prestations. Chaque prestataire est couvert par sa propre RC Professionnelle." },
               { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : direction@alane.fr" },
             ].map((s,i)=>(
               <div key={i} style={{ marginBottom:14 }}>
@@ -454,7 +454,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"home",            icon:"🏠", label:"Accueil" },
-    {id:"mission_history", icon:"📋", label:"Missions"},
+    {id:"mission_history", icon:"📋", label:"Prestations"},
     {id:"search_filters",  icon:"🔍", label:"Chercher"},
     {id:"dashboard",       icon:"👤", label:"Compte"  },
     {id:"settings",        icon:"⚙️", label:"Réglages"},
@@ -492,7 +492,7 @@ function ClientNav({ active, onNavigate, unreadCount }) {
 function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"p_home",          icon:"🏠", label:"Accueil"   },
-    {id:"p_missions",      icon:"📋", label:"Missions"  },
+    {id:"p_missions",      icon:"📋", label:"Prestations"  },
     {id:"abonnement_presta",icon:"💎", label:"Abonnement"},
     {id:"p_dashboard",     icon:"👤", label:"Profil"    },
     {id:"settings",        icon:"⚙️", label:"Réglages"  },
@@ -595,7 +595,7 @@ function OnlineStatusWidget({ online, onToggle }) {
     <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:10, background: online?`${C.success}18`:`${C.gray}15`, border:`2px solid ${online?C.success:C.grayLight}`, borderRadius:r, padding:"12px 16px", cursor:"pointer", transition:"all 0.3s", marginBottom:14 }}>
       <div style={{ width:14, height:14, borderRadius:"50%", background:online?C.success:C.gray, boxShadow:online?`0 0 8px ${C.success}`:"none", transition:"all 0.3s" }} />
       <div style={{ flex:1 }}>
-        <div style={{ fontWeight:800, color:online?C.success:C.gray, fontSize:14 }}>{online?"En ligne — Je reçois des missions":"Hors ligne — Je ne reçois pas de missions"}</div>
+        <div style={{ fontWeight:800, color:online?C.success:C.gray, fontSize:14 }}>{online?"En ligne — Je reçois des prestations":"Hors ligne — Je ne reçois pas de prestations"}</div>
         <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{online?"Vous apparaissez dans les recherches clients":"Activez pour recevoir des propositions"}</div>
       </div>
       <div style={{ width:44, height:24, borderRadius:12, background:online?C.success:C.grayLight, position:"relative", transition:"background 0.3s" }}>
@@ -622,7 +622,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 
   const clientNav = [
     { id:"home",           icon:"🏠", label:"Accueil"         },
-    { id:"mission_history",icon:"📋", label:"Mes missions"    },
+    { id:"mission_history",icon:"📋", label:"Mes prestations"    },
     { id:"search_filters", icon:"🔍", label:"Rechercher"      },
     { id:"team_booking",   icon:"👥", label:"Équipe"          },
     { id:"favorites",      icon:"❤️", label:"Favoris"         },
@@ -632,7 +632,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
   ];
   const prestaNav = [
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
-    { id:"p_missions", icon:"📋", label:"Missions"     },
+    { id:"p_missions", icon:"📋", label:"Prestations"     },
     { id:"calendar",   icon:"📅", label:"Planning"     },
     { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
@@ -819,13 +819,13 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
               <span style={{ color:C.accentGold }}>au bon moment.</span>
             </h1>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:15, lineHeight:1.7, margin:"0 0 36px", maxWidth:320 }}>
-              Trouvez des prestataires qualifiés et vérifiés pour vos missions ponctuelles — en quelques minutes.
+              Trouvez des prestataires qualifiés et vérifiés pour vos prestations ponctuelles — en quelques minutes.
             </p>
             {/* Value props */}
             {[
               { icon:"✅", text:"Prestataires vérifiés et approuvés" },
               { icon:"🔒", text:"Paiement sécurisé via Stripe" },
-              { icon:"⭐", text:"Notes et avis après chaque mission" },
+              { icon:"⭐", text:"Notes et avis après chaque prestation" },
               { icon:<AlaneIcon size={15}/>, text:"Tarif transparent — prix affiché = prix réel" },
             ].map((v,i) => (
               <div key={i} style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
@@ -1008,13 +1008,13 @@ export default function App() {
     }
   },[]);
 
-  // Tracking GPS prestataire — envoie la position toutes les 60s quand mission assignée
+  // Tracking GPS prestataire — envoie la position toutes les 60s quand prestation assignée
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
     let hasConsent = false; try { hasConsent = !!localStorage.getItem(consentKey); } catch(e) {}
     if(!hasConsent) {
-      const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une mission assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une mission active.\n\nAutoriser la géolocalisation ?");
+      const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?");
       if(!ok) return;
       try { localStorage.setItem(consentKey, "1"); } catch(e) {}
     }
@@ -1032,7 +1032,7 @@ export default function App() {
         if(!Array.isArray(ms) || !ms.length) return;
         const { data:sd } = await supabase.auth.getSession();
         const token = sd?.session?.access_token;
-        fetch("/api/missions", {
+        fetch("/api/prestations", {
           method:"POST",
           headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
           body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
@@ -1161,7 +1161,7 @@ export default function App() {
         });
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        fetch("/api/missions", {
+        fetch("/api/prestations", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
           body: JSON.stringify({ action: "push_subscribe", subscription: sub.toJSON() }),
@@ -1290,7 +1290,7 @@ export default function App() {
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={(m)=>{ if(m?.id) setSelectedMissionId(m.id); setScreen("mission_broadcast"); setPendingMission(m); }} />}
-      {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
+      {screen==="mission_broadcast" && <MissionBroadcastScreen prestation={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
@@ -1310,7 +1310,7 @@ export default function App() {
             let missionId = selectedMissionId;
             if(missionId){
               const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
-              if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
+              if(updateErr) throw new Error("Erreur lors de l'affectation de la prestation.");
             } else {
               const newMissionId = (crypto.randomUUID || (() => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16))))();
               const { error:insertErr } = await supabase.from("missions").insert({
@@ -1326,12 +1326,12 @@ export default function App() {
                 status:"pending_acceptance", acceptance_deadline:deadline,
                 ...(intentId ? { stripe_payment_intent: intentId } : {}),
               });
-              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la mission.");
+              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la prestation.");
               missionId=newMissionId; setSelectedMissionId(newMissionId);
             }
-            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"prestation", title:"Nouvelle demande de prestation", body:`Un client vous propose une prestation. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
             const { data:sessionData } = await supabase.auth.getSession();
-            fetch("/api/missions", {
+            fetch("/api/prestations", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
               body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null }),
             }).catch(()=>{});
@@ -1374,7 +1374,7 @@ export default function App() {
       {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("home")} />}
       {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
-      {screen==="invoice"           && <InvoiceScreen mission={invoiceMission} onBack={()=>setScreen("mission_history")} />}
+      {screen==="invoice"           && <InvoiceScreen prestation={invoiceMission} onBack={()=>setScreen("mission_history")} />}
       {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
@@ -1392,7 +1392,7 @@ export default function App() {
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
-      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
+      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} prestation={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {boTestMode && screen!=="bo_dashboard" && (
@@ -1427,7 +1427,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque mission
+                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
@@ -1439,7 +1439,7 @@ export default function App() {
             {/* Actions rapides */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
               {[
-                { icon:"📋", label:"Mes missions",   color:C.violet,     action:"mission_history" },
+                { icon:"📋", label:"Mes prestations",   color:C.violet,     action:"mission_history" },
                 { icon:"❤️", label:"Mes favoris",    color:"#F25E5E",    action:"favorites"       },
                 { icon:"👥", label:"Équipe",         color:C.accentGold, action:"team_booking"    },
                 { icon:"🔔", label:"Notifications",  color:C.success,    action:"notifications"   },
@@ -1455,7 +1455,7 @@ export default function App() {
             {/* Menu secondaire */}
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12, letterSpacing:0.3 }}>Gestion</div>
             {[
-              { icon:"📄", label:"Mes factures",      sub:"Voir mes missions et justificatifs", action:"mission_history" },
+              { icon:"📄", label:"Mes factures",      sub:"Voir mes prestations et justificatifs", action:"mission_history" },
               { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },

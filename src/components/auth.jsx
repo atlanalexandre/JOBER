@@ -197,7 +197,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <AddressAutocomplete label="Adresse *" placeholder="12 rue de la Paix" value={adresseRue} onChange={(v)=>setAdresseRue(v)} onSelect={(data)=>{ if(data?.ville) setVilleBase(data.ville); if(data?.codePostal) setCodePostal(data.codePostal); if(data?.rue) setAdresseRue(data.rue); }} />
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ flex:"0 0 120px" }}><Input label="Code postal *" placeholder="75001" value={codePostal} onChange={e=>setCodePostal(e.target.value.replace(/\D/g,"").slice(0,5))} inputMode="numeric" /></div>
-            <div style={{ flex:1 }}><Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="Ville de départ en mission" /></div>
+            <div style={{ flex:1 }}><Input label="Ville de base *" placeholder="Paris" icon="📍" value={villeBase} onChange={e=>setVilleBase(e.target.value)} hint="Ville de départ en prestation" /></div>
           </div>
           <div style={{ marginBottom:14 }}>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10 }}>
@@ -211,7 +211,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           </div>
           <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginTop:4, display:"flex", gap:10 }}>
             <span style={{ fontSize:18 }}>💡</span>
-            <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Votre numéro ne sera communiqué au client qu'après confirmation d'une mission.</p>
+            <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Votre numéro ne sera communiqué au client qu'après confirmation d'une prestation.</p>
           </div>
         </>}
 
@@ -287,9 +287,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                     const charges = Math.round(net * taux * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
                     const scenarios = [
-                      { label:"Mission 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
-                      { label:"Mission 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
-                      { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
+                      { label:"Prestation 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Prestation 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"4 prestations/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
                     ];
                     return (
                       <>
@@ -456,7 +456,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
           </div>
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos missions</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 
           {/* Shine nudge */}
           <a href="https://shine.fr" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:12, padding:"12px 14px", marginBottom:20, textDecoration:"none" }}>
@@ -479,9 +479,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
 
           {/* Documents obligatoires */}
           <div style={{ background:"rgba(240,180,41,0.08)", border:"1.5px solid rgba(240,180,41,0.35)", borderRadius:r, padding:"14px 16px" }}>
-            <div style={{ fontWeight:800, color:"#F0B429", fontSize:13, marginBottom:8 }}>📎 Documents obligatoires pour recevoir des missions</div>
+            <div style={{ fontWeight:800, color:"#F0B429", fontSize:13, marginBottom:8 }}>📎 Documents obligatoires pour recevoir des prestations</div>
             <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:"0 0 10px" }}>
-              Une fois votre compte approuvé, vous devrez envoyer les documents suivants depuis votre espace pour débloquer l'accès aux missions :
+              Une fois votre compte approuvé, vous devrez envoyer les documents suivants depuis votre espace pour débloquer l'accès aux prestations :
             </p>
             {[
               "Photo d'identité récente (selfie ou portrait)",
@@ -536,8 +536,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             })}
             {isLaunchPhase() && (
               <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
-                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> → <strong style={{ color:C.accentGold }}>10 missions/mois gratuites</strong> !<br/>
-                <span style={{ color:C.textSub }}>2 missions/mois ensuite pour le plan Gratuit.</span>
+                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> → <strong style={{ color:C.accentGold }}>10 prestations/mois gratuites</strong> !<br/>
+                <span style={{ color:C.textSub }}>2 prestations/mois ensuite pour le plan Gratuit.</span>
               </div>
             )}
           </div>
@@ -602,12 +602,12 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
             </div>
             {[
-              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
+              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des prestations." },
               { title:"2. Statut prestataire & indépendance", text:"Vous intervenez en qualité d'auto-entrepreneur indépendant (art. L8221-6 Code du travail). Aucun lien de subordination n'existe entre ALANE et vous. ALANE agit exclusivement comme intermédiaire de mise en relation et n'est pas une entreprise de mise à disposition de personnel au sens de l'art. L8241-1 CT. Pour préserver votre statut d'indépendant, il est fortement recommandé de ne pas réaliser plus de 75 % de votre chiffre d'affaires via ALANE (principe de multi-clientèle). Vous êtes seul responsable du respect de vos obligations légales, fiscales et sociales." },
-              { title:"3. Missions", text:"Les missions sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client." },
+              { title:"3. Prestations", text:"Les prestations sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont directement réglés entre les parties selon les conditions convenues. ALANE prélève une commission de mise en relation selon les conditions de votre abonnement." },
-              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
-              { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. Vous êtes couvert par votre propre assurance RC Pro (obligatoire)." },
+              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation. En cas de litige, ALANE propose une médiation." },
+              { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. Vous êtes couvert par votre propre assurance RC Pro (obligatoire)." },
               { title:"7. Plafond de chiffre d'affaires", text:"Le statut auto-entrepreneur est soumis à un plafond annuel de chiffre d'affaires (77 700 € pour les prestations de services en 2024, seuil révisé chaque année). Au-delà de ce seuil, vous perdez automatiquement le bénéfice du régime micro-entreprise. ALANE ne peut être tenu responsable du dépassement de ce plafond. Il vous appartient de suivre vos revenus et de consulter l'URSSAF ou un expert-comptable en cas de doute." },
               { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
             ].map((s,i)=>(
@@ -853,9 +853,9 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
-              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⏱" },
+              { id:"ponctuel",  label:"Ponctuel",           desc:"Prestations occasionnelles selon les besoins",  icon:"⏱" },
               { id:"regulier",  label:"Régulier",           desc:"Besoin récurrent chaque semaine ou mois",    icon:"📅" },
-              { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de missions récurrentes et ponctuelles", icon:"🔄" },
+              { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de prestations récurrentes et ponctuelles", icon:"🔄" },
             ].map(f => (
               <button key={f.id} onClick={()=>setFrequence(f.id)} style={{ padding:"13px 16px", borderRadius:r, border:`2px solid ${frequence===f.id?accentColor:C.border}`, background:frequence===f.id?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"left", display:"flex", gap:12, alignItems:"center", transition:"all 0.2s" }}>
                 <span style={{ fontSize:20 }}>{f.icon}</span>
@@ -932,7 +932,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <span style={{ fontSize:18 }}>🏦</span>
             <div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Utilisé uniquement pour les remboursements cashback. Le paiement des missions se fait par carte via Stripe.</p>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Utilisé uniquement pour les remboursements cashback. Le paiement des prestations se fait par carte via Stripe.</p>
             </div>
           </div>
           <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
@@ -955,12 +955,12 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               <button onClick={()=>setShowCgpsModal(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer" }}>✕</button>
             </div>
             {[
-              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
-              { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
-              { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+              { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des prestations." },
+              { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les prestations conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
+              { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les prestations dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
-              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
-              { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+              { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation. En cas de litige, ALANE propose une médiation." },
+              { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
               { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
               { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
             ].map((s,i)=>(
@@ -1161,7 +1161,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <div style={{ flex:1 }}>
               <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement</span>
               <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la mission" : "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits"}
+                {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la prestation" : "10 prestations gratuites · Réservé aux 100 premiers prestataires inscrits"}
               </div>
             </div>
           </div>
@@ -1296,7 +1296,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             )}
 
             <IbanInput label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des missions</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des prestations</div>
 
             <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
