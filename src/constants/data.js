@@ -449,6 +449,13 @@ export const DOCS_REQUIS = [
   { id:"diplomes", label:"Diplômes & Certifications",  icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
 ];
 
+export const DOCS_REQUIS_CLIENT_PRO = [
+  { id:"kbis",      label:"Extrait KBIS / Sirene",                icon:"🏢", required:true, info:"Justificatif d'existence légale de votre société" },
+  { id:"rib",       label:"RIB de l'entreprise",                  icon:"🏦", required:true, info:"Coordonnées bancaires de la société pour la facturation" },
+  { id:"cni",       label:"CNI / Passeport du gérant",            icon:"🪪", required:true, info:"Pièce d'identité en cours de validité du représentant légal" },
+  { id:"tva",       label:"Attestation TVA intracommunautaire",   icon:"📋", required:true, info:"Numéro de TVA intracommunautaire de la société (si applicable)" },
+];
+
 export const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 export const PLAGES=["Matin (6h-13h)","Après-midi (13h-20h)","Soir/Nuit (20h-6h)"];
 export const NIVEAUX=["Débutant","Confirmé","Expert"];

@@ -554,15 +554,22 @@ export function BOComptes() {
 
                   {/* Checklist docs requis */}
                   {docs[p.id] && (() => {
-                    const REQ = [
-                      { type:"photo", label:"Photo de profil", icon:"📸" },
-                      { type:"cni", label:"Pièce d'identité", icon:"🪪" },
-                      { type:"kbis", label:"KBIS / SIRET", icon:"🏢" },
-                      { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
-                      { type:"rib", label:"RIB / IBAN", icon:"💳" },
-                      { type:"domicile", label:"Justificatif domicile", icon:"🏠" },
-                      { type:"rc_pro", label:"RC Professionnelle", icon:"🛡️" },
-                    ];
+                    const REQ = p.role === "client" && p.type_compte === "entreprise"
+                      ? [
+                          { type:"kbis",    label:"KBIS / Sirene",    icon:"🏢" },
+                          { type:"rib",     label:"RIB entreprise",   icon:"🏦" },
+                          { type:"cni",     label:"CNI du gérant",    icon:"🪪" },
+                          { type:"tva",     label:"Attestation TVA",  icon:"📋" },
+                        ]
+                      : [
+                          { type:"photo",   label:"Photo de profil",      icon:"📸" },
+                          { type:"cni",     label:"Pièce d'identité",     icon:"🪪" },
+                          { type:"kbis",    label:"KBIS / SIRET",         icon:"🏢" },
+                          { type:"urssaf",  label:"Attestation URSSAF",   icon:"🏛️" },
+                          { type:"rib",     label:"RIB / IBAN",           icon:"💳" },
+                          { type:"domicile",label:"Justificatif domicile",icon:"🏠" },
+                          { type:"rc_pro",  label:"RC Professionnelle",   icon:"🛡️" },
+                        ];
                     const uploaded = docs[p.id].map(d=>d.type);
                     const missing = REQ.filter(r => !uploaded.includes(r.type));
                     if (!missing.length) return null;
@@ -703,17 +710,27 @@ export function BOComptes() {
       )}
 
       {docModal && (() => {
-        const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
-        const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
-        const REQ = [
-          { type:"photo", label:"Photo de profil", icon:"📸" },
-          { type:"cni", label:"Pièce d'identité", icon:"🪪" },
-          { type:"kbis", label:"KBIS / SIRET", icon:"🏢" },
-          { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
-          { type:"rib", label:"RIB / IBAN", icon:"💳" },
-          { type:"domicile", label:"Justif. domicile", icon:"🏠" },
-          { type:"rc_pro", label:"RC Professionnelle", icon:"🛡️" },
-        ];
+        const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+        const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+        const p = profiles.find(x=>x.id===docModal.profileId)||{};
+        const REQ = p.role === "client" && p.type_compte === "entreprise"
+          ? [
+              { type:"kbis",    label:"KBIS / Sirene",   icon:"🏢" },
+              { type:"rib",     label:"RIB entreprise",  icon:"🏦" },
+              { type:"cni",     label:"CNI du gérant",   icon:"🪪" },
+              { type:"tva",     label:"Attestation TVA", icon:"📋" },
+            ]
+          : p.role === "client"
+            ? [] // client particulier — pas de docs requis
+            : [
+                { type:"photo",    label:"Photo de profil",      icon:"📸" },
+                { type:"cni",      label:"Pièce d'identité",     icon:"🪪" },
+                { type:"kbis",     label:"KBIS / SIRET",         icon:"🏢" },
+                { type:"urssaf",   label:"Attestation URSSAF",   icon:"🏛️" },
+                { type:"rib",      label:"RIB / IBAN",           icon:"💳" },
+                { type:"domicile", label:"Justif. domicile",     icon:"🏠" },
+                { type:"rc_pro",   label:"RC Professionnelle",   icon:"🛡️" },
+              ];
         const userDocs = docs[docModal.profileId];
         const isLoading = docsLoading[docModal.profileId];
         return (

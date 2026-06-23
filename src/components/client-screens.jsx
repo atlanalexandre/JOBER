@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
@@ -518,6 +518,22 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
             </div>
           </div>
         ))}
+
+        {role === "client" && clientMeta?.type_compte === "entreprise" && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:8, paddingLeft:4 }}>Compte professionnel</div>
+            <div style={{ background:"#0D1B3E", borderRadius:r, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+              <div onClick={()=>onNavigate("client_pro_docs")} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", cursor:"pointer" }}>
+                <div style={{ width:32, height:32, borderRadius:10, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>📂</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, color:C.violet, fontSize:14 }}>Documents entreprise</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>KBIS, RIB, CNI gérant, Attestation TVA</div>
+                </div>
+                <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Thème */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
@@ -6070,6 +6086,102 @@ export function DocUploadScreen({ onBack }) {
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
               <Badge color={statusColors[d.status]} small>{uploadOk===d.id?"✅ Envoyé !":statusLabels[d.status]}</Badge>
               <button onClick={()=>handleUploadLegacy(d.id)} disabled={uploading===d.id}
+                style={{ background:d.status==="valid"?"rgba(255,255,255,0.08)":C.violet, border:"none", borderRadius:8, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:uploading===d.id?0.6:1 }}>
+                {uploading===d.id?"⏳…":d.status==="valid"?"🔄 Remplacer":"📤 Charger"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>24h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ClientProDocScreen({ onBack }) {
+  const DOC_DEFS = DOCS_REQUIS_CLIENT_PRO;
+
+  const [userId, setUserId]   = useState(null);
+  const [dbDocs, setDbDocs]   = useState([]);
+  const [uploading, setUploading] = useState(null);
+  const [uploadOk, setUploadOk]   = useState(null);
+  const fileRefs = useRef({});
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if(!u) return;
+      setUserId(u.id);
+      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
+      setDbDocs(rows || []);
+    });
+  }, []);
+
+  const handleUpload = (docId) => { const input = fileRefs.current[docId]; if(input) input.click(); };
+
+  const handleFileChange = async (docId, e) => {
+    const file = e.target.files?.[0]; if(!file||!userId) return;
+    const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
+    if(!allowedAll.includes(file.type)){ alert("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    setUploading(docId); setUploadOk(null);
+    const ext = file.name.split(".").pop();
+    const path = `${userId}/${docId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+    if(!error) {
+      await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:path, created_at:new Date().toISOString() }]);
+      setUploadOk(docId);
+      setTimeout(()=>setUploadOk(null), 3000);
+    }
+    setUploading(null);
+    e.target.value = "";
+  };
+
+  const docs = DOC_DEFS.map(def => {
+    const saved = dbDocs.find(d=>d.type===def.id);
+    return { ...def, status:saved?"valid":"missing", info:saved?`Envoyé le ${new Date(saved.created_at).toLocaleDateString("fr-FR")}`:def.info };
+  });
+
+  const valid = docs.filter(d=>d.status==="valid").length;
+  const pct   = Math.round((valid/docs.length)*100);
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Documents entreprise</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Documents requis pour les clients professionnels</p>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
+            <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Dossier complet</span>
+            <span style={{ fontWeight:800, color:pct===100?C.success:C.accentGold, fontSize:14 }}>{pct}%</span>
+          </div>
+          <div style={{ height:6, background:C.bgSurface||"#162547", borderRadius:3, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.violet},${C.success})`, borderRadius:3, transition:"width 0.5s" }} />
+          </div>
+          <p style={{ color:C.textMuted, fontSize:11, marginTop:8 }}>{valid}/{docs.length} documents fournis</p>
+        </div>
+
+        {DOC_DEFS.map(def => (
+          <input key={def.id} type="file" accept=".pdf,.jpg,.jpeg,.png" ref={el=>fileRefs.current[def.id]=el}
+            onChange={e=>handleFileChange(def.id,e)} style={{ display:"none" }} />
+        ))}
+
+        {docs.map(d => (
+          <div key={d.id} style={{ background:"#0D1B3E", border:`1px solid ${d.status==="valid"?C.border:"#F0B42940"}`, borderRadius:r, padding:"14px 15px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
+            <div style={{ width:42, height:42, borderRadius:12, background:d.status==="valid"?"rgba(34,197,94,0.15)":"rgba(240,180,41,0.12)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{d.icon}</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{d.label}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{d.info}</div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+              <Badge color={d.status==="valid"?C.success:C.accentGold} small>{uploadOk===d.id?"✅ Envoyé !":d.status==="valid"?"✓ Envoyé":"Manquant"}</Badge>
+              <button onClick={()=>handleUpload(d.id)} disabled={uploading===d.id}
                 style={{ background:d.status==="valid"?"rgba(255,255,255,0.08)":C.violet, border:"none", borderRadius:8, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:uploading===d.id?0.6:1 }}>
                 {uploading===d.id?"⏳…":d.status==="valid"?"🔄 Remplacer":"📤 Charger"}
               </button>
