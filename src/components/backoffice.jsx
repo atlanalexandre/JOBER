@@ -1792,13 +1792,14 @@ export function BOReminders() {
 }
 
 export function BOMissions() {
-  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée" };
-  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E" };
+  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée", disputed:"En litige" };
+  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E", disputed:"#F25E5E" };
 
   const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState("all");
   const [validating, setValidating] = useState(null);
+  const [disputing, setDisputing] = useState(null);
   const [result, setResult]     = useState({});
 
   const load = async (status = filter) => {
@@ -1829,6 +1830,38 @@ export function BOMissions() {
     setValidating(null);
   };
 
+  const handleRelease = async (missionId) => {
+    if (!window.confirm("Libérer les fonds au prestataire ? Le litige sera clos.")) return;
+    setDisputing(missionId + "_release");
+    try {
+      const res = await boFetch({ action:"release_dispute", mission_id: missionId });
+      const data = await res.json();
+      if (data.success) {
+        setResult(r => ({ ...r, [missionId]: "✅ Fonds libérés — prestation validée" }));
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
+      } else {
+        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
+      }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setDisputing(null);
+  };
+
+  const handleRefund = async (missionId) => {
+    if (!window.confirm("Rembourser le client ? Cette action est irréversible.")) return;
+    setDisputing(missionId + "_refund");
+    try {
+      const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
+      const data = await res.json();
+      if (data.success) {
+        setResult(r => ({ ...r, [missionId]: "💰 Remboursement initié" }));
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"closed" } : m));
+      } else {
+        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
+      }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setDisputing(null);
+  };
+
   const filtered = prestations;
 
   return (
@@ -1837,7 +1870,7 @@ export function BOMissions() {
 
       {/* Filtres */}
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
-        {["all","open","pending_acceptance","assigned","completed","closed"].map(s => (
+        {["all","open","pending_acceptance","assigned","completed","disputed","closed"].map(s => (
           <button key={s} onClick={()=>setFilter(s)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${filter===s?C.violet:C.border}`, background:filter===s?`${C.violet}20`:"transparent", color:filter===s?C.violet:C.textSub, fontWeight:filter===s?700:500, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
             {s==="all"?"Toutes":STATUS_LABELS[s]||s}
           </button>
@@ -1890,6 +1923,16 @@ export function BOMissions() {
                 </button>
               )}
             </div>
+            {m.status === "disputed" && !result[m.id] && (
+              <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                <button onClick={()=>handleRelease(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:`${C.success}20`, color:C.success, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_release" ? "…" : "✅ Libérer les fonds"}
+                </button>
+                <button onClick={()=>handleRefund(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"rgba(242,94,94,0.15)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_refund" ? "…" : "💰 Rembourser le client"}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}

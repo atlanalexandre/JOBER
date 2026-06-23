@@ -555,6 +555,56 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
     }
 
+    if (action === "dispute") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, message } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const missions = await mr.json();
+      const mission = Array.isArray(missions) && missions[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "completed") return res.status(400).json({ error: "La mission doit être terminée pour signaler un litige" });
+
+      // Passer la mission en litige
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "disputed" }),
+      });
+
+      // Créer un ticket de support
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          subject: "Litige — " + (mission.metier || mission.sector || "Prestation"),
+          message: message || "Contestation de la qualité de la prestation",
+          user_id: caller.id,
+          status: "open",
+        }),
+      });
+
+      // Notification au prestataire
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "system",
+            title: "Prestation contestée ⚠️",
+            body: "Le client a signalé un problème sur votre prestation. ALANE examine le dossier sous 72h.",
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true });
+    }
+
     if (action === "validate_presta") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });

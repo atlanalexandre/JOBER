@@ -4843,6 +4843,9 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
+  const [showDisputeModal, setShowDisputeModal] = useState(null);
+  const [disputeMsg, setDisputeMsg] = useState("");
+  const [disputing, setDisputing] = useState(false);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -5246,6 +5249,19 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               )}
             </div>
           )}
+
+          {selected.status === "completed" && (() => {
+            const mEnd = selected.date ? new Date(`${selected.date}T${selected.heure_fin || "23:59"}`) : null;
+            const hoursElapsed = mEnd ? (Date.now() - mEnd.getTime()) / 3600000 : 999;
+            if (hoursElapsed > 48) return null;
+            return (
+              <div style={{ marginTop:8 }}>
+                <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⚠️ Signaler un problème
+                </button>
+              </div>
+            );
+          })()}
 
           {(selected.status === "completed" || selected.status === "closed") && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>

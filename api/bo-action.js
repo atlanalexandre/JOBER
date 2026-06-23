@@ -696,6 +696,69 @@ export default async function handler(req, res) {
       return res.status(200).json({ success:true, montantTotal, cashback });
     }
 
+    if (action === "release_dispute") {
+      const { mission_id } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const missions = await mr.json();
+      const m = Array.isArray(missions) && missions[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+
+      // Notification client
+      if (m.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige résolu ✅", body:"ALANE a examiné votre dossier et a validé la prestation. Merci pour votre retour.", read:false }) }).catch(()=>{});
+      }
+      // Notification prestataire
+      if (m.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Fonds libérés ✅", body:"Suite à l'examen du litige, votre prestation a été validée et les fonds libérés.", read:false }) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"release_dispute", target_id:mission_id }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "refund_dispute") {
+      const { mission_id } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
+      const missions = await mr.json();
+      const m = Array.isArray(missions) && missions[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      // Remboursement Stripe si un PaymentIntent existe
+      if (m.stripe_payment_intent) {
+        const stripeRes = await fetch(`https://api.stripe.com/v1/refunds`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: `payment_intent=${m.stripe_payment_intent}`,
+        });
+        if (!stripeRes.ok) {
+          const stripeErr = await stripeRes.json().catch(() => ({}));
+          return res.status(500).json({ error: stripeErr?.error?.message || "Erreur Stripe lors du remboursement" });
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "closed" }),
+      });
+
+      // Notification client
+      if (m.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Remboursement en cours 💰", body:"Votre litige a été accepté. Le remboursement sera crédité sous 5 à 10 jours ouvrés.", read:false }) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"refund_dispute", target_id:mission_id }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "list_missions_export") {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`,
