@@ -4652,10 +4652,11 @@ export function LegalScreen({ type, onBack }) {
         { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les prestations conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
         { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les prestations dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
         { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
-        { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation. En cas de litige, ALANE propose une médiation." },
+        { title:"5. Annulations", text:"En cas d'annulation avant le début de la prestation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant net de la prestation. Pour les litiges sur la qualité, voir l'article 9." },
         { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
         { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
+        { title:"9. Litiges et qualité des prestations", text:"En cas de contestation sur la qualité d'une prestation, le client dispose de 48 heures après la date de fin de la prestation pour signaler un problème via la plateforme (bouton « Signaler un problème » dans l'historique des prestations).\n\nALANE examine le litige sous 72 heures ouvrées sur la base des éléments fournis par les deux parties (échanges via le tchat, contrat signé, description initiale de la prestation). ALANE peut décider de :\n\n• Valider la prestation et libérer les fonds au prestataire si elle est jugée conforme\n• Procéder à un remboursement partiel ou total du client\n• Suspendre le compte du prestataire en cas de manquement grave\n\nAu-delà du délai de 48 heures sans signalement, la validation est réputée définitivement acquise et les fonds libérés. Aucune contestation ne pourra être acceptée après ce délai.\n\nLes fonds sont conservés par ALANE jusqu'à résolution du litige. ALANE agit en tant qu'arbitre neutre et sa décision est définitive dans le cadre des présentes CGPS." },
       ]
     },
     mentions_legales: {
@@ -5511,6 +5512,39 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           );
         })}
       </div>
+
+      {showDisputeModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:480 }}>
+            <div style={{ fontWeight:800, color:"#F25E5E", fontSize:16, marginBottom:6 }}>⚠️ Signaler un problème</div>
+            <div style={{ color:C.textSub, fontSize:12, marginBottom:16, lineHeight:1.5 }}>Décrivez le problème rencontré. ALANE examinera votre dossier sous 72h ouvrées et vous contactera.</div>
+            <textarea value={disputeMsg} onChange={e=>setDisputeMsg(e.target.value)} placeholder="Ex : Le prestataire n'a pas respecté les termes convenus, travail incomplet..." style={{ width:"100%", minHeight:100, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:10, color:C.text, fontSize:13, padding:"10px 12px", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }} />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={()=>{setShowDisputeModal(null);setDisputeMsg("");}} style={{ flex:1, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button disabled={disputing || !disputeMsg.trim()} onClick={async()=>{
+                setDisputing(true);
+                try {
+                  const { data:sd } = await supabase.auth.getSession();
+                  const tok = sd?.session?.access_token;
+                  const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"dispute", mission_id: showDisputeModal, message: disputeMsg.trim() }) });
+                  const j = await res.json();
+                  if (j.ok) {
+                    setShowDisputeModal(null); setDisputeMsg("");
+                    setMissions(ms => ms.map(m => m.id === showDisputeModal ? { ...m, status:"disputed" } : m));
+                    if (selected?.id === showDisputeModal) setSelected(s => s ? { ...s, status:"disputed" } : s);
+                    alert("Votre signalement a été transmis à ALANE. Vous serez contacté sous 72h ouvrées.");
+                  } else {
+                    alert(j.error || "Erreur lors de l'envoi du signalement.");
+                  }
+                } catch { alert("Erreur réseau, réessayez."); }
+                setDisputing(false);
+              }} style={{ flex:2, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:disputing||!disputeMsg.trim()?0.5:1 }}>
+                {disputing ? "Envoi…" : "Envoyer le signalement"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

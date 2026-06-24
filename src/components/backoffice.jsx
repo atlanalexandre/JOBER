@@ -1514,13 +1514,16 @@ export function BOSettingsTab() {
         ].map(({ key, label }) => (
           <div key={key} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:180 }}>{label}</span>
-            <input type="number" min={0} step={0.1} value={localFs[key]} onChange={e => setLocalFs(p => ({ ...p, [key]: e.target.value }))}
+            <input type="text" inputMode="decimal" value={localFs[key]} onChange={e => setLocalFs(p => ({ ...p, [key]: e.target.value }))}
               style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
             <span style={{ color:C.textSub, fontSize:12 }}>€</span>
           </div>
         ))}
         <div style={{ marginBottom:16 }}>
-          <SaveBtn k="frais_service" onClick={() => save("frais_service", { single: Number(localFs.single), range: Number(localFs.range), urgent: Number(localFs.urgent) })} />
+          <SaveBtn k="frais_service" onClick={() => {
+            const toNum = v => parseFloat(String(v).replace(",", ".")) || 0;
+            save("frais_service", { single: toNum(localFs.single), range: toNum(localFs.range), urgent: toNum(localFs.urgent) });
+          }} />
         </div>
         <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
