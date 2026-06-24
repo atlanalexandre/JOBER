@@ -20,139 +20,75 @@ body {
 :root {
   --v:#7C6FE0; --v2:#5B4FD0; --v3:#A99AF5;
   --gold:#FFD60A; --ok:#00F5A0; --red:#FF3B30;
-  --navy:#0A1628; --bdr:rgba(255,255,255,0.1);
-  --tx:#fff; --sub:rgba(255,255,255,0.5); --muted:rgba(255,255,255,0.28);
+  --navy:#0A1628;
+  --sub:rgba(255,255,255,0.5); --muted:rgba(255,255,255,0.28);
 }
 
 /* ── SCENES ── */
-.scene {
-  position:absolute; inset:0; opacity:0; pointer-events:none;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-}
+.scene { position:absolute; inset:0; opacity:0; pointer-events:none; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .scene.active { opacity:1; pointer-events:auto; }
 
-/* ── FLASH TRANSITION ── */
-#flash {
-  position:absolute; inset:0; z-index:180; pointer-events:none;
-  background:#fff; opacity:0; transition:opacity 0.08s;
-}
+/* ── FLASH ── */
+#flash { position:absolute; inset:0; z-index:180; pointer-events:none; background:#fff; opacity:0; transition:opacity 0.07s; }
 
 /* ── KEYFRAMES ── */
-@keyframes popIn {
-  0%   { opacity:0; transform:scale(0.55) translateY(16px); }
-  65%  { transform:scale(1.07) translateY(-3px); }
-  100% { opacity:1; transform:scale(1) translateY(0); }
-}
-@keyframes slideUp {
-  0%   { opacity:0; transform:translateY(44px); }
-  60%  { transform:translateY(-4px); }
-  100% { opacity:1; transform:translateY(0); }
-}
-@keyframes slideRight {
-  0%   { opacity:0; transform:translateX(-52px); }
-  65%  { transform:translateX(4px); }
-  100% { opacity:1; transform:translateX(0); }
-}
-@keyframes slideLeft {
-  0%   { opacity:0; transform:translateX(52px); }
-  65%  { transform:translateX(-4px); }
-  100% { opacity:1; transform:translateX(0); }
-}
-@keyframes slam {
-  0%   { opacity:0; transform:scale(1.35); }
-  55%  { transform:scale(0.97); }
-  100% { opacity:1; transform:scale(1); }
-}
-@keyframes glow {
-  0%,100% { box-shadow:0 0 40px rgba(124,111,224,0.45); }
-  50%      { box-shadow:0 0 80px rgba(124,111,224,0.9); }
-}
-@keyframes capIn {
-  0%   { opacity:0; transform:translateY(12px) scale(0.93); }
-  65%  { transform:translateY(-2px) scale(1.02); }
-  100% { opacity:1; transform:translateY(0) scale(1); }
-}
-@keyframes badgeBounce {
-  0%,100% { transform:scale(1); }
-  50%      { transform:scale(1.05); }
-}
+@keyframes popIn   { 0%{opacity:0;transform:scale(0.5) translateY(18px);} 65%{transform:scale(1.08) translateY(-3px);} 100%{opacity:1;transform:scale(1) translateY(0);} }
+@keyframes slideUp { 0%{opacity:0;transform:translateY(48px);} 60%{transform:translateY(-4px);} 100%{opacity:1;transform:translateY(0);} }
+@keyframes slideR  { 0%{opacity:0;transform:translateX(-56px);} 65%{transform:translateX(4px);} 100%{opacity:1;transform:translateX(0);} }
+@keyframes slideL  { 0%{opacity:0;transform:translateX(56px);} 65%{transform:translateX(-4px);} 100%{opacity:1;transform:translateX(0);} }
+@keyframes slam    { 0%{opacity:0;transform:scale(1.38);} 55%{transform:scale(0.97);} 100%{opacity:1;transform:scale(1);} }
+@keyframes glow    { 0%,100%{box-shadow:0 0 40px rgba(124,111,224,0.45);} 50%{box-shadow:0 0 80px rgba(124,111,224,0.9);} }
+@keyframes capIn   { 0%{opacity:0;transform:translateY(14px) scale(0.93);} 65%{transform:translateY(-2px) scale(1.02);} 100%{opacity:1;transform:translateY(0) scale(1);} }
+@keyframes bounce  { 0%,100%{transform:scale(1);} 50%{transform:scale(1.06);} }
+@keyframes pulse   { 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+@keyframes cntdown { 0%{opacity:1;transform:scale(1.4);} 100%{opacity:0;transform:scale(0.6);} }
 
-/* ── SHOW CLASS ── */
-.a-pop  { animation:popIn    0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
-.a-up   { animation:slideUp  0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
-.a-right{ animation:slideRight 0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
-.a-left { animation:slideLeft  0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
-.a-slam { animation:slam     0.45s cubic-bezier(0.34,1.3,0.64,1) both; }
-
-.anim { opacity:0; }
+/* ── ANIMATION CLASSES ── */
+.a-pop  { animation:popIn  0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+.a-up   { animation:slideUp 0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+.a-r    { animation:slideR  0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
+.a-l    { animation:slideL  0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
+.a-slam { animation:slam    0.45s cubic-bezier(0.34,1.3,0.64,1) both; }
+.anim   { opacity:0; }
 
 /* ── CAPTIONS TIKTOK ── */
-.caption {
-  position:absolute; left:0; right:0; z-index:20;
-  text-align:center; padding:0 14px;
-}
+.caption { position:absolute; left:0; right:0; z-index:20; text-align:center; padding:0 14px; }
 .caption.top    { top:54px; }
 .caption.bottom { bottom:22px; }
-.cap-row {
-  display:inline-flex; flex-wrap:wrap; justify-content:center;
-  gap:4px 5px; animation:capIn 0.38s cubic-bezier(0.34,1.4,0.64,1) 0.15s both;
-}
-.w {
-  display:inline-block; background:rgba(0,0,0,0.82);
-  border-radius:6px; padding:4px 9px;
-  font-size:17px; font-weight:800; color:#fff;
-  line-height:1.3; letter-spacing:-0.2px;
-}
-.w.v   { background:var(--v); }
-.w.g   { background:var(--gold); color:#000; }
-.w.ok  { background:var(--ok); color:#000; }
-.w.red { background:var(--red); }
-.w.big { font-size:20px; font-weight:900; }
-
-/* ── GLASS ── */
-.glass {
-  background:rgba(255,255,255,0.06);
-  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
-  border:1px solid rgba(255,255,255,0.11); border-radius:20px;
-}
+.cap-row { display:inline-flex; flex-wrap:wrap; justify-content:center; gap:4px 5px; animation:capIn 0.38s cubic-bezier(0.34,1.4,0.64,1) 0.12s both; }
+.w { display:inline-block; background:rgba(0,0,0,0.82); border-radius:6px; padding:4px 9px; font-size:18px; font-weight:800; color:#fff; line-height:1.3; }
+.w.v  { background:var(--v); }
+.w.ok { background:var(--ok); color:#000; }
+.w.rd { background:var(--red); }
+.w.g  { background:var(--gold); color:#000; }
 
 /* ── OVERLAY ── */
-.overlay {
-  position:absolute; bottom:0; left:0; right:0;
-  padding:22px 16px 18px;
-  background:linear-gradient(to top,rgba(5,14,32,0.95) 0%,rgba(5,14,32,0.35) 65%,transparent 100%);
-}
-.ov-row { display:inline-flex; flex-wrap:wrap; gap:4px; }
-.ow {
-  display:inline-block; background:rgba(0,0,0,0.75);
-  border-radius:5px; padding:3px 8px;
-  font-size:16px; font-weight:800; color:#fff; line-height:1.35;
-}
+.overlay { position:absolute; bottom:0; left:0; right:0; padding:22px 16px 18px; background:linear-gradient(to top,rgba(5,14,32,0.96) 0%,rgba(5,14,32,0.3) 65%,transparent 100%); }
+.ov-row  { display:inline-flex; flex-wrap:wrap; gap:4px; }
+.ow { display:inline-block; background:rgba(0,0,0,0.78); border-radius:5px; padding:3px 8px; font-size:16px; font-weight:800; color:#fff; line-height:1.35; }
 .ow.v  { background:var(--v); }
 .ow.ok { background:var(--ok); color:#000; }
 .ow.g  { background:var(--gold); color:#000; }
+
+/* ── AVATAR CSS (zéro image externe) ── */
+.av {
+  border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-weight:900; color:#fff; flex-shrink:0; font-size:18px;
+  background:linear-gradient(135deg,var(--v),var(--v2));
+}
+.av.sm { width:44px; height:44px; font-size:16px; }
+.av.md { width:56px; height:56px; font-size:20px; border-radius:16px; }
+.av.lg { width:64px; height:64px; font-size:22px; border-radius:18px; border:2px solid rgba(124,111,224,0.5); box-shadow:0 0 20px rgba(124,111,224,0.3); }
+.av.red { background:linear-gradient(135deg,#FF6B6B,#FF3B30); }
+.av.chat { width:38px; height:38px; font-size:14px; border-radius:12px; border:1.5px solid rgba(124,111,224,0.4); }
 
 /* ══════════════════════════════════
    S1 — SPLASH
 ══════════════════════════════════ */
 #s1 { background:radial-gradient(ellipse at 50% 38%,#1c1270 0%,#050E20 65%); }
-.s1-logo {
-  width:100px; height:100px; border-radius:26px;
-  background:linear-gradient(135deg,var(--v),var(--v2));
-  display:flex; align-items:center; justify-content:center;
-  font-size:44px; font-weight:900; color:#fff; letter-spacing:-2px;
-  margin-bottom:18px;
-  animation:popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.1s both, glow 2.2s ease-in-out 0.8s infinite;
-}
-.s1-brand {
-  font-size:44px; font-weight:900; color:#fff; letter-spacing:-2px;
-  animation:slideUp 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.45s both;
-}
-.s1-tag {
-  font-size:15px; font-weight:600; color:var(--sub);
-  text-align:center; margin-top:8px; padding:0 40px;
-  animation:slideUp 0.35s ease 0.65s both;
-}
+.s1-logo  { width:100px; height:100px; border-radius:26px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; color:#fff; margin-bottom:18px; animation:popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.1s both, glow 2.2s ease-in-out 0.8s infinite; }
+.s1-brand { font-size:44px; font-weight:900; color:#fff; letter-spacing:-2px; animation:slideUp 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.45s both; }
+.s1-tag   { font-size:15px; font-weight:600; color:var(--sub); text-align:center; margin-top:8px; padding:0 40px; animation:slideUp 0.35s ease 0.65s both; }
 
 /* ══════════════════════════════════
    S2 — RÔLE
@@ -160,239 +96,122 @@ body {
 #s2 { background:linear-gradient(175deg,#0D1535,#050E20); }
 .s2-title { font-size:27px; font-weight:900; color:#fff; margin-bottom:6px; }
 .s2-sub   { font-size:14px; color:var(--sub); margin-bottom:26px; }
-.role-card {
-  width:304px; padding:17px 16px; border-radius:18px;
-  display:flex; align-items:center; gap:14px; margin-bottom:10px;
-}
-.role-card.client {
-  background:linear-gradient(135deg,var(--v),var(--v2));
-  box-shadow:0 10px 40px rgba(124,111,224,0.45);
-}
-.role-card.presta {
-  background:rgba(255,255,255,0.06);
-  border:1px solid rgba(255,255,255,0.11);
-}
+.role-card { width:304px; padding:17px 16px; border-radius:18px; display:flex; align-items:center; gap:14px; margin-bottom:10px; }
+.role-card.client { background:linear-gradient(135deg,var(--v),var(--v2)); box-shadow:0 10px 40px rgba(124,111,224,0.45); }
+.role-card.presta { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.11); }
 .role-card .ic { font-size:28px; flex-shrink:0; }
 .role-card .rl { font-size:16px; font-weight:800; color:#fff; }
 .role-card .rs { font-size:11px; color:rgba(255,255,255,0.58); margin-top:2px; }
-.badge-free {
-  display:inline-flex; align-items:center; gap:6px;
-  background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.28);
-  border-radius:10px; padding:7px 14px;
-  font-size:12px; color:var(--ok); font-weight:800; margin-top:8px;
-}
+.badge-free { display:inline-flex; align-items:center; gap:6px; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.28); border-radius:10px; padding:7px 14px; font-size:12px; color:var(--ok); font-weight:800; margin-top:8px; }
 
 /* ══════════════════════════════════
-   S3 — CATALOGUE
+   S3 — PROFIL PRESTATAIRE
 ══════════════════════════════════ */
 #s3 { align-items:flex-start; justify-content:flex-start; padding:54px 16px 0; background:#050E20; }
-.sec-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; margin-top:14px; }
-.sec-card {
-  border-radius:14px; padding:14px 12px;
-  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
-}
-.si { font-size:24px; margin-bottom:5px; }
-.sn { font-size:13px; font-weight:800; color:#fff; }
-.sc { font-size:11px; color:var(--sub); margin-top:2px; display:flex; align-items:center; gap:4px; }
-.sdot { width:6px; height:6px; border-radius:50%; background:var(--ok); flex-shrink:0; }
-
-/* ══════════════════════════════════
-   S4 — PROFIL
-══════════════════════════════════ */
-#s4 { align-items:flex-start; justify-content:flex-start; padding:54px 16px 0; background:#050E20; }
 .pc { width:100%; border-radius:20px; overflow:hidden; }
-.pc-head {
-  background:linear-gradient(135deg,rgba(124,111,224,0.18),rgba(91,79,208,0.05));
-  border-bottom:1px solid rgba(255,255,255,0.07);
-  padding:18px; display:flex; gap:14px; align-items:center;
-}
-.pc-av {
-  width:64px; height:64px; border-radius:18px; overflow:hidden; flex-shrink:0;
-  border:2px solid rgba(124,111,224,0.5); box-shadow:0 0 20px rgba(124,111,224,0.3);
-}
-.pc-av img { width:100%; height:100%; object-fit:cover; }
-.pc-name { font-size:18px; font-weight:900; color:#fff; }
-.pc-loc  { font-size:12px; color:var(--sub); margin-top:2px; }
-.cert-badge {
-  display:inline-flex; align-items:center; gap:4px; margin-top:5px;
-  background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25);
-  border-radius:7px; padding:2px 8px; font-size:11px; font-weight:800; color:var(--ok);
-}
+.pc-head { background:linear-gradient(135deg,rgba(124,111,224,0.18),rgba(91,79,208,0.05)); border-bottom:1px solid rgba(255,255,255,0.07); padding:18px; display:flex; gap:14px; align-items:center; }
+.pc-name   { font-size:18px; font-weight:900; color:#fff; }
+.pc-loc    { font-size:12px; color:var(--sub); margin-top:2px; }
+.cert-badge { display:inline-flex; align-items:center; gap:4px; margin-top:5px; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25); border-radius:7px; padding:2px 8px; font-size:11px; font-weight:800; color:var(--ok); }
 .pc-body { padding:14px; }
-.stars { color:var(--gold); font-size:16px; }
-.rating { font-size:12px; color:var(--sub); margin-left:8px; }
-.tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
-.tag {
-  background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25);
-  border-radius:7px; padding:3px 9px; font-size:11px; font-weight:700; color:var(--v3);
-}
+.stars   { color:var(--gold); font-size:16px; }
+.rating  { font-size:12px; color:var(--sub); margin-left:8px; }
+.tags    { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
+.tag     { background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25); border-radius:7px; padding:3px 9px; font-size:11px; font-weight:700; color:var(--v3); }
 .price-row { display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.07); }
 .price-lbl { font-size:12px; color:var(--sub); }
 .price-val { font-size:26px; font-weight:900; color:#fff; }
-.book-btn {
-  width:100%; margin-top:10px; padding:14px;
-  background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:14px;
-  font-size:14px; font-weight:800; color:#fff; font-family:inherit; cursor:pointer;
-  box-shadow:0 8px 24px rgba(124,111,224,0.4);
-}
+.book-btn  { width:100%; margin-top:10px; padding:14px; background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:14px; font-size:14px; font-weight:800; color:#fff; font-family:inherit; cursor:pointer; box-shadow:0 8px 24px rgba(124,111,224,0.4); }
 
 /* ══════════════════════════════════
-   S5 — URGENCE
+   S4 — URGENCE
 ══════════════════════════════════ */
-#s5 { background:radial-gradient(ellipse at 50% 30%,#2d0808 0%,#050E20 62%); }
-.urg-badge {
-  background:linear-gradient(135deg,#FF3B30,#c0392b);
-  border-radius:14px; padding:8px 18px;
-  font-size:13px; font-weight:900; color:#fff; letter-spacing:0.8px;
-  margin-bottom:18px; display:flex; align-items:center; gap:6px;
-  box-shadow:0 8px 30px rgba(255,59,48,0.45);
-  animation:badgeBounce 1.6s ease-in-out 0.3s infinite;
-}
+#s4 { background:radial-gradient(ellipse at 50% 30%,#2d0808 0%,#050E20 62%); }
+.urg-badge { background:linear-gradient(135deg,#FF3B30,#c0392b); border-radius:14px; padding:8px 18px; font-size:13px; font-weight:900; color:#fff; letter-spacing:0.8px; margin-bottom:18px; display:flex; align-items:center; gap:6px; box-shadow:0 8px 30px rgba(255,59,48,0.45); animation:bounce 1.6s ease-in-out 0.3s infinite; }
 .urg-title { font-size:28px; font-weight:900; color:#fff; text-align:center; line-height:1.2; margin-bottom:8px; }
 .urg-sub   { font-size:14px; color:var(--sub); text-align:center; margin-bottom:24px; line-height:1.5; padding:0 24px; }
-.urg-card {
-  width:304px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,59,48,0.28);
-  border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:12px;
-  backdrop-filter:blur(20px);
-}
-.urg-av { width:48px; height:48px; border-radius:14px; overflow:hidden; flex-shrink:0; border:2px solid rgba(255,59,48,0.35); }
-.urg-av img { width:100%; height:100%; object-fit:cover; }
-.urg-name { font-size:14px; font-weight:800; color:#fff; }
-.urg-info { font-size:11px; color:var(--sub); margin-top:1px; }
+.urg-card  { width:304px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,59,48,0.28); border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:12px; }
+.urg-name  { font-size:14px; font-weight:800; color:#fff; }
+.urg-info  { font-size:11px; color:var(--sub); margin-top:1px; }
 .urg-price { margin-left:auto; text-align:right; flex-shrink:0; }
 .urg-price .up { font-size:19px; font-weight:900; color:#fff; }
 .urg-price .ul { font-size:10px; color:#FF3B30; font-weight:800; }
 
 /* ══════════════════════════════════
-   S6 — CHAT
+   S5 — CHAT
 ══════════════════════════════════ */
-#s6 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:0; }
-.chat-hdr {
-  width:100%; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.07);
-  padding:52px 18px 14px; display:flex; align-items:center; gap:12px;
-}
-.chat-av { width:38px; height:38px; border-radius:12px; overflow:hidden; flex-shrink:0; border:1.5px solid rgba(124,111,224,0.4); }
-.chat-av img { width:100%; height:100%; object-fit:cover; }
-.chat-nm { font-size:14px; font-weight:800; color:#fff; }
-.chat-st { font-size:11px; color:var(--ok); margin-top:1px; font-weight:700; }
-.chat-body { width:100%; flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
-.msg { max-width:76%; padding:10px 13px; border-radius:16px; font-size:13px; line-height:1.5; opacity:0; }
-.msg.them { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); color:#fff; align-self:flex-start; border-bottom-left-radius:3px; }
-.msg.me   { background:linear-gradient(135deg,var(--v),var(--v2)); color:#fff; align-self:flex-end; border-bottom-right-radius:3px; box-shadow:0 4px 14px rgba(124,111,224,0.35); }
-.msg.show { animation:slideUp 0.3s cubic-bezier(0.34,1.4,0.64,1) both; opacity:1; }
-.msg-time { font-size:10px; color:rgba(255,255,255,0.38); margin-top:3px; }
-.chat-input {
-  width:100%; background:rgba(255,255,255,0.04); border-top:1px solid rgba(255,255,255,0.07);
-  padding:12px 16px; display:flex; align-items:center; gap:10px;
-}
+#s5 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:0; }
+.chat-hdr   { width:100%; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.07); padding:52px 18px 14px; display:flex; align-items:center; gap:12px; }
+.chat-nm    { font-size:14px; font-weight:800; color:#fff; }
+.chat-st    { font-size:11px; color:var(--ok); margin-top:1px; font-weight:700; }
+.chat-body  { width:100%; flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+.msg        { max-width:76%; padding:10px 13px; border-radius:16px; font-size:13px; line-height:1.5; opacity:0; }
+.msg.them   { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); color:#fff; align-self:flex-start; border-bottom-left-radius:3px; }
+.msg.me     { background:linear-gradient(135deg,var(--v),var(--v2)); color:#fff; align-self:flex-end; border-bottom-right-radius:3px; box-shadow:0 4px 14px rgba(124,111,224,0.35); }
+.msg.show   { animation:slideUp 0.3s cubic-bezier(0.34,1.4,0.64,1) both; opacity:1; }
+.msg-time   { font-size:10px; color:rgba(255,255,255,0.38); margin-top:3px; }
+.chat-input { width:100%; background:rgba(255,255,255,0.04); border-top:1px solid rgba(255,255,255,0.07); padding:12px 16px; display:flex; align-items:center; gap:10px; margin-top:auto; }
 .chat-field { flex:1; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:9px 14px; font-size:13px; color:rgba(255,255,255,0.28); }
-.chat-send  { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--v),var(--v2)); border:none; display:flex; align-items:center; justify-content:center; font-size:14px; cursor:pointer; flex-shrink:0; box-shadow:0 4px 12px rgba(124,111,224,0.4); }
+.chat-send  { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
 
 /* ══════════════════════════════════
-   S7 — TARIFS
+   S6 — CONFIRMATION + CTA
 ══════════════════════════════════ */
-#s7 { align-items:flex-start; justify-content:flex-start; padding:54px 16px 0; background:#050E20; }
-.tarif-tabs { display:flex; gap:6px; width:100%; margin:10px 0 14px; }
-.tarif-tab { flex:1; padding:9px; border-radius:10px; text-align:center; font-size:12px; font-weight:800; transition:all 0.25s; }
-.tarif-tab.active   { background:linear-gradient(135deg,var(--v),var(--v2)); color:#fff; box-shadow:0 4px 16px rgba(124,111,224,0.4); }
-.tarif-tab.inactive { background:rgba(255,255,255,0.05); color:var(--sub); border:1px solid rgba(255,255,255,0.08); }
-.free-card {
-  width:100%; background:linear-gradient(135deg,rgba(0,245,160,0.08),rgba(0,245,160,0.02));
-  border:1px solid rgba(0,245,160,0.2); border-radius:16px; padding:18px; margin-bottom:12px;
-}
-.free-title { font-size:18px; font-weight:900; color:var(--ok); margin-bottom:3px; }
-.free-sub   { font-size:13px; color:var(--sub); margin-bottom:10px; }
-.free-feat  { font-size:12px; color:#fff; margin-bottom:5px; display:flex; align-items:center; gap:7px; }
-.free-feat::before { content:"✓"; color:var(--ok); font-weight:900; font-size:13px; }
-.plans-row { display:flex; gap:7px; width:100%; }
-.plan-card {
-  flex:1; border-radius:14px; padding:13px 10px;
-  border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04);
-}
-.plan-card.pop {
-  border-color:rgba(124,111,224,0.5);
-  background:linear-gradient(135deg,rgba(124,111,224,0.12),rgba(124,111,224,0.03));
-  box-shadow:0 8px 28px rgba(124,111,224,0.2);
-}
-.plan-icon  { font-size:18px; margin-bottom:4px; }
-.plan-name  { font-size:10px; font-weight:900; color:#fff; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.5px; }
-.plan-price { font-size:18px; font-weight:900; color:#fff; }
-.plan-price span { font-size:11px; color:var(--sub); font-weight:400; }
-.plan-feat  { font-size:10px; color:var(--sub); margin-top:5px; line-height:1.5; }
-.pop-badge  { display:inline-block; background:var(--v); border-radius:4px; padding:1px 6px; font-size:9px; font-weight:900; color:#fff; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px; }
-
-/* ══════════════════════════════════
-   S8 — CONFIRMATION
-══════════════════════════════════ */
-#s8 { background:radial-gradient(ellipse at 50% 35%,#00261a 0%,#050E20 62%); }
-.ok-circle {
-  width:96px; height:96px; border-radius:50%;
-  background:linear-gradient(135deg,var(--ok),#00C87A);
-  display:flex; align-items:center; justify-content:center;
-  font-size:44px; margin-bottom:20px;
-  box-shadow:0 0 60px rgba(0,245,160,0.45);
-}
-.ok-title { font-size:26px; font-weight:900; color:#fff; margin-bottom:6px; text-align:center; }
-.ok-sub   { font-size:13px; color:var(--sub); text-align:center; line-height:1.6; padding:0 28px; margin-bottom:20px; }
-.ok-card  {
-  width:290px; background:rgba(255,255,255,0.06);
-  border:1px solid rgba(0,245,160,0.2); border-radius:16px;
-  padding:14px 16px; display:flex; align-items:center; gap:12px;
-}
-.ok-av { width:44px; height:44px; border-radius:12px; overflow:hidden; flex-shrink:0; }
-.ok-av img { width:100%; height:100%; object-fit:cover; }
-.ok-name   { font-size:14px; font-weight:800; color:#fff; }
-.ok-status { font-size:11px; color:var(--ok); margin-top:2px; font-weight:700; }
-.stripe-row { margin-top:14px; display:flex; align-items:center; gap:8px; }
-.stripe-lck { font-size:20px; }
-.stripe-txt { font-size:11px; color:var(--sub); line-height:1.4; }
-.stripe-txt b { color:#fff; }
-
-/* ══════════════════════════════════
-   S9 — CTA
-══════════════════════════════════ */
-#s9 { background:radial-gradient(ellipse at 50% 40%,#1c1270 0%,#050E20 62%); }
-.cta-logo {
-  width:80px; height:80px; border-radius:22px;
-  background:linear-gradient(135deg,var(--v),var(--v2));
-  display:flex; align-items:center; justify-content:center;
-  font-size:34px; font-weight:900; color:#fff; letter-spacing:-1px;
-  box-shadow:0 0 60px rgba(124,111,224,0.5); margin-bottom:14px;
-}
+#s6 { background:radial-gradient(ellipse at 50% 38%,#1c1270 0%,#050E20 65%); }
+.cta-logo    { width:80px; height:80px; border-radius:22px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:34px; font-weight:900; color:#fff; box-shadow:0 0 60px rgba(124,111,224,0.5); margin-bottom:14px; }
 .cta-brand   { font-size:46px; font-weight:900; color:#fff; letter-spacing:-2px; margin-bottom:6px; }
-.cta-tagline { font-size:16px; font-weight:600; color:var(--sub); text-align:center; margin-bottom:18px; }
+.cta-tagline { font-size:15px; font-weight:600; color:var(--sub); text-align:center; margin-bottom:18px; }
 .cta-pills   { display:flex; flex-wrap:wrap; justify-content:center; gap:7px; margin-bottom:22px; }
 .cta-pill    { background:rgba(124,111,224,0.14); border:1px solid rgba(124,111,224,0.28); border-radius:20px; padding:6px 14px; font-size:12px; font-weight:700; color:var(--v3); }
-.cta-btn     {
-  background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:16px;
-  padding:16px 44px; font-size:16px; font-weight:900; color:#fff; font-family:inherit;
-  cursor:pointer; margin-bottom:10px; box-shadow:0 8px 40px rgba(124,111,224,0.5);
-}
+.cta-btn     { background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:16px; padding:16px 44px; font-size:16px; font-weight:900; color:#fff; font-family:inherit; cursor:pointer; margin-bottom:10px; box-shadow:0 8px 40px rgba(124,111,224,0.5); }
 .cta-link    { font-size:13px; color:var(--sub); }
 .cta-link b  { color:var(--v3); }
 
-/* ── PROGRESS + PLAY ── */
+/* ── PROGRESS ── */
 #prog { position:absolute; bottom:0; left:0; height:3px; background:linear-gradient(90deg,var(--v),var(--v3)); width:0; z-index:100; transition:width linear; box-shadow:0 0 8px rgba(124,111,224,0.6); }
-#play { position:absolute; inset:0; background:rgba(0,0,0,0.82); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; z-index:200; }
-#play .pi { width:80px; height:80px; border-radius:50%; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:28px; margin-bottom:14px; box-shadow:0 0 50px rgba(124,111,224,0.55); }
-#play p    { color:#fff; font-size:15px; font-weight:800; }
-#play small{ color:var(--sub); font-size:12px; margin-top:5px; }
-#restart   { position:absolute; bottom:20px; right:16px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:7px 16px; color:var(--sub); font-size:12px; font-weight:700; cursor:pointer; z-index:50; display:none; font-family:inherit; }
+
+/* ── COMPTE À REBOURS ── */
+#countdown {
+  position:absolute; inset:0; z-index:200;
+  background:rgba(5,14,32,0.88);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px;
+}
+#cnt-num {
+  font-size:110px; font-weight:900; color:#fff; line-height:1;
+  text-shadow:0 0 60px rgba(124,111,224,0.8);
+  animation:cntdown 0.9s ease-out both;
+}
+#cnt-label { font-size:14px; color:var(--sub); font-weight:600; letter-spacing:1px; }
+#cnt-rec   { display:flex; align-items:center; gap:6px; background:rgba(255,59,48,0.15); border:1px solid rgba(255,59,48,0.3); border-radius:20px; padding:7px 16px; }
+#cnt-dot   { width:9px; height:9px; border-radius:50%; background:#FF3B30; animation:pulse 1s ease-in-out infinite; }
+#cnt-rtxt  { font-size:12px; color:#FF3B30; font-weight:800; letter-spacing:0.5px; }
+
+/* ── RESTART ── */
+#restart { position:absolute; bottom:20px; right:16px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:7px 16px; color:var(--sub); font-size:12px; font-weight:700; cursor:pointer; z-index:50; display:none; font-family:inherit; }
 </style>
 </head>
 <body>
 <div id="stage">
 <div id="flash"></div>
 
+<!-- COMPTE À REBOURS AUTO-START -->
+<div id="countdown">
+  <div id="cnt-rec"><div id="cnt-dot"></div><div id="cnt-rtxt">● REC</div></div>
+  <div id="cnt-num">3</div>
+  <div id="cnt-label">Lancez l'enregistrement maintenant</div>
+</div>
+
 <!-- S1 SPLASH -->
-<div class="scene active" id="s1">
+<div class="scene" id="s1">
   <div class="s1-logo">A</div>
   <div class="s1-brand">ALANE</div>
   <div class="s1-tag">Trouvez le bon pro au bon moment.</div>
   <div class="caption bottom" style="bottom:58px">
     <div class="cap-row">
-      <span class="w big">T'as besoin d'un prestataire demain matin</span>
-      <span class="w big v">et t'as personne ?</span>
+      <span class="w">T'as besoin d'un pro</span>
+      <span class="w v">demain matin</span>
+      <span class="w">et t'as personne ?</span>
     </div>
   </div>
 </div>
@@ -400,56 +219,30 @@ body {
 <!-- S2 RÔLE -->
 <div class="scene" id="s2">
   <div class="s2-title anim" id="s2t">Bienvenue sur ALANE</div>
-  <div class="s2-sub anim" id="s2s">Choisissez votre espace</div>
+  <div class="s2-sub  anim" id="s2s">Choisissez votre espace</div>
   <div class="role-card client anim" id="rc1">
     <span class="ic">🏢</span>
     <div><div class="rl">Je suis Client</div><div class="rs">Je cherche des prestataires qualifiés</div></div>
   </div>
   <div class="role-card presta anim" id="rc2">
-    <span style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--v),var(--v2));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0">A</span>
+    <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--v),var(--v2));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0">A</div>
     <div><div class="rl">Je suis Prestataire</div><div class="rs">Je propose mes services</div></div>
   </div>
   <div class="badge-free anim" id="gbadge">✓ Inscription client 100% gratuite</div>
   <div class="caption bottom">
     <div class="cap-row">
-      <span class="w">Inscription gratuite.</span>
-      <span class="w v">Prestataires certifiés</span>
-      <span class="w">disponibles partout en France.</span>
+      <span class="w ok">Gratuit</span>
+      <span class="w">pour les clients.</span>
+      <span class="w v">Prestataires certifiés.</span>
     </div>
   </div>
 </div>
 
-<!-- S3 CATALOGUE -->
+<!-- S3 PROFIL -->
 <div class="scene" id="s3">
-  <div style="width:100%">
-    <div style="font-size:22px;font-weight:900;color:#fff">Nos secteurs</div>
-    <div style="font-size:13px;color:var(--sub);margin-top:3px">Prestataires disponibles près de vous</div>
-  </div>
-  <div class="sec-grid">
-    <div class="sec-card anim" id="sc1"><div class="si">🧹</div><div class="sn">Propreté</div><div class="sc"><div class="sdot"></div>15 dispo.</div></div>
-    <div class="sec-card anim" id="sc2"><div class="si">📦</div><div class="sn">Logistique</div><div class="sc"><div class="sdot"></div>24 dispo.</div></div>
-    <div class="sec-card anim" id="sc3"><div class="si">🍽️</div><div class="sn">Restauration</div><div class="sc"><div class="sdot"></div>29 dispo.</div></div>
-    <div class="sec-card anim" id="sc4"><div class="si">🏨</div><div class="sn">Hôtellerie</div><div class="sc"><div class="sdot"></div>22 dispo.</div></div>
-    <div class="sec-card anim" id="sc5"><div class="si">💼</div><div class="sn">Commercial</div><div class="sc"><div class="sdot"></div>23 dispo.</div></div>
-    <div class="sec-card anim" id="sc6"><div class="si">🛒</div><div class="sn">Grande Distrib.</div><div class="sc"><div class="sdot"></div>26 dispo.</div></div>
-    <div class="sec-card anim" id="sc7" style="grid-column:1/-1"><div class="si">✨</div><div class="sn">Divers</div><div class="sc"><div class="sdot"></div>22 dispo.</div></div>
-  </div>
-  <div class="overlay">
-    <div class="ov-row">
-      <span class="ow">Tu publies ta mission. Les certifiés près de toi reçoivent une</span>
-      <span class="ow v">notif instantanée.</span>
-    </div>
-  </div>
-</div>
-
-<!-- S4 PROFIL -->
-<div class="scene" id="s4">
-  <div style="width:100%;font-size:13px;color:var(--sub);margin-bottom:10px">← Résultats · Propreté</div>
-  <div class="pc glass anim" id="pcard">
+  <div class="pc anim glass" id="pcard">
     <div class="pc-head">
-      <div class="pc-av">
-        <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="TM" onerror="this.parentElement.style.background='linear-gradient(135deg,#7C6FE0,#5B4FD0)';this.parentElement.innerHTML='<div style=\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff\'>TM</div>'">
-      </div>
+      <div class="av lg">TM</div>
       <div>
         <div class="pc-name">Thomas M.</div>
         <div class="pc-loc">📍 Paris 8e · Agent de propreté</div>
@@ -476,20 +269,20 @@ body {
   </div>
   <div class="overlay">
     <div class="ov-row">
-      <span class="ow">Profils vérifiés :</span>
-      <span class="ow v">KBIS · RC Pro · URSSAF.</span>
-      <span class="ow">Zéro surprise.</span>
+      <span class="ow">Profils</span>
+      <span class="ow v">100% vérifiés :</span>
+      <span class="ow">KBIS · RC Pro · URSSAF.</span>
     </div>
   </div>
 </div>
 
-<!-- S5 URGENCE -->
-<div class="scene" id="s5">
+<!-- S4 URGENCE -->
+<div class="scene" id="s4">
   <div class="urg-badge anim" id="ubadge">⚡ MODE URGENCE</div>
   <div class="urg-title anim" id="utitle">Besoin d'un pro<br>maintenant ?</div>
-  <div class="urg-sub anim" id="usub">Un prestataire disponible dans l'heure.</div>
-  <div class="urg-card anim" id="ucard">
-    <div class="urg-av"><img src="https://randomuser.me/api/portraits/women/44.jpg" alt="" onerror="this.style.display='none'"></div>
+  <div class="urg-sub   anim" id="usub">Un prestataire disponible dans l'heure.</div>
+  <div class="urg-card  anim" id="ucard">
+    <div class="av sm red">SL</div>
     <div>
       <div class="urg-name">Sophie L.</div>
       <div class="urg-info">Disponible maintenant · Paris 9e</div>
@@ -501,17 +294,18 @@ body {
   </div>
   <div class="caption bottom">
     <div class="cap-row">
-      <span class="w">Mode urgence :</span>
-      <span class="w red">dans l'heure.</span>
-      <span class="w">Tarif majoré +30%.</span>
+      <span class="w rd">Dans l'heure.</span>
+      <span class="w">Tarif majoré</span>
+      <span class="w g">+30%</span>
+      <span class="w">seulement.</span>
     </div>
   </div>
 </div>
 
-<!-- S6 CHAT -->
-<div class="scene" id="s6" style="justify-content:flex-start">
+<!-- S5 CHAT -->
+<div class="scene" id="s5" style="justify-content:flex-start">
   <div class="chat-hdr">
-    <div class="chat-av"><img src="https://randomuser.me/api/portraits/men/32.jpg" alt=""></div>
+    <div class="av chat">TM</div>
     <div>
       <div class="chat-nm">Thomas M.</div>
       <div class="chat-st">● En ligne</div>
@@ -529,109 +323,40 @@ body {
   </div>
   <div class="overlay">
     <div class="ov-row">
-      <span class="ow">Tu tchattes</span>
+      <span class="ow">Tchat</span>
       <span class="ow v">directement</span>
       <span class="ow">avec le prestataire — sans quitter l'app.</span>
     </div>
   </div>
 </div>
 
-<!-- S7 TARIFS -->
-<div class="scene" id="s7">
-  <div style="width:100%">
-    <div style="font-size:22px;font-weight:900;color:#fff">Tarifs transparents</div>
-    <div style="font-size:13px;color:var(--sub);margin-top:3px">Simple et sans surprise</div>
-  </div>
-  <div class="tarif-tabs">
-    <div class="tarif-tab active"  id="tab-client">🏢 Clients</div>
-    <div class="tarif-tab inactive" id="tab-presta"><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:var(--v);font-size:9px;font-weight:900;color:#fff;line-height:14px;text-align:center;margin-right:4px">A</span>Prestataires</div>
-  </div>
-  <div id="tab-content-client" style="width:100%">
-    <div class="free-card anim" id="fcard">
-      <div class="free-title">🎁 Gratuit pour les clients</div>
-      <div class="free-sub">Aucun abonnement · Aucune commission cachée</div>
-      <div class="free-feat">Accès à tous les prestataires certifiés</div>
-      <div class="free-feat">Paiement sécurisé via Stripe</div>
-      <div class="free-feat">Tchat intégré · Mode urgence</div>
-      <div class="free-feat">Cashback sur chaque prestation</div>
-    </div>
-  </div>
-  <div id="tab-content-presta" style="display:none;width:100%">
-    <div class="plans-row">
-      <div class="plan-card anim" id="pl1"><div class="plan-icon">🆓</div><div class="plan-name">Gratuit</div><div class="plan-price">0 €<span>/mois</span></div><div class="plan-feat">2 prestations/mois<br>Profil visible</div></div>
-      <div class="plan-card pop anim" id="pl2"><div class="pop-badge">Populaire</div><div class="plan-icon">💎</div><div class="plan-name">Premium</div><div class="plan-price">29<span style="font-size:13px">,99 €</span><span>/mois</span></div><div class="plan-feat">8 prestations<br>Badge certifié · Urgences</div></div>
-      <div class="plan-card anim" id="pl3"><div class="plan-icon">👑</div><div class="plan-name">Elite</div><div class="plan-price">79<span style="font-size:13px">,99 €</span><span>/mois</span></div><div class="plan-feat">Illimité<br>Position #1 · Badge Elite</div></div>
-    </div>
-  </div>
-  <div class="caption bottom">
-    <div class="cap-row">
-      <span class="w">Pour les clients ?</span>
-      <span class="w ok">Complètement gratuit.</span>
-    </div>
-  </div>
-</div>
-
-<!-- S8 CONFIRMATION -->
-<div class="scene" id="s8">
-  <div class="ok-circle anim" id="okc">✓</div>
-  <div class="ok-title anim" id="okt">Prestation confirmée !</div>
-  <div class="ok-sub anim" id="oks">Paiement sécurisé via Stripe.<br>Libéré uniquement après validation.</div>
-  <div class="ok-card anim" id="okcard">
-    <div class="ok-av"><img src="https://randomuser.me/api/portraits/men/32.jpg" alt=""></div>
-    <div><div class="ok-name">Thomas M.</div><div class="ok-status">✓ Confirmé · Arrive demain à 9h</div></div>
-  </div>
-  <div class="stripe-row anim" id="okstripe">
-    <div class="stripe-lck">🔒</div>
-    <div class="stripe-txt">Paiement sécurisé <b>Stripe</b> — zéro risque client</div>
-  </div>
-  <div class="caption bottom">
-    <div class="cap-row">
-      <span class="w">Fonds bloqués jusqu'à validation.</span>
-      <span class="w ok">Zéro risque.</span>
-    </div>
-  </div>
-</div>
-
-<!-- S9 CTA -->
-<div class="scene" id="s9">
+<!-- S6 CTA -->
+<div class="scene" id="s6">
   <div class="cta-logo anim" id="ctalogo">A</div>
-  <div class="cta-brand anim" id="ctabrand">ALANE</div>
-  <div class="cta-tagline anim" id="ctasub">Trouvez le bon pro au bon moment.</div>
-  <div class="cta-pills anim" id="ctapills">
-    <span class="cta-pill">✓ Gratuit pour les clients</span>
-    <span class="cta-pill">⚡ Mode urgence</span>
-    <span class="cta-pill">💬 Tchat intégré</span>
-    <span class="cta-pill">🔒 Stripe</span>
+  <div class="cta-brand   anim" id="ctabrand">ALANE</div>
+  <div class="cta-tagline anim" id="ctasub">Le pro qu'il vous faut, quand vous en avez besoin.</div>
+  <div class="cta-pills   anim" id="ctapills">
+    <span class="cta-pill">✓ Gratuit clients</span>
+    <span class="cta-pill">✓ Pros certifiés</span>
+    <span class="cta-pill">✓ Paiement sécurisé</span>
+    <span class="cta-pill">✓ Partout en France</span>
   </div>
-  <button class="cta-btn anim" id="ctabtn">Commencer gratuitement →</button>
-  <div class="cta-link anim" id="ctalink">👇 Lien en bio · <b>alane.fr</b></div>
-  <div class="caption bottom" style="bottom:8px">
-    <div class="cap-row">
-      <span class="w">Lien en bio.</span>
-      <span class="w g">Première mission en 5 minutes.</span>
-    </div>
-  </div>
+  <button class="cta-btn anim" id="ctabtn">Trouver mon prestataire →</button>
+  <div class="cta-link anim" id="ctalink">alane.fr · <b>100% gratuit</b> pour commencer</div>
 </div>
 
 <div id="prog"></div>
 <button id="restart" onclick="startAd()">↩ Rejouer</button>
-<div id="play">
-  <div class="pi">▶</div>
-  <p>Lancer la pub ALANE</p>
-  <small>~55 secondes · Format TikTok 9:16</small>
 </div>
 
 <script>
 const SCENES = [
   { id:'s1', dur:3200 },
-  { id:'s2', dur:6200 },
-  { id:'s3', dur:6800 },
-  { id:'s4', dur:7800 },
-  { id:'s5', dur:6800 },
-  { id:'s6', dur:7800 },
-  { id:'s7', dur:10500},
-  { id:'s8', dur:6200 },
-  { id:'s9', dur:5000 },
+  { id:'s2', dur:5000 },
+  { id:'s3', dur:5800 },
+  { id:'s4', dur:5200 },
+  { id:'s5', dur:6500 },
+  { id:'s6', dur:6000 },
 ];
 const TOTAL = SCENES.reduce((a,s)=>a+s.dur,0);
 let cur=0, elapsed=0, startTs=null, raf=null, timers=[];
@@ -640,20 +365,6 @@ const $ = id => document.getElementById(id);
 const after = (fn,ms) => { const t=setTimeout(fn,ms); timers.push(t); return t; };
 function clearAll(){ timers.forEach(clearTimeout); timers=[]; }
 
-function anim(id, cls, delay=0){
-  after(()=>{
-    const e=$(id); if(!e) return;
-    e.classList.add(cls);
-    // force reflow trick to re-trigger animation on replay
-    void e.offsetWidth;
-    e.style.animation='none';
-    void e.offsetWidth;
-    e.style.animation='';
-    e.classList.add(cls);
-  }, delay);
-}
-
-// Apply animation class and restore opacity
 function show(id, animCls, delay=0){
   after(()=>{
     const e=$(id); if(!e) return;
@@ -667,82 +378,45 @@ function show(id, animCls, delay=0){
 
 function flash(){
   const f=$('flash');
-  f.style.opacity='0.18';
-  setTimeout(()=>{ f.style.opacity='0'; }, 100);
+  f.style.opacity='0.2';
+  setTimeout(()=>{ f.style.opacity='0'; }, 90);
 }
 
 function enterS2(){
-  show('s2t',   'a-slam',  80);
-  show('s2s',   'a-up',   200);
-  show('rc1',   'a-right',280);
-  show('rc2',   'a-left', 420);
-  show('gbadge','a-up',   560);
+  show('s2t','a-slam', 80);
+  show('s2s','a-up',  200);
+  show('rc1','a-r',   300);
+  show('rc2','a-l',   440);
+  show('gbadge','a-up',580);
 }
-function enterS3(){
-  ['sc1','sc2','sc3','sc4','sc5','sc6','sc7'].forEach((id,i)=>{
-    show(id, i%2===0?'a-right':'a-left', 80+i*75);
-  });
-}
+function enterS3(){ show('pcard','a-up',150); }
 function enterS4(){
-  show('pcard','a-up',150);
+  show('ubadge','a-pop', 80);
+  show('utitle','a-slam',180);
+  show('usub',  'a-up', 340);
+  show('ucard', 'a-up', 460);
 }
 function enterS5(){
-  show('ubadge','a-pop',  80);
-  show('utitle','a-slam',180);
-  show('usub',  'a-up',  340);
-  show('ucard', 'a-up',  420);
-}
-function enterS6(){
   [['m1',260],['m2',860],['m3',1500],['m4',2200]].forEach(([id,d])=>{
     after(()=>{ const e=$(id); if(!e) return; e.classList.add('show'); }, d);
   });
 }
-function enterS7(){
-  const tc=$('tab-content-client'), tp=$('tab-content-presta');
-  const tabC=$('tab-client'), tabP=$('tab-presta');
-  if(tc){ tc.style.display='block'; tc.style.opacity='1'; }
-  if(tp) tp.style.display='none';
-  if(tabC) tabC.className='tarif-tab active';
-  if(tabP) tabP.className='tarif-tab inactive';
-  show('fcard','a-up',200);
-  // switch to prestataires at 4.5s
-  after(()=>{
-    if(tc){ tc.style.transition='opacity 0.22s'; tc.style.opacity='0'; }
-    after(()=>{
-      if(tc) tc.style.display='none';
-      if(tp){ tp.style.display='flex'; tp.style.opacity='0'; tp.style.transition='opacity 0.22s'; }
-      if(tabC) tabC.className='tarif-tab inactive';
-      if(tabP) tabP.className='tarif-tab active';
-      after(()=>{ if(tp) tp.style.opacity='1'; }, 30);
-      ['pl1','pl2','pl3'].forEach((id,i)=>show(id,'a-pop',100+i*110));
-    }, 220);
-  }, 4500);
-}
-function enterS8(){
-  show('okc',     'a-pop', 100);
-  show('okt',     'a-up',  300);
-  show('oks',     'a-up',  420);
-  show('okcard',  'a-up',  520);
-  show('okstripe','a-up',  680);
-}
-function enterS9(){
-  show('ctalogo', 'a-pop',  80);
-  show('ctabrand','a-up',  260);
-  show('ctasub',  'a-up',  380);
-  show('ctapills','a-up',  480);
-  show('ctabtn',  'a-up',  580);
-  show('ctalink', 'a-up',  680);
+function enterS6(){
+  show('ctalogo', 'a-pop', 80);
+  show('ctabrand','a-up', 260);
+  show('ctasub',  'a-up', 380);
+  show('ctapills','a-up', 480);
+  show('ctabtn',  'a-up', 600);
+  show('ctalink', 'a-up', 700);
 }
 
-const ENTERS = [null, enterS2, enterS3, enterS4, enterS5, enterS6, enterS7, enterS8, enterS9];
+const ENTERS = [null, enterS2, enterS3, enterS4, enterS5, enterS6];
 
 function showScene(idx){
   flash();
   document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
-  // Reset msg opacity for S6 on replay
   ['m1','m2','m3','m4'].forEach(id=>{ const e=$(id); if(e){ e.classList.remove('show'); e.style.opacity=''; } });
   const sEl=$(SCENES[idx].id);
-  // Reset all .anim elements inside
   sEl.querySelectorAll('.anim').forEach(e=>{ e.style.opacity='0'; e.className=e.className.replace(/\ba-\S+/g,'').trim(); });
   after(()=>{
     sEl.classList.add('active');
@@ -767,7 +441,7 @@ function tick(ts){
 }
 
 function startAd(){
-  $('play').style.display='none';
+  $('countdown').style.display='none';
   $('restart').style.display='none';
   if(raf) cancelAnimationFrame(raf);
   clearAll();
@@ -778,7 +452,21 @@ function startAd(){
   raf=requestAnimationFrame(tick);
 }
 
-$('play').addEventListener('click', startAd);
+// ── COMPTE À REBOURS AUTO-START ──────────────────────────────────
+(function autoCountdown(){
+  const numEl = $('cnt-num');
+  let n = 3;
+  function tick(){
+    n--;
+    if(n <= 0){ startAd(); return; }
+    numEl.style.animation='none';
+    void numEl.offsetWidth;
+    numEl.textContent = n;
+    numEl.style.animation='cntdown 0.9s ease-out both';
+    setTimeout(tick, 1000);
+  }
+  setTimeout(tick, 1000);
+})();
 </script>
 </body>
 </html>
