@@ -35,6 +35,16 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showCgpsModal, setShowCgpsModal] = useState(false);
   const [acreEnabled, setAcreEnabled] = useState(false);
   const [showAcreInfo, setShowAcreInfo] = useState(false);
+  const [boPlans, setBoPlans] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from("platform_settings").select("value").eq("key","subscription_prices").single(),
+      supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
+    ]).then(([p, l]) => {
+      setBoPlans({ prices: p.data?.value || null, limits: l.data?.value || null });
+    }).catch(() => {});
+  }, []);
   const [villeBase, setVilleBase] = useState("");
   const [rayonKm, setRayonKm] = useState(20);
   const [adresseRue, setAdresseRue] = useState("");
@@ -505,6 +515,16 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <div style={{ marginBottom:8 }}>
             <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.6 }}>Choisissez votre formule. Vous pouvez changer à tout moment depuis votre espace.</p>
             {ABONNEMENTS_PRESTA.map(plan => {
+              const price = boPlans?.prices?.[plan.id]?.monthly ?? plan.price;
+              const limit = boPlans?.limits?.[plan.id] ?? plan.missions;
+              const features = plan.features.map((f, i) => {
+                if (i === 0 && boPlans?.limits?.[plan.id] != null) {
+                  if (plan.id === "elite") return limit >= 999 ? "Prestations illimitées" : `${limit} prestations/mois`;
+                  return `${limit} prestation${limit > 1 ? "s" : ""}/mois`;
+                }
+                return f;
+              });
+              plan = { ...plan, price, missions: limit, features };
               const active = planChoisi === plan.id;
               return (
                 <div key={plan.id} onClick={() => setPlanChoisi(plan.id)}
