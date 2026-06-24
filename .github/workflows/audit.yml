@@ -1,0 +1,21 @@
+name: Audit quotidien
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"  # tous les jours à 6h UTC (8h Paris)
+  workflow_dispatch:      # déclenchement manuel possible
+
+jobs:
+  audit:
+    name: Audit statique
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run audit
+        run: node .github/scripts/audit.cjs
