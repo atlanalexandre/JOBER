@@ -6,343 +6,374 @@
 <title>ALANE — Pub TikTok</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body {
-  background:#000;
-  display:flex; justify-content:center; align-items:center;
-  min-height:100vh;
-  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;
-}
-#stage {
-  width:375px; height:812px;
-  position:relative; overflow:hidden;
-  background:#050E20;
-}
+body { background:#000; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif; }
+#stage { width:375px; height:812px; position:relative; overflow:hidden; background:#050E20; }
+
 :root {
   --v:#7C6FE0; --v2:#5B4FD0; --v3:#A99AF5;
   --gold:#FFD60A; --ok:#00F5A0; --red:#FF3B30;
-  --navy:#0A1628;
-  --sub:rgba(255,255,255,0.5); --muted:rgba(255,255,255,0.28);
 }
 
-/* ── SCENES ── */
 .scene { position:absolute; inset:0; opacity:0; pointer-events:none; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .scene.active { opacity:1; pointer-events:auto; }
-
-/* ── FLASH ── */
 #flash { position:absolute; inset:0; z-index:180; pointer-events:none; background:#fff; opacity:0; transition:opacity 0.07s; }
 
 /* ── KEYFRAMES ── */
-@keyframes popIn   { 0%{opacity:0;transform:scale(0.5) translateY(18px);} 65%{transform:scale(1.08) translateY(-3px);} 100%{opacity:1;transform:scale(1) translateY(0);} }
-@keyframes slideUp { 0%{opacity:0;transform:translateY(48px);} 60%{transform:translateY(-4px);} 100%{opacity:1;transform:translateY(0);} }
-@keyframes slideR  { 0%{opacity:0;transform:translateX(-56px);} 65%{transform:translateX(4px);} 100%{opacity:1;transform:translateX(0);} }
-@keyframes slideL  { 0%{opacity:0;transform:translateX(56px);} 65%{transform:translateX(-4px);} 100%{opacity:1;transform:translateX(0);} }
-@keyframes slam    { 0%{opacity:0;transform:scale(1.38);} 55%{transform:scale(0.97);} 100%{opacity:1;transform:scale(1);} }
-@keyframes glow    { 0%,100%{box-shadow:0 0 40px rgba(124,111,224,0.45);} 50%{box-shadow:0 0 80px rgba(124,111,224,0.9);} }
-@keyframes capIn   { 0%{opacity:0;transform:translateY(14px) scale(0.93);} 65%{transform:translateY(-2px) scale(1.02);} 100%{opacity:1;transform:translateY(0) scale(1);} }
-@keyframes bounce  { 0%,100%{transform:scale(1);} 50%{transform:scale(1.06);} }
-@keyframes pulse   { 0%,100%{opacity:1;} 50%{opacity:0.55;} }
-@keyframes cntdown { 0%{opacity:1;transform:scale(1.4);} 100%{opacity:0;transform:scale(0.6);} }
+@keyframes popIn    { 0%{opacity:0;transform:scale(0.5) translateY(18px)} 65%{transform:scale(1.08) translateY(-3px)} 100%{opacity:1;transform:scale(1) translateY(0)} }
+@keyframes slideUp  { 0%{opacity:0;transform:translateY(48px)} 60%{transform:translateY(-4px)} 100%{opacity:1;transform:translateY(0)} }
+@keyframes slideDown{ 0%{opacity:0;transform:translateY(-40px)} 60%{transform:translateY(3px)} 100%{opacity:1;transform:translateY(0)} }
+@keyframes slideR   { 0%{opacity:0;transform:translateX(-56px)} 65%{transform:translateX(4px)} 100%{opacity:1;transform:translateX(0)} }
+@keyframes slideL   { 0%{opacity:0;transform:translateX(56px)} 65%{transform:translateX(-4px)} 100%{opacity:1;transform:translateX(0)} }
+@keyframes slam     { 0%{opacity:0;transform:scale(1.38)} 55%{transform:scale(0.97)} 100%{opacity:1;transform:scale(1)} }
+@keyframes phoneIn  { 0%{opacity:0;transform:translateY(100px) scale(0.88)} 65%{transform:translateY(-6px) scale(1.02)} 100%{opacity:1;transform:translateY(0) scale(1)} }
+@keyframes glow     { 0%,100%{box-shadow:0 0 40px rgba(124,111,224,0.4)} 50%{box-shadow:0 0 80px rgba(124,111,224,0.9)} }
+@keyframes bounce   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+@keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:0.5} }
+@keyframes spin     { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes cntdown  { 0%{opacity:1;transform:scale(1.4)} 100%{opacity:0;transform:scale(0.6)} }
+@keyframes confetti { 0%{transform:translateY(0) rotate(0deg);opacity:1} 100%{transform:translateY(350px) rotate(720deg);opacity:0} }
+@keyframes starPop  { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.4)} 100%{transform:scale(1);opacity:1} }
+@keyframes typing   { from{width:0} to{width:100%} }
+@keyframes shimmer  { 0%{background-position:-400% 0} 100%{background-position:400% 0} }
 
-/* ── ANIMATION CLASSES ── */
-.a-pop  { animation:popIn  0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+/* ── ANIM CLASSES ── */
+.anim { opacity:0; }
+.a-pop  { animation:popIn   0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
 .a-up   { animation:slideUp 0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+.a-down { animation:slideDown 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
 .a-r    { animation:slideR  0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
 .a-l    { animation:slideL  0.38s cubic-bezier(0.34,1.4,0.64,1) both; }
 .a-slam { animation:slam    0.45s cubic-bezier(0.34,1.3,0.64,1) both; }
-.anim   { opacity:0; }
+.a-phone{ animation:phoneIn 0.6s cubic-bezier(0.34,1.3,0.64,1) both; }
 
-/* ── CAPTIONS TIKTOK ── */
+/* ── CAPTIONS ── */
 .caption { position:absolute; left:0; right:0; z-index:20; text-align:center; padding:0 14px; }
 .caption.top    { top:54px; }
 .caption.bottom { bottom:22px; }
-.cap-row { display:inline-flex; flex-wrap:wrap; justify-content:center; gap:4px 5px; animation:capIn 0.38s cubic-bezier(0.34,1.4,0.64,1) 0.12s both; }
+.cap-row { display:inline-flex; flex-wrap:wrap; justify-content:center; gap:4px 5px; animation:slideUp 0.38s cubic-bezier(0.34,1.4,0.64,1) 0.12s both; }
 .w { display:inline-block; background:rgba(0,0,0,0.82); border-radius:6px; padding:4px 9px; font-size:18px; font-weight:800; color:#fff; line-height:1.3; }
 .w.v  { background:var(--v); }
 .w.ok { background:var(--ok); color:#000; }
 .w.rd { background:var(--red); }
 .w.g  { background:var(--gold); color:#000; }
 
-/* ── OVERLAY ── */
-.overlay { position:absolute; bottom:0; left:0; right:0; padding:22px 16px 18px; background:linear-gradient(to top,rgba(5,14,32,0.96) 0%,rgba(5,14,32,0.3) 65%,transparent 100%); }
-.ov-row  { display:inline-flex; flex-wrap:wrap; gap:4px; }
-.ow { display:inline-block; background:rgba(0,0,0,0.78); border-radius:5px; padding:3px 8px; font-size:16px; font-weight:800; color:#fff; line-height:1.35; }
-.ow.v  { background:var(--v); }
-.ow.ok { background:var(--ok); color:#000; }
-.ow.g  { background:var(--gold); color:#000; }
-
-/* ── AVATAR CSS (zéro image externe) ── */
-.av {
-  border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-weight:900; color:#fff; flex-shrink:0; font-size:18px;
-  background:linear-gradient(135deg,var(--v),var(--v2));
-}
-.av.sm { width:44px; height:44px; font-size:16px; }
-.av.md { width:56px; height:56px; font-size:20px; border-radius:16px; }
-.av.lg { width:64px; height:64px; font-size:22px; border-radius:18px; border:2px solid rgba(124,111,224,0.5); box-shadow:0 0 20px rgba(124,111,224,0.3); }
-.av.red { background:linear-gradient(135deg,#FF6B6B,#FF3B30); }
-.av.chat { width:38px; height:38px; font-size:14px; border-radius:12px; border:1.5px solid rgba(124,111,224,0.4); }
-
-/* ══════════════════════════════════
-   S1 — SPLASH
-══════════════════════════════════ */
-#s1 { background:radial-gradient(ellipse at 50% 38%,#1c1270 0%,#050E20 65%); }
-.s1-logo  { width:100px; height:100px; border-radius:26px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:900; color:#fff; margin-bottom:18px; animation:popIn 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.1s both, glow 2.2s ease-in-out 0.8s infinite; }
-.s1-brand { font-size:44px; font-weight:900; color:#fff; letter-spacing:-2px; animation:slideUp 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.45s both; }
-.s1-tag   { font-size:15px; font-weight:600; color:var(--sub); text-align:center; margin-top:8px; padding:0 40px; animation:slideUp 0.35s ease 0.65s both; }
-
-/* ══════════════════════════════════
-   S2 — RÔLE
-══════════════════════════════════ */
-#s2 { background:linear-gradient(175deg,#0D1535,#050E20); }
-.s2-title { font-size:27px; font-weight:900; color:#fff; margin-bottom:6px; }
-.s2-sub   { font-size:14px; color:var(--sub); margin-bottom:26px; }
-.role-card { width:304px; padding:17px 16px; border-radius:18px; display:flex; align-items:center; gap:14px; margin-bottom:10px; }
-.role-card.client { background:linear-gradient(135deg,var(--v),var(--v2)); box-shadow:0 10px 40px rgba(124,111,224,0.45); }
-.role-card.presta { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.11); }
-.role-card .ic { font-size:28px; flex-shrink:0; }
-.role-card .rl { font-size:16px; font-weight:800; color:#fff; }
-.role-card .rs { font-size:11px; color:rgba(255,255,255,0.58); margin-top:2px; }
-.badge-free { display:inline-flex; align-items:center; gap:6px; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.28); border-radius:10px; padding:7px 14px; font-size:12px; color:var(--ok); font-weight:800; margin-top:8px; }
-
-/* ══════════════════════════════════
-   S3 — PROFIL PRESTATAIRE
-══════════════════════════════════ */
-#s3 { align-items:flex-start; justify-content:flex-start; padding:54px 16px 0; background:#050E20; }
-.pc { width:100%; border-radius:20px; overflow:hidden; }
-.pc-head { background:linear-gradient(135deg,rgba(124,111,224,0.18),rgba(91,79,208,0.05)); border-bottom:1px solid rgba(255,255,255,0.07); padding:18px; display:flex; gap:14px; align-items:center; }
-.pc-name   { font-size:18px; font-weight:900; color:#fff; }
-.pc-loc    { font-size:12px; color:var(--sub); margin-top:2px; }
-.cert-badge { display:inline-flex; align-items:center; gap:4px; margin-top:5px; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25); border-radius:7px; padding:2px 8px; font-size:11px; font-weight:800; color:var(--ok); }
-.pc-body { padding:14px; }
-.stars   { color:var(--gold); font-size:16px; }
-.rating  { font-size:12px; color:var(--sub); margin-left:8px; }
-.tags    { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
-.tag     { background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.25); border-radius:7px; padding:3px 9px; font-size:11px; font-weight:700; color:var(--v3); }
-.price-row { display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.07); }
-.price-lbl { font-size:12px; color:var(--sub); }
-.price-val { font-size:26px; font-weight:900; color:#fff; }
-.book-btn  { width:100%; margin-top:10px; padding:14px; background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:14px; font-size:14px; font-weight:800; color:#fff; font-family:inherit; cursor:pointer; box-shadow:0 8px 24px rgba(124,111,224,0.4); }
-
-/* ══════════════════════════════════
-   S4 — URGENCE
-══════════════════════════════════ */
-#s4 { background:radial-gradient(ellipse at 50% 30%,#2d0808 0%,#050E20 62%); }
-.urg-badge { background:linear-gradient(135deg,#FF3B30,#c0392b); border-radius:14px; padding:8px 18px; font-size:13px; font-weight:900; color:#fff; letter-spacing:0.8px; margin-bottom:18px; display:flex; align-items:center; gap:6px; box-shadow:0 8px 30px rgba(255,59,48,0.45); animation:bounce 1.6s ease-in-out 0.3s infinite; }
-.urg-title { font-size:28px; font-weight:900; color:#fff; text-align:center; line-height:1.2; margin-bottom:8px; }
-.urg-sub   { font-size:14px; color:var(--sub); text-align:center; margin-bottom:24px; line-height:1.5; padding:0 24px; }
-.urg-card  { width:304px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,59,48,0.28); border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:12px; }
-.urg-name  { font-size:14px; font-weight:800; color:#fff; }
-.urg-info  { font-size:11px; color:var(--sub); margin-top:1px; }
-.urg-price { margin-left:auto; text-align:right; flex-shrink:0; }
-.urg-price .up { font-size:19px; font-weight:900; color:#fff; }
-.urg-price .ul { font-size:10px; color:#FF3B30; font-weight:800; }
-
-/* ══════════════════════════════════
-   S5 — CHAT
-══════════════════════════════════ */
-#s5 { background:#050E20; align-items:flex-start; justify-content:flex-start; padding:0; }
-.chat-hdr   { width:100%; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.07); padding:52px 18px 14px; display:flex; align-items:center; gap:12px; }
-.chat-nm    { font-size:14px; font-weight:800; color:#fff; }
-.chat-st    { font-size:11px; color:var(--ok); margin-top:1px; font-weight:700; }
-.chat-body  { width:100%; flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
-.msg        { max-width:76%; padding:10px 13px; border-radius:16px; font-size:13px; line-height:1.5; opacity:0; }
-.msg.them   { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); color:#fff; align-self:flex-start; border-bottom-left-radius:3px; }
-.msg.me     { background:linear-gradient(135deg,var(--v),var(--v2)); color:#fff; align-self:flex-end; border-bottom-right-radius:3px; box-shadow:0 4px 14px rgba(124,111,224,0.35); }
-.msg.show   { animation:slideUp 0.3s cubic-bezier(0.34,1.4,0.64,1) both; opacity:1; }
-.msg-time   { font-size:10px; color:rgba(255,255,255,0.38); margin-top:3px; }
-.chat-input { width:100%; background:rgba(255,255,255,0.04); border-top:1px solid rgba(255,255,255,0.07); padding:12px 16px; display:flex; align-items:center; gap:10px; margin-top:auto; }
-.chat-field { flex:1; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:9px 14px; font-size:13px; color:rgba(255,255,255,0.28); }
-.chat-send  { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
-
-/* ══════════════════════════════════
-   S6 — CONFIRMATION + CTA
-══════════════════════════════════ */
-#s6 { background:radial-gradient(ellipse at 50% 38%,#1c1270 0%,#050E20 65%); }
-.cta-logo    { width:80px; height:80px; border-radius:22px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:34px; font-weight:900; color:#fff; box-shadow:0 0 60px rgba(124,111,224,0.5); margin-bottom:14px; }
-.cta-brand   { font-size:46px; font-weight:900; color:#fff; letter-spacing:-2px; margin-bottom:6px; }
-.cta-tagline { font-size:15px; font-weight:600; color:var(--sub); text-align:center; margin-bottom:18px; }
-.cta-pills   { display:flex; flex-wrap:wrap; justify-content:center; gap:7px; margin-bottom:22px; }
-.cta-pill    { background:rgba(124,111,224,0.14); border:1px solid rgba(124,111,224,0.28); border-radius:20px; padding:6px 14px; font-size:12px; font-weight:700; color:var(--v3); }
-.cta-btn     { background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:16px; padding:16px 44px; font-size:16px; font-weight:900; color:#fff; font-family:inherit; cursor:pointer; margin-bottom:10px; box-shadow:0 8px 40px rgba(124,111,224,0.5); }
-.cta-link    { font-size:13px; color:var(--sub); }
-.cta-link b  { color:var(--v3); }
-
 /* ── PROGRESS ── */
-#prog { position:absolute; bottom:0; left:0; height:3px; background:linear-gradient(90deg,var(--v),var(--v3)); width:0; z-index:100; transition:width linear; box-shadow:0 0 8px rgba(124,111,224,0.6); }
+#prog { position:absolute; bottom:0; left:0; height:3px; background:linear-gradient(90deg,var(--v),var(--v3)); width:0; z-index:100; box-shadow:0 0 8px rgba(124,111,224,0.6); }
 
-/* ── COMPTE À REBOURS ── */
-#countdown {
-  position:absolute; inset:0; z-index:200;
-  background:rgba(5,14,32,0.88);
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:14px;
-}
-#cnt-num {
-  font-size:110px; font-weight:900; color:#fff; line-height:1;
-  text-shadow:0 0 60px rgba(124,111,224,0.8);
-  animation:cntdown 0.9s ease-out both;
-}
-#cnt-label { font-size:14px; color:var(--sub); font-weight:600; letter-spacing:1px; }
-#cnt-rec   { display:flex; align-items:center; gap:6px; background:rgba(255,59,48,0.15); border:1px solid rgba(255,59,48,0.3); border-radius:20px; padding:7px 16px; }
-#cnt-dot   { width:9px; height:9px; border-radius:50%; background:#FF3B30; animation:pulse 1s ease-in-out infinite; }
-#cnt-rtxt  { font-size:12px; color:#FF3B30; font-weight:800; letter-spacing:0.5px; }
+/* ── COUNTDOWN ── */
+#countdown { position:absolute; inset:0; z-index:200; background:rgba(5,14,32,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
+#cnt-num { font-size:110px; font-weight:900; color:#fff; line-height:1; text-shadow:0 0 60px rgba(124,111,224,0.8); animation:cntdown 0.9s ease-out both; }
+#cnt-label { font-size:14px; color:rgba(255,255,255,0.45); font-weight:600; letter-spacing:1px; }
+#cnt-rec { display:flex; align-items:center; gap:6px; background:rgba(255,59,48,0.15); border:1px solid rgba(255,59,48,0.3); border-radius:20px; padding:7px 16px; }
+#cnt-dot { width:9px; height:9px; border-radius:50%; background:#FF3B30; animation:pulse 1s ease-in-out infinite; }
+#cnt-rtxt { font-size:12px; color:#FF3B30; font-weight:800; letter-spacing:0.5px; }
+#restart { position:absolute; bottom:20px; right:16px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:7px 16px; color:rgba(255,255,255,0.45); font-size:12px; font-weight:700; cursor:pointer; z-index:50; display:none; font-family:inherit; }
 
-/* ── RESTART ── */
-#restart { position:absolute; bottom:20px; right:16px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:7px 16px; color:var(--sub); font-size:12px; font-weight:700; cursor:pointer; z-index:50; display:none; font-family:inherit; }
+/* ── PHONE MOCKUP ── */
+.phone-wrap { position:relative; filter:drop-shadow(0 28px 60px rgba(0,0,0,0.75)) drop-shadow(0 0 1px rgba(255,255,255,0.08)); }
+.phone { width:224px; height:452px; background:#06091A; border-radius:40px; border:1.5px solid rgba(255,255,255,0.13); overflow:hidden; position:relative; }
+.phone::after { content:''; position:absolute; inset:0; border-radius:40px; background:linear-gradient(135deg,rgba(255,255,255,0.06) 0%,transparent 50%); pointer-events:none; z-index:20; }
+.phone-notch { position:absolute; top:0; left:50%; transform:translateX(-50%); width:78px; height:22px; background:#000; border-radius:0 0 13px 13px; z-index:15; }
+.phone-screen { position:absolute; inset:0; overflow:hidden; background:#050E20; }
+.phone-bar { height:24px; display:flex; align-items:center; justify-content:flex-end; padding:6px 14px 0; font-size:9px; color:rgba(255,255,255,0.4); font-weight:700; gap:5px; }
+
+/* ── APP HOME (inside phone) ── */
+.app-home { padding:8px 12px 0; }
+.app-greeting { font-size:14px; font-weight:900; color:#fff; margin-top:4px; }
+.app-greeting-sub { font-size:9px; color:rgba(255,255,255,0.4); margin-top:1px; font-weight:600; }
+.app-search-bar { margin:8px 0; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:11px; padding:7px 10px; font-size:10px; color:rgba(255,255,255,0.3); display:flex; align-items:center; gap:6px; }
+.result-card { background:rgba(255,255,255,0.05); border:1px solid rgba(124,111,224,0.2); border-radius:13px; padding:9px 10px; display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.rc-av { width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; color:#fff; flex-shrink:0; }
+.rc-av.red { background:linear-gradient(135deg,#FF6B6B,var(--red)); }
+.rc-name { font-size:11px; font-weight:900; color:#fff; }
+.rc-info { font-size:8.5px; color:rgba(255,255,255,0.45); margin-top:1px; }
+.rc-price { font-size:13px; font-weight:900; color:#fff; margin-left:auto; flex-shrink:0; }
+.rc-badge { font-size:8px; font-weight:700; color:var(--ok); margin-top:1px; text-align:right; }
+
+/* ── APP PROFILE (inside phone) ── */
+.prof-head { background:linear-gradient(135deg,rgba(124,111,224,0.2),rgba(91,79,208,0.05)); border-bottom:1px solid rgba(255,255,255,0.07); padding:10px 12px; display:flex; gap:10px; align-items:center; }
+.prof-av { width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:900; color:#fff; flex-shrink:0; border:1.5px solid rgba(124,111,224,0.4); }
+.prof-name { font-size:13px; font-weight:900; color:#fff; }
+.prof-loc { font-size:9px; color:rgba(255,255,255,0.45); margin-top:1px; }
+.prof-cert { display:inline-flex; align-items:center; gap:3px; margin-top:4px; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25); border-radius:5px; padding:1px 6px; font-size:8px; font-weight:800; color:var(--ok); }
+.prof-body { padding:10px 12px; }
+.prof-stars { font-size:12px; }
+.prof-tags { display:flex; flex-wrap:wrap; gap:3px; margin-top:6px; }
+.prof-tag { background:rgba(124,111,224,0.12); border:1px solid rgba(124,111,224,0.22); border-radius:5px; padding:2px 6px; font-size:8px; font-weight:700; color:var(--v3); }
+.prof-price-row { display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,255,255,0.06); }
+.prof-price { font-size:20px; font-weight:900; color:#fff; }
+.book-btn-mini { background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:9px; padding:8px 14px; font-size:10px; font-weight:800; color:#fff; cursor:pointer; font-family:inherit; box-shadow:0 4px 14px rgba(124,111,224,0.4); animation:bounce 1.8s ease-in-out infinite; }
+.avail-badge { margin:0 12px 10px; background:rgba(0,245,160,0.07); border:1px solid rgba(0,245,160,0.2); border-radius:9px; padding:7px 10px; display:flex; align-items:center; gap:5px; }
+.avail-dot { width:6px; height:6px; border-radius:50%; background:var(--ok); animation:pulse 1s ease-in-out infinite; flex-shrink:0; }
+.avail-txt { font-size:9px; font-weight:700; color:var(--ok); }
+
+/* ── APP CONFIRM (inside phone) ── */
+.confirm-inner { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:16px 14px; gap:8px; }
+.check-circle { width:68px; height:68px; border-radius:50%; background:linear-gradient(135deg,var(--ok),#00c87e); display:flex; align-items:center; justify-content:center; font-size:30px; box-shadow:0 0 40px rgba(0,245,160,0.45); }
+.confirm-ttl { font-size:15px; font-weight:900; color:#fff; text-align:center; }
+.confirm-card { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.09); border-radius:12px; padding:9px 12px; width:100%; }
+.cconf-row { display:flex; justify-content:space-between; padding:3px 0; font-size:9px; }
+.cconf-lbl { color:rgba(255,255,255,0.4); }
+.cconf-val { color:#fff; font-weight:700; }
+.cconf-val.g { color:var(--ok); }
+.timer-chip { background:rgba(255,215,10,0.1); border:1px solid rgba(255,215,10,0.25); border-radius:9px; padding:5px 12px; font-size:9px; font-weight:800; color:var(--gold); }
+
+/* ── CHARACTER ELEMENTS ── */
+.char-card { display:flex; align-items:center; gap:14px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:14px 16px; width:324px; }
+.char-av { width:70px; height:70px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:900; color:#fff; flex-shrink:0; position:relative; }
+.char-av::after { content:''; position:absolute; inset:-3px; border-radius:50%; border:2px solid transparent; border-top-color:var(--v); border-right-color:var(--v3); animation:spin 2.5s linear infinite; }
+.char-name { font-size:17px; font-weight:900; color:#fff; }
+.char-age { font-size:11px; color:rgba(255,255,255,0.45); margin-top:2px; }
+.char-role { font-size:11px; font-weight:700; margin-top:5px; display:inline-flex; align-items:center; gap:5px; }
+.bubble { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:20px 20px 20px 5px; padding:13px 16px; width:324px; font-size:15px; font-weight:600; color:rgba(255,255,255,0.9); line-height:1.55; position:relative; }
+.bubble::before { content:''; position:absolute; left:18px; top:-8px; border:8px solid transparent; border-bottom-color:rgba(255,255,255,0.1); }
+
+/* ── REVIEW ── */
+.review-card { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:16px 18px; width:324px; }
+.rev-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.rev-av { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:900; color:#fff; flex-shrink:0; }
+.rev-txt { font-size:14px; color:rgba(255,255,255,0.85); line-height:1.6; font-style:italic; }
+
+/* ── CTA ── */
+.cta-logo { width:80px; height:80px; border-radius:22px; background:linear-gradient(135deg,var(--v),var(--v2)); display:flex; align-items:center; justify-content:center; font-size:34px; font-weight:900; color:#fff; animation:glow 2.2s ease-in-out infinite; }
+.cta-brand { font-size:46px; font-weight:900; color:#fff; letter-spacing:-2px; }
+.cta-btn { background:linear-gradient(135deg,var(--v),var(--v2)); border:none; border-radius:16px; padding:16px 44px; font-size:16px; font-weight:900; color:#fff; cursor:pointer; font-family:inherit; box-shadow:0 8px 40px rgba(124,111,224,0.5); animation:bounce 2s ease-in-out infinite; }
+.stat-row { display:flex; gap:10px; justify-content:center; }
+.stat-card { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:12px 16px; text-align:center; }
+.stat-num { font-size:26px; font-weight:900; }
+.stat-lbl { font-size:9px; color:rgba(255,255,255,0.4); margin-top:2px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
 </style>
 </head>
 <body>
 <div id="stage">
 <div id="flash"></div>
 
-<!-- COMPTE À REBOURS AUTO-START -->
+<!-- COUNTDOWN -->
 <div id="countdown">
   <div id="cnt-rec"><div id="cnt-dot"></div><div id="cnt-rtxt">● REC</div></div>
   <div id="cnt-num">3</div>
-  <div id="cnt-label">Lancez l'enregistrement maintenant</div>
+  <div id="cnt-label">Lancez l'enregistrement</div>
 </div>
 
-<!-- S1 SPLASH -->
-<div class="scene" id="s1">
-  <div class="s1-logo">A</div>
-  <div class="s1-brand">ALANE</div>
-  <div class="s1-tag">Trouvez le bon pro au bon moment.</div>
-  <div class="caption bottom" style="bottom:58px">
-    <div class="cap-row">
-      <span class="w">T'as besoin d'un pro</span>
-      <span class="w v">demain matin</span>
-      <span class="w">et t'as personne ?</span>
+<!-- ══ S1 — PROBLÈME DE SOPHIE ══ -->
+<div class="scene" id="s1" style="background:radial-gradient(ellipse at 50% 30%,#1a0808 0%,#050E20 62%)">
+  <div class="anim" id="s1tag" style="font-size:12px;font-weight:800;letter-spacing:2px;color:rgba(255,100,100,0.8);text-transform:uppercase;margin-bottom:18px">😰 Situation réelle</div>
+  <div class="char-card anim" id="s1card">
+    <div class="char-av" style="background:linear-gradient(135deg,#E05C7C,#c0392b)">SL</div>
+    <div>
+      <div class="char-name">Sophie L.</div>
+      <div class="char-age">34 ans · Directrice · Paris 8e</div>
+      <div class="char-role" style="color:#FF8080">🏢 A besoin d'un agent de propreté</div>
     </div>
   </div>
-</div>
-
-<!-- S2 RÔLE -->
-<div class="scene" id="s2">
-  <div class="s2-title anim" id="s2t">Bienvenue sur ALANE</div>
-  <div class="s2-sub  anim" id="s2s">Choisissez votre espace</div>
-  <div class="role-card client anim" id="rc1">
-    <span class="ic">🏢</span>
-    <div><div class="rl">Je suis Client</div><div class="rs">Je cherche des prestataires qualifiés</div></div>
+  <div class="bubble anim" id="s1bubble" style="margin-top:12px">
+    "Réunion demain matin, mon bureau est un désastre et je n'ai absolument personne… 😱"
   </div>
-  <div class="role-card presta anim" id="rc2">
-    <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--v),var(--v2));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0">A</div>
-    <div><div class="rl">Je suis Prestataire</div><div class="rs">Je propose mes services</div></div>
-  </div>
-  <div class="badge-free anim" id="gbadge">✓ Inscription client 100% gratuite</div>
   <div class="caption bottom">
     <div class="cap-row">
-      <span class="w ok">Gratuit</span>
-      <span class="w">pour les clients.</span>
-      <span class="w v">Prestataires certifiés.</span>
+      <span class="w rd">Urgence.</span>
+      <span class="w">T'as personne ?</span>
+      <span class="w v">Il y a ALANE.</span>
     </div>
   </div>
 </div>
 
-<!-- S3 PROFIL -->
-<div class="scene" id="s3">
-  <div class="pc anim glass" id="pcard">
-    <div class="pc-head">
-      <div class="av lg">TM</div>
+<!-- ══ S2 — ELLE OUVRE L'APP ══ -->
+<div class="scene" id="s2" style="background:linear-gradient(175deg,#0D1535,#050E20)">
+  <div class="anim" id="s2label" style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">Elle ouvre ALANE sur son téléphone</div>
+  <div class="phone-wrap anim" id="s2phone">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-bar">9:41 ●●● 5G 🔋</div>
+        <div class="app-home" style="padding-top:4px">
+          <div class="app-greeting">👋 Bonjour Sophie</div>
+          <div class="app-greeting-sub">Trouvez votre prestataire maintenant</div>
+          <div class="app-search-bar">🔍 <span>Agent de propreté, Paris 8e...</span></div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.35);font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px">3 disponibles ce soir</div>
+          <div class="result-card" style="border-color:rgba(124,111,224,0.35)">
+            <div class="rc-av">TM</div>
+            <div>
+              <div class="rc-name">Thomas M.</div>
+              <div class="rc-info">★★★★★ · 47 avis · Paris 8e</div>
+            </div>
+            <div><div class="rc-price">14€/h</div><div class="rc-badge">✓ Dispo</div></div>
+          </div>
+          <div class="result-card">
+            <div class="rc-av red">JR</div>
+            <div>
+              <div class="rc-name">Julie R.</div>
+              <div class="rc-info">★★★★☆ · 23 avis · Paris 9e</div>
+            </div>
+            <div><div class="rc-price">13€/h</div><div class="rc-badge">✓ Dispo</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption bottom">
+    <div class="cap-row">
+      <span class="w v">Trouve</span>
+      <span class="w">le bon pro.</span>
+      <span class="w ok">En 2 minutes.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S3 — PROFIL THOMAS ══ -->
+<div class="scene" id="s3" style="background:#050E20">
+  <div class="anim" id="s3label" style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">Elle clique sur Thomas</div>
+  <div class="phone-wrap anim" id="s3phone">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-bar">9:42 ●●● 5G 🔋</div>
+        <div class="prof-head">
+          <div class="prof-av">TM</div>
+          <div>
+            <div class="prof-name">Thomas Martin</div>
+            <div class="prof-loc">📍 Paris 8e · Agent de propreté</div>
+            <div class="prof-cert">✓ Certifié ALANE</div>
+          </div>
+        </div>
+        <div class="prof-body">
+          <div class="prof-stars" id="s3stars"></div>
+          <div class="prof-tags">
+            <span class="prof-tag">KBIS ✓</span>
+            <span class="prof-tag">RC Pro ✓</span>
+            <span class="prof-tag">URSSAF ✓</span>
+            <span class="prof-tag">CNI ✓</span>
+          </div>
+          <div style="margin-top:8px;font-size:9px;color:rgba(255,255,255,0.4);font-weight:700">47 missions · Membre depuis jan. 2024</div>
+          <div class="prof-price-row">
+            <div>
+              <div style="font-size:8px;color:rgba(255,255,255,0.35);margin-bottom:2px">Tarif horaire</div>
+              <div class="prof-price">14 €<span style="font-size:10px;color:rgba(255,255,255,0.35)">/h</span></div>
+            </div>
+            <button class="book-btn-mini">Réserver →</button>
+          </div>
+        </div>
+        <div class="avail-badge">
+          <div class="avail-dot"></div>
+          <div class="avail-txt">Disponible demain dès 8h00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="caption bottom">
+    <div class="cap-row">
+      <span class="w ok">2 000+</span>
+      <span class="w">pros certifiés.</span>
+      <span class="w v">KBIS · RC Pro · URSSAF.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S4 — RÉSERVATION CONFIRMÉE ══ -->
+<div class="scene" id="s4" style="background:radial-gradient(ellipse at 50% 40%,#051a0d 0%,#050E20 62%)">
+  <div class="anim" id="s4label" style="font-size:11px;font-weight:800;color:rgba(0,245,160,0.6);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">Sophie appuie sur "Réserver"</div>
+  <div class="phone-wrap anim" id="s4phone">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-bar">9:43 ●●● 5G 🔋</div>
+        <div class="confirm-inner">
+          <div class="check-circle" id="s4check">✓</div>
+          <div class="confirm-ttl">Mission créée ! 🎉</div>
+          <div class="confirm-card">
+            <div class="cconf-row"><span class="cconf-lbl">Prestataire</span><span class="cconf-val">Thomas Martin</span></div>
+            <div class="cconf-row"><span class="cconf-lbl">Date</span><span class="cconf-val">Demain · 9h00</span></div>
+            <div class="cconf-row"><span class="cconf-lbl">Durée</span><span class="cconf-val">3 heures</span></div>
+            <div class="cconf-row"><span class="cconf-lbl">Paiement</span><span class="cconf-val">🔒 Sécurisé Stripe</span></div>
+            <div class="cconf-row" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:3px;padding-top:5px"><span class="cconf-lbl" style="font-weight:700;color:#fff">Total</span><span class="cconf-val g" style="font-size:12px">42 €</span></div>
+          </div>
+          <div class="timer-chip anim" id="s4timer">⚡ Réservé en 47 secondes chrono</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="confetti-container" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+  <div class="caption bottom">
+    <div class="cap-row">
+      <span class="w ok">Réservé</span>
+      <span class="w">en 47 sec.</span>
+      <span class="w v">Sans appel. Sans email.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S5 — AVIS CLIENT ══ -->
+<div class="scene" id="s5" style="background:linear-gradient(175deg,#0d0d20,#050E20)">
+  <div class="anim" id="s5label" style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">Le lendemain · Mission accomplie ✅</div>
+
+  <!-- Mission done badge -->
+  <div class="anim" id="s5badge" style="background:rgba(0,245,160,0.08);border:1px solid rgba(0,245,160,0.25);border-radius:18px;padding:10px 18px;margin-bottom:14px;display:flex;align-items:center;gap:10px;width:324px">
+    <span style="font-size:24px">✅</span>
+    <div>
+      <div style="font-size:13px;font-weight:900;color:#fff">Mission terminée</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:1px">Thomas M. · 3h · Bureau Paris 8e</div>
+    </div>
+    <div style="margin-left:auto;font-size:13px;font-weight:900;color:var(--ok)">42 €</div>
+  </div>
+
+  <!-- Sophie's review -->
+  <div class="review-card anim" id="s5review">
+    <div class="rev-head">
+      <div class="rev-av" style="background:linear-gradient(135deg,#E05C7C,#c0392b)">SL</div>
       <div>
-        <div class="pc-name">Thomas M.</div>
-        <div class="pc-loc">📍 Paris 8e · Agent de propreté</div>
-        <div class="cert-badge">✓ Certifié ALANE</div>
+        <div style="font-size:13px;font-weight:900;color:#fff">Sophie L.</div>
+        <div id="s5stars" style="font-size:20px;margin-top:3px;min-height:24px"></div>
       </div>
     </div>
-    <div class="pc-body">
-      <div style="display:flex;align-items:center">
-        <div class="stars">★★★★★</div>
-        <div class="rating">4.9 · 47 avis</div>
-      </div>
-      <div class="tags">
-        <span class="tag">KBIS vérifié</span>
-        <span class="tag">RC Pro</span>
-        <span class="tag">URSSAF ✓</span>
-        <span class="tag">CNI validée</span>
-      </div>
-      <div class="price-row">
-        <span class="price-lbl">Tarif horaire</span>
-        <span class="price-val">14 €<span style="font-size:14px;color:var(--sub)">/h</span></span>
-      </div>
-      <button class="book-btn">Réserver Thomas →</button>
-    </div>
+    <div class="rev-txt">"Parfait ! Bureau impeccable avant ma réunion. Thomas était ponctuel et hyper pro. Je recommande à 100% !"</div>
   </div>
-  <div class="overlay">
-    <div class="ov-row">
-      <span class="ow">Profils</span>
-      <span class="ow v">100% vérifiés :</span>
-      <span class="ow">KBIS · RC Pro · URSSAF.</span>
-    </div>
-  </div>
-</div>
 
-<!-- S4 URGENCE -->
-<div class="scene" id="s4">
-  <div class="urg-badge anim" id="ubadge">⚡ MODE URGENCE</div>
-  <div class="urg-title anim" id="utitle">Besoin d'un pro<br>maintenant ?</div>
-  <div class="urg-sub   anim" id="usub">Un prestataire disponible dans l'heure.</div>
-  <div class="urg-card  anim" id="ucard">
-    <div class="av sm red">SL</div>
-    <div>
-      <div class="urg-name">Sophie L.</div>
-      <div class="urg-info">Disponible maintenant · Paris 9e</div>
-    </div>
-    <div class="urg-price">
-      <div class="up">17 €/h</div>
-      <div class="ul">⚡ +30%</div>
-    </div>
+  <!-- Paiement automatique -->
+  <div class="anim" id="s5pay" style="margin-top:12px;width:324px;display:flex;align-items:center;gap:8px;background:rgba(255,215,10,0.07);border:1px solid rgba(255,215,10,0.18);border-radius:11px;padding:9px 14px">
+    <span style="font-size:16px">🔒</span>
+    <span style="font-size:11px;font-weight:700;color:var(--gold)">Paiement Stripe automatique · Sécurisé</span>
   </div>
+
   <div class="caption bottom">
     <div class="cap-row">
-      <span class="w rd">Dans l'heure.</span>
-      <span class="w">Tarif majoré</span>
-      <span class="w g">+30%</span>
-      <span class="w">seulement.</span>
+      <span class="w ok">Mission réussie.</span>
+      <span class="w v">Paiement sécurisé</span>
+      <span class="w">automatique.</span>
     </div>
   </div>
 </div>
 
-<!-- S5 CHAT -->
-<div class="scene" id="s5" style="justify-content:flex-start">
-  <div class="chat-hdr">
-    <div class="av chat">TM</div>
-    <div>
-      <div class="chat-nm">Thomas M.</div>
-      <div class="chat-st">● En ligne</div>
-    </div>
-  </div>
-  <div class="chat-body">
-    <div class="msg them" id="m1">Bonjour, je confirme ma présence demain à 9h.<div class="msg-time">09:12</div></div>
-    <div class="msg me"   id="m2">Parfait ! Portail B, code 4521.<div class="msg-time">09:13</div></div>
-    <div class="msg them" id="m3">Noté, à demain 👍<div class="msg-time">09:13</div></div>
-    <div class="msg me"   id="m4">Merci Thomas !<div class="msg-time">09:14</div></div>
-  </div>
-  <div class="chat-input">
-    <div class="chat-field">Message...</div>
-    <div class="chat-send">➤</div>
-  </div>
-  <div class="overlay">
-    <div class="ov-row">
-      <span class="ow">Tchat</span>
-      <span class="ow v">directement</span>
-      <span class="ow">avec le prestataire — sans quitter l'app.</span>
-    </div>
-  </div>
-</div>
+<!-- ══ S6 — CTA ══ -->
+<div class="scene" id="s6" style="background:radial-gradient(ellipse at 50% 38%,#1c1270 0%,#050E20 65%)">
+  <div class="cta-logo anim" id="s6logo">A</div>
+  <div class="cta-brand anim" id="s6brand">ALANE</div>
+  <div class="anim" id="s6sub" style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;margin:6px 0 18px;line-height:1.6">Le Uber des prestataires.<br>Trouvez le bon pro en 2 minutes.</div>
 
-<!-- S6 CTA -->
-<div class="scene" id="s6">
-  <div class="cta-logo anim" id="ctalogo">A</div>
-  <div class="cta-brand   anim" id="ctabrand">ALANE</div>
-  <div class="cta-tagline anim" id="ctasub">Le pro qu'il vous faut, quand vous en avez besoin.</div>
-  <div class="cta-pills   anim" id="ctapills">
-    <span class="cta-pill">✓ Gratuit clients</span>
-    <span class="cta-pill">✓ Pros certifiés</span>
-    <span class="cta-pill">✓ Paiement sécurisé</span>
-    <span class="cta-pill">✓ Partout en France</span>
+  <div class="stat-row anim" id="s6stats">
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--v3)">2 847</div>
+      <div class="stat-lbl">Missions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--gold)">4.9 ★</div>
+      <div class="stat-lbl">Note moy.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:var(--ok)">0 €</div>
+      <div class="stat-lbl">Clients</div>
+    </div>
   </div>
-  <button class="cta-btn anim" id="ctabtn">Trouver mon prestataire →</button>
-  <div class="cta-link anim" id="ctalink">alane.fr · <b>100% gratuit</b> pour commencer</div>
+
+  <button class="cta-btn anim" id="s6btn" style="margin-top:20px">Trouver mon prestataire →</button>
+  <div class="anim" id="s6link" style="font-size:13px;color:rgba(255,255,255,0.4);margin-top:10px">alane.fr · <span style="color:var(--v3);font-weight:700">100% gratuit</span> pour les clients</div>
+
+  <div class="caption bottom">
+    <div class="cap-row">
+      <span class="w v">ALANE.</span>
+      <span class="w">Le pro qu'il vous faut,</span>
+      <span class="w ok">maintenant.</span>
+    </div>
+  </div>
 </div>
 
 <div id="prog"></div>
@@ -351,76 +382,131 @@ body {
 
 <script>
 const SCENES = [
-  { id:'s1', dur:3200 },
+  { id:'s1', dur:3800 },
   { id:'s2', dur:5000 },
-  { id:'s3', dur:5800 },
-  { id:'s4', dur:5200 },
-  { id:'s5', dur:6500 },
-  { id:'s6', dur:6000 },
+  { id:'s3', dur:5500 },
+  { id:'s4', dur:4800 },
+  { id:'s5', dur:5800 },
+  { id:'s6', dur:5500 },
 ];
 const TOTAL = SCENES.reduce((a,s)=>a+s.dur,0);
 let cur=0, elapsed=0, startTs=null, raf=null, timers=[];
 
 const $ = id => document.getElementById(id);
-const after = (fn,ms) => { const t=setTimeout(fn,ms); timers.push(t); return t; };
-function clearAll(){ timers.forEach(clearTimeout); timers=[]; }
+const after = (fn,ms)=>{ const t=setTimeout(fn,ms); timers.push(t); return t; };
+function clearAll(){ timers.forEach(t=>clearTimeout(t)); timers=[]; }
 
-function show(id, animCls, delay=0){
+// Elements to reset per scene (for replay correctness)
+const SCENE_ELEMS = [
+  ['s1tag','s1card','s1bubble'],
+  ['s2label','s2phone'],
+  ['s3label','s3phone'],
+  ['s4label','s4phone','s4timer'],
+  ['s5label','s5badge','s5review','s5pay'],
+  ['s6logo','s6brand','s6sub','s6stats','s6btn','s6link'],
+];
+
+function show(id, cls, delay=0){
   after(()=>{
     const e=$(id); if(!e) return;
     e.style.opacity='';
     e.style.animation='none';
     void e.offsetWidth;
-    e.className = e.className.replace(/\ba-\S+/g,'').trim();
-    e.classList.add(animCls);
+    e.className=e.className.replace(/\ba-\S+/g,'').trim();
+    e.classList.add(cls);
   }, delay);
 }
 
 function flash(){
   const f=$('flash');
-  f.style.opacity='0.2';
-  setTimeout(()=>{ f.style.opacity='0'; }, 90);
+  f.style.opacity='0.22';
+  setTimeout(()=>{ f.style.opacity='0'; }, 80);
 }
 
-function enterS2(){
-  show('s2t','a-slam', 80);
-  show('s2s','a-up',  200);
-  show('rc1','a-r',   300);
-  show('rc2','a-l',   440);
-  show('gbadge','a-up',580);
+function spawnConfetti(){
+  const wrap=$('confetti-container'); if(!wrap) return;
+  wrap.innerHTML='';
+  const colors=['#7C6FE0','#00F5A0','#FFD60A','#FF3B30','#A99AF5','#fff','#5B4FD0'];
+  for(let i=0;i<28;i++){
+    const d=document.createElement('div');
+    const c=colors[i%colors.length];
+    const x=15+Math.random()*345, size=5+Math.random()*9;
+    const delay=Math.random()*700, dur=1000+Math.random()*900;
+    const shape=Math.random()>0.5?'50%':'3px';
+    d.style.cssText=`position:absolute;left:${x}px;top:-10px;width:${size}px;height:${size}px;background:${c};border-radius:${shape};animation:confetti ${dur}ms ease-in ${delay}ms both;`;
+    wrap.appendChild(d);
+  }
 }
-function enterS3(){ show('pcard','a-up',150); }
+
+function animStars(id, delay=0){
+  const stars=['⭐','⭐','⭐','⭐','⭐'];
+  after(()=>{
+    const el=$(id); if(!el) return; el.textContent='';
+    stars.forEach((s,i)=>{
+      after(()=>{
+        const sp=document.createElement('span');
+        sp.textContent=s; sp.style.cssText='display:inline-block;animation:starPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both';
+        el.appendChild(sp);
+      }, i*110);
+    });
+  }, delay);
+}
+
+function enterS1(){
+  show('s1tag',   'a-down',  60);
+  show('s1card',  'a-r',    220);
+  show('s1bubble','a-up',   460);
+}
+function enterS2(){
+  show('s2label','a-down',  60);
+  show('s2phone','a-phone', 180);
+}
+function enterS3(){
+  show('s3label','a-down',  60);
+  show('s3phone','a-up',   180);
+  // Animate stars inside phone after it appears
+  after(()=>{ const e=$('s3stars'); if(e) e.textContent='⭐⭐⭐⭐⭐  4.9 · 47 avis'; }, 700);
+}
 function enterS4(){
-  show('ubadge','a-pop', 80);
-  show('utitle','a-slam',180);
-  show('usub',  'a-up', 340);
-  show('ucard', 'a-up', 460);
+  show('s4label','a-down',  60);
+  show('s4phone','a-up',   180);
+  after(()=>spawnConfetti(), 750);
+  show('s4timer','a-pop',  950);
 }
 function enterS5(){
-  [['m1',260],['m2',860],['m3',1500],['m4',2200]].forEach(([id,d])=>{
-    after(()=>{ const e=$(id); if(!e) return; e.classList.add('show'); }, d);
-  });
+  show('s5label', 'a-down',  60);
+  show('s5badge', 'a-pop',  240);
+  show('s5review','a-up',   480);
+  animStars('s5stars', 650);
+  show('s5pay',   'a-up',   950);
 }
 function enterS6(){
-  show('ctalogo', 'a-pop', 80);
-  show('ctabrand','a-up', 260);
-  show('ctasub',  'a-up', 380);
-  show('ctapills','a-up', 480);
-  show('ctabtn',  'a-up', 600);
-  show('ctalink', 'a-up', 700);
+  show('s6logo',  'a-pop',   60);
+  show('s6brand', 'a-up',   230);
+  show('s6sub',   'a-up',   380);
+  show('s6stats', 'a-up',   530);
+  show('s6btn',   'a-up',   720);
+  show('s6link',  'a-up',   870);
 }
 
-const ENTERS = [null, enterS2, enterS3, enterS4, enterS5, enterS6];
+const ENTERS = [enterS1, enterS2, enterS3, enterS4, enterS5, enterS6];
 
 function showScene(idx){
   flash();
   document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
-  ['m1','m2','m3','m4'].forEach(id=>{ const e=$(id); if(e){ e.classList.remove('show'); e.style.opacity=''; } });
-  const sEl=$(SCENES[idx].id);
-  sEl.querySelectorAll('.anim').forEach(e=>{ e.style.opacity='0'; e.className=e.className.replace(/\ba-\S+/g,'').trim(); });
+  $('confetti-container').innerHTML='';
+  const stars=$('s5stars'); if(stars) stars.innerHTML='';
+  const s3s=$('s3stars'); if(s3s) s3s.textContent='';
+  // Reset animatable elements for this scene
+  SCENE_ELEMS[idx].forEach(id=>{
+    const e=$(id); if(!e) return;
+    e.style.opacity='0';
+    e.style.animation='none';
+    e.className=e.className.replace(/\ba-\S+/g,'').trim();
+  });
   after(()=>{
-    sEl.classList.add('active');
-    if(ENTERS[idx]) ENTERS[idx]();
+    $(SCENES[idx].id).classList.add('active');
+    ENTERS[idx]();
   }, 55);
 }
 
@@ -428,9 +514,7 @@ function tick(ts){
   if(!startTs) startTs=ts;
   const dt=ts-startTs; startTs=ts;
   elapsed+=dt;
-  const pct=Math.min(elapsed/TOTAL*100,100);
-  $('prog').style.width=pct+'%';
-  $('prog').style.transitionDuration=(1000/60)+'ms';
+  $('prog').style.width=Math.min(elapsed/TOTAL*100,100)+'%';
   let acc=0;
   for(let i=0;i<SCENES.length;i++){
     acc+=SCENES[i].dur;
@@ -452,21 +536,16 @@ function startAd(){
   raf=requestAnimationFrame(tick);
 }
 
-// ── COMPTE À REBOURS AUTO-START ──────────────────────────────────
-(function autoCountdown(){
-  const numEl = $('cnt-num');
-  let n = 3;
-  function tick(){
-    n--;
-    if(n <= 0){ startAd(); return; }
-    numEl.style.animation='none';
-    void numEl.offsetWidth;
-    numEl.textContent = n;
-    numEl.style.animation='cntdown 0.9s ease-out both';
-    setTimeout(tick, 1000);
-  }
-  setTimeout(tick, 1000);
-})();
+function runCountdown(n, cb){
+  $('cnt-num').textContent=n;
+  $('cnt-num').style.animation='none';
+  void $('cnt-num').offsetWidth;
+  $('cnt-num').style.animation='cntdown 0.9s ease-out both';
+  if(n>0) setTimeout(()=>runCountdown(n-1,cb), 1000);
+  else setTimeout(cb, 1000);
+}
+
+window.addEventListener('load', ()=>{ runCountdown(3, startAd); });
 </script>
 </body>
 </html>
