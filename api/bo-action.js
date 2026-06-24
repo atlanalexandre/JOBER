@@ -826,7 +826,6 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(()=>{});
       return res.status(200).json({ ok:true });
     }
-    }
 
     if (action === "list_missions_export") {
       const r = await fetch(
