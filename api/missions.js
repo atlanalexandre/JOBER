@@ -1104,14 +1104,44 @@ export default async function handler(req, res) {
       const { mission_id, lat, lng } = payload;
       if (!mission_id || lat == null || lng == null) return res.status(400).json({ error: "mission_id, lat, lng requis" });
       const prestataire_id = caller.id;
+
+      // Check if this is the first position update (to send "en route" push)
+      const existingRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/tracking_positions?mission_id=eq.${mission_id}&prestataire_id=eq.${prestataire_id}&select=id&limit=1`,
+        { headers }
+      );
+      const existing = await existingRes.json().catch(() => []);
+      const isFirstUpdate = !Array.isArray(existing) || existing.length === 0;
+
       // Upsert position (use mission_id as unique key per prestataire)
       await fetch(`${SUPABASE_URL}/rest/v1/tracking_positions?on_conflict=mission_id,prestataire_id`, {
         method: "POST",
         headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify({ mission_id, prestataire_id, lat, lng, updated_at: new Date().toISOString() }),
       });
+
+      // On first activation, push "en route" to client
+      if (isFirstUpdate) {
+        try {
+          const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,metier,ville&limit=1`, { headers });
+          const mRows = await mRes.json().catch(() => []);
+          const mission = Array.isArray(mRows) && mRows[0];
+          if (mission?.client_id) {
+            const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${mission.client_id}&select=endpoint,p256dh,auth`, { headers });
+            const subs = await psRes.json().catch(() => []);
+            const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
+            const VAPID_PRIV = process.env.VAPID_PRIVATE_KEY;
+            if (Array.isArray(subs) && subs.length && VAPID_PUB && VAPID_PRIV) {
+              const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
+              await Promise.all(subs.map(s => sendWebPush(s, notif, VAPID_PUB, VAPID_PRIV)));
+            }
+          }
+        } catch (e) { console.error("[update_position] push error:", e.message); }
+      }
+
       return res.status(200).json({ success: true });
     }
+
 
     if (action === "get_position") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
