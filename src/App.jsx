@@ -1030,7 +1030,7 @@ export default function App() {
         if(!Array.isArray(ms) || !ms.length) return;
         const { data:sd } = await supabase.auth.getSession();
         const token = sd?.session?.access_token;
-        fetch("/api/prestations", {
+        fetch("/api/missions", {
           method:"POST",
           headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
           body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
@@ -1159,7 +1159,7 @@ export default function App() {
         });
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        fetch("/api/prestations", {
+        fetch("/api/missions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
           body: JSON.stringify({ action: "push_subscribe", subscription: sub.toJSON() }),
@@ -1329,7 +1329,7 @@ export default function App() {
             }
             await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"prestation", title:"Nouvelle demande de prestation", body:`Un client vous propose une prestation. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
             const { data:sessionData } = await supabase.auth.getSession();
-            fetch("/api/prestations", {
+            fetch("/api/missions", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
               body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null }),
             }).catch(()=>{});

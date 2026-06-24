@@ -1443,7 +1443,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     const token = sd?.session?.access_token;
     if (!token) return;
     try {
-      const r = await fetch("/api/prestations", {
+      const r = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ action: "my_missions" }),
@@ -1486,7 +1486,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_acc");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const r = await fetch("/api/prestations", {
+    const r = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "accept", presta_name: userName }),
@@ -1504,7 +1504,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(m.id + "_ref");
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const r = await fetch("/api/prestations", {
+    const r = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ action: "respond_mission", mission_id: m.id, response: "refuse", presta_name: userName }),
@@ -1582,7 +1582,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             const prestation = contractMission;
             setContractMission(null);
             const { data:{ session } } = await supabase.auth.getSession();
-            const r = await fetch("/api/prestations", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
+            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
             if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
           }}
           onClose={() => setContractMission(null)}
@@ -1712,7 +1712,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         } else {
                           setValidatingMission(m.id);
                           const { data:{ session } } = await supabase.auth.getSession();
-                          const r = await fetch("/api/prestations", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
                           setValidatingMission(null);
                         }

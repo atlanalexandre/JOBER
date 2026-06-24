@@ -849,7 +849,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
               const { data: { session } } = await supabase.auth.getSession();
               const token = session?.access_token;
               if (missionId && token) {
-                await fetch("/api/prestations", {
+                await fetch("/api/missions", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
