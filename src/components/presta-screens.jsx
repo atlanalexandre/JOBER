@@ -1410,6 +1410,33 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [contractSignedAt, setContractSignedAt] = useState({});
   const [contractAcceptMission, setContractAcceptMission] = useState(null);
   const [validatingMission, setValidatingMission] = useState(null);
+  const [sharingLocation, setSharingLocation] = useState({});
+  const trackingRefsMap = useRef({});
+
+  const toggleTracking = async (missionId) => {
+    if (sharingLocation[missionId]) {
+      const refs = trackingRefsMap.current[missionId] || {};
+      if (refs.watchId != null) navigator.geolocation.clearWatch(refs.watchId);
+      if (refs.intervalId != null) clearInterval(refs.intervalId);
+      delete trackingRefsMap.current[missionId];
+      setSharingLocation(s => ({ ...s, [missionId]: false }));
+      return;
+    }
+    if (!navigator.geolocation) { alert("Géolocalisation non supportée par votre navigateur."); return; }
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    const sendPos = (lat, lng) => fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+      body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
+    }).catch(() => {});
+    let last = null;
+    const watchId = navigator.geolocation.watchPosition(p => { last = p.coords; }, null, { enableHighAccuracy: true });
+    const intervalId = setInterval(() => { if (last) sendPos(last.latitude, last.longitude); }, 15000);
+    trackingRefsMap.current[missionId] = { watchId, intervalId };
+    setSharingLocation(s => ({ ...s, [missionId]: true }));
+    navigator.geolocation.getCurrentPosition(p => sendPos(p.coords.latitude, p.coords.longitude), () => {});
+  };
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1706,6 +1733,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       💬 Chat avec le client
                     </button>
                   )}
+                  <button onClick={() => toggleTracking(m.id)}
+                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
+                  </button>
                 </div>
               </div>
             );

@@ -4847,6 +4847,9 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [showDisputeModal, setShowDisputeModal] = useState(null);
   const [disputeMsg, setDisputeMsg] = useState("");
   const [disputing, setDisputing] = useState(false);
+  const [prestaPosition, setPrestaPosition] = useState(null);
+  const [clientCoords, setClientCoords] = useState(null);
+  const trackingPollRef = useRef(null);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4912,6 +4915,28 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     const t = setInterval(poll, 30000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
+    setPrestaPosition(null);
+    if (!selected || selected.status !== "assigned" || !selected.prestataire_id) return;
+    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => setClientCoords({ lat: p.coords.latitude, lng: p.coords.longitude }), () => {});
+    const pollPosition = async () => {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "get_position", mission_id: selected.id }),
+      }).catch(() => null);
+      if (!r?.ok) return;
+      const d = await r.json().catch(() => null);
+      if (d?.lat && d?.lng) setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
+    };
+    pollPosition();
+    trackingPollRef.current = setInterval(pollPosition, 15000);
+    return () => { if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; } };
+  }, [selected?.id, selected?.status]);
 
   useEffect(() => {
     if (tab !== "prestataires") return;
@@ -5145,6 +5170,40 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </button>
               </div>
             </div>
+            );
+          })()}
+          {selected.status === "assigned" && (() => {
+            const haversine = (lat1, lon1, lat2, lon2) => {
+              const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+              const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+              return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            };
+            const dist = (prestaPosition && clientCoords) ? haversine(clientCoords.lat, clientCoords.lng, prestaPosition.lat, prestaPosition.lng) : null;
+            return prestaPosition ? (
+              <div style={{ background:"linear-gradient(135deg,rgba(16,217,143,0.08),rgba(16,217,143,0.04))", border:"1.5px solid rgba(16,217,143,0.35)", borderRadius:16, padding:"14px 16px", marginBottom:16 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 8px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
+                  <span style={{ color:"#10D98F", fontWeight:700, fontSize:13 }}>Localisation en direct</span>
+                  {prestaPosition.updated_at && (() => {
+                    const ago = Math.floor((Date.now() - new Date(prestaPosition.updated_at).getTime()) / 60000);
+                    return <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>· il y a {ago < 1 ? "< 1 min" : `${ago} min`}</span>;
+                  })()}
+                </div>
+                {dist != null && (
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginBottom:10 }}>
+                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1)} km`}</strong> de vous
+                  </div>
+                )}
+                <a href={`https://www.google.com/maps?q=${prestaPosition.lat},${prestaPosition.lng}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display:"block", padding:"9px", borderRadius:10, background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", color:"#10D98F", fontWeight:700, fontSize:12, textDecoration:"none", textAlign:"center" }}>
+                  🗺 Voir sur Google Maps
+                </a>
+              </div>
+            ) : (
+              <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:16 }}>📍</span>
+                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Le prestataire n'a pas encore activé le partage de position</span>
+              </div>
             );
           })()}
           {(selected.status === "open" || selected.status === "needs_replacement") && (<>
