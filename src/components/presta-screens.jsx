@@ -1943,11 +1943,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
       ]);
       if(prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
-      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
       const refused=allM.filter(m=>m.status==="refused");
@@ -2200,7 +2200,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ))}
         </>}
         {tab==="revenus" && (()=>{
-          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           return <>
             {completedMissions.length===0 ? (
@@ -2229,7 +2229,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Prestation"}</div>
-                        <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.hours?` · ${m.hours}h`:""}</div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
                         <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
@@ -2260,8 +2260,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             </div>
             {completedMissions.length > 0 && (
               <button onClick={()=>{
-                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
-                const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.nb_heures||"",getAmt(m).toFixed(2),m.status||""])];
+                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.hours||"",getAmt(m).toFixed(2),m.status||""])];
                 const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
                 const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
                 const url=URL.createObjectURL(blob);

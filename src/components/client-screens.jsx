@@ -4303,7 +4303,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             client_id: user.id,
             prestataire_name: p.name,
             prestataire_role: p.role || p.jobTitle,
-            nb_heures: missionHours,
+            hours: missionHours,
             montant: totalAmount,
             client_signed: true,
             prestataire_signed: true,
@@ -4712,10 +4712,10 @@ export function PayslipScreen({ provider, prestation, onBack }) {
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       if(!data?.user) return;
-      supabase.from("missions").select("montant_total,tarif_horaire,nb_heures").eq("prestataire_id",data.user.id).eq("status","completed")
+      supabase.from("missions").select("montant_total,tarif_horaire,hours").eq("prestataire_id",data.user.id).eq("status","completed")
         .then(({data:ms})=>{
           if(!Array.isArray(ms)) return;
-          const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0)),0);
+          const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0)),0);
           setCaReel(Math.round(total*100)/100);
         });
     });
