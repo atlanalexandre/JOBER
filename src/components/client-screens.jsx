@@ -1328,7 +1328,7 @@ export function useSectorStatus() {
   const [status, setStatus] = useState(_sectorStatusCache || {});
   useEffect(() => {
     if (_sectorStatusCache && Date.now() - _sectorStatusCacheTs < 60_000) return;
-    fetch("/api/prestations", {
+    fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "get_sector_status" }),
@@ -2909,7 +2909,7 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
 
       // Poll GPS position
       const { data:{ session: posSession } } = await supabase.auth.getSession();
-      const posRes = await fetch("/api/prestations", {
+      const posRes = await fetch("/api/missions", {
         method:"POST",
         headers:{"Content-Type":"application/json", ...(posSession?.access_token ? {"Authorization":`Bearer ${posSession.access_token}`} : {})},
         body: JSON.stringify({ action:"get_position", mission_id:missionId }),
@@ -3319,7 +3319,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       const senderDisplayName = `${meMeta.prenom || ""} ${meMeta.nom || ""}`.trim() || (senderTag === "client" ? "Un client" : "Un prestataire");
       supabase.auth.getSession().then(({ data: sd }) => {
         const token = sd?.session?.access_token;
-        fetch("/api/prestations", {
+        fetch("/api/missions", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "chat_notify", recipient_id: recipientId, sender_name: senderDisplayName, message_preview: content }),
@@ -4859,7 +4859,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
       if (token) setAccessToken(token);
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "list_client" }),
@@ -4905,7 +4905,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
       const user = data?.user; if (!user) return;
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "list_client" }),
@@ -4986,7 +4986,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     setCompletedResult(null);
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
-    const res = await fetch("/api/prestations", {
+    const res = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
       body: JSON.stringify({ action: "get_candidatures", mission_id: prestation.id }),
@@ -5013,7 +5013,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "accept", candidature_id: c.id, mission_id: selected.id, prestataire_id: c.prestataire_id }),
@@ -5038,7 +5038,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "complete", mission_id: selected.id }),
@@ -5060,7 +5060,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "reject", candidature_id: c.id }),
@@ -5075,7 +5075,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "close", mission_id: missionId }),
@@ -5094,7 +5094,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       const missionDate = selected.date ? new Date(selected.date + "T" + (selected.heure_debut || "00:00")) : null;
       const hoursUntil = missionDate ? (missionDate - Date.now()) / 3600000 : Infinity;
       const penalty = !selected.stripe_payment_intent ? 0 : hoursUntil >= 24 ? 0 : 100;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "cancel_client", mission_id: selected.id, penalty }),
@@ -5114,7 +5114,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     try {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
-      const res = await fetch("/api/prestations", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id }),
@@ -6675,7 +6675,7 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
     setBroadcasted(true);
     supabase.auth.getSession().then(({ data:sd }) => {
       const token = sd?.session?.access_token;
-      fetch("/api/prestations", {
+      fetch("/api/missions", {
         method:"POST",
         headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
         body: JSON.stringify({ action:"broadcast", mission_id:m.id, sector:m.sector?.id||m.sector }),
