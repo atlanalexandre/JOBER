@@ -143,6 +143,9 @@ export function BOComptes() {
   const [contactSending, setContactSending] = useState(false);
   const [contactResult, setContactResult] = useState(null);
   const [docModal, setDocModal] = useState(null); // { profileId, name }
+  const [search, setSearch] = useState("");
+  const [cashbackAdj, setCashbackAdj] = useState({});
+  const [cashbackSaving, setCashbackSaving] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -304,14 +307,23 @@ export function BOComptes() {
 
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
   const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
-  const filtered = profiles.filter(p =>
-    (filter==="all" || p.status===filter) &&
-    (roleFilter==="all" || p.role===roleFilter)
-  );
+  const searchLow = search.toLowerCase().trim();
+  const filtered = profiles.filter(p => {
+    if (filter !== "all" && p.status !== filter) return false;
+    if (roleFilter !== "all" && p.role !== roleFilter) return false;
+    if (searchLow) {
+      const hay = [p.email, p.prenom, p.nom, p.telephone, p.societe_nom].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(searchLow)) return false;
+    }
+    return true;
+  });
 
   return (
     <div style={{ padding:"16px 18px" }}>
       <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Validation des comptes</h3>
+
+      <input type="text" placeholder="🔍 Rechercher par email, prénom, nom, téléphone…" value={search} onChange={e=>setSearch(e.target.value)}
+        style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:12, boxSizing:"border-box", outline:"none" }} />
 
       {/* Filtre statut */}
       <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
@@ -480,6 +492,28 @@ export function BOComptes() {
                     <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
                     <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
                   </div>
+                  {p.role === "client" && (
+                    <div style={{ marginTop:10, background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ color:C.success, fontWeight:700, fontSize:12, marginBottom:8 }}>💰 Cashback client</div>
+                      <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Solde actuel : <strong style={{ color:C.success }}>{(p.cashback_balance||0).toFixed(2)} €</strong></div>
+                      <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                        <input type="text" inputMode="decimal" placeholder="Montant (ex: 5 ou -2)" value={cashbackAdj[p.id]?.delta||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],delta:e.target.value}}))
+                        } style={{ width:120, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
+                        <input type="text" placeholder="Motif (optionnel)" value={cashbackAdj[p.id]?.reason||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],reason:e.target.value}}))} style={{ flex:1, minWidth:100, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
+                        <button disabled={cashbackSaving===p.id||!cashbackAdj[p.id]?.delta} onClick={async()=>{
+                          const delta = parseFloat(String(cashbackAdj[p.id]?.delta||"").replace(",","."));
+                          if (isNaN(delta)) return;
+                          setCashbackSaving(p.id);
+                          const res = await boFetch({ action:"adjust_cashback", profileId:p.id, delta, reason:cashbackAdj[p.id]?.reason||"" });
+                          const j = await res.json();
+                          if (j.ok) setCashbackAdj(a=>({...a,[p.id]:{delta:"",reason:""}}));
+                          setCashbackSaving(null);
+                        }} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:cashbackSaving===p.id?0.5:1 }}>
+                          {cashbackSaving===p.id?"…":"Appliquer"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {p.role === "prestataire" && p.bio && (
                     <div style={{ marginTop:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
                       <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>BIO</div>
@@ -950,6 +984,88 @@ export function BOSupport() {
   );
 }
 
+function BroadcastNotifSection() {
+  const [title, setTitle] = useState("");
+  const [body, setBody]   = useState("");
+  const [target, setTarget] = useState("all");
+  const [sending, setSending] = useState(false);
+  const [result, setResult]   = useState(null);
+  const send = async () => {
+    if (!title.trim() || !body.trim()) return;
+    setSending(true); setResult(null);
+    try {
+      const r = await boFetch({ action:"broadcast_notification", title:title.trim(), body:body.trim(), target });
+      const j = await r.json();
+      setResult(j.ok ? { ok:true, msg:`✅ Notification envoyée à ${j.sent} utilisateurs` } : { ok:false, msg:`❌ ${j.error}` });
+      if (j.ok) { setTitle(""); setBody(""); }
+    } catch { setResult({ ok:false, msg:"❌ Erreur réseau" }); }
+    setSending(false);
+    setTimeout(() => setResult(null), 5000);
+  };
+  return (
+    <>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📣 Notification in-app</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Titre de la notification" style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:8, boxSizing:"border-box" }} />
+        <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Message…" rows={2} style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", resize:"vertical", marginBottom:8, boxSizing:"border-box" }} />
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <select value={target} onChange={e=>setTarget(e.target.value)} style={{ flex:1, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit" }}>
+            <option value="all">Tous les utilisateurs</option>
+            <option value="clients">Clients uniquement</option>
+            <option value="prestataires">Prestataires uniquement</option>
+          </select>
+          <button onClick={send} disabled={sending||!title.trim()||!body.trim()} style={{ padding:"8px 16px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:sending?0.5:1 }}>
+            {sending?"Envoi…":"Envoyer 📣"}
+          </button>
+        </div>
+        {result && <div style={{ marginTop:8, fontSize:12, color:result.ok?C.success:"#F25E5E", fontWeight:600 }}>{result.msg}</div>}
+      </div>
+    </>
+  );
+}
+
+export function BORatings() {
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(null);
+  useEffect(() => {
+    boFetch({ action:"list_ratings" }).then(r=>r.json()).then(d=>{ setRatings(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
+  }, []);
+  const handleDelete = async (id) => {
+    if (!window.confirm("Supprimer cet avis définitivement ?")) return;
+    setDeleting(id);
+    await boFetch({ action:"delete_rating", ratingId:id });
+    setRatings(rs => rs.filter(r=>r.id!==id));
+    setDeleting(null);
+  };
+  if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>;
+  if (!ratings.length) return <div style={{ color:C.textSub, fontSize:13, textAlign:"center", padding:"20px 0" }}>Aucun avis pour l'instant</div>;
+  return (
+    <div>
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>⭐ Gestion des avis</div>
+      {ratings.map(r => (
+        <div key={r.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 14px", marginBottom:8, border:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                <span style={{ color:C.accentGold, fontSize:14 }}>{"⭐".repeat(r.rating)}</span>
+                <span style={{ color:C.textSub, fontSize:11 }}>{new Date(r.created_at).toLocaleDateString("fr-FR")}</span>
+              </div>
+              <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>
+                <strong style={{ color:C.text }}>{r.reviewer_name}</strong> → <strong style={{ color:C.violet }}>{r.reviewee_name}</strong>
+              </div>
+              {r.comment && <div style={{ color:"rgba(255,255,255,0.65)", fontSize:12, lineHeight:1.5, fontStyle:"italic" }}>"{r.comment}"</div>}
+            </div>
+            <button onClick={()=>handleDelete(r.id)} disabled={deleting===r.id} style={{ padding:"5px 10px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
+              {deleting===r.id?"…":"🗑 Supprimer"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function BOModerationTab({ d }) {
   const [suspendEmail, setSuspendEmail]   = useState("");
   const [suspendReason, setSuspendReason] = useState("");
@@ -1021,6 +1137,8 @@ export function BOModerationTab({ d }) {
         </button>
         {commResult && <div style={{ marginTop:8, fontSize:12, color:commResult.ok?C.success:C.accent, fontWeight:600 }}>{commResult.ok?"✅":"❌"} {commResult.msg}</div>}
       </div>
+
+      <BroadcastNotifSection />
 
       <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🔧 Outils</div>
       <div onClick={handleSync} style={{ background:"#0D1B3E", borderRadius:13, padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}
@@ -1926,6 +2044,22 @@ export function BOMissions() {
                 </button>
               )}
             </div>
+            {["completed","closed"].includes(m.status) && !result[m.id] && (
+              <div style={{ marginTop:8 }}>
+                <button onClick={async()=>{
+                  const reason = window.prompt("Motif du remboursement (optionnel) :");
+                  if (reason === null) return;
+                  setDisputing(m.id+"_manual");
+                  const res = await boFetch({ action:"manual_refund", mission_id:m.id, reason });
+                  const j = await res.json();
+                  setResult(r=>({...r,[m.id]:j.success?"💰 Remboursement initié":`❌ ${j.error||"Erreur"}`}));
+                  if (j.success) setMissions(ms=>ms.map(x=>x.id===m.id?{...x,status:"closed"}:x));
+                  setDisputing(null);
+                }} disabled={!!disputing} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(242,94,94,0.25)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:disputing===m.id+"_manual"?0.5:1 }}>
+                  {disputing===m.id+"_manual"?"…":"↩ Rembourser"}
+                </button>
+              </div>
+            )}
             {m.status === "disputed" && !result[m.id] && (
               <div style={{ display:"flex", gap:6, marginTop:8 }}>
                 <button onClick={()=>handleRelease(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:`${C.success}20`, color:C.success, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
@@ -2052,6 +2186,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
             {id:"moderation", l:"⚠️ Modération"},
+            {id:"ratings",    l:"⭐ Avis"},
             {id:"logs",       l:"📋 Logs"},
             {id:"reglages",   l:"⚙️ Réglages"},
             {id:"test",       l:"🧪 Test"},
@@ -2410,6 +2545,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── MODÉRATION ── */}
         {tab==="moderation" && <BOModerationTab d={d} />}
+        {tab==="ratings"    && <BORatings />}
 
         {/* ── RÉGLAGES ── */}
         {tab==="reglages" && <BOSettingsTab />}
