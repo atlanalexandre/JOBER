@@ -368,6 +368,7 @@ function clearAll(){ timers.forEach(clearTimeout); timers=[]; }
 function show(id, animCls, delay=0){
   after(()=>{
     const e=$(id); if(!e) return;
+    e.classList.remove('anim');
     e.style.opacity='';
     e.style.animation='none';
     void e.offsetWidth;
