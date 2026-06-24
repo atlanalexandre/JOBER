@@ -343,8 +343,9 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_nom           text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_reason  text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_penalty numeric DEFAULT 0;
 
--- ── plan_abonnement sur profiles (sync avec user_metadata) ───────────
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement text DEFAULT 'free';
+-- ── plan_abonnement + subscription_end_date sur profiles ────────────
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement        text DEFAULT 'free';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_end_date  date;
 
 -- ── TABLE bo_logs (audit trail des actions backoffice) ─────────────────
 CREATE TABLE IF NOT EXISTS bo_logs (
