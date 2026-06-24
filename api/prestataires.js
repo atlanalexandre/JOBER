@@ -14,6 +14,21 @@ export default async function handler(req, res) {
     "Content-Type":  "application/json",
   };
 
+  // Route légère : juste le count des prestataires approuvés
+  if (req.query.action === "count") {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
+        { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
+      );
+      const countHeader = r.headers.get("content-range");
+      const count = countHeader ? parseInt(countHeader.split("/")[1], 10) : null;
+      return res.status(200).json({ count: isNaN(count) ? null : count });
+    } catch {
+      return res.status(200).json({ count: null });
+    }
+  }
+
   try {
     // Fetch approved prestataires + verified doc IDs in parallel
     const [profilesRes, verifiedDocsRes] = await Promise.all([

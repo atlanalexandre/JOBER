@@ -106,7 +106,7 @@ function SplashScreen({ onNext, onBackoffice }) {
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
-    fetch("/api/presta-count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
+    fetch("/api/prestataires?action=count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
@@ -210,7 +210,7 @@ function RoleScreen({ onSelect }) {
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{
-    fetch("/api/presta-count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
+    fetch("/api/prestataires?action=count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
