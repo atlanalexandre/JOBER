@@ -4850,6 +4850,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [prestaPosition, setPrestaPosition] = useState(null);
   const [clientCoords, setClientCoords] = useState(null);
   const trackingPollRef = useRef(null);
+  const approachNotifSentRef = useRef(new Set());
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -4931,7 +4932,23 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       }).catch(() => null);
       if (!r?.ok) return;
       const d = await r.json().catch(() => null);
-      if (d?.lat && d?.lng) setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
+      if (d?.lat && d?.lng) {
+        setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
+        // "Arrive bientôt" notification quand distance < 500m (Notification API, fonctionne onglet arrière-plan)
+        setClientCoords(prev => {
+          if (prev && !approachNotifSentRef.current.has(selected.id)) {
+            const dLat = (d.lat - prev.lat) * Math.PI / 180;
+            const dLon = (d.lng - prev.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(d.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+            const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            if (dist < 0.5 && "Notification" in window && Notification.permission === "granted") {
+              approachNotifSentRef.current.add(selected.id);
+              new Notification("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m de chez vous.", icon: "/icon-192.png" });
+            }
+          }
+          return prev;
+        });
+      }
     };
     pollPosition();
     trackingPollRef.current = setInterval(pollPosition, 15000);
