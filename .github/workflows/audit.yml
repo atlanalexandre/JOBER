@@ -55,7 +55,6 @@ status_color = '#10D98F' if ok else '#FF3B30'
 status_icon  = '✅' if ok else '🔴'
 date_str = datetime.now().strftime('%d/%m/%Y à %Hh%M')
 
-# Convertit le rapport texte en HTML ligne par ligne
 lines = output.splitlines()
 html_lines = []
 for line in lines:
