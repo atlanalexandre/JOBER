@@ -7,7 +7,7 @@ on:
     branches: [main]
   schedule:
     - cron: "0 6 * * *"  # tous les jours à 6h UTC (8h Paris)
-  workflow_dispatch:      # déclenchement manuel possible
+  workflow_dispatch:
 
 jobs:
   audit:
@@ -18,4 +18,46 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run audit
-        run: node .github/scripts/audit.cjs
+        id: audit
+        run: |
+          set +e
+          OUTPUT=$(node .github/scripts/audit.cjs 2>&1)
+          EXIT_CODE=$?
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          echo "status=$([ $EXIT_CODE -eq 0 ] && echo 'OK' || echo 'ERREURS')" >> $GITHUB_OUTPUT
+          echo "$OUTPUT"
+          exit $EXIT_CODE
+
+      - name: Envoyer rapport par email
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+          AUDIT_OUTPUT: ${{ steps.audit.outputs.output }}
+          AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          AUDIT_EXIT:   ${{ steps.audit.outputs.exit_code }}
+        run: |
+          STATUS_EMOJI=$([ "$AUDIT_EXIT" = "0" ] && echo "✅" || echo "🔴")
+          STATUS_COLOR=$([ "$AUDIT_EXIT" = "0" ] && echo "#10D98F" || echo "#FF3B30")
+          DATE=$(date '+%d/%m/%Y à %Hh%M')
+          FROM="${RESEND_FROM:-ALANE Audit <no-reply@alane.fr>}"
+
+          # Convertit le texte brut en HTML (lignes → <p>, emojis conservés)
+          HTML_BODY=$(echo "$AUDIT_OUTPUT" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' | \
+            sed 's|✅ |<span style="color:#10D98F">✅ </span>|g' | \
+            sed 's|❌ |<span style="color:#FF3B30">❌ </span>|g' | \
+            sed 's|⚠️  |<span style="color:#FFD60A">⚠️ </span>|g' | \
+            awk '{print "<p style=\"margin:2px 0;font-size:13px;font-family:monospace\">" $0 "</p>"}')
+
+          curl -s -X POST "https://api.resend.com/emails" \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"$FROM\",
+              \"to\": [\"direction@alane.fr\"],
+              \"subject\": \"$STATUS_EMOJI Audit ALANE — $AUDIT_STATUS — $DATE\",
+              \"html\": \"<div style='font-family:-apple-system,sans-serif;max-width:600px;margin:0 auto;background:#050E20;color:#fff;border-radius:12px;overflow:hidden'><div style='background:$STATUS_COLOR;padding:16px 24px'><h2 style='margin:0;font-size:18px'>$STATUS_EMOJI Audit ALANE — $AUDIT_STATUS</h2><p style='margin:4px 0 0;opacity:0.85;font-size:13px'>$DATE · Branche main</p></div><div style='padding:20px 24px;background:#0D1B3E'>$HTML_BODY</div><div style='padding:12px 24px;background:#050E20;font-size:11px;color:rgba(255,255,255,0.35)'>Rapport généré automatiquement · alane.fr</div></div>\"
+            }"
