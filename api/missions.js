@@ -271,8 +271,8 @@ export default async function handler(req, res) {
             const endDate = urData.user_metadata?.subscription_end_date;
             if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
               plan = "free";
-              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
-              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
+              await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
             }
 
             const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
@@ -937,7 +937,7 @@ export default async function handler(req, res) {
               const RESEND_FROM_B = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
               if (RESEND_KEY_B && ud.email) {
                 const missionLabel = mission?.metier || sector || "Mission";
-                fetch("https://api.resend.com/emails", {
+                await fetch("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${RESEND_KEY_B}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -970,7 +970,7 @@ export default async function handler(req, res) {
                 if (e164) {
                   const smsText = `ALANE - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler. — alane.fr`;
                   console.log("[broadcast] sending SMS");
-                  fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                  await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
                     headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
                     body: JSON.stringify({ sender: "JOBER", recipient: e164, content: smsText }),
@@ -1228,7 +1228,7 @@ export default async function handler(req, res) {
       if (mission.stripe_payment_intent && mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
         const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStart.getTime() - 3600000);
+        const missionStartUTC = new Date(missionStart.getTime() - 7200000); // UTC+2 (France CEST)
         const hoursUntilMission = (missionStartUTC - new Date()) / 3600000;
         if (hoursUntilMission < 24) penalty = 100;
         else if (hoursUntilMission < 48) penalty = 50;
@@ -1269,7 +1269,7 @@ export default async function handler(req, res) {
         const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
         const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
         if (RESEND_API_KEY && ADMIN_EMAIL) {
-          fetch("https://api.resend.com/emails", {
+          await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1384,7 +1384,7 @@ export default async function handler(req, res) {
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_API_KEY && prestaEmail) {
-        fetch("https://api.resend.com/emails", {
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1417,7 +1417,7 @@ export default async function handler(req, res) {
       const TWILIO_FROM  = process.env.TWILIO_FROM;
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && prestaPhone) {
         const smsAuth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
-        fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
           method: "POST",
           headers: { "Authorization": `Basic ${smsAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
@@ -1460,7 +1460,7 @@ export default async function handler(req, res) {
         // Email admin
         const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
         if (RESEND_API_KEY && ADMIN_EMAIL) {
-          fetch("https://api.resend.com/emails", {
+          await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1609,7 +1609,7 @@ export default async function handler(req, res) {
         const RESEND_KEY  = process.env.RESEND_API_KEY;
         const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
         if (RESEND_KEY && clientEmail) {
-          fetch("https://api.resend.com/emails", {
+          await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1634,7 +1634,7 @@ export default async function handler(req, res) {
           const digits = phone.replace(/\D/g, "");
           const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
           if (e164) {
-            fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+            await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
               method: "POST",
               headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1702,7 +1702,7 @@ export default async function handler(req, res) {
       const RESEND_KEY  = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_KEY && clientEmail) {
-        fetch("https://api.resend.com/emails", {
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1729,7 +1729,7 @@ export default async function handler(req, res) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
         if (e164) {
-          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+          await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
             method: "POST",
             headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
             body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsText }),
@@ -1761,7 +1761,7 @@ export default async function handler(req, res) {
       const RESEND_KEY  = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_KEY && prestaEmail) {
-        fetch("https://api.resend.com/emails", {
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1792,7 +1792,7 @@ export default async function handler(req, res) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
         if (e164) {
-          fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+          await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
             method: "POST",
             headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
             body: JSON.stringify({
