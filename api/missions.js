@@ -1597,6 +1597,7 @@ export default async function handler(req, res) {
               ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
               : `${presta_name || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
             read: false,
+            ref_id: mission_id,
           }),
         }).catch(() => {});
 

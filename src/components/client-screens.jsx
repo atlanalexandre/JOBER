@@ -2653,15 +2653,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
               // Check if the mission starts within 2h → must use urgent mode
+              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
               const [hh,mm] = (startTime||"08:00").split(":").map(Number);
               const missionStart = new Date(yr, mo-1, dy, hh, mm);
               const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
               if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
               setTooSoonError(false);
-              // Vérification disponibilité prestataire
-              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
-              const [yr,mo,dy] = startDate.split("-").map(Number);
               const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
               const dispoDays = p.dispon_jours || [];
               if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
@@ -4854,7 +4852,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
   );
 }
 
-export function MissionHistoryScreen({ onNavigate, onBack }) {
+export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
   const [prestations, setMissions]   = useState([]);
@@ -4883,6 +4881,13 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const approachNotifSentRef = useRef(new Set());
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
+
+  // Auto-ouvrir une mission depuis une notification
+  useEffect(()=>{
+    if (!openMissionId || loading || prestations.length === 0) return;
+    const mission = prestations.find(m => m.id === openMissionId);
+    if (mission) setSelected(mission);
+  }, [openMissionId, loading, prestations]);
 
   useEffect(() => {
     Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
@@ -5904,12 +5909,13 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
     if (n.type === "system" && n.ref_id) {
       // Notification chat → ouvrir directement la conversation
       if (isPresta) {
-        // Le prestataire voit un message du client : ref_id = client_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Client", avatar: "👤", color: "#4F46E5", clientId: n.ref_id });
       } else {
-        // Le client voit un message du prestataire : ref_id = prestataire_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
       }
+    } else if (n.type === "mission") {
+      // Mission acceptée, assignée, en cours, terminée → aller directement à l'écran missions
+      onNavigate(isPresta ? "p_missions" : "mission_history", n.ref_id ? { openMissionId: n.ref_id } : undefined);
     } else if (n.type === "prestation") {
       onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
