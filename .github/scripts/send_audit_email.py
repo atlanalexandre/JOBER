@@ -45,6 +45,8 @@ html_content = (
     '</div>'
 ).format(status_color, status_icon, status, date_str, html_body)
 
+api_key = resend.api_key
+print('API key prefix: {}...'.format(api_key[:8] if api_key else 'VIDE'))
 try:
     params = {
         'from': 'ALANE Audit <no-reply@alane.fr>',
@@ -56,3 +58,4 @@ try:
     print('Email envoye: {}'.format(email))
 except Exception as e:
     print('Erreur envoi email: {}'.format(e))
+    # Ne pas faire échouer le job — l'audit a réussi même si l'email échoue
