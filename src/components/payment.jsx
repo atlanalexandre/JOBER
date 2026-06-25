@@ -313,6 +313,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
+  const [wireConfirmed, setWireConfirmed] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -398,7 +399,9 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
     } else if (method === "wire") {
-      setStripeError("Le paiement par virement nécessite une confirmation manuelle. Notre équipe vous contactera pour finaliser.");
+      setProcessing(false);
+      setWireConfirmed(true);
+      onSuccess && onSuccess("wire_pending");
     }
   };
 
@@ -526,6 +529,11 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
               <div style={{ marginTop:10, color:C.warning, fontSize:11, fontWeight:600 }}>⚠️ Délai de validation : 1-2 jours ouvrés</div>
             </div>
           )}
+          {method==="wire" && wireConfirmed && (
+            <div style={{ background:"#16a34a15", border:"1px solid #16a34a40", borderRadius:10, padding:"12px 14px", color:"#4ade80", fontSize:13, marginTop:12, lineHeight:1.6 }}>
+              ✅ <strong>Commande confirmée.</strong> Effectuez le virement avec la référence ci-dessus dans les 48h. Notre équipe vous confirmera la réception et la mission sera activée.
+            </div>
+          )}
         </div>
 
         {/* IBAN remboursement */}
@@ -554,9 +562,9 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           ))}
         </div>
 
-        <Btn full onClick={handlePay} disabled={processing}
+        <Btn full onClick={handlePay} disabled={processing || (method==="wire" && wireConfirmed)}
           style={{ fontSize:16, padding:"18px", position:"relative" }}>
-          {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
+          {processing ? "⏳ Traitement en cours…" : method==="wire" ? (wireConfirmed ? "✅ Commande confirmée" : "✓ Confirmer ma commande par virement") : `🔒 Payer ${total} € en sécurité`}
         </Btn>
         <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>Aucun débit avant validation de votre prestation</p>
       </div>
