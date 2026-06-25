@@ -368,6 +368,135 @@ ${(() => {
     }
   }
 
+  // ── Notification immédiate de fin de mission (toutes les 15 min) ──
+  if (req.query?.action === "end-notif") {
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+    const BREVO_API_KEY  = process.env.BREVO_API_KEY;
+    const appUrl         = process.env.APP_URL || "https://www.alane.fr";
+
+    try {
+      // Missions assignées dont end_notif_sent n'est pas encore true
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
+        { headers }
+      );
+      const allMissions = await mRes.json();
+      if (!Array.isArray(allMissions)) return res.status(200).json({ sent: 0 });
+
+      const nowMs = Date.now();
+      // Filtrer celles dont l'heure de fin est passée (UTC+2, France CEST)
+      const ended = allMissions.filter(m => {
+        if (!m.date) return false;
+        const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
+        const missionEndMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime()
+          - 7200000  // UTC+2 → UTC
+          + Number(m.hours || 1) * 3600000;
+        return nowMs >= missionEndMs;
+      });
+
+      if (ended.length === 0) return res.status(200).json({ sent: 0 });
+
+      // Charger emails et téléphones une fois pour toutes
+      const uids = [...new Set(ended.flatMap(m => [m.client_id, m.prestataire_id].filter(Boolean)))];
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
+      const usersData = await usersRes.json();
+      const userMap = {};
+      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+
+      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
+      const profilesData = await profilesRes.json();
+      const nameMap = {};
+      (Array.isArray(profilesData) ? profilesData : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
+
+      let sent = 0;
+      for (const m of ended) {
+        try {
+          const missionLabel = esc(m.metier || m.sector || "Mission");
+          const missionInfo  = `${missionLabel} · ${esc(m.ville || "")} · ${m.date}`;
+          const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
+          const clientName   = nameMap[m.client_id]  || "Client";
+          const prestaEmail  = userMap[m.prestataire_id]?.email;
+          const clientEmail  = userMap[m.client_id]?.email;
+          const prestaPhone  = userMap[m.prestataire_id]?.meta?.telephone;
+          const clientPhone  = userMap[m.client_id]?.meta?.telephone;
+
+          const prestaHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
+<tr><td style="background:linear-gradient(135deg,#10D98F,#0ABF7A);padding:28px;text-align:center;">
+<div style="font-size:40px;margin-bottom:10px;">🎉</div>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Mission terminée !</h1>
+<p style="color:rgba(255,255,255,0.85);font-size:13px;margin:0;">${missionInfo}</p>
+</td></tr>
+<tr><td style="padding:28px;">
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(prestaName)}</strong>,</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">
+  Votre mission <strong style="color:#10D98F;">${missionLabel}</strong> vient de se terminer.<br/><br/>
+  <strong style="color:#fff;">Confirmez la fin de prestation</strong> depuis votre espace ALANE pour déclencher votre paiement.
+  Le client disposera ensuite de 24h pour valider — passé ce délai, la mission est automatiquement validée.
+</p>
+<div style="text-align:center;margin-top:24px;">
+<a href="${appUrl}" style="display:inline-block;background:linear-gradient(135deg,#10D98F,#0ABF7A);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:800;font-size:15px;">Confirmer ma mission →</a>
+</div>
+</td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+</table></td></tr></table></body></html>`;
+
+          const clientHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background:#0A1628;font-family:system-ui,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
+<tr><td style="background:linear-gradient(135deg,#F0B429,#E09B10);padding:28px;text-align:center;">
+<div style="font-size:40px;margin-bottom:10px;">✅</div>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Mission terminée — en attente de validation</h1>
+<p style="color:rgba(255,255,255,0.85);font-size:13px;margin:0;">${missionInfo}</p>
+</td></tr>
+<tr><td style="padding:28px;">
+<p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(clientName)}</strong>,</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">
+  La mission <strong style="color:#F0B429;">${missionLabel}</strong> vient de se terminer.<br/><br/>
+  Votre prestataire va confirmer la fin depuis son espace. Vous recevrez une notification dès que c'est fait pour valider le paiement.
+  <br/><br/>
+  <strong style="color:#fff;">Si votre prestataire ne confirme pas sous 24h</strong>, la mission sera validée automatiquement.
+</p>
+<div style="text-align:center;margin-top:24px;">
+<a href="${appUrl}" style="display:inline-block;background:linear-gradient(135deg,#F0B429,#E09B10);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:800;font-size:15px;">Suivre ma mission →</a>
+</div>
+</td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+</table></td></tr></table></body></html>`;
+
+          const sends = [];
+          if (RESEND_API_KEY && prestaEmail)
+            sends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html: prestaHtml }) }).catch(()=>{}));
+          if (RESEND_API_KEY && clientEmail)
+            sends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Mission terminée — validation en attente · ALANE`, html: clientHtml }) }).catch(()=>{}));
+          if (BREVO_API_KEY && prestaPhone)
+            sends.push(sendSms(BREVO_API_KEY, prestaPhone, `🎉 ALANE - Votre mission ${m.metier||"Mission"} est terminée ! Confirmez la fin depuis l'app pour recevoir votre paiement. — alane.fr`));
+          if (BREVO_API_KEY && clientPhone)
+            sends.push(sendSms(BREVO_API_KEY, clientPhone, `✅ ALANE - Votre mission ${m.metier||"Mission"} est terminée. Votre prestataire va confirmer, vous serez notifié(e) pour valider. — alane.fr`));
+
+          await Promise.all(sends);
+          sent += sends.length;
+
+          // Marquer end_notif_sent pour ne plus renvoyer
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ end_notif_sent: true }),
+          }).catch(() => {});
+        } catch (e) { console.error(`end-notif mission ${m.id}:`, e); }
+      }
+
+      return res.status(200).json({ success: true, processed: ended.length, sent });
+    } catch (e) {
+      console.error("end-notif cron error:", e);
+      return res.status(500).json({ error: "Erreur end-notif" });
+    }
+  }
+
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0`, {
