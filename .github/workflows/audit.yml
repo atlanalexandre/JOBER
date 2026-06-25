@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 6 * * *"  # tous les jours à 6h UTC (8h Paris)
+    - cron: "0 4 * * *"  # tous les jours à 4h UTC (6h Paris)
   workflow_dispatch:
 
 jobs:
