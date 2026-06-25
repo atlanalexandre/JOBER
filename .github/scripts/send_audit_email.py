@@ -58,10 +58,14 @@ req = urllib.request.Request(
     headers={'Authorization': 'Bearer {}'.format(api_key), 'Content-Type': 'application/json'},
     method='POST'
 )
+print('Envoi vers direction@alane.fr depuis {}...'.format(from_addr))
+print('API key prefix: {}...'.format(api_key[:8] if api_key else 'VIDE'))
 try:
     with urllib.request.urlopen(req) as resp:
         print('Email envoye: {} {}'.format(resp.status, resp.read().decode()))
 except urllib.error.HTTPError as e:
     body = e.read().decode()
     print('Erreur Resend {}: {}'.format(e.code, body))
-    raise
+    # Ne pas faire échouer le job — l'audit a réussi même si l'email échoue
+except Exception as e:
+    print('Erreur inattendue: {}'.format(e))
