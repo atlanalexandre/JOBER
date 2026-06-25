@@ -2756,11 +2756,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ["Métier", p.jobTitle||p.role],
               ["Date", isUrgent ? `Aujourd’hui — ${urgentStartDate}` : missionType==="range" && startDate && endDate ? `${formatDate(startDate)} → ${formatDate(endDate)}` : formatDate(startDate)],
               ["Heure de début", isUrgent ? `${urgentStartTime} (~30 min)` : startTime||"—"],
+              ["Heure de fin", (()=>{ const t = isUrgent ? urgentStartTime : (startTime||"08:00"); const [h,m] = t.split(":").map(Number); const endMin = h*60 + m + hours*60; return `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`; })()],
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
-              ["Lieu","Paris 75001"],
+              ["Lieu", [adresse, cp, ville].filter(Boolean).join(", ")||"—"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{l}</span>
