@@ -5035,7 +5035,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const withPresta = prestations.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
     const byPresta = {};
     for (const m of withPresta) {
-      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, prestations: [] };
+      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
       byPresta[m.prestataire_id].missions.push(m);
     }
     const ids = Object.keys(byPresta);
