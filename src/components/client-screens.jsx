@@ -314,7 +314,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       // Récupérer last4 + brand
       const pr = await fetch("/api/stripe-intent", {
         method: "POST",
-        headers: { "Content-Type":"application/json" },
+        headers: { "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
         body: JSON.stringify({ action:"get_pm", pmId }),
       });
       const { brand="card", last4="••••" } = await pr.json();
@@ -2321,7 +2321,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
   const [availError, setAvailError] = useState("");
-  const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
+  const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
   const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
