@@ -1950,6 +1950,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [ratingTarget, setRatingTarget] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [recapCard, setRecapCard] = useState(null);
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
   const [ratingLoading, setRatingLoading] = useState(false);
@@ -1993,6 +1995,24 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
+
+      // Streak: consecutive calendar days with ≥1 completed mission, backwards from yesterday
+      const missionDays = new Set(done.map(m => m.date?.slice(0,10)).filter(Boolean));
+      let s = 0;
+      const ref = new Date(); ref.setDate(ref.getDate() - 1); // start from yesterday
+      for (let i = 0; i < 365; i++) {
+        const key = ref.toISOString().slice(0,10);
+        if (missionDays.has(key)) { s++; ref.setDate(ref.getDate() - 1); }
+        else break;
+      }
+      setStreak(s);
+
+      // Recap card: show for newest completed mission not yet seen
+      const seenKey = `alane_presta_recap_seen_${u.id}`;
+      let seenIds; try { seenIds = new Set(JSON.parse(localStorage.getItem(seenKey)||"[]")); } catch(e) { seenIds = new Set(); }
+      const unseen = done.filter(m => !seenIds.has(m.id)).sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
+      if (unseen.length > 0) setRecapCard(unseen[0]);
+
       const { data: myRatings } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", u.id);
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
@@ -2028,8 +2048,57 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch(e) {} }
   };
 
+  const dismissRecap = async () => {
+    if (!recapCard) return;
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id; if (!uid) { setRecapCard(null); return; }
+    const seenKey = `alane_presta_recap_seen_${uid}`;
+    let seenIds; try { seenIds = new Set(JSON.parse(localStorage.getItem(seenKey)||"[]")); } catch(e) { seenIds = new Set(); }
+    seenIds.add(recapCard.id);
+    try { localStorage.setItem(seenKey, JSON.stringify([...seenIds])); } catch(e) {}
+    setRecapCard(null);
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {/* ── Recap Card ── */}
+      {recapCard && (() => {
+        const getAmt = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+        const amt = getAmt(recapCard);
+        const sector = SECTORS.find(s => s.id === recapCard.sector);
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)" }}>
+            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"28px 24px 48px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center" }}>
+              <div style={{ width:40, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 24px" }} />
+              {/* Confetti ring */}
+              <div style={{ width:88, height:88, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"3px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px", boxShadow:"0 0 40px rgba(16,217,143,0.3)" }}>
+                {sector?.icon || "✅"}
+              </div>
+              <h2 style={{ color:"#10D98F", fontSize:22, fontWeight:900, margin:"0 0 6px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 24px" }}>{recapCard.metier || sector?.label || "Prestation"} · {recapCard.date || ""}</p>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
+                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:14, padding:"16px 12px" }}>
+                  <div style={{ fontSize:24, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Montant gagné</div>
+                </div>
+                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:14, padding:"16px 12px" }}>
+                  <div style={{ fontSize:24, fontWeight:900, color:C.violet }}>{recapCard.hours ? `${recapCard.hours}h` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Durée réalisée</div>
+                </div>
+              </div>
+              {streak >= 2 && (
+                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:12, padding:"10px 16px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <span style={{ fontSize:20 }}>🔥</span>
+                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>{streak} jours de suite — continuez comme ça !</span>
+                </div>
+              )}
+              <button onClick={dismissRecap} style={{ width:"100%", padding:"14px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+                Super ! 🚀
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       {ratingTarget && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:500, backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
           <div style={{ background:"#0D1B3E", borderRadius:"22px 22px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, border:`1px solid ${C.border}`, borderBottom:"none" }}>
@@ -2102,9 +2171,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </button>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[{l:"Prestations",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(
-            <div key={s.l} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center" }}>
-              <div style={{ fontSize:16 }}>{s.i}</div><div style={{ color:C.white, fontWeight:800, fontSize:12 }}>{s.v}</div><div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
+          {[
+            {l:"Prestations",v:String(statsData.prestations||0),i:"✅"},
+            {l:"Ce mois",v:statsData.revenuMois>0?(statsData.revenuMois+"€"):"—",i:"💶"},
+            {l:"Note",v:statsData.note?(statsData.note+"★"):"—",i:"⭐"},
+            {l:"Streak",v:streak>0?`🔥${streak}j`:"—",i:"",highlight:streak>=3},
+          ].map(s=>(
+            <div key={s.l} style={{ background:s.highlight?"linear-gradient(135deg,rgba(240,180,41,0.2),rgba(240,120,41,0.12))":"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center", border:s.highlight?"1px solid rgba(240,180,41,0.4)":"none" }}>
+              {s.i && <div style={{ fontSize:16 }}>{s.i}</div>}
+              <div style={{ color:s.highlight?C.accentGold:C.white, fontWeight:800, fontSize:s.highlight?13:12 }}>{s.v}</div>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -2253,6 +2329,44 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   <div style={{ color:C.text, fontWeight:800, fontSize:18 }}>{completedMissions.length}</div>
                 </div>
               </div>
+              {/* ── Graphe mensuel ── */}
+              {(() => {
+                const now = new Date();
+                const months = Array.from({length:4}, (_,i) => {
+                  const d = new Date(now.getFullYear(), now.getMonth() - (3-i), 1);
+                  return { year:d.getFullYear(), month:d.getMonth(), label:["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"][d.getMonth()] };
+                });
+                const getAmt2 = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const byMonth = months.map(({year,month,label}) => {
+                  const rev = completedMissions.filter(m => {
+                    if (!m.date) return false;
+                    const d = new Date(m.date);
+                    return d.getFullYear()===year && d.getMonth()===month;
+                  }).reduce((s,m) => s+getAmt2(m), 0);
+                  return {label, rev};
+                });
+                const maxRev = Math.max(...byMonth.map(m=>m.rev), 1);
+                return (
+                  <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"16px 14px", marginBottom:14 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.textSub, marginBottom:14 }}>📊 Revenus par mois</div>
+                    <div style={{ display:"flex", gap:8, alignItems:"flex-end", height:72 }}>
+                      {byMonth.map(({label,rev},i) => {
+                        const pct = Math.max(4, Math.round((rev/maxRev)*100));
+                        const isCurrentMonth = i === 3;
+                        return (
+                          <div key={label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                            <div style={{ fontSize:10, color:rev>0?C.success:C.textMuted, fontWeight:700 }}>{rev>0?rev.toFixed(0)+"€":""}</div>
+                            <div style={{ width:"100%", height:60, display:"flex", alignItems:"flex-end" }}>
+                              <div style={{ width:"100%", height:`${pct}%`, borderRadius:"6px 6px 3px 3px", background:isCurrentMonth?`linear-gradient(180deg,${C.success},${C.success}88)`:"rgba(16,217,143,0.3)", transition:"height .4s" }} />
+                            </div>
+                            <div style={{ fontSize:10, color:isCurrentMonth?C.text:C.textSub, fontWeight:isCurrentMonth?700:400 }}>{label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {completedMissions.map(m=>{
                 const sector=SECTORS.find(s=>s.id===m.sector);
                 const amt=getAmt(m);

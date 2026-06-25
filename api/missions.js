@@ -621,11 +621,11 @@ export default async function handler(req, res) {
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette mission" });
       if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
-        // heure_debut is stored as French local time; server runs UTC.
-        // Subtract UTC+1 (France minimum offset) to convert to UTC conservatively.
+        // heure_debut stored as French local time. France = UTC+2 in summer (CEST), UTC+1 in winter (CET).
+        // Use UTC+2 offset to be conservative (don't block during CEST). Add 15min grace buffer.
         const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStart = new Date(missionStartNaive.getTime() - 3600000);
-        const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000);
+        const missionStart = new Date(missionStartNaive.getTime() - 7200000); // UTC+2 (summer)
+        const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
         if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
 
@@ -648,23 +648,21 @@ export default async function handler(req, res) {
         }),
       }).catch(() => {});
 
-      // Send email to client
-      fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.client_id}`, { headers })
-        .then(r => r.json())
-        .then(async clientUser => {
-          const clientEmail = clientUser?.email;
-          const clientName = clientUser?.user_metadata?.prenom || clientUser?.user_metadata?.nom || "";
-          if (!clientEmail) return;
-          const metier = mission.metier || mission.sector || "Mission";
-          const missionDate = mission.date || "";
-          const ville = mission.ville || "";
-          const appUrl = process.env.APP_URL || "https://www.alane.fr";
+      // Send email to client (awaited — Vercel kills fire-and-forget before it completes)
+      try {
+        const clientUserRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.client_id}`, { headers });
+        const clientUser = await clientUserRes.json();
+        const clientEmail = clientUser?.email;
+        const clientName = clientUser?.user_metadata?.prenom || clientUser?.user_metadata?.nom || "";
+        const metier = mission.metier || mission.sector || "Mission";
+        const missionDate = mission.date || "";
+        const ville = mission.ville || "";
+        const appUrl = process.env.APP_URL || "https://www.alane.fr";
+        const RESEND_API_KEY = process.env.RESEND_API_KEY;
+        if (clientEmail && RESEND_API_KEY) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
-            },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
             body: JSON.stringify({
               from: process.env.RESEND_FROM || "onboarding@resend.dev",
               to: clientEmail,
@@ -700,9 +698,9 @@ export default async function handler(req, res) {
                 </div>
               </div>`,
             }),
-          });
-        })
-        .catch(() => {});
+          }).catch(() => {});
+        }
+      } catch {}
 
       return res.status(200).json({ success: true });
     }
