@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const params = {
       amount: String(Math.round(amount * 100)),
       currency,
-      "automatic_payment_methods[enabled]": "true",
+      "payment_method_types[]": "card",
       "metadata[mission]":     metadata.mission     || "",
       "metadata[client]":      metadata.client      || "",
       "metadata[prestataire]": metadata.prestataire || "",
