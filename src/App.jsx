@@ -1186,7 +1186,7 @@ export default function App() {
       if(profile?.role){
         setRole(profile.role);
         if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
-        if(profile.status === "rejected"){ setScreen("role"); return; }
+        if(profile.status === "rejected" || profile.status === "suspended"){ await supabase.auth.signOut(); setScreen("role"); return; }
         setScreen(profile.role==="prestataire"?"p_home":"home");
         return;
       }

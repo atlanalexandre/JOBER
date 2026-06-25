@@ -1077,6 +1077,11 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.auth.signOut();
       return;
     }
+    if (profile?.status === "suspended") {
+      setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
+      await supabase.auth.signOut();
+      return;
+    }
     if (stayLoggedIn) {
       try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
     } else {

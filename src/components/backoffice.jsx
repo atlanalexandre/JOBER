@@ -708,6 +708,16 @@ export function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
+            {p.status==="approved" && (
+              <button onClick={async()=>{ const reason=window.prompt("Motif de suspension (optionnel) :"); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                {actioning===p.id+"suspend"?"…":"🔒 Suspendre"}
+              </button>
+            )}
+            {p.status==="suspended" && (
+              <button onClick={async()=>{ if(!window.confirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); await boFetch({ action:"unsuspend", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                {actioning===p.id+"unsuspend"?"…":"🔓 Réactiver"}
+              </button>
+            )}
             <button onClick={()=>{ setDocModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email }); if(!docs[p.id]) loadDocs(p.id); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid rgba(255,255,255,0.15)`, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               📂
             </button>
@@ -1084,7 +1094,7 @@ export function BOModerationTab({ d }) {
       const users = await r.json();
       const user = (Array.isArray(users)?users:[]).find(u=>u.email===suspendEmail.trim());
       if(!user) { setSuspendResult({ ok:false, msg:"Email introuvable" }); setSuspending(false); return; }
-      const r2 = await boFetch({ action:"reject", profileId: user.id });
+      const r2 = await boFetch({ action:"suspend", profileId: user.id, reason: suspendReason.trim() });
       const j = await r2.json();
       setSuspendResult(j.success ? { ok:true, msg:`Compte ${suspendEmail} suspendu.` } : { ok:false, msg:"Erreur lors de la suspension" });
       if(j.success) { setSuspendEmail(""); setSuspendReason(""); }
@@ -1922,6 +1932,11 @@ export function BOMissions() {
   const [validating, setValidating] = useState(null);
   const [disputing, setDisputing] = useState(null);
   const [result, setResult]     = useState({});
+  const [editingMission, setEditingMission] = useState(null);
+  const [editMissionVals, setEditMissionVals] = useState({});
+  const [reassignId, setReassignId] = useState(null);
+  const [reassignEmail, setReassignEmail] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
 
   const load = async (status = filter) => {
     setLoading(true);
@@ -1964,6 +1979,41 @@ export function BOMissions() {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
     } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setDisputing(null);
+  };
+
+  const handleCancel = async (missionId, withRefund) => {
+    const reason = window.prompt("Motif d'annulation (optionnel) :"); if (reason === null) return;
+    setDisputing(missionId + "_cancel");
+    try {
+      const res = await boFetch({ action:"cancel_mission", mission_id:missionId, refund:withRefund, reason });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:`🚫 Annulée${withRefund?" + remboursement initié":""}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"cancelled"}:m)); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    setDisputing(null);
+  };
+
+  const handleReassign = async (missionId) => {
+    if (!reassignEmail.trim()) return;
+    setDisputing(missionId + "_reassign");
+    try {
+      const res = await boFetch({ action:"reassign_mission", mission_id:missionId, new_presta_email:reassignEmail.trim(), reason:reassignReason.trim()||undefined });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:`✅ Réassignée → ${data.new_presta_name}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"assigned"}:m)); setReassignId(null); setReassignEmail(""); setReassignReason(""); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    setDisputing(null);
+  };
+
+  const handleUpdateMission = async (missionId) => {
+    setDisputing(missionId + "_edit");
+    try {
+      const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Mission mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2067,6 +2117,48 @@ export function BOMissions() {
                 </button>
                 <button onClick={()=>handleRefund(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"rgba(242,94,94,0.15)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                   {disputing===m.id+"_refund" ? "…" : "💰 Rembourser le client"}
+                </button>
+              </div>
+            )}
+            {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
+            {!["cancelled","closed","completed"].includes(m.status) && !result[m.id] && (
+              <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button onClick={()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=window.confirm("Cette mission a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_cancel"?"…":"🚫 Annuler"}
+                </button>
+                <button onClick={()=>{ setReassignId(reassignId===m.id?null:m.id); setReassignEmail(""); setReassignReason(""); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(162,155,254,0.3)", background:"rgba(162,155,254,0.08)", color:C.violet, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  🔄 Réassigner
+                </button>
+                <button onClick={()=>{ setEditingMission(editingMission===m.id?null:m.id); setEditMissionVals({ date:m.date||"", hours:m.hours||"", tarif_horaire:m.tarif_horaire||"", ville:m.ville||"", metier:m.metier||"" }); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(255,255,255,0.15)", background:"rgba(255,255,255,0.05)", color:C.textSub, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  ✏️ Modifier
+                </button>
+              </div>
+            )}
+            {/* Formulaire réassignation */}
+            {reassignId===m.id && (
+              <div style={{ marginTop:8, background:"rgba(162,155,254,0.06)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:10, padding:"12px" }}>
+                <div style={{ fontWeight:700, color:C.violet, fontSize:12, marginBottom:8 }}>🔄 Réassigner à un autre prestataire</div>
+                <input value={reassignEmail} onChange={e=>setReassignEmail(e.target.value)} placeholder="Email du nouveau prestataire" style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box", marginBottom:6 }} />
+                <input value={reassignReason} onChange={e=>setReassignReason(e.target.value)} placeholder="Motif (optionnel)" style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }} />
+                <button onClick={()=>handleReassign(m.id)} disabled={!reassignEmail.trim()||!!disputing} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:!reassignEmail.trim()||disputing?0.5:1 }}>
+                  {disputing===m.id+"_reassign"?"…":"Confirmer la réassignation"}
+                </button>
+              </div>
+            )}
+            {/* Formulaire modification */}
+            {editingMission===m.id && (
+              <div style={{ marginTop:8, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:10, padding:"12px" }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>✏️ Modifier la prestation</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+                  {[["date","Date","date"],["hours","Heures","number"],["tarif_horaire","Tarif/h €","number"],["ville","Ville","text"],["metier","Métier","text"]].map(([k,label,type])=>(
+                    <div key={k} style={{ gridColumn: k==="metier"?"1/-1":"auto" }}>
+                      <div style={{ color:C.textMuted, fontSize:10, marginBottom:3 }}>{label}</div>
+                      <input type={type} value={editMissionVals[k]||""} onChange={e=>setEditMissionVals(v=>({...v,[k]:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"7px 9px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box" }} />
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>handleUpdateMission(m.id)} disabled={!!disputing} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:disputing?0.5:1 }}>
+                  {disputing===m.id+"_edit"?"…":"Enregistrer"}
                 </button>
               </div>
             )}
