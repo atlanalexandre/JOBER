@@ -1496,12 +1496,38 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, billedHours, proratedAmount });
     }
 
+    if (action === "checkin_mission") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at`, { headers });
+      const mData = await mr.json();
+      const m = Array.isArray(mData) && mData[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.arrived_at) return res.status(200).json({ arrived_at: m.arrived_at });
+      const arrivedAt = new Date().toISOString();
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ arrived_at: arrivedAt }),
+      });
+      if (m.client_id) {
+        const label = m.titre || m.metier || "la prestation";
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Prestataire arrivé(e) sur place 📍", body: `Votre prestataire est arrivé(e) pour « ${label} ». La mission démarre.`, read: false }),
+        }).catch(() => {});
+      }
+      return res.status(200).json({ arrived_at: arrivedAt });
+    }
+
     if (action === "my_missions") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -1633,6 +1659,14 @@ export default async function handler(req, res) {
             : `${presta_name || "Le prestataire"} a refusé. Connectez-vous pour choisir un autre prestataire.`;
           await Promise.all(psSubs.map(s => sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" })));
         }
+      }
+
+      // Reminder notification to prestataire when they accept
+      if (response === "accept") {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: caller.id, type: "mission", title: "Rappel : signalez votre arrivée 📍", body: `N'oubliez pas de cliquer « Je suis sur place » dans l'app dès que vous arrivez pour la mission ${mission.titre || mission.metier || ""}.`, read: false }),
+        }).catch(() => {});
       }
 
       return res.status(200).json({ success: true });

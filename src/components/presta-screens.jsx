@@ -1412,6 +1412,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [validatingMission, setValidatingMission] = useState(null);
   const [sharingLocation, setSharingLocation] = useState({});
   const trackingRefsMap = useRef({});
+  const [checkingInId, setCheckingInId] = useState(null);
+  const [arrivedAtMap, setArrivedAtMap] = useState({});
 
   const toggleTracking = async (missionId) => {
     if (sharingLocation[missionId]) {
@@ -1450,7 +1452,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       });
       const data = await r.json();
       setPendingMissions(Array.isArray(data.pending)  ? data.pending.filter(m => m.status !== "cancelled")  : []);
-      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : []);
+      const assigned = Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : [];
+      setAssignedMissions(assigned);
+      const map = {};
+      assigned.forEach(m => { if (m.arrived_at) map[m.id] = m.arrived_at; });
+      setArrivedAtMap(prev => ({ ...prev, ...map }));
     } catch {}
   };
 
@@ -1473,7 +1479,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -1703,6 +1709,33 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
+                {/* Timer / Checkin */}
+                {arrivedAtMap[m.id] ? (
+                  <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div>
+                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Sur place — mission en cours</div>
+                      <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ color:C.success, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>
+                        {(() => { const s=Math.floor((now-new Date(arrivedAtMap[m.id]).getTime())/1000); const h=Math.floor(s/3600); const min=Math.floor((s%3600)/60); const sec=s%60; return h>0?`${h}h${String(min).padStart(2,"0")}`:`${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`; })()}
+                      </div>
+                      <div style={{ color:C.textMuted, fontSize:10 }}>écoulé</div>
+                    </div>
+                  </div>
+                ) : !isPast && (
+                  <button disabled={checkingInId === m.id} onClick={async () => {
+                    setCheckingInId(m.id);
+                    const { data: sd } = await supabase.auth.getSession();
+                    const token = sd?.session?.access_token;
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                    const d = await r.json();
+                    if (d.arrived_at) setArrivedAtMap(prev => ({ ...prev, [m.id]: d.arrived_at }));
+                    setCheckingInId(null);
+                  }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", marginBottom:10, letterSpacing:0.3 }}>
+                    {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                  </button>
+                )}
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
                   <div style={{ display:"flex", gap:8 }}>
                     {isPast && !m.validation_prestataire && (
