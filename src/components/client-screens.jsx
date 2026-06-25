@@ -1126,6 +1126,45 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
+      {/* ── Dispo maintenant ── */}
+      {(() => {
+        const dispoNow = providers.filter(p => p.dispo_immediat && p.available);
+        if (dispoNow.length === 0) return null;
+        return (
+          <div style={{ padding:"0 0 24px", position:"relative", zIndex:2 }}>
+            <div style={{ padding:"0 22px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 8px #10D98F", animation:"pulse 1.5s ease-in-out infinite" }} />
+                <h3 style={{ margin:0, fontFamily:font.display, fontWeight:700, fontSize:18, color:C.text }}>Dispo maintenant</h3>
+              </div>
+              <span style={{ fontSize:11, color:"#10D98F", fontWeight:700, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:99, padding:"2px 8px" }}>{dispoNow.length} pro{dispoNow.length > 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ display:"flex", gap:12, paddingLeft:22, paddingRight:22, overflowX:"auto", WebkitOverflowScrolling:"touch", scrollbarWidth:"none", msOverflowStyle:"none" }}>
+              {dispoNow.map(p => {
+                const sector = SECTORS?.find?.(s => s.id === p.sector);
+                const initials = [p.prenom, p.nom].filter(Boolean).map(s => s[0]?.toUpperCase() || "").join("") || "?";
+                const name = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
+                return (
+                  <div key={p.id} onClick={() => onNavigate("profile", p)} style={{ flexShrink:0, width:124, background:"rgba(16,217,143,0.05)", border:"1.5px solid rgba(16,217,143,0.22)", borderRadius:16, padding:"14px 11px 12px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:8, textAlign:"center" }}>
+                    <div style={{ position:"relative" }}>
+                      <div style={{ width:44, height:44, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.18),rgba(10,191,122,0.12))", border:"2px solid rgba(16,217,143,0.35)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16, color:"#10D98F", fontFamily:font.display }}>
+                        {initials}
+                      </div>
+                      <div style={{ position:"absolute", bottom:1, right:1, width:11, height:11, borderRadius:"50%", background:"#10D98F", border:"2px solid #0A1628" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:12, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:100 }}>{name}</div>
+                      <div style={{ fontSize:10, color:C.textSub, marginTop:2 }}>{sector?.icon || ""} {sector?.label || p.sector || "—"}</div>
+                    </div>
+                    <div style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:8, padding:"5px 8px", color:"#10D98F", fontSize:11, fontWeight:700, width:"100%", boxSizing:"border-box" }}>Voir →</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Secteurs ── */}
       <div style={{ padding:"0 22px 26px", position:"relative", zIndex:2 }}>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:12 }}>
