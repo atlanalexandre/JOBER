@@ -2741,18 +2741,6 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </>}
 
         {step===3 && <>
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:800 }}>💳 Mode de paiement</h4>
-            {[{id:"carte",label:"Carte bancaire",icon:"💳",sub:"Visa, Mastercard, Amex"},{id:"virement",label:"Virement bancaire",icon:"🏦",sub:"Délai 1-2 jours"}].map(m=>(
-              <div key={m.id} onClick={()=>setPayMethod(m.id)} style={{ border:`1px solid ${payMethod===m.id?C.violet:C.border}`, borderRadius:r, padding:"13px 14px", marginBottom:8, cursor:"pointer", display:"flex", gap:12, alignItems:"center", background:payMethod===m.id?`${C.violet}15`:"#112240", transition:"all 0.2s" }}>
-                <span style={{ fontSize:22 }}>{m.icon}</span>
-                <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.label}</div><div style={{ color:C.textSub, fontSize:11 }}>{m.sub}</div></div>
-                <div style={{ width:18, height:18, borderRadius:"50%", border:`1px solid ${payMethod===m.id?C.violet:C.border}`, background:payMethod===m.id?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>{payMethod===m.id && <div style={{ width:8, height:8, borderRadius:"50%", background:C.white }} />}</div>
-              </div>
-            ))}
-            {payMethod==="carte" && <div style={{ marginTop:12 }}><Input label="Numéro de carte" placeholder="4242 4242 4242 4242" icon="💳" /><div style={{ display:"flex", gap:10 }}><div style={{ flex:1 }}><Input label="Expiration" placeholder="MM/AA" /></div><div style={{ flex:1 }}><Input label="CVV" placeholder="•••" /></div></div></div>}
-          </div>
-
           {/* Récapitulatif */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
             <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:15, fontWeight:700 }}>Récapitulatif</h4>
