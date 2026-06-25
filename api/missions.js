@@ -1597,6 +1597,7 @@ export default async function handler(req, res) {
               ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
               : `${presta_name || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
             read: false,
+            ref_id: mission_id,
           }),
         }).catch(() => {});
 
@@ -1746,7 +1747,7 @@ export default async function handler(req, res) {
     if (action === "notify_prestataire") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { prestataire_id, mission_label, date, ville, hours } = payload;
+      const { prestataire_id, mission_label, date, ville, hours, heure_debut, adresse, tarif_horaire } = payload;
       if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id requis" });
       // Verify caller has a mission with this prestataire
       const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`, { headers });
@@ -1774,10 +1775,10 @@ export default async function handler(req, res) {
               <p>Bonjour ${prestaName},</p>
               <p>Un client vous a envoyé une demande de mission directe :</p>
               <div style="background:#162547;border-left:4px solid #A29BFE;padding:12px 16px;margin:16px 0;border-radius:4px">
-                <strong>${mission_label || "Mission"}</strong><br/>
-                📅 ${date || "Date à confirmer"}<br/>
-                📍 ${ville || "Ville à confirmer"}<br/>
-                ⏱ ${hours || "?"}h
+                <strong style="font-size:15px">${mission_label || "Mission"}</strong><br/>
+                📅 ${date || "Date à confirmer"}${heure_debut ? ` · ${heure_debut}` : ""}${heure_debut && hours ? ` → ${(() => { const [h,m]=(heure_debut||"00:00").split(":").map(Number); const end=new Date(2000,0,1,h,m); end.setMinutes(end.getMinutes()+Math.round(Number(hours||1)*60)); return String(end.getHours()).padStart(2,"0")+":"+String(end.getMinutes()).padStart(2,"0"); })()}` : ""}<br/>
+                ⏱ ${hours || "?"}h de travail${tarif_horaire ? ` · ${Number(tarif_horaire).toFixed(2).replace(".",",")} €/h HT` : ""}<br/>
+                📍 ${adresse ? `${adresse}, ` : ""}${ville || "Ville à confirmer"}
               </div>
               <p>Connectez-vous à <strong>ALANE</strong> pour accepter ou refuser dans les délais impartis.</p>
               <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>

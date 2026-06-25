@@ -906,6 +906,7 @@ export default function App() {
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
   const [selectedMissionId,setSelectedMissionId]=useState(null);
+  const [notifOpenMissionId,setNotifOpenMissionId]=useState(null);
   const [chatClientId,setChatClientId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
@@ -1210,6 +1211,7 @@ export default function App() {
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     if(to==="invoice") setInvoiceMission(data);
+    if(to==="mission_history" || to==="p_missions") setNotifOpenMissionId(data?.openMissionId||null);
     setScreen(to);
   };
 
@@ -1332,7 +1334,7 @@ export default function App() {
             const { data:sessionData } = await supabase.auth.getSession();
             fetch("/api/missions", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null }),
+              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null }),
             }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json"},
@@ -1376,7 +1378,7 @@ export default function App() {
       {screen==="invoice"           && <InvoiceScreen prestation={invoiceMission} onBack={()=>setScreen("mission_history")} />}
       {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
-      {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
+      {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} openMissionId={notifOpenMissionId} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
       {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onNavigate={navigate} role={role} />}
       {screen==="favorites"         && <FavoritesScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}

@@ -2321,6 +2321,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
   const [availError, setAvailError] = useState("");
+  const [tooSoonError, setTooSoonError] = useState(false);
   const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
@@ -2646,13 +2647,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
+          {tooSoonError && <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F0B429" }}>⚡ Cette prestation est dans moins de 2h. Revenez en arrière et activez le <strong>mode urgence</strong> (+2€ HT/h), ou choisissez une date ultérieure.</div>}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
-              // Vérification disponibilité prestataire
+              // Check if the mission starts within 2h → must use urgent mode
               const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
+              const [hh,mm] = (startTime||"08:00").split(":").map(Number);
+              const missionStart = new Date(yr, mo-1, dy, hh, mm);
+              const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
+              if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
+              setTooSoonError(false);
               const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
               const dispoDays = p.dispon_jours || [];
               if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
@@ -2672,7 +2679,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 }
               }
             }
-            setDateError(false); setAvailError("");
+            setDateError(false); setAvailError(""); setTooSoonError(false);
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
@@ -2741,18 +2748,6 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </>}
 
         {step===3 && <>
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:800 }}>💳 Mode de paiement</h4>
-            {[{id:"carte",label:"Carte bancaire",icon:"💳",sub:"Visa, Mastercard, Amex"},{id:"virement",label:"Virement bancaire",icon:"🏦",sub:"Délai 1-2 jours"}].map(m=>(
-              <div key={m.id} onClick={()=>setPayMethod(m.id)} style={{ border:`1px solid ${payMethod===m.id?C.violet:C.border}`, borderRadius:r, padding:"13px 14px", marginBottom:8, cursor:"pointer", display:"flex", gap:12, alignItems:"center", background:payMethod===m.id?`${C.violet}15`:"#112240", transition:"all 0.2s" }}>
-                <span style={{ fontSize:22 }}>{m.icon}</span>
-                <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.label}</div><div style={{ color:C.textSub, fontSize:11 }}>{m.sub}</div></div>
-                <div style={{ width:18, height:18, borderRadius:"50%", border:`1px solid ${payMethod===m.id?C.violet:C.border}`, background:payMethod===m.id?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>{payMethod===m.id && <div style={{ width:8, height:8, borderRadius:"50%", background:C.white }} />}</div>
-              </div>
-            ))}
-            {payMethod==="carte" && <div style={{ marginTop:12 }}><Input label="Numéro de carte" placeholder="4242 4242 4242 4242" icon="💳" /><div style={{ display:"flex", gap:10 }}><div style={{ flex:1 }}><Input label="Expiration" placeholder="MM/AA" /></div><div style={{ flex:1 }}><Input label="CVV" placeholder="•••" /></div></div></div>}
-          </div>
-
           {/* Récapitulatif */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
             <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:15, fontWeight:700 }}>Récapitulatif</h4>
@@ -4287,7 +4282,7 @@ export function ClientOnboarding({ onComplete, onBack }) {
 export function ContractScreen({ provider, amount, hours, date, missionId, onSign, onBack }) {
   const p = provider;
   if (!p) return null;
-  const [clientSigned, setClientSigned] = useState(false);
+  const [clientSigned, setClientSigned] = useState(true);
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [prestaSignedAt, setPrestaSignedAt] = useState(null);
   const [finalised, setFinalised] = useState(false);
@@ -4440,7 +4435,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
       {/* Tabs */}
       <div className="no-print" style={{ display:"flex", gap:0, padding:"16px 18px 0", borderBottom:`1px solid ${C.border}` }}>
-        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"},{id:"signature",label:"✍️ Signature"}].map(t=>(
+        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ padding:"8px 14px", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.violet:"transparent"}`, background:"transparent", color:activeTab===t.id?C.violet:C.gray, fontWeight:activeTab===t.id?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
         ))}
       </div>
@@ -4857,7 +4852,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
   );
 }
 
-export function MissionHistoryScreen({ onNavigate, onBack }) {
+export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
   const [prestations, setMissions]   = useState([]);
@@ -4886,6 +4881,13 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const approachNotifSentRef = useRef(new Set());
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
+
+  // Auto-ouvrir une mission depuis une notification
+  useEffect(()=>{
+    if (!openMissionId || loading || prestations.length === 0) return;
+    const mission = prestations.find(m => m.id === openMissionId);
+    if (mission) setSelected(mission);
+  }, [openMissionId, loading, prestations]);
 
   useEffect(() => {
     Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
@@ -5907,12 +5909,13 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
     if (n.type === "system" && n.ref_id) {
       // Notification chat → ouvrir directement la conversation
       if (isPresta) {
-        // Le prestataire voit un message du client : ref_id = client_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Client", avatar: "👤", color: "#4F46E5", clientId: n.ref_id });
       } else {
-        // Le client voit un message du prestataire : ref_id = prestataire_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
       }
+    } else if (n.type === "mission") {
+      // Mission acceptée, assignée, en cours, terminée → aller directement à l'écran missions
+      onNavigate(isPresta ? "p_missions" : "mission_history", n.ref_id ? { openMissionId: n.ref_id } : undefined);
     } else if (n.type === "prestation") {
       onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
