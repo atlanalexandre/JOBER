@@ -314,6 +314,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
   const [wireConfirmed, setWireConfirmed] = useState(false);
+  const [applePayAvailable, setApplePayAvailable] = useState(false);
+  const applePayBtnRef    = useRef(null);
+  const paymentRequestRef = useRef(null);
+  const applePayStripeRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -360,7 +364,63 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
   }, [method, useSavedCard]);
 
+  // ── Apple Pay / Google Pay ──────────────────────────────────────────
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
+
+  useEffect(() => {
+    const amountCents = Math.round(total * 100);
+    (async () => {
+      const { loadStripe } = await import("@stripe/stripe-js");
+      const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+      if (!pk) return;
+      const stripe = await loadStripe(pk);
+      if (!stripe) return;
+      applePayStripeRef.current = stripe;
+      const pr = stripe.paymentRequest({
+        country: "FR", currency: "eur",
+        total: { label: "ALANE", amount: amountCents },
+        requestPayerName: false, requestPayerEmail: false,
+      });
+      const result = await pr.canMakePayment();
+      if (!result) return;
+      paymentRequestRef.current = pr;
+      pr.on("paymentmethod", async (ev) => {
+        setProcessing(true);
+        try {
+          const { data: { session: apSess } } = await supabase.auth.getSession();
+          const apToken = apSess?.access_token;
+          const r = await fetch("/api/stripe-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
+            body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
+          });
+          const { clientSecret, error: intentErr } = await r.json();
+          if (intentErr || !clientSecret) { ev.complete("fail"); setStripeError(intentErr || "Erreur création paiement"); setProcessing(false); return; }
+          const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, { payment_method: ev.paymentMethod.id }, { handleActions: false });
+          if (error) { ev.complete("fail"); setStripeError(error.message); setProcessing(false); return; }
+          ev.complete("success");
+          if (paymentIntent.status === "requires_action") {
+            const { error: e2 } = await stripe.confirmCardPayment(clientSecret);
+            if (e2) { setStripeError(e2.message); setProcessing(false); return; }
+          }
+          setDone(true); setProcessing(false);
+          onSuccess && onSuccess(paymentIntent.id);
+        } catch (e) { ev.complete("fail"); setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
+      });
+      setApplePayAvailable(true);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!applePayAvailable || !applePayBtnRef.current || !paymentRequestRef.current || !applePayStripeRef.current) return;
+    const btn = applePayStripeRef.current.elements().create("paymentRequestButton", {
+      paymentRequest: paymentRequestRef.current,
+      style: { paymentRequestButton: { type: "buy", theme: "dark", height: "52px" } },
+    });
+    btn.mount(applePayBtnRef.current);
+    return () => btn.destroy();
+  }, [applePayAvailable]);
+
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
   if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
@@ -450,6 +510,18 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
             🔒 Libéré uniquement après validation des deux parties
           </div>
         </div>
+
+        {/* Apple Pay / Google Pay */}
+        {applePayAvailable && (
+          <div style={{ marginBottom:16 }}>
+            <div ref={applePayBtnRef} style={{ borderRadius:12, overflow:"hidden" }} />
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:14 }}>
+              <div style={{ flex:1, height:1, background:C.border }} />
+              <span style={{ color:C.textSub, fontSize:11, fontWeight:600 }}>ou payer par carte / virement</span>
+              <div style={{ flex:1, height:1, background:C.border }} />
+            </div>
+          </div>
+        )}
 
         {/* Méthode de paiement */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
