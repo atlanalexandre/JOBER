@@ -2321,6 +2321,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
   const [availError, setAvailError] = useState("");
+  const [tooSoonError, setTooSoonError] = useState(false);
   const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
@@ -2646,10 +2647,18 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
+          {tooSoonError && <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F0B429" }}>⚡ Cette prestation est dans moins de 2h. Revenez en arrière et activez le <strong>mode urgence</strong> (+2€ HT/h), ou choisissez une date ultérieure.</div>}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
+              // Check if the mission starts within 2h → must use urgent mode
+              const [yr,mo,dy] = startDate.split("-").map(Number);
+              const [hh,mm] = (startTime||"08:00").split(":").map(Number);
+              const missionStart = new Date(yr, mo-1, dy, hh, mm);
+              const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
+              if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
+              setTooSoonError(false);
               // Vérification disponibilité prestataire
               const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
@@ -2672,7 +2681,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 }
               }
             }
-            setDateError(false); setAvailError("");
+            setDateError(false); setAvailError(""); setTooSoonError(false);
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
@@ -4275,7 +4284,7 @@ export function ClientOnboarding({ onComplete, onBack }) {
 export function ContractScreen({ provider, amount, hours, date, missionId, onSign, onBack }) {
   const p = provider;
   if (!p) return null;
-  const [clientSigned, setClientSigned] = useState(false);
+  const [clientSigned, setClientSigned] = useState(true);
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [prestaSignedAt, setPrestaSignedAt] = useState(null);
   const [finalised, setFinalised] = useState(false);
@@ -4428,7 +4437,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
       {/* Tabs */}
       <div className="no-print" style={{ display:"flex", gap:0, padding:"16px 18px 0", borderBottom:`1px solid ${C.border}` }}>
-        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"},{id:"signature",label:"✍️ Signature"}].map(t=>(
+        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ padding:"8px 14px", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.violet:"transparent"}`, background:"transparent", color:activeTab===t.id?C.violet:C.gray, fontWeight:activeTab===t.id?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
         ))}
       </div>
