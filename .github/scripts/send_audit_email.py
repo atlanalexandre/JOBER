@@ -3,7 +3,7 @@ import os, json, html, urllib.request, urllib.error
 from datetime import datetime
 
 api_key   = os.environ.get('RESEND_API_KEY', '')
-from_addr = os.environ.get('RESEND_FROM', 'ALANE Audit <no-reply@alane.fr>')
+from_addr = 'ALANE Audit <no-reply@alane.fr>'
 output    = os.environ.get('AUDIT_OUTPUT', '')
 status    = os.environ.get('AUDIT_STATUS', 'INCONNU')
 exit_code = os.environ.get('AUDIT_EXIT', '1')
