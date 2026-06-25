@@ -1311,7 +1311,7 @@ export default function App() {
               const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
               if(updateErr) throw new Error("Erreur lors de l'affectation de la prestation.");
             } else {
-              const newMissionId = (crypto.randomUUID || (() => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16))))();
+              const newMissionId = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
               const { error:insertErr } = await supabase.from("missions").insert({
                 id: newMissionId,
                 client_id:userId, prestataire_id:selectedProvider.id,

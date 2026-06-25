@@ -382,9 +382,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
       setProcessing(true);
       try {
+        const { data: { session: piSession } } = await supabase.auth.getSession();
         const r = await fetch("/api/stripe-intent", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
           body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
         });
         const { clientSecret, error: intentErr } = await r.json();
