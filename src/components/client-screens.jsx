@@ -794,7 +794,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const user = data?.user;
       if (!user || !mounted) return;
       supabase.from("missions")
-        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id")
+        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id,arrived_at")
         .eq("client_id", user.id)
         .eq("status", "assigned")
         .then(({ data: ms }) => {
@@ -815,7 +815,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(() => {
     if (missionsInProgress.length === 0) return;
-    const t = setInterval(() => setInProgressTick(Date.now()), 30000);
+    const t = setInterval(() => setInProgressTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, [missionsInProgress.length]);
 
@@ -5299,6 +5299,24 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
           )}
           </>)}
+          {selected.status === "assigned" && !completedResult && selected.arrived_at && (() => {
+            const elapsed = Date.now() - new Date(selected.arrived_at).getTime();
+            const s = Math.floor(elapsed / 1000);
+            const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
+            const timerStr = h > 0 ? `${h}h ${String(min).padStart(2,"0")}min` : `${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+            return (
+              <div style={{ marginTop:16, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>📍 Prestataire sur place</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ color:C.success, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+                  <div style={{ color:C.textMuted, fontSize:10 }}>en cours</div>
+                </div>
+              </div>
+            );
+          })()}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>

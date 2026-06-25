@@ -467,3 +467,6 @@ BEGIN
 END;
 $$;
 CREATE INDEX IF NOT EXISTS idx_blacklist_email     ON account_blacklist(email)     WHERE email IS NOT NULL;
+
+-- Checkin prestataire : horodatage d'arrivée sur place
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
