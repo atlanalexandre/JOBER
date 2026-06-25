@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import os, json, html, urllib.request, urllib.error
+import os, html
 from datetime import datetime
+import resend
 
-api_key   = os.environ.get('RESEND_API_KEY', '')
-from_addr = 'ALANE Audit <no-reply@alane.fr>'
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
 output    = os.environ.get('AUDIT_OUTPUT', '')
 status    = os.environ.get('AUDIT_STATUS', 'INCONNU')
 exit_code = os.environ.get('AUDIT_EXIT', '1')
@@ -45,27 +45,14 @@ html_content = (
     '</div>'
 ).format(status_color, status_icon, status, date_str, html_body)
 
-payload = json.dumps({
-    'from': from_addr,
-    'to': ['direction@alane.fr'],
-    'subject': '{} Audit ALANE — {} — {}'.format(status_icon, status, date_str),
-    'html': html_content
-}).encode('utf-8')
-
-req = urllib.request.Request(
-    'https://api.resend.com/emails',
-    data=payload,
-    headers={'Authorization': 'Bearer {}'.format(api_key), 'Content-Type': 'application/json'},
-    method='POST'
-)
-print('Envoi vers direction@alane.fr depuis {}...'.format(from_addr))
-print('API key prefix: {}...'.format(api_key[:8] if api_key else 'VIDE'))
 try:
-    with urllib.request.urlopen(req) as resp:
-        print('Email envoye: {} {}'.format(resp.status, resp.read().decode()))
-except urllib.error.HTTPError as e:
-    body = e.read().decode()
-    print('Erreur Resend {}: {}'.format(e.code, body))
-    # Ne pas faire échouer le job — l'audit a réussi même si l'email échoue
+    params = {
+        'from': 'ALANE Audit <no-reply@alane.fr>',
+        'to': ['direction@alane.fr'],
+        'subject': '{} Audit ALANE — {} — {}'.format(status_icon, status, date_str),
+        'html': html_content,
+    }
+    email = resend.Emails.send(params)
+    print('Email envoye: {}'.format(email))
 except Exception as e:
-    print('Erreur inattendue: {}'.format(e))
+    print('Erreur envoi email: {}'.format(e))

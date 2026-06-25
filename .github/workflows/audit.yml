@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 6 * * *"  # tous les jours à 6h UTC (8h Paris)
+    - cron: "0 4 * * *"  # tous les jours à 4h UTC (6h Paris)
   workflow_dispatch:
 
 jobs:
@@ -31,11 +31,14 @@ jobs:
           echo "$OUTPUT"
           exit $EXIT_CODE
 
+      - name: Installer SDK Resend
+        if: always()
+        run: pip install resend --quiet
+
       - name: Envoyer rapport par email
         if: always()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_FROM: ${{ secrets.RESEND_FROM }}
           AUDIT_OUTPUT: ${{ steps.audit.outputs.output }}
           AUDIT_STATUS: ${{ steps.audit.outputs.status }}
           AUDIT_EXIT:   ${{ steps.audit.outputs.exit_code }}
