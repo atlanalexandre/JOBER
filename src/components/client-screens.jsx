@@ -5032,28 +5032,33 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
   useEffect(() => {
     if (tab !== "prestataires") return;
-    const withPresta = prestations.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
-    const byPresta = {};
-    for (const m of withPresta) {
-      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
-      byPresta[m.prestataire_id].missions.push(m);
+    try {
+      const withPresta = prestations.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
+      const byPresta = {};
+      for (const m of withPresta) {
+        if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
+        byPresta[m.prestataire_id].missions.push(m);
+      }
+      const ids = Object.keys(byPresta);
+      if (!ids.length) { setPrestaHistoire([]); return; }
+      const nameMap = {};
+      for (const id of ids) {
+        const m = byPresta[id].missions[0];
+        const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
+        const prenom = String(acceptedCand?.prenom || m?.prestataire_prenom || "");
+        const nom    = String(acceptedCand?.nom    || m?.prestataire_nom    || "");
+        nameMap[id] = {
+          prenom,
+          nom,
+          name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
+          initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
+        };
+      }
+      setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>(b.missions||[]).length-(a.missions||[]).length));
+    } catch(e) {
+      console.error("prestaHistoire build error:", e);
+      setPrestaHistoire([]);
     }
-    const ids = Object.keys(byPresta);
-    if (!ids.length) { setPrestaHistoire([]); return; }
-    const nameMap = {};
-    for (const id of ids) {
-      const m = byPresta[id].missions[0];
-      const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
-      const prenom = acceptedCand?.prenom || m.prestataire_prenom || "";
-      const nom    = acceptedCand?.nom    || m.prestataire_nom    || "";
-      nameMap[id] = {
-        prenom,
-        nom,
-        name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
-        initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
-      };
-    }
-    setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
   }, [tab, prestations]);
 
   const openCandidatures = async (prestation) => {
@@ -5586,13 +5591,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             )}
             {prestaHistoire.map((ph) => {
+              if (!ph?.prestataire_id) return null;
               const fullProv = providers.find(fp => fp.id === ph.prestataire_id);
-              const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name, prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
+              const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name || "Prestataire", prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
               const photoUrl = fullProv?.photo_url || null;
-              const metier   = fullProv?.jobTitle || ph.missions[0]?.metier || "";
-              const sortedM  = [...ph.missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
+              const missions = Array.isArray(ph.missions) ? ph.missions : [];
+              const metier   = fullProv?.jobTitle || missions[0]?.metier || "";
+              const sortedM  = [...missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
               const lastDate = sortedM[0]?.date || "—";
-              const nbMissions = ph.missions.length;
+              const nbMissions = missions.length;
               return (
               <div key={ph.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:14 }}>
