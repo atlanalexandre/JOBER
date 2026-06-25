@@ -31,11 +31,14 @@ jobs:
           echo "$OUTPUT"
           exit $EXIT_CODE
 
+      - name: Installer SDK Resend
+        if: always()
+        run: pip install resend --quiet
+
       - name: Envoyer rapport par email
         if: always()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_FROM: ${{ secrets.RESEND_FROM }}
           AUDIT_OUTPUT: ${{ steps.audit.outputs.output }}
           AUDIT_STATUS: ${{ steps.audit.outputs.status }}
           AUDIT_EXIT:   ${{ steps.audit.outputs.exit_code }}
