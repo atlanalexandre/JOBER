@@ -916,9 +916,16 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                         {remH > 0 ? `${remH}h ${remMin}min` : `${remMin}min`} restantes
                       </div>
                     </div>
-                    <button onClick={() => onNavigate("mission_history")} style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"6px 12px", color:"#10D98F", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", flexShrink:0, whiteSpace:"nowrap" }}>
-                      Voir →
-                    </button>
+                    <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                      {m.prestataire_id && (
+                        <button onClick={() => onNavigate("tracking", { id: m.prestataire_id, jobTitle: m.metier || "Prestataire", name: m.prestataire_nom ? `${m.prestataire_prenom||""} ${m.prestataire_nom}`.trim() : "Prestataire", _missionId: m.id })} style={{ background:"rgba(162,155,254,0.15)", border:"1px solid rgba(162,155,254,0.3)", borderRadius:10, padding:"6px 10px", color:"#A29BFE", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                          📍
+                        </button>
+                      )}
+                      <button onClick={() => onNavigate("mission_history")} style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"6px 12px", color:"#10D98F", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                        Voir →
+                      </button>
+                    </div>
                   </div>
                   {/* Barre de progression */}
                   <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:10, overflow:"hidden" }}>
@@ -2884,24 +2891,43 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
   );
 }
 
-export function TrackingScreen({ provider, missionId, onNavigate }) {
+export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: clientCoordsFromApp }) {
   const p = provider;
-  if (!p) return null;
+  const [providerName, setProviderName] = useState(p?.name || null);
   const [timelineStatus, setTimelineStatus] = useState("enroute");
-  const [eta, setEta] = useState(8);
+  const [eta, setEta] = useState(null);
   const statusMap = ["enroute","enroute","in_progress","done"];
   const [step, setStep] = useState(0);
   const [gpsPosition, setGpsPosition] = useState(null);
+  const [clientCoords, setClientCoords] = useState(clientCoordsFromApp || null);
+
+  const resolvedMissionId = missionId || p?._missionId;
+
+  useEffect(() => {
+    if (clientCoords || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setClientCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}
+    );
+  }, []);
+
+  // Fetch prestataire name if not provided
+  useEffect(() => {
+    if (providerName && providerName !== "Prestataire") return;
+    if (!p?.id) return;
+    supabase.from("profiles").select("prenom,nom").eq("id", p.id).single()
+      .then(({ data }) => { if (data) setProviderName([data.prenom, data.nom].filter(Boolean).join(" ") || "Prestataire"); });
+  }, [p?.id]);
 
   // Poll prestation status + prestataire GPS every 20s
   useEffect(()=>{
-    if(!missionId) return;
+    if(!resolvedMissionId) return;
     let mounted = true;
 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status").eq("id",missionId).single();
+      const { data } = await supabase.from("missions").select("status").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
       if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
@@ -2912,18 +2938,25 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
       const posRes = await fetch("/api/missions", {
         method:"POST",
         headers:{"Content-Type":"application/json", ...(posSession?.access_token ? {"Authorization":`Bearer ${posSession.access_token}`} : {})},
-        body: JSON.stringify({ action:"get_position", mission_id:missionId }),
+        body: JSON.stringify({ action:"get_position", mission_id:resolvedMissionId }),
       }).then(r=>r.json()).catch(()=>null);
       if(posRes?.lat != null && posRes?.lng != null && mounted) {
-        // Show "arrived" indicator if close
         setGpsPosition({ lat:posRes.lat, lng:posRes.lng, updated_at:posRes.updated_at });
+        // Calculer distance et ETA réels
+        setClientCoords(prev => {
+          if (prev) {
+            const km = haversineKm(prev.lat, prev.lng, posRes.lat, posRes.lng);
+            setEta(Math.round(km * 2));  // ~30 km/h en ville → 2 min/km
+          }
+          return prev;
+        });
       }
     };
 
     poll();
     const iv = setInterval(poll, 20000);
     return ()=>{ mounted=false; clearInterval(iv); };
-  },[missionId]);
+  },[resolvedMissionId]);
 
   const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
 
@@ -2963,14 +2996,14 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
               </div>
             )}
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
-              {p.name} {step===0 && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
+              {providerName || p?.name || "Prestataire"} {step===0 && eta!=null && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
             </div>
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
+            <div style={{ width:40, height:40, borderRadius:12, background:`${p?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p?.avatar||"👤"}</div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>{p.jobTitle||p.role}</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{providerName || p?.name || "Prestataire"}</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>{p?.jobTitle||p?.role||""}</div>
             </div>
             <button onClick={()=>onNavigate("chat",p)} style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"9px 14px", cursor:"pointer", color:C.violet, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>💬 Chat</button>
           </div>
@@ -2989,11 +3022,11 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
           <div style={{ display:"flex", gap:10 }}>
             <div style={{ flex:1, background:`${C.success}12`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
               <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Arrivée</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.success, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"in")}</div>
+              <div style={{ fontSize:28, fontWeight:900, color:C.success, letterSpacing:6, fontFamily:"monospace" }}>{p?.id ? genMissionCode(p.id,"in") : "——"}</div>
             </div>
             <div style={{ flex:1, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
               <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Départ</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.accentGold, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"out")}</div>
+              <div style={{ fontSize:28, fontWeight:900, color:C.accentGold, letterSpacing:6, fontFamily:"monospace" }}>{p?.id ? genMissionCode(p.id,"out") : "——"}</div>
             </div>
           </div>
           <div style={{ marginTop:10, background:"rgba(255,165,0,0.08)", border:"1px solid rgba(255,165,0,0.25)", borderRadius:8, padding:"8px 12px", fontSize:11, color:"#FFA500" }}>
