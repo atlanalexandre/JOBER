@@ -166,8 +166,18 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
         </div>
 
         {/* Info paiement sécurisé */}
-        <div style={{ width:"100%", background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"12px 14px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont sécurisés via Stripe mais ne seront libérés que si {p.name} accepte la mission. En cas de refus ou de timeout, contactez le support pour un remboursement.
+        <div style={{ width:"100%", background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"12px 14px", marginBottom:14, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont bloqués via Stripe et ne seront libérés qu'à l'acceptation. En cas de refus ou d'expiration, vous êtes intégralement remboursé(e).
+        </div>
+
+        {/* Info si pas de réponse */}
+        <div style={{ width:"100%", background:`${C.accentGold}08`, border:`1px solid ${C.accentGold}30`, borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.7 }}>
+          <div style={{ fontWeight:700, color:C.accentGold, fontSize:12, marginBottom:6 }}>📧 Si {p.name} ne répond pas dans le délai imparti…</div>
+          Vous recevrez un email vous proposant de :
+          <ul style={{ margin:"6px 0 0", paddingLeft:18, display:"flex", flexDirection:"column", gap:3 }}>
+            <li><strong style={{ color:C.text }}>Choisir un autre prestataire</strong> disponible pour le même métier</li>
+            <li><strong style={{ color:C.text }}>Diffuser la mission</strong> à l'ensemble des prestataires {p.jobTitle||p.role ? `(${p.jobTitle||p.role})` : "du même métier"} — le premier à accepter prend la prestation</li>
+          </ul>
         </div>
 
         {/* Bouton annuler */}
