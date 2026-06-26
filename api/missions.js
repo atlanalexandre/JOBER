@@ -1662,7 +1662,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,extra_hours_requested,extra_hours_status&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -1968,6 +1968,101 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true });
+    }
+
+    // ── Demande d'heures supplémentaires (client → prestataire) ────────
+    if (action === "request_extra_hours") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, extra_hours } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      const eh = Number(extra_hours);
+      if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
+
+      // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours`, { headers });
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable ou non active" });
+
+      // Enregistrer la demande
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ extra_hours_requested: eh, extra_hours_status: "pending" }),
+      });
+
+      // Notifier le prestataire
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "mission",
+            title: "⏱ Demande d'heures supplémentaires",
+            body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez depuis l'application.`,
+            read: false,
+            ref_id: mission_id,
+          }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true });
+    }
+
+    // ── Réponse aux heures supplémentaires (prestataire → client) ───────
+    if (action === "respond_extra_hours") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, response } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
+
+      // Vérifier que le prestataire est bien assigné à cette mission
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,extra_hours_requested`, { headers });
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable ou non active" });
+      const extraH = Number(mission.extra_hours_requested || 0);
+
+      if (response === "accept" && extraH > 0) {
+        // Mettre à jour les heures totales et marquer accepté
+        const newHours = Number(mission.hours || 0) + extraH;
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ hours: newHours, extra_hours_status: "accepted", extra_hours_requested: null }),
+        });
+      } else {
+        // Refus : effacer la demande
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ extra_hours_status: "refused", extra_hours_requested: null }),
+        });
+      }
+
+      // Notifier le client
+      if (mission.client_id) {
+        const isAccepted = response === "accept";
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.client_id,
+            type: "mission",
+            title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
+            body: isAccepted
+              ? `Le prestataire a accepté la prolongation de ${extraH}h. La durée totale est mise à jour.`
+              : "Le prestataire n'a pas pu accepter la prolongation.",
+            read: false,
+            ref_id: mission_id,
+          }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true, newHours: response === "accept" ? Number(mission.hours || 0) + extraH : null });
     }
 
     return res.status(400).json({ error: "Action invalide" });

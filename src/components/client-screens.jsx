@@ -2956,6 +2956,10 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   const [eta, setEta] = useState(null);
   const statusMap = ["enroute","enroute","in_progress","done"];
   const [step, setStep] = useState(0);
+  const [extraHoursModal, setExtraHoursModal] = useState(false);
+  const [extraHoursValue, setExtraHoursValue] = useState(1);
+  const [extraHoursStatus, setExtraHoursStatus] = useState(null); // null | "pending" | "accepted" | "refused"
+  const [extraHoursSending, setExtraHoursSending] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
   const [clientCoords, setClientCoords] = useState(clientCoordsFromApp || null);
 
@@ -2985,11 +2989,12 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status").eq("id",resolvedMissionId).single();
+      const { data } = await supabase.from("missions").select("status,extra_hours_status").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
       if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
       else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
+      if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
 
       // Poll GPS position
       const { data:{ session: posSession } } = await supabase.auth.getSession();
@@ -3091,6 +3096,74 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
             ⚠️ Ces codes changent chaque jour. Ne les partagez qu'en présence du prestataire.
           </div>
         </div>
+
+        {/* Heures supplémentaires — visible dès que le prestataire est sur place */}
+        {step >= 1 && step < 3 && (
+          <div style={{ marginBottom:16 }}>
+            {extraHoursStatus === "pending" ? (
+              <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold, boxShadow:`0 0 8px ${C.accentGold}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                <div>
+                  <div style={{ fontWeight:700, color:C.accentGold, fontSize:13 }}>⏱ Demande en attente…</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>En attente de la confirmation du prestataire</div>
+                </div>
+              </div>
+            ) : extraHoursStatus === "accepted" ? (
+              <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"12px 16px", fontSize:13, color:C.success, fontWeight:700 }}>
+                ✅ Heures supplémentaires acceptées par le prestataire
+              </div>
+            ) : extraHoursStatus === "refused" ? (
+              <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"12px 16px", fontSize:13, color:"#F25E5E" }}>
+                ❌ Le prestataire n'a pas pu accepter la prolongation
+                <button onClick={()=>{ setExtraHoursStatus(null); setExtraHoursModal(true); }} style={{ display:"block", marginTop:6, background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Faire une nouvelle demande →</button>
+              </div>
+            ) : (
+              <button onClick={()=>setExtraHoursModal(true)} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.accentGold}55`, background:`${C.accentGold}10`, color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                ⏱ Demander des heures supplémentaires
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Modal heures supplémentaires */}
+        {extraHoursModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
+              <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 20px", lineHeight:1.6 }}>Le prestataire devra accepter cette prolongation. Le montant sera ajusté en conséquence.</p>
+              <div style={{ marginBottom:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <span style={{ color:C.textSub, fontSize:13 }}>Heures à ajouter</span>
+                  <span style={{ color:C.text, fontWeight:800, fontSize:20 }}>{extraHoursValue}h</span>
+                </div>
+                <input type="range" min={1} max={8} step={1} value={extraHoursValue} onChange={e=>setExtraHoursValue(Number(e.target.value))}
+                  style={{ width:"100%", accentColor:C.accentGold }} />
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textMuted, marginTop:4 }}>
+                  <span>1h min</span><span>8h max</span>
+                </div>
+              </div>
+              <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:20, fontSize:13, color:C.text }}>
+                💳 Supplément estimé : <strong>{p?.rateNum ? `${(p.rateNum * extraHoursValue).toFixed(0)} €` : `${extraHoursValue}h × tarif horaire`}</strong>
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={()=>setExtraHoursModal(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                <button disabled={extraHoursSending} onClick={async()=>{
+                  setExtraHoursSending(true);
+                  const { data:{ session } } = await supabase.auth.getSession();
+                  const r = await fetch("/api/missions", {
+                    method:"POST",
+                    headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`},
+                    body: JSON.stringify({ action:"request_extra_hours", mission_id:resolvedMissionId, extra_hours:extraHoursValue }),
+                  });
+                  if (r.ok) { setExtraHoursStatus("pending"); setExtraHoursModal(false); }
+                  setExtraHoursSending(false);
+                }} style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:C.accentGold, color:"#fff", fontWeight:800, fontSize:14, cursor:extraHoursSending?"default":"pointer", opacity:extraHoursSending?0.6:1, fontFamily:"inherit" }}>
+                  {extraHoursSending ? "Envoi…" : "Envoyer la demande →"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {step===3 && (
           <Btn full variant="success" onClick={()=>onNavigate("validation",provider)} style={{ fontSize:15, padding:"16px" }}>

@@ -1715,6 +1715,36 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Prestation terminée — pensez à valider !</span>
                   </div>
                 )}
+                {/* Demande d'heures supplémentaires en attente */}
+                {m.extra_hours_status === "pending" && m.extra_hours_requested > 0 && (
+                  <div style={{ background:"rgba(124,111,224,0.1)", border:`1px solid ${C.violet}44`, borderRadius:12, padding:"14px", marginBottom:10 }}>
+                    <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>⏱ Demande de prolongation</div>
+                    <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>
+                      Le client souhaite prolonger la prestation de <strong style={{ color:C.text }}>{m.extra_hours_requested}h supplémentaire{m.extra_hours_requested > 1 ? "s" : ""}</strong>.
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const token = sd?.session?.access_token;
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"refuse" }) });
+                        if (r.ok) setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"refused", extra_hours_requested:null} : x));
+                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        ✗ Refuser
+                      </button>
+                      <button onClick={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const token = sd?.session?.access_token;
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept" }) });
+                        if (r.ok) {
+                          const d = await r.json();
+                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, hours: d.newHours||x.hours, extra_hours_status:"accepted", extra_hours_requested:null} : x));
+                        }
+                      }} style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        ✅ Accepter +{m.extra_hours_requested}h
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
