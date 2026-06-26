@@ -1414,6 +1414,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const trackingRefsMap = useRef({});
   const [checkingInId, setCheckingInId] = useState(null);
   const [arrivedAtMap, setArrivedAtMap] = useState({});
+  const [checkInGeoError, setCheckInGeoError] = useState({});
   const [trialExhausted, setTrialExhausted] = useState(false);
   const [userPlan, setUserPlan] = useState("free");
 
@@ -1741,17 +1742,64 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     </div>
                   </div>
                 ) : !isPast && (
-                  <button disabled={checkingInId === m.id} onClick={async () => {
-                    setCheckingInId(m.id);
-                    const { data: sd } = await supabase.auth.getSession();
-                    const token = sd?.session?.access_token;
-                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
-                    const d = await r.json();
-                    if (d.arrived_at) setArrivedAtMap(prev => ({ ...prev, [m.id]: d.arrived_at }));
-                    setCheckingInId(null);
-                  }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", marginBottom:10, letterSpacing:0.3 }}>
-                    {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
-                  </button>
+                  <div style={{ marginBottom:10 }}>
+                    <button disabled={checkingInId === m.id} onClick={async () => {
+                      setCheckingInId(m.id);
+                      setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+
+                      const missionAddress = [m.adresse, m.ville].filter(Boolean).join(" ");
+
+                      // Vérification géolocalisation si l'adresse est connue
+                      if (missionAddress && navigator.geolocation) {
+                        try {
+                          const userPos = await new Promise((resolve, reject) =>
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 12000, enableHighAccuracy: true })
+                          );
+                          try {
+                            const geoRes = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(missionAddress)}&limit=1`);
+                            const geoData = await geoRes.json();
+                            const feat = geoData.features?.[0];
+                            if (feat) {
+                              const [mLon, mLat] = feat.geometry.coordinates;
+                              const uLat = userPos.coords.latitude;
+                              const uLon = userPos.coords.longitude;
+                              const R = 6371;
+                              const dLat = (mLat - uLat) * Math.PI / 180;
+                              const dLon = (mLon - uLon) * Math.PI / 180;
+                              const a = Math.sin(dLat/2)**2 + Math.cos(uLat*Math.PI/180)*Math.cos(mLat*Math.PI/180)*Math.sin(dLon/2)**2;
+                              const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                              const MAX_KM = 0.5;
+                              if (distKm > MAX_KM) {
+                                const distStr = distKm >= 1 ? `${distKm.toFixed(1)} km` : `${Math.round(distKm * 1000)} m`;
+                                setCheckInGeoError(prev => ({ ...prev, [m.id]: `📍 Vous êtes à ${distStr} du lieu de prestation. Le check-in n'est autorisé qu'à moins de 500m.` }));
+                                setCheckingInId(null);
+                                return;
+                              }
+                            }
+                          } catch (_) { /* géocodage échoué → on laisse passer */ }
+                        } catch (gpsErr) {
+                          setCheckInGeoError(prev => ({ ...prev, [m.id]: "⚠️ Impossible d'accéder à votre position GPS. Vérifiez que la géolocalisation est activée." }));
+                          setCheckingInId(null);
+                          return;
+                        }
+                      }
+
+                      // Check-in validé
+                      const { data: sd } = await supabase.auth.getSession();
+                      const token = sd?.session?.access_token;
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                      const d = await r.json();
+                      if (d.arrived_at) setArrivedAtMap(prev => ({ ...prev, [m.id]: d.arrived_at }));
+                      setCheckingInId(null);
+                    }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                      {checkingInId===m.id ? "Vérification position…" : "📍 Je suis sur place"}
+                    </button>
+                    {checkInGeoError[m.id] && (
+                      <div style={{ marginTop:8, background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"10px 13px", fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+                        {checkInGeoError[m.id]}
+                      </div>
+                    )}
+                  </div>
                 )}
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
                   <div style={{ display:"flex", gap:8 }}>
