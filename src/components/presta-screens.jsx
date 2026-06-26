@@ -1768,10 +1768,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                               const dLon = (mLon - uLon) * Math.PI / 180;
                               const a = Math.sin(dLat/2)**2 + Math.cos(uLat*Math.PI/180)*Math.cos(mLat*Math.PI/180)*Math.sin(dLon/2)**2;
                               const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                              const MAX_KM = 0.5;
+                              const MAX_KM = 0.15;
                               if (distKm > MAX_KM) {
                                 const distStr = distKm >= 1 ? `${distKm.toFixed(1)} km` : `${Math.round(distKm * 1000)} m`;
-                                setCheckInGeoError(prev => ({ ...prev, [m.id]: `📍 Vous êtes à ${distStr} du lieu de prestation. Le check-in n'est autorisé qu'à moins de 500m.` }));
+                                setCheckInGeoError(prev => ({ ...prev, [m.id]: `📍 Vous êtes à ${distStr} du lieu de prestation. Le check-in n'est autorisé qu'à moins de 150m.` }));
                                 setCheckingInId(null);
                                 return;
                               }
