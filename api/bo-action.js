@@ -131,25 +131,40 @@ export default async function handler(req, res) {
         const meta2 = userData.user_metadata || {};
         const tel2   = meta2.telephone || null;
         const iban2  = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
-        const siret2 = meta2.kbis || null;
+        const siret2 = meta2.kbis ? String(meta2.kbis).replace(/\s/g, "") : null;
+
+        // Vérification dans les deux sens :
+        // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
         const orFilters = [];
-        if (userEmail) orFilters.push(`email.eq.${userEmail}`);
-        if (tel2)      orFilters.push(`telephone.eq.${tel2}`);
-        if (iban2)     orFilters.push(`iban.eq.${iban2}`);
-        if (siret2)    orFilters.push(`siret.eq.${siret2}`);
-        if (orFilters.length > 0) {
-          // URLSearchParams encode correctement le paramètre `or` (évite le bug encodeURIComponent)
-          const blParams = new URLSearchParams({ or: `(${orFilters.join(",")})`, select: "id", limit: "1" });
-          const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
-          const blData = await blRes.json();
-          if (Array.isArray(blData) && blData.length > 0) {
-            // Match trouvé : marquer le profil comme trial épuisé immédiatement
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-              method: "PATCH",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ trial_exhausted: true }),
-            }).catch(() => {});
-            console.log(`[approve] Compte blacklisté détecté pour profileId=${profileId} — trial_exhausted=true`);
+        if (userEmail) orFilters.push(`email.eq.${encodeURIComponent(userEmail)}`);
+        if (tel2)      orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
+        if (iban2)     orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
+        if (siret2)    orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+
+        // 2. Même si email différent, chercher un IBAN ou SIRET identique dans blacklist
+        //    (cas : re-inscription avec nouvel email mais même compte bancaire)
+        const strictFilters = [];
+        if (iban2)  strictFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
+        if (siret2) strictFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+
+        const allFilters = [...new Set([...orFilters, ...strictFilters])];
+
+        if (allFilters.length > 0) {
+          try {
+            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,email,reason", limit: "1" });
+            const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
+            const blData = await blRes.json();
+            if (Array.isArray(blData) && blData.length > 0) {
+              // Match trouvé : marquer trial épuisé + logguer le vecteur de match
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ trial_exhausted: true }),
+              }).catch(() => {});
+              console.warn(`[approve] Blacklist match — profileId=${profileId} email=${userEmail} iban=${iban2 ? "***" : "none"} siret=${siret2 ? "***" : "none"} matched entry: ${JSON.stringify(blData[0])}`);
+            }
+          } catch(blErr) {
+            console.error("[approve] blacklist check error:", blErr.message);
           }
         }
       }
