@@ -17,7 +17,10 @@ export function cpToCoords(cp) {
 // Les deux parties (client et presta) calculent le même code sans communication
 export function genMissionCode(provId, type) {
   const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
-  const base = (provId * 7919 + parseInt(today.slice(-4)) * 31) % 9000;
+  const idStr = String(provId || "");
+  let h = 0;
+  for (let i = 0; i < idStr.length; i++) { h = (Math.imul(31, h) + idStr.charCodeAt(i)) | 0; }
+  const base = (Math.abs(h) + parseInt(today.slice(-4)) * 31) % 9000;
   const offset = type === "out" ? 4567 : 0;
   return String(((Math.abs(base) + offset) % 9000) + 1000).slice(-4);
 }

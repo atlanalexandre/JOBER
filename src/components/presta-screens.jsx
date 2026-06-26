@@ -1865,6 +1865,14 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                     {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
                   </button>
+                  <button onClick={async()=>{
+                    if(!window.confirm("Annuler cette mission ?")) return;
+                    const { data:{ session } } = await supabase.auth.getSession();
+                    await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"presta_cancel", mission_id:m.id }) });
+                    setAssignedMissions(prev => prev.filter(x => x.id !== m.id));
+                  }} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ✕ Annuler la mission
+                  </button>
                 </div>
               </div>
             );
