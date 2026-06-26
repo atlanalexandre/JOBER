@@ -96,7 +96,62 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
   } catch { return null; }
 }
 
+// ── Email one-click action (GET) ────────────────────────────────────────────
+const APP_URL_DEFAULT = process.env.APP_URL || "https://www.alane.fr";
+
+function emailActionHtml(title, message, color, icon) {
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title} — ALANE</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0A1628;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#162547;border-radius:20px;padding:40px 32px;max-width:420px;width:100%;text-align:center;border:1px solid rgba(255,255,255,0.08)}.icon{font-size:52px;margin-bottom:20px}h1{font-size:22px;font-weight:700;color:${color};margin-bottom:12px}p{color:rgba(255,255,255,0.7);font-size:15px;line-height:1.5;margin-bottom:24px}a{display:inline-block;background:${color};color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:15px}</style></head><body><div class="card"><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p><a href="${APP_URL_DEFAULT}">Ouvrir l'application</a></div></body></html>`;
+}
+
+async function handleEmailAction(req, res) {
+  const { action, m: missionId, p: prestaId, exp, sig } = req.query || {};
+  const SECRET = process.env.BO_SESSION_SECRET;
+  if (!SECRET) return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration manquante.", "#F25E5E", "⚠️"));
+
+  const isUuidQ = (v) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+  if (!action || !missionId || !prestaId || !exp || !sig) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
+  if (!["accept","refuse"].includes(action) || !isUuidQ(missionId) || !isUuidQ(prestaId)) return res.status(400).send(emailActionHtml("Lien invalide", "Paramètres incorrects.", "#F25E5E", "❌"));
+
+  let sigOk = false;
+  try {
+    const { createHmac, timingSafeEqual } = await import("crypto");
+    const payload2 = `${action}.${missionId}.${prestaId}.${exp}`;
+    const expected = createHmac("sha256", SECRET).update(payload2).digest("base64url");
+    sigOk = timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  } catch {}
+  if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
+  if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
+
+  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
+  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️"));
+  const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
+
+  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre`, { headers: hdrs });
+  const mission = (await mr.json().catch(() => []))[0];
+  if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette mission a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
+
+  const missionLabel = mission.titre || mission.metier || "la mission";
+  const patchBody = action === "accept" ? { status: "assigned" } : { status: "open", prestataire_id: null };
+  await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify(patchBody) });
+
+  if (mission.client_id) {
+    const isAccepted = action === "accept";
+    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Mission acceptée ! 🎉" : "Mission refusée", body: isAccepted ? `Votre prestataire a accepté la mission "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, read: false, ref_id: missionId }) }).catch(() => {});
+    await sendPushToUser(mission.client_id, { title: isAccepted ? "Mission acceptée ✅" : "Mission refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(() => {});
+  }
+
+  return res.status(200).send(emailActionHtml(
+    action === "accept" ? "Mission acceptée !" : "Mission refusée",
+    action === "accept" ? `Vous avez accepté la mission <strong style="color:#fff">${missionLabel}</strong>. Le client a été notifié.` : `Vous avez décliné la mission <strong style="color:#fff">${missionLabel}</strong>.`,
+    action === "accept" ? "#10D98F" : "#A29BFE",
+    action === "accept" ? "✅" : "👋"
+  ));
+}
+
 export default async function handler(req, res) {
+  // GET → one-click email action (accept/refuse mission from email link)
+  if (req.method === "GET") return handleEmailAction(req, res);
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { action, ...payload } = req.body || {};
@@ -1930,8 +1985,8 @@ export default async function handler(req, res) {
       if (RESEND_KEY && prestaEmail) {
         // Generate one-click action tokens (valid 24h)
         const EMAIL_SECRET = process.env.BO_SESSION_SECRET;
-        let acceptUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/mission-email-action?action=accept&m=${missionId}&p=${prestataire_id}`;
-        let refuseUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/mission-email-action?action=refuse&m=${missionId}&p=${prestataire_id}`;
+        let acceptUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
+        let refuseUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
         if (EMAIL_SECRET && missionId) {
           const { createHmac } = await import("crypto");
           const exp = Math.floor(Date.now() / 1000) + 86400;
