@@ -129,27 +129,27 @@ export default async function handler(req, res) {
       // correspondent à un compte précédemment supprimé
       if (action === "approve") {
         const meta2 = userData.user_metadata || {};
-        const tel2  = meta2.telephone || null;
-        const iban2 = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
+        const tel2   = meta2.telephone || null;
+        const iban2  = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
         const siret2 = meta2.kbis || null;
         const orFilters = [];
-        if (userEmail) orFilters.push(`email.eq.${encodeURIComponent(userEmail)}`);
-        if (tel2)     orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
-        if (iban2)    orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
-        if (siret2)   orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+        if (userEmail) orFilters.push(`email.eq.${userEmail}`);
+        if (tel2)      orFilters.push(`telephone.eq.${tel2}`);
+        if (iban2)     orFilters.push(`iban.eq.${iban2}`);
+        if (siret2)    orFilters.push(`siret.eq.${siret2}`);
         if (orFilters.length > 0) {
-          const blRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/account_blacklist?or=(${orFilters.join(",")})&select=id&limit=1`,
-            { headers }
-          );
+          // URLSearchParams encode correctement le paramètre `or` (évite le bug encodeURIComponent)
+          const blParams = new URLSearchParams({ or: `(${orFilters.join(",")})`, select: "id", limit: "1" });
+          const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
           const blData = await blRes.json();
           if (Array.isArray(blData) && blData.length > 0) {
-            // Match trouvé : marquer le profil comme trial épuisé
+            // Match trouvé : marquer le profil comme trial épuisé immédiatement
             await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
               method: "PATCH",
               headers: { ...headers, "Prefer": "return=minimal" },
               body: JSON.stringify({ trial_exhausted: true }),
             }).catch(() => {});
+            console.log(`[approve] Compte blacklisté détecté pour profileId=${profileId} — trial_exhausted=true`);
           }
         }
       }
