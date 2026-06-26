@@ -4887,7 +4887,14 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         body: JSON.stringify({ action: "list_client" }),
       });
       const data2 = await res.json();
-      if (Array.isArray(data2)) setMissions(data2);
+      if (Array.isArray(data2)) {
+        setMissions(data2);
+        setSelected(prev => {
+          if (!prev) return prev;
+          const fresh = data2.find(m => m.id === prev.id);
+          return fresh ? { ...prev, ...fresh } : prev;
+        });
+      }
     };
     const t = setInterval(poll, 30000);
     return () => clearInterval(t);
@@ -5127,6 +5134,50 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
             );
           })()}
+          {/* Gestion du retard prestataire */}
+          {selected.status === "assigned" && selected.delay_status === "pending" && (() => {
+            const delayMins = selected.arrival_delay_minutes || 0;
+            const [sh, smn] = (selected.heure_debut || "08:00").split(":").map(Number);
+            const endMins = sh * 60 + smn + Math.round((selected.hours || 0) * 60) + delayMins;
+            const newEnd = `${String(Math.floor(endMins/60)%24).padStart(2,"0")}h${String(endMins%60).padStart(2,"0")}`;
+            const handleDelay = async (response) => {
+              const { data: sd } = await supabase.auth.getSession();
+              const token = sd?.session?.access_token;
+              await fetch("/api/missions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+                body: JSON.stringify({ action: "respond_delay", mission_id: selected.id, response }),
+              }).catch(() => {});
+              setSelected(s => s ? { ...s, delay_status: response } : s);
+              setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status: response } : m));
+            };
+            return (
+              <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:14, padding:"14px 16px", marginBottom:16 }}>
+                <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Retard de {delayMins} min</div>
+                <div style={{ color:"rgba(255,255,255,0.75)", fontSize:13, marginBottom:12 }}>
+                  Votre prestataire est arrivé en retard. Acceptez-vous le décalage ? La fin de prestation serait reportée à <strong style={{ color:"#fff" }}>{newEnd}</strong> (même durée).
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={()=>handleDelay("rejected")} style={{ flex:1, padding:"9px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ❌ Refuser (fin à l'heure initiale)
+                  </button>
+                  <button onClick={()=>handleDelay("approved")} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"#F0B429", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ✅ Accepter le décalage
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+          {selected.status === "assigned" && selected.delay_status === "approved" && (
+            <div style={{ background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.35)", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:13, color:"#10D98F", fontWeight:700 }}>
+              ✅ Décalage accepté — la fin de mission a été reportée en conséquence.
+            </div>
+          )}
+          {selected.status === "assigned" && selected.delay_status === "rejected" && (
+            <div style={{ background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", fontWeight:700 }}>
+              ⏰ Décalage refusé — {selected.actual_hours != null ? `${selected.actual_hours}h facturées` : "fin à l'heure initiale"}.
+            </div>
+          )}
           {(selected.status === "open" || selected.status === "needs_replacement") && (<>
           <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
             {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}

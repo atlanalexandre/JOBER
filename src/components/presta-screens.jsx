@@ -1677,6 +1677,25 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                  {/* Bouton "Je suis là" — visible si mission démarrée, pas encore validée, pas encore checké */}
+                  {isStarted && !isPast && !m.arrived_at && (
+                    <button onClick={async () => {
+                      const { data:{ session } } = await supabase.auth.getSession();
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                      if (r.ok) {
+                        const d = await r.json().catch(() => ({}));
+                        setAssignedMissions(prev => prev.map(x => x.id === m.id ? { ...x, arrived_at: d.arrived_at || new Date().toISOString() } : x));
+                      }
+                    }}
+                      style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      📍 Je suis là
+                    </button>
+                  )}
+                  {isStarted && !isPast && m.arrived_at && (
+                    <div style={{ padding:"9px 12px", borderRadius:10, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", color:"#10D98F", fontWeight:700, fontSize:12, textAlign:"center" }}>
+                      📍 Arrivée confirmée
+                    </div>
+                  )}
                   <div style={{ display:"flex", gap:8 }}>
                     {isPast && !m.validation_prestataire && (
                       <button disabled={validatingMission === m.id} onClick={async()=>{

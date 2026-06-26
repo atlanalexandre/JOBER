@@ -1,3 +1,14 @@
+// Returns the UTC offset in ms for a given date in France (CEST = -7200000, CET = -3600000)
+function frenchOffsetMs(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  // Last Sunday in March at 01:00 UTC (clocks go forward: CET→CEST)
+  const marchEnd = new Date(Date.UTC(y, 2, 31)); marchEnd.setUTCDate(31 - marchEnd.getUTCDay()); marchEnd.setUTCHours(1, 0, 0, 0);
+  // Last Sunday in October at 01:00 UTC (clocks go back: CEST→CET)
+  const octEnd   = new Date(Date.UTC(y, 9, 31)); octEnd.setUTCDate(31 - octEnd.getUTCDay());   octEnd.setUTCHours(1, 0, 0, 0);
+  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
+}
+
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
 async function sendWebPush(sub, notification) {
   const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
@@ -331,6 +342,21 @@ export default async function handler(req, res) {
         } catch {}
       }
 
+      // Assigner la mission — condition sur status pour éviter la double-assignation en mode urgence
+      // (si deux requêtes accept arrivent simultanément, une seule réussira)
+      const missionPatch = { status: "assigned" };
+      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
+      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
+      const assignRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
+        body: JSON.stringify(missionPatch),
+      });
+      const assignedRows = await assignRes.json().catch(() => []);
+      if (!Array.isArray(assignedRows) || assignedRows.length === 0) {
+        return res.status(409).json({ error: "Mission déjà assignée à un autre prestataire" });
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -340,14 +366,6 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
-      });
-      const missionPatch = { status: "assigned" };
-      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify(missionPatch),
       });
 
       // Notification au prestataire
@@ -375,7 +393,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,actual_hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -383,7 +401,7 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de mission" });
 
-      const hours        = mission.hours || 0;
+      const hours        = mission.actual_hours ?? mission.hours ?? 0;
       const tarifHoraire = mission.tarif_horaire || 0;
       const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
 
@@ -421,18 +439,31 @@ export default async function handler(req, res) {
       }
 
       // Mise à jour atomique du cashback via RPC pour éviter les race conditions (double-crédit)
-      const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
-      });
-      const rpcData = await rpcRes.json().catch(() => null);
-      const atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
-        ? rpcData[0].cashback_balance
-        : newBalance;
-
-      // Notification cashback au client
+      let cashbackApplied = false;
+      let atomicBalance = newBalance;
       if (cashbackEarned > 0) {
+        try {
+          const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+            method: "POST",
+            headers: { ...headers, "Prefer": "return=representation" },
+            body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+          });
+          if (rpcRes.ok) {
+            const rpcData = await rpcRes.json().catch(() => null);
+            atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
+              ? rpcData[0].cashback_balance
+              : newBalance;
+            cashbackApplied = true;
+          } else {
+            console.error("[complete] increment_cashback RPC failed:", rpcRes.status, await rpcRes.text().catch(() => ""));
+          }
+        } catch (e) {
+          console.error("[complete] increment_cashback error:", e.message);
+        }
+      }
+
+      // Notification cashback au client — uniquement si le solde a bien été crédité
+      if (cashbackApplied && cashbackEarned > 0) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
@@ -440,10 +471,10 @@ export default async function handler(req, res) {
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
-            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
+            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${typeof atomicBalance === "number" ? atomicBalance.toFixed(2) : atomicBalance} €`,
             read: false,
           }),
-        });
+        }).catch(() => {});
       }
 
       // Création automatique de la prochaine occurrence si mission récurrente
@@ -574,7 +605,7 @@ export default async function handler(req, res) {
         // heure_debut is stored as French local time; server runs UTC.
         // Subtract UTC+1 (France minimum offset) to convert to UTC conservatively.
         const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStart = new Date(missionStartNaive.getTime() - 3600000);
+        const missionStart = new Date(missionStartNaive.getTime() - frenchOffsetMs(missionStartNaive));
         const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000);
         if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
@@ -1134,7 +1165,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire`,
         { headers }
       );
       const mData = await mRes.json();
@@ -1147,14 +1178,18 @@ export default async function handler(req, res) {
 
       // Calculer la pénalité côté serveur selon la politique d'annulation
       let penalty = 0;
+      // montant_total peut être null si le webhook Stripe n'a pas encore été reçu — calculer depuis hours*tarif
+      const missionAmount = mission.montant_total || Math.round((mission.hours || 0) * (mission.tarif_horaire || 0) * 100) / 100;
       if (mission.stripe_payment_intent && mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
         const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStart.getTime() - 3600000);
+        const missionStartUTC = new Date(missionStart.getTime() - frenchOffsetMs(missionStart));
         const hoursUntilMission = (missionStartUTC - new Date()) / 3600000;
         if (hoursUntilMission < 24) penalty = 100;
         else if (hoursUntilMission < 48) penalty = 50;
       }
+      // Montant de pénalité en euros — plafonné au montant payé pour ne jamais dépasser ce qui a été encaissé
+      const penaltyEur = Math.min(Math.round(missionAmount * penalty / 100 * 100) / 100, missionAmount);
 
       // Récupérer l'email du client pour le ticket
       let clientEmail = null;
@@ -1173,13 +1208,18 @@ export default async function handler(req, res) {
 
       // Créer un ticket support prioritaire si paiement existant (remboursement traité manuellement par ALANE)
       if (mission.stripe_payment_intent) {
-        const penaltyLabel = penalty === 0 ? "remboursement intégral à traiter" : penalty === 50 ? "remboursement 50% à traiter" : "aucun remboursement (annulation <24h)";
+        const refundEur = Math.max(0, missionAmount - penaltyEur);
+        const penaltyLabel = penalty === 0
+          ? `remboursement intégral (${missionAmount.toFixed(2)} €) à traiter`
+          : penalty === 50
+            ? `remboursement 50% (${refundEur.toFixed(2)} €) à traiter`
+            : `aucun remboursement — pénalité ${penaltyEur.toFixed(2)} € (annulation <24h)`;
         await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
             subject: `[ANNULATION] Mission ${mission_id.slice(0, 8)} — ${penaltyLabel}`,
-            message: `Mission annulée par le client.\n\nMission : ${mission.metier || mission.sector || "—"}\nMontant : ${mission.montant_total || "—"} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\nPénalité appliquée : ${penalty ?? 0}%\nMotif : ${reason || "—"}\n\nAction requise : traiter le remboursement manuellement dans le dashboard Stripe.`,
+            message: `Mission annulée par le client.\n\nMission : ${mission.metier || mission.sector || "—"}\nMontant : ${missionAmount.toFixed(2)} €\nPénalité : ${penalty}% = ${penaltyEur.toFixed(2)} €\nRemboursement : ${refundEur.toFixed(2)} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\nMotif : ${reason || "—"}\n\nAction requise : traiter le remboursement manuellement dans le dashboard Stripe.`,
             user_email: clientEmail,
             user_id: caller.id,
             status: "open",
@@ -1202,9 +1242,10 @@ export default async function handler(req, res) {
                 <h2 style="color:#050E20">⚠️ Annulation mission — remboursement à traiter</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:14px">
                   <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${mission.metier || mission.sector || "—"}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700">${mission.montant_total || "—"} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Montant total</td><td style="font-weight:700">${missionAmount.toFixed(2)} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Pénalité (${penalty}%)</td><td style="font-weight:700;color:${penalty === 0 ? "#10D98F" : "#F0B429"}">${penaltyEur.toFixed(2)} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">À rembourser</td><td style="font-weight:700;color:#10D98F">${(missionAmount - penaltyEur).toFixed(2)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${mission.stripe_payment_intent}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Pénalité</td><td style="font-weight:700;color:${penalty === 0 ? "#10D98F" : "#F0B429"}">${penalty ?? 0}%</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Motif</td><td>${reason || "—"}</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail || caller.id}</td></tr>
                 </table>
@@ -1414,6 +1455,98 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true, billedHours, proratedAmount });
+    }
+
+    if (action === "checkin_mission") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,heure_debut,hours,date`, { headers });
+      const mData = await mr.json();
+      const m = Array.isArray(mData) && mData[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.arrived_at) return res.status(200).json({ arrived_at: m.arrived_at });
+
+      const arrivedAt = new Date().toISOString();
+
+      // Calcul du retard (heure_debut = heure locale France)
+      let delayMinutes = 0;
+      if (m.heure_debut && m.date) {
+        const [h, mn] = m.heure_debut.split(":").map(Number);
+        const naiveStart = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
+        const scheduledMs = naiveStart.getTime() - frenchOffsetMs(naiveStart);
+        delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
+      }
+      const hasDelay = delayMinutes > 5;
+
+      const patch = { arrived_at: arrivedAt };
+      if (hasDelay) {
+        patch.arrival_delay_minutes = delayMinutes;
+        patch.delay_status = "pending";
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(patch),
+      });
+
+      if (m.client_id) {
+        const label = m.titre || m.metier || "la prestation";
+        let notifTitle, notifBody;
+        if (hasDelay) {
+          const [sh, smn] = m.heure_debut.split(":").map(Number);
+          const endMins = sh * 60 + smn + Math.round((m.hours || 0) * 60) + delayMinutes;
+          const newEndStr = `${String(Math.floor(endMins / 60) % 24).padStart(2,"0")}h${String(endMins % 60).padStart(2,"0")}`;
+          const arrivedStr = new Date(arrivedAt).toLocaleString("fr-FR", { hour:"2-digit", minute:"2-digit", timeZone:"Europe/Paris" });
+          notifTitle = `Prestataire arrivé(e) — ${delayMinutes} min de retard ⏰`;
+          notifBody = `Votre prestataire est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. Acceptez-vous le décalage ?`;
+        } else {
+          notifTitle = "Prestataire arrivé(e) sur place 📍";
+          notifBody = `Votre prestataire est arrivé(e) pour « ${label} ». La mission démarre.`;
+        }
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
+    }
+
+    if (action === "respond_delay") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, response } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!["approved", "rejected"].includes(response)) return res.status(400).json({ error: "response invalide" });
+      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre`, { headers });
+      const mData2 = await mr2.json();
+      const m2 = Array.isArray(mData2) && mData2[0];
+      if (!m2) return res.status(404).json({ error: "Mission introuvable" });
+      if (m2.delay_status !== "pending") return res.status(400).json({ error: "Aucun décalage en attente" });
+      const delayMins = m2.arrival_delay_minutes || 0;
+      const actualHours = response === "rejected"
+        ? Math.max(0, Math.round(((m2.hours || 0) - delayMins / 60) * 100) / 100)
+        : m2.hours;
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ delay_status: response, actual_hours: actualHours }),
+      });
+      if (m2.prestataire_id) {
+        const label = m2.titre || m2.metier || "la prestation";
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: m2.prestataire_id, type: "mission",
+            title: response === "approved" ? "Décalage accepté ✅" : "Décalage refusé ⏰",
+            body: response === "approved"
+              ? `Le client a accepté le décalage de ${delayMins} min pour « ${label} ». La mission se termine à l'heure ajustée.`
+              : `Le client a refusé le décalage pour « ${label} ». Fin à l'heure initiale (${actualHours}h facturées).`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+      return res.status(200).json({ ok: true, actual_hours: actualHours });
     }
 
     if (action === "my_missions") {
