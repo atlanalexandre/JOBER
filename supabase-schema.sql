@@ -474,6 +474,34 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
 -- Démarrage effectif de la prestation (déclenche le timer côté prestataire)
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS started_at timestamptz;
 
+-- ── FONCTION atomique vérification limite de plan ────────────────────
+-- Vérifie si le prestataire peut encore accepter une mission (lecture atomique FOR UPDATE)
+-- Retourne le nombre de slots disponibles (0 = limite atteinte)
+CREATE OR REPLACE FUNCTION check_prestataire_slot(
+  p_prestataire_id uuid,
+  p_limit          integer
+)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_completed integer;
+  v_active    integer;
+  v_total     integer;
+BEGIN
+  -- FOR UPDATE verrouille la ligne pendant la transaction pour éviter les races
+  SELECT COALESCE(missions_completed_month, 0) INTO v_completed
+  FROM profiles WHERE id = p_prestataire_id FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_active
+  FROM missions
+  WHERE prestataire_id = p_prestataire_id
+    AND status IN ('assigned', 'pending_acceptance');
+
+  v_total := v_completed + v_active;
+  RETURN GREATEST(0, p_limit - v_total);
+END;
+$$;
+
 -- ── INDEX de performance ──────────────────────────────────────────────
 -- Requêtes fréquentes : missions ouvertes triées par date, missions par client/prestataire
 CREATE INDEX IF NOT EXISTS idx_missions_status_created        ON missions(status, created_at DESC);

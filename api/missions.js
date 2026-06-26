@@ -67,6 +67,9 @@ async function sendWebPush(sub, notification) {
 // HTML escaping — prevents XSS in email templates
 const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
+// SMS sanitization — strip CRLF to prevent header injection + cap length
+const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
+
 async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
   try {
     const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
@@ -190,8 +193,10 @@ export default async function handler(req, res) {
     if (action === "list_open") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { sector, metier } = payload;
-      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&order=created_at.desc`;
+      const { sector, metier, limit: rawLimit, offset: rawOffset } = payload;
+      const pageLimit  = Math.min(Math.max(1, parseInt(rawLimit,  10) || 50), 100);
+      const pageOffset = Math.max(0, parseInt(rawOffset, 10) || 0);
+      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&order=created_at.desc&limit=${pageLimit}&offset=${pageOffset}`;
       if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
       if (metier) url += `&metier=eq.${encodeURIComponent(metier)}`;
       const r = await fetch(url, { headers });
@@ -363,7 +368,8 @@ export default async function handler(req, res) {
             const prData = await prRes.json();
             let plan = urData.user_metadata?.plan_abonnement || "free";
             const endDate = urData.user_metadata?.subscription_end_date;
-            if (endDate && plan !== "free" && new Date(endDate) < new Date()) {
+            const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
+            if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
               plan = "free";
               await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
               await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
@@ -373,11 +379,13 @@ export default async function handler(req, res) {
             const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
             const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
             if (limit < 999) {
-              const completed = (Array.isArray(prData) && prData[0]?.missions_completed_month) || 0;
-              const asgnRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${verified_prestataire_id}&status=in.(assigned,pending_acceptance)&select=id`, { headers });
-              const asgnData = await asgnRes.json();
-              const total = completed + (Array.isArray(asgnData) ? asgnData.length : 0);
-              if (total >= limit) return { error: `Limite atteinte — le prestataire a atteint sa limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour son plan ${plan}.`, limit_reached: true };
+              // RPC atomique : FOR UPDATE sur la ligne profile pour éviter la race condition
+              const slotRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_prestataire_slot`, {
+                method: "POST", headers,
+                body: JSON.stringify({ p_prestataire_id: verified_prestataire_id, p_limit: limit }),
+              });
+              const slots = slotRes.ok ? (await slotRes.json().catch(() => 0)) : 0;
+              if (slots <= 0) return { error: `Limite atteinte — le prestataire a atteint sa limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour son plan ${plan}.`, limit_reached: true };
             }
             return null;
           } catch { return { error: "Erreur vérification limite plan", limit_reached: false }; }
@@ -1037,12 +1045,16 @@ export default async function handler(req, res) {
       const profiles = await pr.json();
       console.log("[broadcast] approved prestataires count:", Array.isArray(profiles) ? profiles.length : profiles);
 
-      // Fetch all auth users upfront to avoid N+1 (one call instead of one per prestataire)
-      const allUsersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
-      const allUsersData = await allUsersRes.json().catch(() => ({}));
+      // Fetch all auth users avec pagination (évite OOM sur 10k+ users)
       const userMetaMap = {};
-      if (Array.isArray(allUsersData?.users)) {
-        for (const u of allUsersData.users) userMetaMap[u.id] = u;
+      let broadcastPage = 1;
+      while (true) {
+        const batchRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${broadcastPage}`, { headers });
+        const batchData = await batchRes.json().catch(() => ({}));
+        const batch = batchData.users || [];
+        for (const u of batch) userMetaMap[u.id] = u;
+        if (batch.length < 1000) break;
+        broadcastPage++;
       }
 
       // Fetch all push subscriptions for quick lookup
@@ -1123,7 +1135,7 @@ export default async function handler(req, res) {
                 const digits = phone.replace(/\D/g, "");
                 const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
                 if (e164) {
-                  const smsText = `ALANE - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler. — alane.fr`;
+                  const smsText = smsClean(`ALANE - Nouvelle mission : ${mission?.metier || sector || "Mission"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour postuler. — alane.fr`);
                   console.log("[broadcast] sending SMS");
                   await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
@@ -1241,7 +1253,7 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                 sender: "ALANE",
                 recipient: e164,
-                content: `ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)} — alane.fr`,
+                content: smsClean(`ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)} — alane.fr`),
               }),
             });
             const sb = await sr.json().catch(() => ({}));
@@ -1260,6 +1272,10 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id, lat, lng } = payload;
       if (!mission_id || lat == null || lng == null) return res.status(400).json({ error: "mission_id, lat, lng requis" });
+      const latN = Number(lat); const lngN = Number(lng);
+      if (isNaN(latN) || isNaN(lngN) || latN < -90 || latN > 90 || lngN < -180 || lngN > 180) {
+        return res.status(400).json({ error: "Coordonnées GPS invalides" });
+      }
       const prestataire_id = caller.id;
 
       // Check if this is the first position update (to send "en route" push)
@@ -1879,9 +1895,9 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                 sender: "ALANE",
                 recipient: e164,
-                content: isAccepted
+                content: smsClean(isAccepted
                   ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
-                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`,
+                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
             }).catch(() => {});
           }
@@ -1930,9 +1946,9 @@ export default async function handler(req, res) {
       const subject = isAccepted
         ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !`
         : `❌ ${presta_name || "Le prestataire"} a refusé la mission`;
-      const smsText = isAccepted
+      const smsText = smsClean(isAccepted
         ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${mission_label || ""}. Connectez-vous pour suivre la mission. — alane.fr`
-        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`;
+        : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`);
 
       const RESEND_KEY  = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
@@ -2059,7 +2075,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               sender: "ALANE",
               recipient: e164,
-              content: `ALANE - Demande de mission : ${mission_label || "Mission"} le ${date || "?"} à ${ville || "?"} (${hours || "?"}h). Connectez-vous pour répondre ! — alane.fr`,
+              content: smsClean(`ALANE - Demande de mission : ${mission_label || "Mission"} le ${date || "?"} à ${ville || "?"} (${hours || "?"}h). Connectez-vous pour répondre ! — alane.fr`),
             }),
           }).then(r => r.json()).then(d => console.log("[notify_prestataire] SMS:", JSON.stringify(d))).catch(e => console.log("[notify_prestataire] SMS error:", e.message));
         }
