@@ -1494,6 +1494,16 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`pmissions_${userId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "missions" }, () => loadPending())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => loadPending())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
+
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
     const { data: sd } = await supabase.auth.getSession();
