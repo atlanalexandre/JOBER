@@ -361,7 +361,51 @@ ${(() => {
         }
       } catch (e) { console.error("cron auto-validation error:", e); }
 
-      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, missions: missions.length });
+      // ── 4. Notifications de fin de mission (missions terminées depuis la dernière exécution) ──
+      let endNotifSent = 0;
+      try {
+        const enRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
+          { headers }
+        );
+        const enMissions = await enRes.json().catch(() => []);
+        if (Array.isArray(enMissions)) {
+          const nowMs = Date.now();
+          const ended = enMissions.filter(m => {
+            if (!m.date) return false;
+            const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
+            const naive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
+            const y = naive.getUTCFullYear();
+            const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
+            const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
+            const offset = (naive >= marchEnd && naive < octEnd) ? -7200000 : -3600000;
+            return nowMs >= naive.getTime() - offset + Number(m.hours || 1) * 3600000;
+          });
+          for (const m of ended) {
+            try {
+              const mLabel = esc(m.metier || m.sector || "Mission");
+              const appUrl2 = process.env.APP_URL || "https://www.alane.fr";
+              const prestaEmail2 = userMap[m.prestataire_id]?.email;
+              const clientEmail2 = userMap[m.client_id]?.email;
+              const prestaName2  = nameMap[m.prestataire_id] || "Prestataire";
+              const clientName2  = nameMap[m.client_id] || "Client";
+              const sends2 = [];
+              if (RESEND_API_KEY && prestaEmail2)
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Mission terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre mission <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+              if (RESEND_API_KEY && clientEmail2)
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Mission terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Mission terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La mission <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+              await Promise.all(sends2);
+              endNotifSent += sends2.length;
+              await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" },
+                body: JSON.stringify({ end_notif_sent: true }),
+              }).catch(()=>{});
+            } catch(e) { console.error(`end-notif mission ${m.id}:`, e); }
+          }
+        }
+      } catch(e) { console.error("end-notif in reminders error:", e); }
+
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });
@@ -398,84 +442,6 @@ ${(() => {
       console.log(`cron: expired ${zombies.length} pending_acceptance missions`);
     }
   } catch (e) { console.error("cron zombie expiry error:", e); }
-
-  // ── Notification de fin de mission (toutes les 15 min) ──────────
-  if (req.query?.action === "end-notif") {
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
-    const BREVO_API_KEY  = process.env.BREVO_API_KEY;
-    const appUrl         = process.env.APP_URL || "https://www.alane.fr";
-
-    function esc2(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-    function frenchOffset2(date) {
-      const d = date instanceof Date ? date : new Date(date);
-      const y = d.getUTCFullYear();
-      const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
-      const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
-      return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
-    }
-
-    try {
-      const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
-        { headers }
-      );
-      const allMissions = await mRes.json();
-      if (!Array.isArray(allMissions)) return res.status(200).json({ sent: 0 });
-
-      const nowMs = Date.now();
-      const ended = allMissions.filter(m => {
-        if (!m.date) return false;
-        const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-        const naive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
-        const missionEndMs = naive.getTime() - frenchOffset2(naive) + Number(m.hours || 1) * 3600000;
-        return nowMs >= missionEndMs;
-      });
-
-      if (ended.length === 0) return res.status(200).json({ sent: 0 });
-
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
-      const usersData = await usersRes.json();
-      const userMap = {};
-      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
-      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
-      const profilesData = await profilesRes.json();
-      const nameMap = {};
-      (Array.isArray(profilesData) ? profilesData : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
-
-      let sent = 0;
-      for (const m of ended) {
-        try {
-          const missionLabel = esc2(m.metier || m.sector || "Mission");
-          const missionInfo  = `${missionLabel} · ${esc2(m.ville || "")} · ${m.date}`;
-          const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
-          const clientName   = nameMap[m.client_id]  || "Client";
-          const prestaEmail  = userMap[m.prestataire_id]?.email;
-          const clientEmail  = userMap[m.client_id]?.email;
-          const sends = [];
-          if (RESEND_API_KEY && prestaEmail)
-            sends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Mission terminée !</h2><p>Bonjour ${esc2(prestaName)},</p><p>Votre mission <strong>${missionLabel}</strong> vient de se terminer. <strong>Confirmez la fin de prestation</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
-          if (RESEND_API_KEY && clientEmail)
-            sends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Mission terminée — validation en attente · ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Mission terminée</h2><p>Bonjour ${esc2(clientName)},</p><p>La mission <strong>${missionLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
-          if (BREVO_API_KEY && userMap[m.prestataire_id]?.meta?.telephone) {
-            const phone = String(userMap[m.prestataire_id].meta.telephone).replace(/[\s.\-()]/g,"");
-            const e164 = phone.startsWith("+33") ? phone : phone.startsWith("0") ? "+33"+phone.slice(1) : null;
-            if (e164) sends.push(fetch("https://api.brevo.com/v3/transactionalSMS/sms",{method:"POST",headers:{"api-key":BREVO_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({sender:"ALANE",recipient:e164,content:`🎉 ALANE - Votre mission ${m.metier||"Mission"} est terminée ! Confirmez depuis l'app pour recevoir votre paiement. — alane.fr`})}).catch(()=>{}));
-          }
-          await Promise.all(sends);
-          sent += sends.length;
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ end_notif_sent: true }),
-          }).catch(() => {});
-        } catch (e) { console.error(`end-notif mission ${m.id}:`, e); }
-      }
-      return res.status(200).json({ success: true, processed: ended.length, sent });
-    } catch (e) {
-      console.error("end-notif cron error:", e);
-      return res.status(500).json({ error: "Erreur end-notif" });
-    }
-  }
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
