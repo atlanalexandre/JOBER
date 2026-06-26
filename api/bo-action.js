@@ -154,6 +154,53 @@ export default async function handler(req, res) {
         }
       }
 
+      // Stripe Connect — créer un compte Express pour les prestataires
+      let connectOnboardingUrl = null;
+      const role = userData.user_metadata?.role;
+      const STRIPE_SK = process.env.STRIPE_SECRET_KEY;
+      const APP_URL_CONNECT = process.env.APP_URL || "https://www.alane.fr";
+      if (action === "approve" && role === "prestataire" && STRIPE_SK) {
+        try {
+          const meta = userData.user_metadata || {};
+          const acctParams = new URLSearchParams({
+            type: "express",
+            country: "FR",
+            email: userEmail || "",
+            "capabilities[transfers][requested]": "true",
+            business_type: "individual",
+            "individual[first_name]": meta.prenom || "",
+            "individual[last_name]": meta.nom || "",
+          });
+          const acctRes = await fetch("https://api.stripe.com/v1/accounts", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: acctParams.toString(),
+          });
+          if (acctRes.ok) {
+            const acctData = await acctRes.json();
+            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+              method: "PATCH",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ stripe_account_id: acctData.id, stripe_account_status: "pending" }),
+            });
+            const linkParams = new URLSearchParams({
+              account: acctData.id,
+              refresh_url: APP_URL_CONNECT,
+              return_url: APP_URL_CONNECT,
+              type: "account_onboarding",
+            });
+            const linkRes = await fetch("https://api.stripe.com/v1/account_links", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: linkParams.toString(),
+            });
+            if (linkRes.ok) { const ld = await linkRes.json(); connectOnboardingUrl = ld.url; }
+          } else {
+            console.error("[approve] Stripe Connect failed:", (await acctRes.json().catch(()=>({}))).error?.message);
+          }
+        } catch (ce) { console.error("[approve] Stripe Connect error:", ce.message); }
+      }
+
       if (userEmail) {
         if (status === "approved") {
           const prenom = userData.user_metadata?.prenom || "";
@@ -163,8 +210,12 @@ export default async function handler(req, res) {
             html: emailHtml(`
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
-              <p>Nous sommes ravis de vous accueillir sur la plateforme. Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
-              <p>Si vous avez la moindre question ou besoin d'aide pour démarrer, n'hésitez pas à contacter notre support directement depuis l'application — nous sommes là pour vous accompagner.</p>
+              ${connectOnboardingUrl ? `
+              <p style="margin-top:20px;">Pour recevoir vos paiements automatiquement après chaque mission validée, configurez votre compte de virement en 2 minutes :</p>
+              <p style="text-align:center;margin:24px 0;"><a href='${connectOnboardingUrl}' style="background:#10D98F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Configurer mes virements →</a></p>
+              <p style="color:#888;font-size:13px;margin-bottom:20px;">Ce lien est valable 24h. Il vous suffit de renseigner votre IBAN et signer les conditions générales Stripe (2 min). Sans cette étape, vos paiements ne pourront pas être versés automatiquement.</p>
+              ` : ""}
+              <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),

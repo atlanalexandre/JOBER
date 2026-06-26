@@ -542,7 +542,7 @@ export default async function handler(req, res) {
                     <h2 style="color:#A29BFE;margin:0 0 12px">Mission validée ✅</h2>
                     <p>Bonjour ${prestaName},</p>
                     <p>Le client a validé votre mission <strong>${mission.metier || mission.sector || ""}</strong>.</p>
-                    <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
@@ -550,6 +550,52 @@ export default async function handler(req, res) {
             }
           } catch {}
         }
+      }
+
+      // Virement automatique Stripe Connect
+      const STRIPE_SK_PAYOUT = process.env.STRIPE_SECRET_KEY;
+      const COMMISSION = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
+      if (STRIPE_SK_PAYOUT && montantTotal > 0 && mission.prestataire_id) {
+        try {
+          const ppRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=stripe_account_id,stripe_account_status`, { headers });
+          const ppData = await ppRes.json();
+          const pp = Array.isArray(ppData) && ppData[0];
+          if (pp?.stripe_account_id && pp.stripe_account_status === "enabled") {
+            const netCents = Math.round(montantTotal * (1 - COMMISSION) * 100);
+            if (netCents >= 100) {
+              const tParams = new URLSearchParams({
+                amount: String(netCents), currency: "eur", destination: pp.stripe_account_id,
+                "metadata[mission_id]": mission_id, "metadata[prestataire_id]": mission.prestataire_id,
+              });
+              const tRes = await fetch("https://api.stripe.com/v1/transfers", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${STRIPE_SK_PAYOUT}`, "Content-Type": "application/x-www-form-urlencoded" },
+                body: tParams.toString(),
+              });
+              if (tRes.ok) {
+                const tData = await tRes.json();
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: tData.id }),
+                }).catch(() => {});
+                console.log(`[complete] Transfer ${tData.id} → ${pp.stripe_account_id} (${(netCents/100).toFixed(2)}€)`);
+              } else {
+                const eData = await tRes.json().catch(() => ({}));
+                console.error("[complete] Transfer failed:", eData?.error?.message);
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "failed" }),
+                }).catch(() => {});
+              }
+            }
+          } else if (pp?.stripe_account_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ payout_status: "pending" }),
+            }).catch(() => {});
+            console.log(`[complete] Payout pending — Connect not yet enabled for ${mission.prestataire_id}`);
+          }
+        } catch (pe) { console.error("[complete] Payout error:", pe.message); }
       }
 
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
