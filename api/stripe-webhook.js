@@ -126,5 +126,62 @@ export default async function handler(req, res) {
     }
   }
 
+  if (event.type === "account.updated") {
+    const account = event.data.object;
+    if (account.payouts_enabled && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const hdrs2 = {
+        "apikey": SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      };
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_account_id=eq.${account.id}`, {
+        method: "PATCH", headers: hdrs2,
+        body: JSON.stringify({ stripe_account_status: "enabled" }),
+      }).catch(e => console.error("profile status update failed:", e));
+
+      if (STRIPE_SECRET_KEY) {
+        const COMMISSION2 = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
+        const profRes2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_account_id=eq.${account.id}&select=id`, {
+          headers: hdrs2,
+        }).catch(() => null);
+        if (profRes2?.ok) {
+          const profData2 = await profRes2.json().catch(() => []);
+          const prestataireId2 = Array.isArray(profData2) && profData2[0]?.id;
+          if (prestataireId2) {
+            const pendRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataireId2}&payout_status=eq.pending&select=id,montant_total`,
+              { headers: hdrs2 }
+            ).catch(() => null);
+            if (pendRes?.ok) {
+              const pendMissions = await pendRes.json().catch(() => []);
+              for (const pm of (Array.isArray(pendMissions) ? pendMissions : [])) {
+                const netCents2 = Math.round((pm.montant_total || 0) * (1 - COMMISSION2) * 100);
+                if (netCents2 < 100) continue;
+                const tParams2 = new URLSearchParams({
+                  amount: String(netCents2), currency: "eur", destination: account.id,
+                  "metadata[mission_id]": pm.id, "metadata[prestataire_id]": prestataireId2,
+                });
+                const tRes2 = await fetch("https://api.stripe.com/v1/transfers", {
+                  method: "POST",
+                  headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+                  body: tParams2.toString(),
+                }).catch(() => null);
+                if (tRes2?.ok) {
+                  const tData2 = await tRes2.json().catch(() => null);
+                  await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${pm.id}`, {
+                    method: "PATCH", headers: hdrs2,
+                    body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: tData2?.id }),
+                  }).catch(() => {});
+                  console.log(`[account.updated] Pending transfer processed: ${tData2?.id} for mission ${pm.id}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   return res.status(200).json({ received: true });
 }
