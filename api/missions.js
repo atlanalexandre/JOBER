@@ -1682,7 +1682,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,extra_hours_requested,extra_hours_status&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -2178,6 +2178,39 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true });
+    }
+
+    // ── Démarrage effectif de la prestation ────────────────────────────
+    if (action === "start_mission") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at`, { headers });
+      const mData = await mr.json();
+      const m = Array.isArray(mData) && mData[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable ou non assignée" });
+      if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
+
+      const startedAt = new Date().toISOString();
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ started_at: startedAt }),
+      });
+
+      // Notify client
+      if (m.client_id) {
+        const label = m.titre || m.metier || "la prestation";
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "🚀 Prestation démarrée !", body: `La prestation « ${label} » a démarré. Le timer est lancé.`, read: false }),
+        }).catch(() => {});
+        await sendPushToUser(m.client_id, { title: "🚀 Prestation démarrée !", body: `La prestation « ${label} » a démarré.`, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+      }
+
+      return res.status(200).json({ started_at: startedAt });
     }
 
     return res.status(400).json({ error: "Action invalide" });

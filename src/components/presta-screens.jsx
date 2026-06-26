@@ -1415,6 +1415,13 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [checkingInId, setCheckingInId] = useState(null);
   const [arrivedAtMap, setArrivedAtMap] = useState({});
   const [checkInGeoError, setCheckInGeoError] = useState({});
+  const [startedAtMap, setStartedAtMap] = useState({});
+  const [startingMission, setStartingMission] = useState(null);
+  const [missionCoordCache, setMissionCoordCache] = useState({});
+  const arrivedAtMapRef = useRef({});
+  const autoCheckinLockRef = useRef(new Set());
+  const geocodedRef = useRef(new Set());
+  const geoWatchRef = useRef(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   const [userPlan, setUserPlan] = useState("free");
 
@@ -1457,9 +1464,14 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       setPendingMissions(Array.isArray(data.pending)  ? data.pending.filter(m => m.status !== "cancelled")  : []);
       const assigned = Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : [];
       setAssignedMissions(assigned);
-      const map = {};
-      assigned.forEach(m => { if (m.arrived_at) map[m.id] = m.arrived_at; });
-      setArrivedAtMap(prev => ({ ...prev, ...map }));
+      const arrivedMap = {};
+      const startedMap = {};
+      assigned.forEach(m => {
+        if (m.arrived_at) arrivedMap[m.id] = m.arrived_at;
+        if (m.started_at) startedMap[m.id] = m.started_at;
+      });
+      setArrivedAtMap(prev => { const n = { ...prev, ...arrivedMap }; arrivedAtMapRef.current = n; return n; });
+      setStartedAtMap(prev => ({ ...prev, ...startedMap }));
     } catch {}
   };
 
@@ -1503,6 +1515,70 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
+
+  // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
+  useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
+
+  // Geocode mission addresses for auto-checkin detection
+  useEffect(() => {
+    for (const m of assignedMissions) {
+      if (geocodedRef.current.has(m.id)) continue;
+      if (arrivedAtMap[m.id]) { geocodedRef.current.add(m.id); continue; }
+      const addr = [m.adresse, m.ville].filter(Boolean).join(" ");
+      if (!addr) { geocodedRef.current.add(m.id); setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })); continue; }
+      geocodedRef.current.add(m.id);
+      setMissionCoordCache(prev => ({ ...prev, [m.id]: "loading" }));
+      fetch(`https://api-adresse.data.gouv.fr/search/?${new URLSearchParams({ q: addr, limit: "1" })}`)
+        .then(r => r.json())
+        .then(d => {
+          const feat = d.features?.[0];
+          if (feat) {
+            const [lng, lat] = feat.geometry.coordinates;
+            setMissionCoordCache(prev => ({ ...prev, [m.id]: { lat, lng } }));
+          } else {
+            setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" }));
+          }
+        })
+        .catch(() => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
+    }
+  }, [assignedMissions]);
+
+  // GPS watch for automatic check-in (< 150m)
+  useEffect(() => {
+    const watchable = assignedMissions.filter(m => {
+      const c = missionCoordCache[m.id];
+      return !arrivedAtMap[m.id] && c && typeof c === "object";
+    });
+
+    if (geoWatchRef.current != null) { navigator.geolocation?.clearWatch(geoWatchRef.current); geoWatchRef.current = null; }
+    if (!watchable.length || !navigator.geolocation) return;
+
+    geoWatchRef.current = navigator.geolocation.watchPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      for (const m of watchable) {
+        const coords = missionCoordCache[m.id];
+        if (!coords || typeof coords !== "object") continue;
+        if (arrivedAtMapRef.current[m.id]) continue;
+        if (autoCheckinLockRef.current.has(m.id)) continue;
+        if (haversineKm(latitude, longitude, coords.lat, coords.lng) > 0.15) continue;
+        autoCheckinLockRef.current.add(m.id);
+        try {
+          const { data: sd } = await supabase.auth.getSession();
+          const token = sd?.session?.access_token;
+          const r = await fetch("/api/missions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` }, body: JSON.stringify({ action: "checkin_mission", mission_id: m.id }) });
+          const d = await r.json();
+          if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+        } catch {}
+        autoCheckinLockRef.current.delete(m.id);
+      }
+    }, (err) => {
+      console.log("[auto-checkin] GPS error:", err.code);
+      // GPS denied/unavailable → mark all as error so fallback button shows
+      watchable.forEach(m => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
+    }, { enableHighAccuracy: true, maximumAge: 20000 });
+
+    return () => { if (geoWatchRef.current != null) { navigator.geolocation.clearWatch(geoWatchRef.current); geoWatchRef.current = null; } };
+  }, [assignedMissions, missionCoordCache, arrivedAtMap]);
 
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
@@ -1767,73 +1843,69 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
-                {/* Timer / Checkin */}
-                {arrivedAtMap[m.id] ? (
+                {/* Timer / Checkin / Start */}
+                {startedAtMap[m.id] ? (
+                  // ── Prestation démarrée : timer ──
                   <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div>
-                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Sur place — client notifié ✅</div>
-                      <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>🚀 Prestation en cours</div>
+                      <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                     </div>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ color:C.success, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>
-                        {(() => { const s=Math.floor((now-new Date(arrivedAtMap[m.id]).getTime())/1000); const h=Math.floor(s/3600); const min=Math.floor((s%3600)/60); const sec=s%60; return h>0?`${h}h${String(min).padStart(2,"0")}`:`${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`; })()}
+                        {(() => { const s=Math.floor((now-new Date(startedAtMap[m.id]).getTime())/1000); const h=Math.floor(s/3600); const min=Math.floor((s%3600)/60); const sec=s%60; return h>0?`${h}h${String(min).padStart(2,"0")}`:`${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`; })()}
                       </div>
                       <div style={{ color:C.textMuted, fontSize:10 }}>écoulé</div>
                     </div>
                   </div>
-                ) : !isPast && (
+                ) : arrivedAtMap[m.id] ? (
+                  // ── Sur place, pas encore démarré : bouton "Je commence" ──
                   <div style={{ marginBottom:10 }}>
-                    <button disabled={checkingInId === m.id} onClick={async () => {
-                      setCheckingInId(m.id);
-                      setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
-
-                      const missionAddress = [m.adresse, m.ville].filter(Boolean).join(" ");
-
-                      // Vérification géolocalisation si l'adresse est connue
-                      if (missionAddress && navigator.geolocation) {
-                        try {
-                          const userPos = await new Promise((resolve, reject) =>
-                            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 12000, enableHighAccuracy: true })
-                          );
-                          try {
-                            const geoRes = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(missionAddress)}&limit=1`);
-                            const geoData = await geoRes.json();
-                            const feat = geoData.features?.[0];
-                            if (feat) {
-                              const [mLon, mLat] = feat.geometry.coordinates;
-                              const uLat = userPos.coords.latitude;
-                              const uLon = userPos.coords.longitude;
-                              const R = 6371;
-                              const dLat = (mLat - uLat) * Math.PI / 180;
-                              const dLon = (mLon - uLon) * Math.PI / 180;
-                              const a = Math.sin(dLat/2)**2 + Math.cos(uLat*Math.PI/180)*Math.cos(mLat*Math.PI/180)*Math.sin(dLon/2)**2;
-                              const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                              const MAX_KM = 0.15;
-                              if (distKm > MAX_KM) {
-                                const distStr = distKm >= 1 ? `${distKm.toFixed(1)} km` : `${Math.round(distKm * 1000)} m`;
-                                setCheckInGeoError(prev => ({ ...prev, [m.id]: `📍 Vous êtes à ${distStr} du lieu de prestation. Le check-in n'est autorisé qu'à moins de 150m.` }));
-                                setCheckingInId(null);
-                                return;
-                              }
-                            }
-                          } catch (_) { /* géocodage échoué → on laisse passer */ }
-                        } catch (gpsErr) {
-                          setCheckInGeoError(prev => ({ ...prev, [m.id]: "⚠️ Impossible d'accéder à votre position GPS. Vérifiez que la géolocalisation est activée." }));
-                          setCheckingInId(null);
-                          return;
-                        }
-                      }
-
-                      // Check-in validé
+                    <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"8px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontSize:14 }}>✅</span>
+                      <div>
+                        <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>Arrivé(e) sur place — client notifié</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                    </div>
+                    <button disabled={startingMission === m.id} onClick={async () => {
+                      setStartingMission(m.id);
                       const { data: sd } = await supabase.auth.getSession();
                       const token = sd?.session?.access_token;
-                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
                       const d = await r.json();
-                      if (d.arrived_at) setArrivedAtMap(prev => ({ ...prev, [m.id]: d.arrived_at }));
-                      setCheckingInId(null);
-                    }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
-                      {checkingInId===m.id ? "Vérification position…" : "📍 Je suis sur place"}
+                      if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+                      setStartingMission(null);
+                    }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:15, cursor:startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                      {startingMission===m.id ? "Démarrage…" : "🚀 Je commence la prestation"}
                     </button>
+                  </div>
+                ) : !isPast && (
+                  // ── Pas encore arrivé : détection GPS ou fallback manuel ──
+                  <div style={{ marginBottom:10 }}>
+                    {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (
+                      <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                        <div>
+                          <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
+                          <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
+                        </div>
+                      </div>
+                    ) : (
+                      // Fallback : GPS refusé ou adresse non géocodable → bouton manuel
+                      <button disabled={checkingInId === m.id} onClick={async () => {
+                        setCheckingInId(m.id);
+                        setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+                        const { data: sd } = await supabase.auth.getSession();
+                        const token = sd?.session?.access_token;
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                        const d = await r.json();
+                        if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                        setCheckingInId(null);
+                      }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                        {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                      </button>
+                    )}
                     {checkInGeoError[m.id] && (
                       <div style={{ marginTop:8, background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"10px 13px", fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
                         {checkInGeoError[m.id]}

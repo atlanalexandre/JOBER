@@ -2999,11 +2999,11 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status,extra_hours_status,arrived_at").eq("id",resolvedMissionId).single();
+      const { data } = await supabase.from("missions").select("status,extra_hours_status,arrived_at,started_at").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
       if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="closed"||data.status==="cancelled"||data.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
-      else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+      else if(data.started_at || data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
       else if(data.status==="assigned" && data.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
       else if(data.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
       if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
@@ -3043,7 +3043,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         if (!d) return;
         if(d.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
         else if(d.status==="closed"||d.status==="cancelled"||d.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
-        else if(d.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+        else if(d.started_at || d.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
         else if(d.status==="assigned" && d.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
         else if(d.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
         if(d.extra_hours_status) setExtraHoursStatus(d.extra_hours_status);
