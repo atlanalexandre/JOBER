@@ -2342,8 +2342,9 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
 export function BookingScreen({ provider, onNavigate, onBack }) {
   const p = provider;
+  const [localUrgent, setLocalUrgent] = useState(false);
   if (!p) return null;
-  const isUrgent = p.urgentMode || false;
+  const isUrgent = p.urgentMode || localUrgent || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
   const [payMethod,setPayMethod]=useState("carte");
@@ -2385,7 +2386,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   }, []);
 
 
-  const tarifHoraire = isUrgent && urgentPrice ? urgentPrice : (p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers'));
+  const baseRate = p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers');
+  const tarifHoraire = isUrgent ? (urgentPrice || (baseRate + 2)) : baseRate;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -2686,7 +2688,24 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
-          {tooSoonError && <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F0B429" }}>⚡ Cette prestation est dans moins de 2h. Revenez en arrière et activez le <strong>mode urgence</strong> (+2€ HT/h), ou choisissez une date ultérieure.</div>}
+          {tooSoonError && !isUrgent && (
+            <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ fontSize:13, color:"#F0B429", marginBottom:12, lineHeight:1.5 }}>
+                ⚡ Cette prestation démarre dans moins de 2h — le mode urgence est requis pour cette plage horaire.
+              </div>
+              <button onClick={()=>{ setLocalUrgent(true); setTooSoonError(false); }} style={{
+                width:"100%", padding:"12px 16px", borderRadius:10,
+                background:"linear-gradient(135deg,#F0B429,#E09A1A)", border:"none",
+                color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}>
+                🚨 Activer le mode urgence (+2€ HT/h)
+              </button>
+              <div style={{ fontSize:11, color:"rgba(240,180,41,0.7)", textAlign:"center", marginTop:8 }}>
+                Ou choisissez une date ultérieure
+              </div>
+            </div>
+          )}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
