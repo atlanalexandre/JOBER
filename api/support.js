@@ -68,6 +68,54 @@ export default async function handler(req, res) {
   if (req.body?.action === "welcome") {
     const { email, prenom, nom, role } = req.body;
     if (!email || !prenom) return res.status(200).json({ ok: true });
+
+    // Anti-abus : vérifier immédiatement la blacklist dès l'inscription
+    // Si un identifiant match, marquer trial_exhausted=true avant même l'approbation BO
+    const SUPABASE_URL2 = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY2  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (SUPABASE_URL2 && SERVICE_KEY2) {
+      try {
+        const svcHeaders = {
+          "apikey": SERVICE_KEY2,
+          "Authorization": `Bearer ${SERVICE_KEY2}`,
+          "Content-Type": "application/json",
+        };
+        // Récupérer les métadonnées du compte qui vient d'être créé (phone + IBAN)
+        const usersRes = await fetch(
+          `${SUPABASE_URL2}/auth/v1/admin/users?email=${encodeURIComponent(email)}&per_page=1`,
+          { headers: svcHeaders }
+        );
+        const usersData = await usersRes.json();
+        const newUser = usersData?.users?.[0];
+        if (newUser) {
+          const meta3 = newUser.user_metadata || {};
+          const tel3   = meta3.telephone || null;
+          const iban3  = meta3.rib ? String(meta3.rib).replace(/\s/g, "").toUpperCase() : null;
+          const siret3 = meta3.kbis || null;
+          const orFilters3 = [];
+          if (email)   orFilters3.push(`email.eq.${email}`);
+          if (tel3)    orFilters3.push(`telephone.eq.${tel3}`);
+          if (iban3)   orFilters3.push(`iban.eq.${iban3}`);
+          if (siret3)  orFilters3.push(`siret.eq.${siret3}`);
+          if (orFilters3.length > 0) {
+            const blParams3 = new URLSearchParams({ or: `(${orFilters3.join(",")})`, select: "id", limit: "1" });
+            const blRes3 = await fetch(`${SUPABASE_URL2}/rest/v1/account_blacklist?${blParams3}`, { headers: svcHeaders });
+            const blData3 = await blRes3.json();
+            if (Array.isArray(blData3) && blData3.length > 0) {
+              await fetch(`${SUPABASE_URL2}/rest/v1/profiles?id=eq.${newUser.id}`, {
+                method: "PATCH",
+                headers: { ...svcHeaders, "Prefer": "return=minimal" },
+                body: JSON.stringify({ trial_exhausted: true }),
+              }).catch(() => {});
+              console.log(`[welcome] Compte blacklisté détecté à l'inscription — email=${email} trial_exhausted=true`);
+            }
+          }
+        }
+      } catch (blErr) {
+        console.error("[welcome] Erreur check blacklist:", blErr.message);
+      }
+    }
+
     if (RESEND_API_KEY) {
       const isPresta = role === "prestataire";
       const welcomeHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
