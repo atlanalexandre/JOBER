@@ -1,3 +1,12 @@
+// DST-aware UTC offset for France (CEST = -7200000ms, CET = -3600000ms)
+function frenchOffsetMs(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
+  const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
+  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
+}
+
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
 async function sendWebPush(sub, notification) {
   const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
@@ -344,11 +353,18 @@ export default async function handler(req, res) {
       const missionPatch = { status: "assigned" };
       if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
       if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify(missionPatch),
-      });
+      const missionPatchRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`,
+        {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
+          body: JSON.stringify(missionPatch),
+        }
+      );
+      const missionPatchData = await missionPatchRes.json().catch(() => []);
+      if (!Array.isArray(missionPatchData) || missionPatchData.length === 0) {
+        return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
+      }
 
       // Notification au prestataire
       if (verified_prestataire_id) {
@@ -426,13 +442,16 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
       });
-      const rpcData = await rpcRes.json().catch(() => null);
+      const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
+      if (!rpcRes.ok) {
+        console.error("[complete] increment_cashback RPC failed:", rpcRes.status, await rpcRes.text().catch(() => ""));
+      }
       const atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
         ? rpcData[0].cashback_balance
         : newBalance;
 
-      // Notification cashback au client
-      if (cashbackEarned > 0) {
+      // Notification cashback au client (uniquement si le RPC a réussi)
+      if (cashbackEarned > 0 && rpcRes.ok) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
@@ -670,7 +689,7 @@ export default async function handler(req, res) {
         // heure_debut stored as French local time. France = UTC+2 in summer (CEST), UTC+1 in winter (CET).
         // Use UTC+2 offset to be conservative (don't block during CEST). Add 15min grace buffer.
         const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStart = new Date(missionStartNaive.getTime() - 7200000); // UTC+2 (summer)
+        const missionStart = new Date(missionStartNaive.getTime() - frenchOffsetMs(missionStartNaive));
         const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
         if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
@@ -1274,11 +1293,15 @@ export default async function handler(req, res) {
       if (mission.stripe_payment_intent && mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
         const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStart.getTime() - 7200000); // UTC+2 (France CEST)
+        const missionStartUTC = new Date(missionStart.getTime() - frenchOffsetMs(missionStart));
         const hoursUntilMission = (missionStartUTC - new Date()) / 3600000;
         if (hoursUntilMission < 24) penalty = 100;
         else if (hoursUntilMission < 48) penalty = 50;
       }
+
+      // Calculer le montant de pénalité en euros (plafonné au montant total)
+      const missionAmount = Number(mission.montant_total) || 0;
+      const penaltyEur = Math.min(Math.round(missionAmount * penalty / 100 * 100) / 100, missionAmount);
 
       // Récupérer l'email du client pour le ticket
       let clientEmail = null;
@@ -1292,7 +1315,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty }),
+        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty, cancellation_penalty_eur: penaltyEur }),
       });
 
       // Créer un ticket support prioritaire si paiement existant (remboursement traité manuellement par ALANE)
@@ -1379,8 +1402,11 @@ export default async function handler(req, res) {
       // Note: on ne vérifie pas côté serveur si la mission a démarré car
       // le serveur Vercel est en UTC et interprète heure_debut sans timezone —
       // le garde côté client (bouton caché si !isStarted) est suffisant.
-      const missionStart = mission.date
+      const missionStartNaive = mission.date
         ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
+        : null;
+      const missionStart = missionStartNaive
+        ? new Date(missionStartNaive.getTime() - frenchOffsetMs(missionStartNaive))
         : null;
       const elapsedMs = Math.max(0, missionStart ? Date.now() - missionStart.getTime() : 0);
       const elapsedHours = elapsedMs / 3600000;

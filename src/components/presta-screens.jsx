@@ -1713,7 +1713,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {arrivedAtMap[m.id] ? (
                   <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div>
-                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Sur place — mission en cours</div>
+                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Sur place — client notifié ✅</div>
                       <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                     </div>
                     <div style={{ textAlign:"right" }}>
@@ -1947,6 +1947,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [showTour,setShowTour]=useState(false);
   const [statsData,setStatsData]=useState({prestations:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
+  const [historyMissions,setHistoryMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [ratingTarget, setRatingTarget] = useState(null);
@@ -1978,7 +1979,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
       ]);
       if(prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
@@ -1995,6 +1996,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
+      setHistoryMissions([...done, ...allM.filter(m => m.status === "cancelled" || m.status === "refused")].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
 
       // Streak: consecutive calendar days with ≥1 completed mission, backwards from yesterday
       const missionDays = new Set(done.map(m => m.date?.slice(0,10)).filter(Boolean));
@@ -2229,7 +2231,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       <div style={{ padding:"18px 18px 0" }}>
         {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-          {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"clients",l:"Clients"}].map(t=>(
+          {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"historique",l:"Historique"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
           ))}
         </div>
@@ -2308,6 +2310,52 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             }} />
           ))}
         </>}
+        {tab==="historique" && (()=>{
+          const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée" };
+          const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted };
+          const getAmtH = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+          return historyMissions.length === 0 ? (
+            <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center" }}>
+              <div style={{ fontSize:36, marginBottom:10 }}>📂</div>
+              <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune prestation dans l'historique</div>
+              <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos prestations passées (terminées, annulées, refusées) apparaîtront ici.</div>
+            </div>
+          ) : <>
+            {historyMissions.map(m => {
+              const sector = SECTORS.find(s => s.id === m.sector);
+              const amt = getAmtH(m);
+              const statusColor = statusColors[m.status] || C.textMuted;
+              const statusLabel = statusLabels[m.status] || m.status;
+              return (
+                <div key={m.id} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:14, padding:"13px 14px", marginBottom:10 }}>
+                  <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Prestation"}</div>
+                      <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.heure_debut?` · ${m.heure_debut}`:""}
+                        {m.hours ? ` · ${m.hours}h` : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      {m.status === "completed" && amt > 0 && (
+                        <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt.toFixed(2).replace(".",",")} €</div>
+                      )}
+                      <span style={{ background:`${statusColor}20`, border:`1px solid ${statusColor}44`, borderRadius:20, padding:"2px 8px", color:statusColor, fontSize:10, fontWeight:700 }}>{statusLabel}</span>
+                    </div>
+                  </div>
+                  {m.status === "completed" && !ratedMissions.has(m.id) && (
+                    <button onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }} style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.accentGold}44`, background:`${C.accentGold}12`, color:C.accentGold, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      ⭐ Noter le client
+                    </button>
+                  )}
+                  {m.status === "completed" && ratedMissions.has(m.id) && (
+                    <div style={{ marginTop:8, textAlign:"center", color:C.success, fontSize:11, fontWeight:600 }}>✓ Client noté</div>
+                  )}
+                </div>
+              );
+            })}
+          </>;
+        })()}
         {tab==="revenus" && (()=>{
           const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);

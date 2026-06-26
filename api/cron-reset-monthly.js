@@ -20,6 +20,14 @@ function formatPhone(raw) {
   return null;
 }
 
+function frenchOffsetMs(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
+  const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
+  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
+}
+
 function sendSms(apiKey, to, content) {
   const phone = formatPhone(to);
   if (!phone) return Promise.resolve();
@@ -51,6 +59,35 @@ export default async function handler(req, res) {
     "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
     "Content-Type":  "application/json",
   };
+
+  // ── Expiry des pending_acceptance zombies (toutes routes) ───────
+  {
+    const nowIso = new Date().toISOString();
+    try {
+      const zRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre`,
+        { headers }
+      );
+      const zombies = await zRes.json().catch(() => []);
+      if (Array.isArray(zombies) && zombies.length) {
+        await Promise.all(zombies.map(async z => {
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "open", prestataire_id: null }),
+          }).catch(() => {});
+          if (z.client_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ user_id: z.client_id, type: "mission", title: "Prestataire non disponible", body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre mission"}". Elle est remise en recherche.`, read: false }),
+            }).catch(() => {});
+          }
+        }));
+        console.log(`[cron] expired ${zombies.length} pending_acceptance zombie(s)`);
+      }
+    } catch (e) { console.error("[cron] zombie expiry error:", e); }
+  }
 
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
@@ -269,8 +306,8 @@ ${(() => {
         const autoMissions = Array.isArray(autoMissionsRaw) ? autoMissionsRaw.filter(m => {
           if (!m.date) return true;
           const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-          const missionEndMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime()
-            + Number(m.hours || 1) * 3600000;
+          const naiveMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime();
+          const missionEndMs = naiveMs + frenchOffsetMs(new Date(naiveMs)) + Number(m.hours || 1) * 3600000;
           return nowTs - missionEndMs >= 24 * 3600000;
         }) : [];
 
@@ -361,7 +398,47 @@ ${(() => {
         }
       } catch (e) { console.error("cron auto-validation error:", e); }
 
-      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, missions: missions.length });
+      // ── 4. Notifications fin de mission (fusionné ici — évite le 3e cron Vercel Hobby) ──
+      let endNotifSent = 0;
+      try {
+        const appUrl = process.env.APP_URL || "https://www.alane.fr";
+        const nowMs = Date.now();
+        const enRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
+          { headers }
+        );
+        const allEndMissions = await enRes.json().catch(() => []);
+        const endedMissions = Array.isArray(allEndMissions) ? allEndMissions.filter(m => {
+          if (!m.date) return false;
+          const [h2 = 8, mn2 = 0] = (m.heure_debut || "08:00").split(":").map(Number);
+          const naiveMs2 = new Date(`${m.date}T${String(h2).padStart(2,"0")}:${String(mn2).padStart(2,"0")}:00`).getTime();
+          return nowMs >= naiveMs2 + frenchOffsetMs(new Date(naiveMs2)) + Number(m.hours || 1) * 3600000;
+        }) : [];
+        for (const m of endedMissions) {
+          try {
+            const mLabel = esc(m.metier || m.sector || "Mission");
+            const mInfo  = `${mLabel} · ${esc(m.ville || "")} · ${m.date}`;
+            const pName  = nameMap[m.prestataire_id] || "Prestataire";
+            const cName  = nameMap[m.client_id]  || "Client";
+            const pEmail = userMap[m.prestataire_id]?.email;
+            const cEmail = userMap[m.client_id]?.email;
+            const sends2 = [];
+            if (RESEND_API_KEY && pEmail)
+              sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[pEmail], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html: `<p>Bonjour ${esc(pName)}, votre mission <strong>${mLabel}</strong> (${mInfo}) vient de se terminer. Confirmez la fin depuis votre espace ALANE. <a href="${appUrl}">→ Confirmer</a></p>` }) }).catch(()=>{}));
+            if (RESEND_API_KEY && cEmail)
+              sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[cEmail], subject:`✅ Mission terminée — validation en attente · ALANE`, html: `<p>Bonjour ${esc(cName)}, la mission <strong>${mLabel}</strong> (${mInfo}) vient de se terminer. Validez-la depuis votre espace. <a href="${appUrl}">→ Valider</a></p>` }) }).catch(()=>{}));
+            await Promise.all(sends2);
+            endNotifSent += sends2.length;
+            await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+              method: "PATCH",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ end_notif_sent: true }),
+            }).catch(() => {});
+          } catch (e2) { console.error(`end-notif mission ${m.id}:`, e2); }
+        }
+      } catch (e) { console.error("cron end-notif error:", e); }
+
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });
