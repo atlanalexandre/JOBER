@@ -375,7 +375,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -383,7 +383,7 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de mission" });
 
-      const hours        = mission.hours || 0;
+      const hours        = mission.actual_hours ?? mission.hours ?? 0;
       const tarifHoraire = mission.tarif_horaire || 0;
       const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
 
@@ -1545,25 +1545,90 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,heure_debut,hours,date`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable" });
       if (m.arrived_at) return res.status(200).json({ arrived_at: m.arrived_at });
+
       const arrivedAt = new Date().toISOString();
+
+      // Calcul du retard
+      let delayMinutes = 0;
+      if (m.heure_debut && m.date) {
+        const [h, mn] = m.heure_debut.split(":").map(Number);
+        const scheduledMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime() - 7200000;
+        delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
+      }
+      const hasDelay = delayMinutes > 5;
+
+      const patch = { arrived_at: arrivedAt };
+      if (hasDelay) {
+        patch.arrival_delay_minutes = delayMinutes;
+        patch.delay_status = "pending";
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ arrived_at: arrivedAt }),
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(patch),
       });
+
       if (m.client_id) {
         const label = m.titre || m.metier || "la prestation";
+        let notifTitle, notifBody;
+        if (hasDelay) {
+          const [sh, smn] = m.heure_debut.split(":").map(Number);
+          const endMins = sh * 60 + smn + Math.round((m.hours || 0) * 60) + delayMinutes;
+          const newEndStr = `${String(Math.floor(endMins / 60) % 24).padStart(2,"0")}h${String(endMins % 60).padStart(2,"0")}`;
+          const arrivedStr = new Date(arrivedAt).toLocaleString("fr-FR", { hour:"2-digit", minute:"2-digit", timeZone:"Europe/Paris" });
+          notifTitle = `Prestataire arrivé(e) — ${delayMinutes} min de retard ⏰`;
+          notifBody = `Votre prestataire est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. Acceptez-vous le décalage ?`;
+        } else {
+          notifTitle = "Prestataire arrivé(e) sur place 📍";
+          notifBody = `Votre prestataire est arrivé(e) pour « ${label} ». La mission démarre.`;
+        }
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Prestataire arrivé(e) sur place 📍", body: `Votre prestataire est arrivé(e) pour « ${label} ». La mission démarre.`, read: false }),
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
         }).catch(() => {});
       }
-      return res.status(200).json({ arrived_at: arrivedAt });
+
+      return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
+    }
+
+    if (action === "respond_delay") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, response } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!["approved", "rejected"].includes(response)) return res.status(400).json({ error: "response invalide" });
+      const mr2 = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,hours,arrival_delay_minutes,delay_status,metier,titre`, { headers });
+      const mData2 = await mr2.json();
+      const m2 = Array.isArray(mData2) && mData2[0];
+      if (!m2) return res.status(404).json({ error: "Mission introuvable" });
+      if (m2.delay_status !== "pending") return res.status(400).json({ error: "Aucun décalage en attente" });
+      const delayMins = m2.arrival_delay_minutes || 0;
+      const actualHours = response === "rejected"
+        ? Math.max(0, Math.round(((m2.hours || 0) - delayMins / 60) * 100) / 100)
+        : m2.hours;
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ delay_status: response, actual_hours: actualHours }),
+      });
+      if (m2.prestataire_id) {
+        const label = m2.titre || m2.metier || "la prestation";
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: m2.prestataire_id, type: "mission",
+            title: response === "approved" ? "Décalage accepté ✅" : "Décalage refusé ⏰",
+            body: response === "approved"
+              ? `Le client a accepté le décalage de ${delayMins} min pour « ${label} ». La mission se termine à l'heure ajustée.`
+              : `Le client a refusé le décalage pour « ${label} ». Fin à l'heure initiale (${actualHours}h facturées).`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+      return res.status(200).json({ ok: true, actual_hours: actualHours });
     }
 
     if (action === "my_missions") {

@@ -5269,6 +5269,50 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
             );
           })()}
+          {selected.delay_status === "pending" && (
+            <div style={{ background:"linear-gradient(135deg,rgba(240,180,41,0.1),rgba(240,180,41,0.05))", border:"1.5px solid rgba(240,180,41,0.4)", borderRadius:16, padding:"16px", marginBottom:16 }}>
+              <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Décalage d'arrivée</div>
+              <div style={{ color:C.textSub, fontSize:13, marginBottom:14, lineHeight:1.5 }}>
+                Votre prestataire est arrivé avec {selected.arrival_delay_minutes} min de retard. La fin de mission est proposée {selected.arrival_delay_minutes} min plus tard. Acceptez-vous ?
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button
+                  onClick={async () => {
+                    const { data: sd } = await supabase.auth.getSession();
+                    const tok = sd?.session?.access_token;
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"approved" }) });
+                    const j = await r.json();
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours } : s);
+                  }}
+                  style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ✅ Accepter le décalage
+                </button>
+                <button
+                  onClick={async () => {
+                    const { data: sd } = await supabase.auth.getSession();
+                    const tok = sd?.session?.access_token;
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"rejected" }) });
+                    const j = await r.json();
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours } : s);
+                  }}
+                  style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ❌ Refuser — fin à l'heure prévue
+                </button>
+              </div>
+            </div>
+          )}
+          {selected.delay_status === "approved" && selected.arrival_delay_minutes > 0 && (
+            <div style={{ background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
+              ✅ Décalage de {selected.arrival_delay_minutes} min accepté — fin ajustée
+            </div>
+          )}
+          {selected.delay_status === "rejected" && selected.arrival_delay_minutes > 0 && (
+            <div style={{ background:"rgba(242,94,94,0.06)", border:"1px solid rgba(242,94,94,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
+              ❌ Décalage refusé — {selected.actual_hours}h facturées (fin à l'heure prévue)
+            </div>
+          )}
           {selected.status === "assigned" && (() => {
             const haversine = (lat1, lon1, lat2, lon2) => {
               const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
