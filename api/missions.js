@@ -70,6 +70,17 @@ const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 // SMS sanitization — strip CRLF to prevent header injection + cap length
 const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
 
+// Rate limiting en mémoire — 120 req/min par IP (reset Vercel cold start accepté)
+const _rl = new Map();
+function checkRateLimit(ip, max = 120, windowMs = 60_000) {
+  const now = Date.now();
+  const rec = _rl.get(ip) || { count: 0, reset: now + windowMs };
+  if (now > rec.reset) { rec.count = 0; rec.reset = now + windowMs; }
+  rec.count++;
+  _rl.set(ip, rec);
+  return rec.count > max;
+}
+
 async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
   try {
     const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
@@ -159,6 +170,10 @@ export default async function handler(req, res) {
   // GET → one-click email action (accept/refuse mission from email link)
   if (req.method === "GET") return handleEmailAction(req, res);
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // Rate limiting — 120 req/min par IP
+  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+  if (checkRateLimit(ip)) return res.status(429).json({ error: "Trop de requêtes — réessayez dans une minute" });
 
   const { action, ...payload } = req.body || {};
 
@@ -535,20 +550,44 @@ export default async function handler(req, res) {
       }
 
       // Mise à jour atomique du cashback via RPC pour éviter les race conditions (double-crédit)
-      const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+      let rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
       });
+      // Retry une fois si échec réseau (503/504)
+      if (!rpcRes.ok && [503, 504].includes(rpcRes.status)) {
+        await new Promise(r => setTimeout(r, 800));
+        rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+        }).catch(() => ({ ok: false, status: 0 }));
+      }
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
       if (!rpcRes.ok) {
-        console.error("[complete] increment_cashback RPC failed:", rpcRes.status, await rpcRes.text().catch(() => ""));
+        console.error("[complete] increment_cashback RPC failed (mission marked completed, cashback NOT credited):", rpcRes.status, "mission_id:", mission_id, "client_id:", client_id, "delta:", cashbackEarned);
       }
       const atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
         ? rpcData[0].cashback_balance
         : newBalance;
 
-      // Notification cashback au client (uniquement si le RPC a réussi)
+      // Notification mission validée — toujours envoyée, même si RPC cashback a échoué
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: client_id,
+          type: "mission",
+          title: "Mission validée ✅",
+          body: cashbackEarned > 0 && rpcRes.ok
+            ? `Votre mission a été validée. Cashback : +${cashbackEarned.toFixed(2)} € (solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €)`
+            : "Votre mission a été validée avec succès.",
+          read: false,
+        }),
+      }).catch(() => {});
+
+      // Notification cashback dédiée uniquement si RPC a réussi
       if (cashbackEarned > 0 && rpcRes.ok) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
@@ -557,10 +596,10 @@ export default async function handler(req, res) {
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
-            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet suite à la validation de votre mission. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
+            body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
             read: false,
           }),
-        });
+        }).catch(() => {});
       }
 
       // Création automatique de la prochaine occurrence si mission récurrente
