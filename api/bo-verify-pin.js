@@ -28,9 +28,16 @@ export default async function handler(req, res) {
   const BO_SECRET   = process.env.BO_SESSION_SECRET;
   if (!BO_PASSWORD || !BO_SECRET) return res.status(500).json({ ok: false, error: "Configuration BO manquante" });
 
-  if (pin !== BO_PASSWORD) {
-    // Délai exponentiel par tentative pour ralentir le brute-force même après cold start
-    await new Promise(r => setTimeout(r, Math.min(rec.count * 400, 3000)));
+  // Comparaison timing-safe pour éviter les attaques par mesure de temps
+  // On ajoute un délai fixe sur TOUTES les réponses (succès inclus) pour masquer le timing
+  await new Promise(r => setTimeout(r, Math.min(rec.count * 400, 3000)));
+  let pinOk = false;
+  try {
+    if (pin.length === BO_PASSWORD.length) {
+      pinOk = crypto.timingSafeEqual(Buffer.from(pin), Buffer.from(BO_PASSWORD));
+    }
+  } catch { pinOk = false; }
+  if (!pinOk) {
     return res.status(401).json({ ok: false });
   }
 

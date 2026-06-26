@@ -68,13 +68,26 @@ export default async function handler(req, res) {
         }
       }
 
+      // Idempotency : si ce PaymentIntent est déjà enregistré, ignorer silencieusement
+      try {
+        const idempotCheck = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&stripe_payment_intent=eq.${intent.id}&select=id`, { headers });
+        const idempotData = await idempotCheck.json().catch(() => []);
+        if (Array.isArray(idempotData) && idempotData.length > 0) {
+          console.log("[stripe-webhook] PaymentIntent already processed — skipping idempotent retry", intent.id);
+          return res.status(200).json({ received: true });
+        }
+      } catch(e) {
+        console.error("[stripe-webhook] idempotency check error:", e.message);
+        return res.status(500).json({ error: "Supabase unavailable" });
+      }
+
       const patch = { stripe_payment_intent: intent.id, status: "assigned" };
       if (prestataireId) patch.prestataire_id = prestataireId;
 
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
       try {
-        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected)`, {
+        missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected,assigned)`, {
           method: "PATCH", headers, body: JSON.stringify(patch),
         });
       } catch (e) {
