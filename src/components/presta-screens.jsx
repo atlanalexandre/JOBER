@@ -1414,6 +1414,8 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const trackingRefsMap = useRef({});
   const [checkingInId, setCheckingInId] = useState(null);
   const [arrivedAtMap, setArrivedAtMap] = useState({});
+  const [trialExhausted, setTrialExhausted] = useState(false);
+  const [userPlan, setUserPlan] = useState("free");
 
   const toggleTracking = async (missionId) => {
     if (sharingLocation[missionId]) {
@@ -1469,6 +1471,9 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         setUserId(u.id);
         const meta = u.user_metadata || {};
         setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
+        setUserPlan(meta.plan_abonnement || "free");
+        supabase.from("profiles").select("trial_exhausted").eq("id", u.id).single()
+          .then(({ data: pr }) => { if (pr?.trial_exhausted) setTrialExhausted(true); });
         await loadPending();
       } catch (e) {
         console.error("[PMissionsTab] load error:", e);
@@ -1650,11 +1655,23 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         </div>
                       </div>
                     ) : (
-                      <div style={{ display:"flex", gap:8 }}>
-                        <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
-                        <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                          {actioning===m.id+"_acc" ? "…" : "✅ Accepter la prestation"}
-                        </button>
+                      <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                        {trialExhausted && userPlan === "free" ? (
+                          <div style={{ background:`rgba(242,94,94,0.1)`, border:`1px solid rgba(242,94,94,0.35)`, borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
+                            <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>⛔ Quota épuisé — acceptation impossible</div>
+                            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
+                            <button onClick={()=>onNavigate&&onNavigate("abonnement_presta")} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                              💎 Passer Premium — 29€/mois
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
+                            <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                              {actioning===m.id+"_acc" ? "…" : "✅ Accepter la prestation"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

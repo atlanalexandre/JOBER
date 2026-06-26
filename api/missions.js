@@ -1702,6 +1702,19 @@ export default async function handler(req, res) {
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       if (!["accept","refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
+      // Vérification quota : bloquer l'acceptation si trial épuisé et plan free
+      if (response === "accept") {
+        const [prRow, urData] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=trial_exhausted`, { headers }).then(r => r.json()),
+          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).then(r => r.json()),
+        ]);
+        const trialExhausted = Array.isArray(prRow) && prRow[0]?.trial_exhausted === true;
+        const plan = urData?.user_metadata?.plan_abonnement || "free";
+        if (trialExhausted && plan === "free") {
+          return res.status(403).json({ error: "quota_exhausted", message: "Votre quota gratuit est épuisé. Passez Premium pour accepter des prestations." });
+        }
+      }
+
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
