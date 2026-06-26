@@ -64,6 +64,9 @@ async function sendWebPush(sub, notification) {
   }
 }
 
+// HTML escaping — prevents XSS in email templates
+const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
 async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
   try {
     const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
@@ -143,7 +146,7 @@ async function handleEmailAction(req, res) {
 
   return res.status(200).send(emailActionHtml(
     action === "accept" ? "Mission acceptée !" : "Mission refusée",
-    action === "accept" ? `Vous avez accepté la mission <strong style="color:#fff">${missionLabel}</strong>. Le client a été notifié.` : `Vous avez décliné la mission <strong style="color:#fff">${missionLabel}</strong>.`,
+    action === "accept" ? `Vous avez accepté la mission <strong style="color:#fff">${esc(missionLabel)}</strong>. Le client a été notifié.` : `Vous avez décliné la mission <strong style="color:#fff">${esc(missionLabel)}</strong>.`,
     action === "accept" ? "#10D98F" : "#A29BFE",
     action === "accept" ? "✅" : "👋"
   ));
@@ -161,6 +164,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Action invalide" });
   }
   const isUuid = (v) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+
+  // Validation des longueurs des champs texte libres (prévient abus + DoS email)
+  const TEXT_MAX = { message: 2000, mission_label: 200, ville: 100, adresse: 300, description: 3000, sender_name: 100, message_preview: 500 };
+  for (const [key, max] of Object.entries(TEXT_MAX)) {
+    if (payload[key] != null && typeof payload[key] === "string" && payload[key].length > max) {
+      return res.status(400).json({ error: `Champ '${key}' trop long (max ${max} caractères)` });
+    }
+  }
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -384,12 +395,16 @@ export default async function handler(req, res) {
         } catch {}
       }
 
-      // Vérifier si la mission a déjà un paiement Stripe
+      // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,client_id`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,client_id,status`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      // Refus si déjà assignée : évite la création de double PaymentIntent en cas de requêtes concurrentes
+      if (missionCheck && ["assigned","completed","closed","cancelled"].includes(missionCheck.status)) {
+        return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
+      }
 
       if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
         try {
@@ -635,7 +650,7 @@ export default async function handler(req, res) {
                   html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
                     <h2 style="color:#A29BFE;margin:0 0 12px">Mission validée ✅</h2>
                     <p>Bonjour ${prestaName},</p>
-                    <p>Le client a validé votre mission <strong>${mission.metier || mission.sector || ""}</strong>.</p>
+                    <p>Le client a validé votre mission <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
                     <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
@@ -794,9 +809,9 @@ export default async function handler(req, res) {
         const clientUser = await clientUserRes.json();
         const clientEmail = clientUser?.email;
         const clientName = clientUser?.user_metadata?.prenom || clientUser?.user_metadata?.nom || "";
-        const metier = mission.metier || mission.sector || "Mission";
-        const missionDate = mission.date || "";
-        const ville = mission.ville || "";
+        const metier = esc(mission.metier || mission.sector || "Mission");
+        const missionDate = esc(mission.date || "");
+        const ville = esc(mission.ville || "");
         const appUrl = process.env.APP_URL || "https://www.alane.fr";
         const RESEND_API_KEY = process.env.RESEND_API_KEY;
         if (clientEmail && RESEND_API_KEY) {
@@ -1088,10 +1103,10 @@ export default async function handler(req, res) {
                       <h2 style="color:#4F46E5">Nouvelle mission ALANE</h2>
                       <p>Une nouvelle mission correspond à votre profil :</p>
                       <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px">
-                        <strong>${missionLabel}</strong><br/>
-                        📅 ${mission?.date || "Date à confirmer"}<br/>
-                        📍 ${mission?.ville || "Ville à confirmer"}<br/>
-                        ⏱ ${mission?.hours || "?"}h
+                        <strong>${esc(missionLabel)}</strong><br/>
+                        📅 ${esc(mission?.date || "Date à confirmer")}<br/>
+                        📍 ${esc(mission?.ville || "Ville à confirmer")}<br/>
+                        ⏱ ${esc(String(mission?.hours || "?"))}h
                       </div>
                       <p>Connectez-vous à ALANE pour postuler.</p>
                       <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
@@ -1158,7 +1173,6 @@ export default async function handler(req, res) {
     }
 
     if (action === "chat_notify") {
-      const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { recipient_id, sender_name, message_preview } = payload;
@@ -1422,12 +1436,12 @@ export default async function handler(req, res) {
               html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
                 <h2 style="color:#050E20">⚠️ Annulation mission — remboursement à traiter</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:14px">
-                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${mission.metier || mission.sector || "—"}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700">${mission.montant_total || "—"} €</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${mission.stripe_payment_intent}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${esc(mission.metier || mission.sector || "—")}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700">${esc(String(mission.montant_total || "—"))} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${esc(mission.stripe_payment_intent || "")}</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Pénalité</td><td style="font-weight:700;color:${penalty === 0 ? "#10D98F" : "#F0B429"}">${penalty ?? 0}%</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Motif</td><td>${reason || "—"}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail || caller.id}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Motif</td><td>${esc(reason || "—")}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail || caller.id)}</td></tr>
                 </table>
                 <p style="margin-top:20px;font-size:13px;color:#666">Traiter le remboursement depuis le <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">dashboard Stripe</a>.</p>
                 <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
@@ -1540,7 +1554,7 @@ export default async function handler(req, res) {
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
               <h2 style="color:#050E20">Mission interrompue par le client</h2>
               <p style="color:#444">Bonjour ${prestaName},</p>
-              <p style="color:#444">Le client a mis fin à la mission <strong>${missionLabel}</strong> avant son terme prévu.</p>
+              <p style="color:#444">Le client a mis fin à la mission <strong>${esc(missionLabel)}</strong> avant son terme prévu.</p>
               <div style="background:#fff;border-radius:10px;padding:16px;margin:20px 0;border-left:4px solid #7C6FE0">
                 <table style="width:100%;font-size:14px;color:#333">
                   <tr><td style="padding:5px 0;color:#666">Durée prévue</td><td style="font-weight:700">${totalHours}h</td></tr>
@@ -1616,9 +1630,9 @@ export default async function handler(req, res) {
               html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
                 <h2 style="color:#050E20">⚠️ Mission interrompue en cours d'exécution</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:14px">
-                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${missionLabel}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-weight:700">${prestaName} — ${prestaEmail||"—"}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${clientEmail||caller.id}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${esc(missionLabel)}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-weight:700">${esc(prestaName)} — ${esc(prestaEmail||"—")}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail||caller.id)}</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Durée prévue</td><td>${totalHours}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Durée effectuée</td><td>${elapsedHours.toFixed(2)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h</td></tr>
@@ -1843,10 +1857,10 @@ export default async function handler(req, res) {
               subject: isAccepted ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !` : `❌ ${presta_name || "Le prestataire"} a refusé la mission`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
                 <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Mission acceptée ✅":"Mission refusée ❌"}</h2>
-                <p>Bonjour ${clientName},</p>
+                <p>Bonjour ${esc(clientName)},</p>
                 ${isAccepted
-                  ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
-                  : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre mission <strong>${missionLabel}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+                  ? `<p><strong>${esc(presta_name || "Votre prestataire")}</strong> a accepté votre demande de mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
+                  : `<p><strong>${esc(presta_name || "Le prestataire")}</strong> a décliné votre mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
                 }
                 <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
@@ -1932,10 +1946,10 @@ export default async function handler(req, res) {
             subject,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
               <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Mission acceptée ✅":"Mission refusée ❌"}</h2>
-              <p>Bonjour ${clientName},</p>
+              <p>Bonjour ${esc(clientName)},</p>
               ${isAccepted
-                ? `<p><strong>${presta_name || "Votre prestataire"}</strong> a accepté votre demande de mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
-                : `<p><strong>${presta_name || "Le prestataire"}</strong> a décliné votre demande pour la mission <strong>${mission_label || ""}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+                ? `<p><strong>${esc(presta_name || "Votre prestataire")}</strong> a accepté votre demande de mission <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
+                : `<p><strong>${esc(presta_name || "Le prestataire")}</strong> a décliné votre demande pour la mission <strong>${esc(mission_label || "")}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
               }
               <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
@@ -1968,6 +1982,14 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { prestataire_id, mission_label, date, ville, hours, heure_debut, adresse, tarif_horaire } = payload;
       if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id requis" });
+      // Sanitize tous les champs user-controlled avant injection HTML
+      const sLabel = esc(mission_label || "Mission");
+      const sDate  = esc(date || "Date à confirmer");
+      const sVille = esc(ville || "Ville à confirmer");
+      const sHdeb  = esc(heure_debut || "");
+      const sAdresse = esc(adresse || "");
+      const sHours = esc(String(hours || "?"));
+      const sTarif = tarif_horaire ? esc(Number(tarif_horaire).toFixed(2).replace(".",",")) : "";
       // Verify caller has a mission with this prestataire
       const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`, { headers });
       const mCheck = await mCheckRes.json().catch(() => []);
@@ -2004,13 +2026,13 @@ export default async function handler(req, res) {
             subject: "🔔 Nouvelle demande de mission — répondez rapidement !",
             html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
               <h2 style="color:#A29BFE;margin:0 0 12px">Nouvelle demande de mission 🔔</h2>
-              <p>Bonjour ${prestaName},</p>
+              <p>Bonjour ${esc(prestaName)},</p>
               <p>Un client vous a envoyé une demande de mission directe :</p>
               <div style="background:#162547;border-left:4px solid #A29BFE;padding:12px 16px;margin:16px 0;border-radius:4px">
-                <strong style="font-size:15px">${mission_label || "Mission"}</strong><br/>
-                📅 ${date || "Date à confirmer"}${heure_debut ? ` · ${heure_debut}` : ""}${heure_debut && hours ? ` → ${(() => { const [h,m]=(heure_debut||"00:00").split(":").map(Number); const end=new Date(2000,0,1,h,m); end.setMinutes(end.getMinutes()+Math.round(Number(hours||1)*60)); return String(end.getHours()).padStart(2,"0")+":"+String(end.getMinutes()).padStart(2,"0"); })()}` : ""}<br/>
-                ⏱ ${hours || "?"}h de travail${tarif_horaire ? ` · ${Number(tarif_horaire).toFixed(2).replace(".",",")} €/h HT` : ""}<br/>
-                📍 ${adresse ? `${adresse}, ` : ""}${ville || "Ville à confirmer"}
+                <strong style="font-size:15px">${sLabel}</strong><br/>
+                📅 ${sDate}${sHdeb ? ` · ${sHdeb}` : ""}${sHdeb && hours ? ` → ${(() => { const [h,m]=(sHdeb||"00:00").split(":").map(Number); const end=new Date(2000,0,1,h,m); end.setMinutes(end.getMinutes()+Math.round(Number(hours||1)*60)); return String(end.getHours()).padStart(2,"0")+":"+String(end.getMinutes()).padStart(2,"0"); })()}` : ""}<br/>
+                ⏱ ${sHours}h de travail${sTarif ? ` · ${sTarif} €/h HT` : ""}<br/>
+                📍 ${sAdresse ? `${sAdresse}, ` : ""}${sVille}
               </div>
               <p style="margin:20px 0 8px">Répondez directement depuis cet email :</p>
               <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -2065,10 +2087,20 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,extra_hours_status`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou non active" });
+
+      // Cap à 24h total pour éviter des prestations aberrantes
+      const currentHours = Number(mission.hours || 0);
+      if (currentHours + eh > 24) {
+        return res.status(400).json({ error: `Durée totale dépasserait 24h (actuel ${currentHours}h + ${eh}h demandé)` });
+      }
+      // Refus si une demande est déjà en cours
+      if (mission.extra_hours_status === "pending") {
+        return res.status(409).json({ error: "Une demande d'heures supplémentaires est déjà en attente de réponse" });
+      }
 
       // Enregistrer la demande
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
@@ -2146,8 +2178,8 @@ export default async function handler(req, res) {
       const extraH = Number(mission.extra_hours_requested || 0);
 
       if (response === "accept" && extraH > 0) {
-        // Mettre à jour les heures totales et marquer accepté
-        const newHours = Number(mission.hours || 0) + extraH;
+        // Mettre à jour les heures totales et marquer accepté — cap à 24h
+        const newHours = Math.min(24, Number(mission.hours || 0) + extraH);
         await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },

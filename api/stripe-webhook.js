@@ -52,6 +52,22 @@ export default async function handler(req, res) {
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
       };
+
+      // Vérification anti-fraude : le prestataireId du metadata doit correspondre à la candidature en DB
+      if (candidatureId && prestataireId) {
+        try {
+          const candVerif = await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}&prestataire_id=eq.${prestataireId}&select=id`, { headers });
+          const candData = await candVerif.json().catch(() => []);
+          if (!Array.isArray(candData) || candData.length === 0) {
+            console.error("[stripe-webhook] prestataireId metadata mismatch — candidature not found for this prestataire, aborting assignment");
+            return res.status(200).json({ received: true }); // Ne pas retenter — les metadata sont invalides
+          }
+        } catch(e) {
+          console.error("[stripe-webhook] candidature verification error:", e.message);
+          return res.status(500).json({ error: "Supabase unavailable" }); // Retenter
+        }
+      }
+
       const patch = { stripe_payment_intent: intent.id, status: "assigned" };
       if (prestataireId) patch.prestataire_id = prestataireId;
 

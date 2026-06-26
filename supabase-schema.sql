@@ -473,3 +473,13 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
 
 -- Démarrage effectif de la prestation (déclenche le timer côté prestataire)
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS started_at timestamptz;
+
+-- ── INDEX de performance ──────────────────────────────────────────────
+-- Requêtes fréquentes : missions ouvertes triées par date, missions par client/prestataire
+CREATE INDEX IF NOT EXISTS idx_missions_status_created        ON missions(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_missions_client_status         ON missions(client_id, status);
+CREATE INDEX IF NOT EXISTS idx_missions_prestataire_status    ON missions(prestataire_id, status);
+CREATE INDEX IF NOT EXISTS idx_candidatures_mission_status    ON candidatures(mission_id, status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread      ON notifications(user_id, read) WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created     ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user        ON push_subscriptions(user_id);
