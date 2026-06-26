@@ -57,10 +57,29 @@ async function sendWebPush(sub, notification) {
       headers:{"Content-Type":"application/octet-stream","Content-Encoding":"aes128gcm","Authorization":`vapid t=${jwt},k=${VAPID_PUB}`,"TTL":"86400"},
       body: record,
     });
-    return r.ok || r.status === 201;
+    return r.status;
   } catch(e) {
     console.error("[sendWebPush] error:", e.message);
-    return false;
+    return null;
+  }
+}
+
+async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
+  try {
+    const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
+    const subs = await psRes.json().catch(() => []);
+    if (!Array.isArray(subs) || subs.length === 0) return;
+    await Promise.all(subs.map(async (s) => {
+      const status = await sendWebPush(s, notification);
+      if (status === 410) {
+        await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, {
+          method: "DELETE",
+          headers: serviceHeaders,
+        }).catch(() => {});
+      }
+    }));
+  } catch(e) {
+    console.error("[sendPushToUser] error:", e.message);
   }
 }
 
@@ -379,6 +398,7 @@ export default async function handler(req, res) {
             read: false,
           }),
         });
+        await sendPushToUser(verified_prestataire_id, { title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
       return res.status(200).json({ success: true });
     }
@@ -1046,7 +1066,12 @@ export default async function handler(req, res) {
               // Web push
               const subs = subsByUser[p.id];
               if (subs?.length) {
-                await Promise.all(subs.map(s => sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" })));
+                await Promise.all(subs.map(async s => {
+                  const status = await sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" });
+                  if (status === 410) {
+                    await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${p.id}&endpoint=eq.${encodeURIComponent(s.endpoint)}`, { method: "DELETE", headers }).catch(() => {});
+                  }
+                }));
               }
 
               notified++;
@@ -1190,14 +1215,8 @@ export default async function handler(req, res) {
           const mRows = await mRes.json().catch(() => []);
           const mission = Array.isArray(mRows) && mRows[0];
           if (mission?.client_id) {
-            const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${mission.client_id}&select=endpoint,p256dh,auth`, { headers });
-            const subs = await psRes.json().catch(() => []);
-            const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
-            const VAPID_PRIV = process.env.VAPID_PRIVATE_KEY;
-            if (Array.isArray(subs) && subs.length && VAPID_PUB && VAPID_PRIV) {
-              const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
-              await Promise.all(subs.map(s => sendWebPush(s, notif, VAPID_PUB, VAPID_PRIV)));
-            }
+            const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
+            await sendPushToUser(mission.client_id, notif, SUPABASE_URL, headers);
           }
         } catch (e) { console.error("[update_position] push error:", e.message); }
       }
@@ -1799,15 +1818,11 @@ export default async function handler(req, res) {
         }
 
         // Web push client
-        const psRes = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${mission.client_id}&select=endpoint,p256dh,auth`, { headers });
-        const psSubs = await psRes.json().catch(() => []);
-        if (Array.isArray(psSubs) && psSubs.length > 0) {
-          const pushTitle = isAccepted ? "Mission acceptée ✅" : "Mission refusée";
-          const pushBody  = isAccepted
-            ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
-            : `${presta_name || "Le prestataire"} a refusé. Connectez-vous pour choisir un autre prestataire.`;
-          await Promise.all(psSubs.map(s => sendWebPush(s, { title: pushTitle, body: pushBody, url: "/" })));
-        }
+        const pushTitle = isAccepted ? "Mission acceptée ✅" : "Mission refusée";
+        const pushBody  = isAccepted
+          ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
+          : `${presta_name || "Le prestataire"} a refusé. Connectez-vous pour choisir un autre prestataire.`;
+        await sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
       // Reminder notification to prestataire when they accept
@@ -1957,15 +1972,11 @@ export default async function handler(req, res) {
       }
 
       // Web push (si souscription existante)
-      const psRes2 = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${prestataire_id}&select=endpoint,p256dh,auth`, { headers });
-      const psRows = await psRes2.json().catch(() => []);
-      if (Array.isArray(psRows)) {
-        await Promise.all(psRows.map(s => sendWebPush(s, {
-          title: "🔔 Nouvelle mission pour vous",
-          body: `${mission_label || "Mission"}${date ? " · " + date : ""}${ville ? " · " + ville : ""}${hours ? " (" + hours + "h)" : ""}`,
-          url: "/",
-        })));
-      }
+      await sendPushToUser(prestataire_id, {
+        title: "🔔 Nouvelle mission pour vous",
+        body: `${mission_label || "Mission"}${date ? " · " + date : ""}${ville ? " · " + ville : ""}${hours ? " (" + hours + "h)" : ""}`,
+        url: "/",
+      }, SUPABASE_URL, headers).catch(() => {});
 
       return res.status(200).json({ success: true });
     }
@@ -2027,6 +2038,13 @@ export default async function handler(req, res) {
             });
           }
         } catch(e) {}
+
+        // Web push au prestataire
+        await sendPushToUser(mission.prestataire_id, {
+          title: "⏱ Demande d'heures supplémentaires",
+          body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez dans l'app.`,
+          url: "/",
+        }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ ok: true });
@@ -2081,6 +2099,15 @@ export default async function handler(req, res) {
             ref_id: mission_id,
           }),
         }).catch(() => {});
+
+        // Web push au client
+        await sendPushToUser(mission.client_id, {
+          title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
+          body: isAccepted
+            ? `Le prestataire a accepté la prolongation de ${extraH}h.`
+            : "Le prestataire n'a pas pu accepter la prolongation.",
+          url: "/",
+        }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ ok: true, newHours: response === "accept" ? Number(mission.hours || 0) + extraH : null });
@@ -2116,6 +2143,13 @@ export default async function handler(req, res) {
             read: false,
           }),
         }).catch(() => {});
+
+        // Web push au client
+        await sendPushToUser(mission.client_id, {
+          title: "❌ Prestataire indisponible",
+          body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
+          url: "/",
+        }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ success: true });
