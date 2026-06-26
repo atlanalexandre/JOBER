@@ -2006,6 +2006,27 @@ export default async function handler(req, res) {
             ref_id: mission_id,
           }),
         }).catch(() => {});
+
+        // Email au prestataire
+        try {
+          const prestaEmailRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } });
+          const prestaEmailData = await prestaEmailRes.json();
+          const prestaEmail = prestaEmailData?.email;
+          const RESEND_API_KEY = process.env.RESEND_API_KEY;
+          const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+          if (prestaEmail && RESEND_API_KEY) {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: RESEND_FROM,
+                to: [prestaEmail],
+                subject: "⏱ Demande d'heures supplémentaires",
+                html: `<p>Le client souhaite prolonger la prestation de <strong>${eh}h supplémentaire${eh > 1 ? "s" : ""}</strong>.</p><p>Connectez-vous à ALANE pour accepter ou refuser cette demande.</p>`,
+              }),
+            });
+          }
+        } catch(e) {}
       }
 
       return res.status(200).json({ ok: true });
@@ -2063,6 +2084,41 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ ok: true, newHours: response === "accept" ? Number(mission.hours || 0) + extraH : null });
+    }
+
+    // ── Annulation par le prestataire ─────────────────────────────────
+    if (action === "presta_cancel") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre`, { headers });
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable ou non annulable" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "refused", prestataire_id: null }),
+      });
+
+      if (mission.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.client_id,
+            type: "mission",
+            title: "❌ Prestataire indisponible",
+            body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
+
+      return res.status(200).json({ success: true });
     }
 
     return res.status(400).json({ error: "Action invalide" });

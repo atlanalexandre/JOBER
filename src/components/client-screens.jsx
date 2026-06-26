@@ -21,7 +21,7 @@ function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
         </div>
         {onViewCgps && (
           <button onClick={onViewCgps} style={{ flexShrink:0, width:"100%", padding:"10px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-            📝 Lire les CGPS complètes →
+            📄 Lire l'intégralité du contrat →
           </button>
         )}
         <div style={{ flexShrink:0 }}>
@@ -2409,11 +2409,11 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const totalHT = tarifHoraire * hours * nbJours;
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
-  // Urgence
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + 30);
-  const urgentStartTime = now.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" });
-  const urgentStartDate = now.toLocaleDateString("fr-FR");
+  // Urgence — arrondi au quart d'heure supérieur
+  const _urgentMs = Date.now() + 30 * 60 * 1000;
+  const _urgentRounded = new Date(Math.ceil(_urgentMs / (15 * 60 * 1000)) * (15 * 60 * 1000));
+  const urgentStartTime = _urgentRounded.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" });
+  const urgentStartDate = _urgentRounded.toLocaleDateString("fr-FR");
 
   // Formatage date lisible
   const formatDate = (d) => {
@@ -2426,7 +2426,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
       {/* Contrat électronique client */}
       {showCgpsFromContract && (
         <div style={{ position:"fixed", inset:0, zIndex:10000, overflowY:"auto", background:"#0A1628", WebkitOverflowScrolling:"touch" }}>
-          <LegalScreen type="cgps" onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }} />
+          <LegalScreen type="contrat_prestation" onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }} />
         </div>
       )}
 
@@ -2897,7 +2897,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             ))}
           </div>
-          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -2960,6 +2960,8 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   const [extraHoursValue, setExtraHoursValue] = useState(1);
   const [extraHoursStatus, setExtraHoursStatus] = useState(null); // null | "pending" | "accepted" | "refused"
   const [extraHoursSending, setExtraHoursSending] = useState(false);
+  const [showTrackingCancel, setShowTrackingCancel] = useState(false);
+  const [trackingCancelling, setTrackingCancelling] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
   const [clientCoords, setClientCoords] = useState(clientCoordsFromApp || null);
 
@@ -2991,7 +2993,8 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
       // Poll prestation status
       const { data } = await supabase.from("missions").select("status,extra_hours_status").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
-      if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+      if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+      else if(data.status==="closed"||data.status==="cancelled"||data.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
       else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
       if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
@@ -3165,6 +3168,37 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           </div>
         )}
 
+        {/* Annulation mission — visible step 0 à 2 */}
+        {step < 3 && step !== 4 && !showTrackingCancel && (
+          <button onClick={()=>setShowTrackingCancel(true)} style={{ width:"100%", marginTop:8, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+            ✕ Annuler la prestation
+          </button>
+        )}
+        {step === 4 && (
+          <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"16px", textAlign:"center", fontSize:14, color:"#F25E5E", fontWeight:600 }}>
+            ❌ Cette prestation a été annulée
+          </div>
+        )}
+        {showTrackingCancel && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+              <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
+              <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
+              <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>L'annulation est immédiate. Le remboursement dépend de la politique d'annulation.</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={()=>setShowTrackingCancel(false)} disabled={trackingCancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
+                <button onClick={async()=>{
+                  setTrackingCancelling(true);
+                  const { data:{ session } } = await supabase.auth.getSession();
+                  await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"cancel_client", mission_id:resolvedMissionId }) });
+                  setStep(4); setShowTrackingCancel(false); setTrackingCancelling(false);
+                }} disabled={trackingCancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:trackingCancelling?"default":"pointer", fontFamily:"inherit" }}>
+                  {trackingCancelling ? "Annulation…" : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {step===3 && (
           <Btn full variant="success" onClick={()=>onNavigate("validation",provider)} style={{ fontSize:15, padding:"16px" }}>
             ✅ Valider la prestation
@@ -4829,6 +4863,24 @@ export function LegalScreen({ type, onBack }) {
         { title:"9. Litiges et qualité des prestations", text:"En cas de contestation sur la qualité d'une prestation, le client dispose de 48 heures après la date de fin de la prestation pour signaler un problème via la plateforme (bouton « Signaler un problème » dans l'historique des prestations).\n\nALANE examine le litige sous 72 heures ouvrées sur la base des éléments fournis par les deux parties (échanges via le tchat, contrat signé, description initiale de la prestation). ALANE peut décider de :\n\n• Valider la prestation et libérer les fonds au prestataire si elle est jugée conforme\n• Procéder à un remboursement partiel ou total du client\n• Suspendre le compte du prestataire en cas de manquement grave\n\nAu-delà du délai de 48 heures sans signalement, la validation est réputée définitivement acquise et les fonds libérés. Aucune contestation ne pourra être acceptée après ce délai.\n\nLes fonds sont conservés par ALANE jusqu'à résolution du litige. ALANE agit en tant qu'arbitre neutre et sa décision est définitive dans le cadre des présentes CGPS." },
       ]
     },
+    contrat_prestation: {
+      title:"Contrat de Prestation de Services",
+      icon:"📄",
+      sections:[
+        { title:"Préambule", text:"Le présent contrat est conclu entre ALANE (la plateforme), le prestataire auto-entrepreneur et le client. Il régit les conditions d'exécution de la prestation définie lors de la réservation." },
+        { title:"Article 1 — Objet du contrat", text:"Le présent contrat a pour objet la réalisation par le prestataire d'une mission de services à la personne ou aux entreprises, dans le secteur et pour le métier définis au moment de la réservation sur la plateforme ALANE." },
+        { title:"Article 2 — Statut du prestataire", text:"Le prestataire intervient en qualité d'auto-entrepreneur indépendant, immatriculé au RCS ou au répertoire des métiers. Il n'existe aucun lien de subordination entre le prestataire et le client ni entre le prestataire et ALANE. La relation est régie par les dispositions applicables aux auto-entrepreneurs (art. L8221-6 du Code du travail)." },
+        { title:"Article 3 — Description de la prestation", text:"La prestation comprend : le métier et secteur sélectionnés lors de la réservation, la date et l'heure de début confirmées, la durée exprimée en heures, l'adresse d'intervention, le tarif horaire HT tel qu'affiché. Ces éléments sont consignés dans le récapitulatif de réservation accessible dans l'historique." },
+        { title:"Article 4 — Tarifs et paiement", text:"Le montant total TTC est calculé sur la base du tarif horaire × durée + frais de service ALANE. Le paiement est sécurisé via Stripe. Les fonds sont bloqués à la confirmation et libérés au prestataire après validation mutuelle de la fin de prestation. ALANE ne détient jamais les fonds directement." },
+        { title:"Article 5 — Obligations du prestataire", text:"Le prestataire s'engage à : se présenter à l'heure et à l'adresse convenues, exécuter la prestation selon les règles de l'art et les instructions du client, ne pas sous-traiter la mission sans accord écrit du client, respecter les règles d'hygiène, de sécurité et de confidentialité applicables, disposer des assurances professionnelles requises." },
+        { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, valider la prestation dans les 24 heures suivant son terme, payer le montant convenu via la plateforme. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité." },
+        { title:"Article 7 — Annulation", text:"Annulation par le client : avant le début de la prestation, les frais de service restent dus. Le montant de la prestation est remboursé intégralement si l'annulation intervient plus de 24h avant le début, sinon une retenue proportionnelle peut s'appliquer. Annulation par le prestataire : le client en est informé immédiatement via la plateforme et une proposition de remplacement lui est faite." },
+        { title:"Article 8 — Responsabilité", text:"ALANE agit en qualité d'intermédiaire de mise en relation et ne peut être tenu responsable de la mauvaise exécution de la prestation, des dommages causés durant la prestation ou de tout litige entre client et prestataire. La responsabilité professionnelle du prestataire est engagée dans le cadre de son activité indépendante." },
+        { title:"Article 9 — Litiges", text:"En cas de contestation sur la qualité de la prestation, le client dispose de 48 heures après la fin pour le signaler via la plateforme. ALANE examinera le litige sous 72 heures sur la base des éléments fournis (échanges chat, contrat signé, description de la prestation). Au-delà de 48h sans signalement, la prestation est réputée validée et les fonds libérés définitivement." },
+        { title:"Article 10 — Données personnelles", text:"Les données des parties sont traitées conformément au RGPD. Elles sont utilisées exclusivement dans le cadre de l'exécution du présent contrat. Voir la Politique de confidentialité pour le détail complet des traitements effectués par ALANE." },
+        { title:"Article 11 — Signature électronique", text:"La confirmation de la réservation via la plateforme ALANE vaut signature électronique du présent contrat par les deux parties. Cette signature a la même valeur juridique qu'une signature manuscrite conformément au Règlement eIDAS et à l'article 1366 du Code civil français." },
+      ]
+    },
     mentions_legales: {
       title:"Mentions légales",
       icon:"⚖️",
@@ -5434,7 +5486,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 {dist != null && (
                   <div style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginBottom:10 }}>
-                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1)} km`}</strong> de vous
+                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1)} km`}</strong> du lieu de mission
                   </div>
                 )}
                 <a href={`https://www.google.com/maps?q=${prestaPosition.lat},${prestaPosition.lng}`} target="_blank" rel="noopener noreferrer"
