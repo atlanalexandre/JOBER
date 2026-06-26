@@ -2999,12 +2999,13 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const poll = async () => {
       if(!mounted) return;
       // Poll prestation status
-      const { data } = await supabase.from("missions").select("status,extra_hours_status").eq("id",resolvedMissionId).single();
+      const { data } = await supabase.from("missions").select("status,extra_hours_status,arrived_at").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
       if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="closed"||data.status==="cancelled"||data.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
       else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
-      else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
+      else if(data.status==="assigned" && data.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
+      else if(data.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
       if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
 
       // Poll GPS position
@@ -3031,6 +3032,25 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     const iv = setInterval(poll, 20000);
     return ()=>{ mounted=false; clearInterval(iv); };
   },[resolvedMissionId]);
+
+  // Realtime: react instantly when prestataire checks in or mission status changes
+  useEffect(() => {
+    if (!resolvedMissionId) return;
+    const channel = supabase
+      .channel(`tracking_${resolvedMissionId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "missions", filter: `id=eq.${resolvedMissionId}` }, (payload) => {
+        const d = payload.new;
+        if (!d) return;
+        if(d.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+        else if(d.status==="closed"||d.status==="cancelled"||d.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
+        else if(d.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+        else if(d.status==="assigned" && d.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
+        else if(d.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
+        if(d.extra_hours_status) setExtraHoursStatus(d.extra_hours_status);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [resolvedMissionId]);
 
   const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
 

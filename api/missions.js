@@ -1635,6 +1635,7 @@ export default async function handler(req, res) {
           method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
         }).catch(() => {});
+        await sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
@@ -1916,6 +1917,7 @@ export default async function handler(req, res) {
       const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${caller.id}&prestataire_id=eq.${prestataire_id}&status=in.(pending_acceptance,assigned)&select=id&limit=1`, { headers });
       const mCheck = await mCheckRes.json().catch(() => []);
       if (!Array.isArray(mCheck) || mCheck.length === 0) return res.status(403).json({ error: "Non autorisé" });
+      const missionId = mCheck[0].id;
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
       const ud = await ur.json();
@@ -1926,6 +1928,18 @@ export default async function handler(req, res) {
       const RESEND_KEY  = process.env.RESEND_API_KEY;
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_KEY && prestaEmail) {
+        // Generate one-click action tokens (valid 24h)
+        const EMAIL_SECRET = process.env.BO_SESSION_SECRET;
+        let acceptUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/mission-email-action?action=accept&m=${missionId}&p=${prestataire_id}`;
+        let refuseUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/mission-email-action?action=refuse&m=${missionId}&p=${prestataire_id}`;
+        if (EMAIL_SECRET && missionId) {
+          const { createHmac } = await import("crypto");
+          const exp = Math.floor(Date.now() / 1000) + 86400;
+          const makeToken = (act) => createHmac("sha256", EMAIL_SECRET).update(`${act}.${missionId}.${prestataire_id}.${exp}`).digest("base64url");
+          acceptUrl += `&exp=${exp}&sig=${encodeURIComponent(makeToken("accept"))}`;
+          refuseUrl += `&exp=${exp}&sig=${encodeURIComponent(makeToken("refuse"))}`;
+        }
+
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
@@ -1943,7 +1957,12 @@ export default async function handler(req, res) {
                 ⏱ ${hours || "?"}h de travail${tarif_horaire ? ` · ${Number(tarif_horaire).toFixed(2).replace(".",",")} €/h HT` : ""}<br/>
                 📍 ${adresse ? `${adresse}, ` : ""}${ville || "Ville à confirmer"}
               </div>
-              <p>Connectez-vous à <strong>ALANE</strong> pour accepter ou refuser dans les délais impartis.</p>
+              <p style="margin:20px 0 8px">Répondez directement depuis cet email :</p>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td style="padding-right:8px"><a href="${acceptUrl}" style="display:block;text-align:center;background:#10D98F;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">✅ Accepter</a></td>
+                <td style="padding-left:8px"><a href="${refuseUrl}" style="display:block;text-align:center;background:#F25E5E;color:#fff;text-decoration:none;padding:13px 0;border-radius:10px;font-weight:700;font-size:15px">❌ Refuser</a></td>
+              </tr></table>
+              <p style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.45)">Ces boutons sont valables 24h. Passé ce délai, connectez-vous à l'application.</p>
               <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
@@ -2033,7 +2052,13 @@ export default async function handler(req, res) {
                 from: RESEND_FROM,
                 to: [prestaEmail],
                 subject: "⏱ Demande d'heures supplémentaires",
-                html: `<p>Le client souhaite prolonger la prestation de <strong>${eh}h supplémentaire${eh > 1 ? "s" : ""}</strong>.</p><p>Connectez-vous à ALANE pour accepter ou refuser cette demande.</p>`,
+                html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+                  <h2 style="color:#A29BFE;margin:0 0 12px">⏱ Heures supplémentaires demandées</h2>
+                  <p>Le client souhaite prolonger la prestation de <strong style="color:#fff">${eh}h supplémentaire${eh > 1 ? "s" : ""}</strong>.</p>
+                  <p style="margin-top:12px">Ouvrez l'application pour accepter ou refuser cette demande :</p>
+                  <p style="margin-top:16px"><a href="${process.env.APP_URL || "https://www.alane.fr"}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px">Ouvrir ALANE</a></p>
+                  <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+                </div>`,
               }),
             });
           }
