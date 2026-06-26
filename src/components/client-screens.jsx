@@ -7,7 +7,7 @@ import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divi
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
-function ContractModal({ title, contractText, onSign, onClose }) {
+function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
   return (
     <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -16,9 +16,14 @@ function ContractModal({ title, contractText, onSign, onClose }) {
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:12, WebkitOverflowScrolling:"touch" }}>
           <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
         </div>
+        {onViewCgps && (
+          <button onClick={onViewCgps} style={{ flexShrink:0, width:"100%", padding:"10px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            📝 Lire les CGPS complètes →
+          </button>
+        )}
         <div style={{ flexShrink:0 }}>
           <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", marginBottom:16 }}>
             <div onClick={()=>setAccepted(v=>!v)} style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepted ? C.violet : "#334"}`, background: accepted ? C.violet : "transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s", marginTop:1 }}>
@@ -2342,8 +2347,9 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
 export function BookingScreen({ provider, onNavigate, onBack }) {
   const p = provider;
+  const [localUrgent, setLocalUrgent] = useState(false);
   if (!p) return null;
-  const isUrgent = p.urgentMode || false;
+  const isUrgent = p.urgentMode || localUrgent || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
   const [payMethod,setPayMethod]=useState("carte");
@@ -2365,6 +2371,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
   const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
+  const [showCgpsFromContract, setShowCgpsFromContract] = useState(false);
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
@@ -2385,7 +2392,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   }, []);
 
 
-  const tarifHoraire = isUrgent && urgentPrice ? urgentPrice : (p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers'));
+  const baseRate = p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers');
+  const tarifHoraire = isUrgent ? (urgentPrice || (baseRate + 2)) : baseRate;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -2416,9 +2424,16 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* Contrat électronique client */}
+      {showCgpsFromContract && (
+        <div style={{ position:"fixed", inset:0, zIndex:10000, overflowY:"auto", background:"#0A1628", WebkitOverflowScrolling:"touch" }}>
+          <LegalScreen type="cgps" onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }} />
+        </div>
+      )}
+
       {showClientContract && (
         <ContractModal
           title="Contrat de prestation de services"
+          onViewCgps={()=>{ setShowClientContract(false); setShowCgpsFromContract(true); }}
           contractText={`CONTRAT DE PRESTATION DE SERVICES
 
 Parties :
@@ -2686,7 +2701,24 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
-          {tooSoonError && <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F0B429" }}>⚡ Cette prestation est dans moins de 2h. Revenez en arrière et activez le <strong>mode urgence</strong> (+2€ HT/h), ou choisissez une date ultérieure.</div>}
+          {tooSoonError && !isUrgent && (
+            <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ fontSize:13, color:"#F0B429", marginBottom:12, lineHeight:1.5 }}>
+                ⚡ Cette prestation démarre dans moins de 2h — le mode urgence est requis pour cette plage horaire.
+              </div>
+              <button onClick={()=>{ setLocalUrgent(true); setTooSoonError(false); }} style={{
+                width:"100%", padding:"12px 16px", borderRadius:10,
+                background:"linear-gradient(135deg,#F0B429,#E09A1A)", border:"none",
+                color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}>
+                🚨 Activer le mode urgence (+2€ HT/h)
+              </button>
+              <div style={{ fontSize:11, color:"rgba(240,180,41,0.7)", textAlign:"center", marginTop:8 }}>
+                Ou choisissez une date ultérieure
+              </div>
+            </div>
+          )}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
@@ -2730,24 +2762,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         {step===2 && <>
           <div style={{ background:"#0D1B3E", borderRadius:16, overflow:"hidden", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             {(adresse || ville) ? (
-              <a
-                href={`https://maps.apple.com/?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`}
-                target="_blank" rel="noreferrer"
-                style={{ display:"block", textDecoration:"none" }}
-              >
-                <img
-                  alt="Carte"
-                  width="100%"
-                  height="150"
-                  style={{ display:"block", objectFit:"cover" }}
-                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=${encodeURIComponent([ville||"Paris", "France"].join(", "))}&zoom=15&size=480x150&markers=${encodeURIComponent([adresse, ville].filter(Boolean).join(", "))},red`}
-                  onError={e => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }}
-                />
-                <div style={{ display:"none", background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }}>
-                  <div style={{ fontSize:28 }}>📍</div>
-                  <div style={{ color:C.textMuted, fontSize:12 }}>Appuyer pour ouvrir la carte</div>
-                </div>
-              </a>
+              <iframe
+                title="Carte prestation"
+                src={`https://maps.google.com/maps?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(" "))}&output=embed&hl=fr&z=15`}
+                width="100%"
+                height="180"
+                style={{ border:0, display:"block" }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             ) : (
               <div style={{ background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <div style={{ textAlign:"center", color:C.textMuted }}>
