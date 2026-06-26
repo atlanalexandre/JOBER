@@ -2426,7 +2426,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
       {/* Contrat électronique client */}
       {showCgpsFromContract && (
         <div style={{ position:"fixed", inset:0, zIndex:10000, overflowY:"auto", background:"#0A1628", WebkitOverflowScrolling:"touch" }}>
-          <LegalScreen type="contrat_prestation" onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }} />
+          <ContractScreen
+            provider={p}
+            amount={parseFloat(totalGlobal)}
+            hours={hours}
+            date={isUrgent ? urgentStartDate : startDate || ""}
+            missionId={null}
+            onSign={()=>{}}
+            onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }}
+          />
         </div>
       )}
 
@@ -3081,25 +3089,6 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           <MissionTimeline status={timelineStatus} />
         </div>
 
-        {/* Codes de présence — communiquer au prestataire sur place */}
-        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:14 }}>🔐 Codes de présence</div>
-          <p style={{ color:C.textSub, fontSize:12, margin:"0 0 14px", lineHeight:1.6 }}>Communiquez ces codes au prestataire uniquement lorsqu'il est physiquement sur place.</p>
-          <div style={{ display:"flex", gap:10 }}>
-            <div style={{ flex:1, background:`${C.success}12`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
-              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Arrivée</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.success, letterSpacing:6, fontFamily:"monospace" }}>{p?.id ? genMissionCode(p.id,"in") : "——"}</div>
-            </div>
-            <div style={{ flex:1, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
-              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Départ</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.accentGold, letterSpacing:6, fontFamily:"monospace" }}>{p?.id ? genMissionCode(p.id,"out") : "——"}</div>
-            </div>
-          </div>
-          <div style={{ marginTop:10, background:"rgba(255,165,0,0.08)", border:"1px solid rgba(255,165,0,0.25)", borderRadius:8, padding:"8px 12px", fontSize:11, color:"#FFA500" }}>
-            ⚠️ Ces codes changent chaque jour. Ne les partagez qu'en présence du prestataire.
-          </div>
-        </div>
-
         {/* Heures supplémentaires — visible dès que le prestataire est sur place */}
         {step >= 1 && step < 3 && (
           <div style={{ marginBottom:16 }}>
@@ -3175,8 +3164,11 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           </button>
         )}
         {step === 4 && (
-          <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"16px", textAlign:"center", fontSize:14, color:"#F25E5E", fontWeight:600 }}>
-            ❌ Cette prestation a été annulée
+          <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
+            <div style={{ fontSize:14, color:"#F25E5E", fontWeight:700, marginBottom:12 }}>❌ Cette prestation a été annulée</div>
+            <button onClick={()=>onNavigate("dashboard")} style={{ padding:"11px 24px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              Retour à l'accueil
+            </button>
           </div>
         )}
         {showTrackingCancel && (
