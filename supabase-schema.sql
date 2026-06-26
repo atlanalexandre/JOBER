@@ -470,3 +470,6 @@ CREATE INDEX IF NOT EXISTS idx_blacklist_email     ON account_blacklist(email)  
 
 -- Checkin prestataire : horodatage d'arrivée sur place
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
+
+-- Démarrage effectif de la prestation (déclenche le timer côté prestataire)
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS started_at timestamptz;
