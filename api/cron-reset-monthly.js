@@ -20,6 +20,14 @@ function formatPhone(raw) {
   return null;
 }
 
+function frenchOffsetMs(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
+  const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
+  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
+}
+
 function sendSms(apiKey, to, content) {
   const phone = formatPhone(to);
   if (!phone) return Promise.resolve();
@@ -269,8 +277,8 @@ ${(() => {
         const autoMissions = Array.isArray(autoMissionsRaw) ? autoMissionsRaw.filter(m => {
           if (!m.date) return true;
           const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-          const missionEndMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime()
-            + Number(m.hours || 1) * 3600000;
+          const naiveMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime();
+          const missionEndMs = naiveMs + frenchOffsetMs(new Date(naiveMs)) + Number(m.hours || 1) * 3600000;
           return nowTs - missionEndMs >= 24 * 3600000;
         }) : [];
 

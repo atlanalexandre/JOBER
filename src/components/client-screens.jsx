@@ -3358,18 +3358,24 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
         })}
         <div ref={endRef} />
       </div>
-      <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
-        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          <input
-            value={msg}
-            onChange={e => setMsg(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && send()}
-            placeholder="Votre message…"
-            style={{ flex:1, padding:"12px 16px", borderRadius:24, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", background:"#112240", color:C.text }}
-          />
-          <button onClick={send} disabled={sending || !msg.trim()} style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, border:"none", cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:(!msg.trim()||sending)?0.5:1 }}>➤</button>
+      {p.readOnly ? (
+        <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
+          <div style={{ textAlign:"center", color:C.textMuted, fontSize:12, padding:"8px 0" }}>🔒 Mission terminée — conversation archivée</div>
         </div>
-      </div>
+      ) : (
+        <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+            <input
+              value={msg}
+              onChange={e => setMsg(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && send()}
+              placeholder="Votre message…"
+              style={{ flex:1, padding:"12px 16px", borderRadius:24, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", background:"#112240", color:C.text }}
+            />
+            <button onClick={send} disabled={sending || !msg.trim()} style={{ width:44, height:44, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, border:"none", cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:(!msg.trim()||sending)?0.5:1 }}>➤</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5126,7 +5132,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                   )}
                   <div style={{ color:C.violet, fontSize:11, marginTop:3 }}>Voir le profil →</div>
                 </div>
-                <button onClick={(e)=>{ e.stopPropagation(); if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet }); }}
+                <button onClick={(e)=>{ e.stopPropagation(); if(selected.prestataire_id) onNavigate("chat", { id:selected.prestataire_id, name:prestaName||"Prestataire", avatar:"👷", color:C.violet, readOnly:["completed","closed"].includes(selected.status) }); }}
                   style={{ padding:"8px 14px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                   💬 Chat
                 </button>
@@ -5213,11 +5219,11 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           )}
           {selected.status === "needs_replacement" && (
             <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
-              <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Prestataire désisté</div>
+              <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Mission en cours de réassignation</div>
               <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>
-                Votre paiement est conservé et sécurisé. Nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte la mission.
+                Le prestataire initialement assigné s'est désisté. Votre mission reste active — nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte.
               </div>
-              <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune nouvelle facturation ne sera effectuée.</div>
+              <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune facturation supplémentaire ne sera effectuée.</div>
             </div>
           )}
           </>)}
