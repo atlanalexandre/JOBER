@@ -2242,7 +2242,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     const seenKey = `alane_presta_recap_seen_${uid}`;
     let seenIds; try { seenIds = new Set(JSON.parse(localStorage.getItem(seenKey)||"[]")); } catch(e) { seenIds = new Set(); }
     seenIds.add(recapCard.id);
-    try { localStorage.setItem(seenKey, JSON.stringify([...seenIds])); } catch(e) {}
+    // Cap à 500 pour éviter un localStorage illimité — on garde les plus récents
+    const seenArr = [...seenIds];
+    const capped = seenArr.length > 500 ? seenArr.slice(seenArr.length - 500) : seenArr;
+    try { localStorage.setItem(seenKey, JSON.stringify(capped)); } catch(e) {}
     setRecapCard(null);
   };
 
