@@ -576,7 +576,9 @@ ${(() => {
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0`, {
+    // trial_exhausted=not.is.true : ne pas remettre à 0 les profils dont l'offre est épuisée
+    // → evite que le compteur "retombe" à 0 et laisse croire qu'un nouveau quota est disponible
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0&trial_exhausted=not.is.true`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ missions_completed_month: 0 }),

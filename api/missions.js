@@ -754,6 +754,47 @@ export default async function handler(req, res) {
         } catch (pe) { console.error("[complete] Payout error:", pe.message); }
       }
 
+      // Incrémenter missions_completed_month du prestataire + auto-marquer trial_exhausted si limite atteinte
+      if (mission.prestataire_id) {
+        try {
+          // Récupérer le compteur actuel du prestataire et son plan
+          const [prMonthRes, prPlanRes] = await Promise.all([
+            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
+            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers }),
+          ]);
+          const prMonthData = await prMonthRes.json();
+          const prPlan = await prPlanRes.json();
+          const prProfile = Array.isArray(prMonthData) && prMonthData[0];
+          if (prProfile && !prProfile.trial_exhausted) {
+            const newCount = (prProfile.missions_completed_month || 0) + 1;
+            const plan = prPlan?.user_metadata?.plan_abonnement || "free";
+
+            // Récupérer la limite du plan depuis platform_settings
+            let PLAN_LIMITS_C = { free: 2, premium: 10, elite: 999 };
+            try {
+              const plRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+              const plData = await plRes.json();
+              if (Array.isArray(plData) && plData[0]?.value) PLAN_LIMITS_C = plData[0].value;
+            } catch {}
+            const planLimit = PLAN_LIMITS_C[plan] ?? 2;
+
+            const patchBody = { missions_completed_month: newCount };
+            // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
+            if (plan === "free" && newCount >= planLimit) {
+              patchBody.trial_exhausted = true;
+              console.log(`[complete] Prestataire ${mission.prestataire_id} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
+            }
+            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}`, {
+              method: "PATCH",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify(patchBody),
+            }).catch(e => console.error("[complete] prestataire missions_completed_month update error:", e.message));
+          }
+        } catch (e) {
+          console.error("[complete] prestataire slot tracking error:", e.message);
+        }
+      }
+
       return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
     }
 
