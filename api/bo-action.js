@@ -54,16 +54,36 @@ async function sendEmail({ to, subject, html }) {
   const key  = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
   if (!key) return;
-  try {
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html }),
-    });
-    if (!r.ok) { const body = await r.text(); console.error("Resend bo-action error:", r.status, body); }
-  } catch (e) {
-    console.error("sendEmail error:", e);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to: [to], subject, html }),
+      });
+      if (r.ok) return;
+      const body = await r.text();
+      console.error(`Resend bo-action error (attempt ${attempt + 1}):`, r.status, body);
+      if (r.status < 500) return; // Erreur client — ne pas retenter
+      if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
+    } catch (e) {
+      console.error(`sendEmail error (attempt ${attempt + 1}):`, e);
+      if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
+    }
   }
+}
+
+// Validation SIRET : 14 chiffres + algorithme de Luhn
+function validateSiret(raw) {
+  const s = String(raw || "").replace(/\s/g, "");
+  if (!/^\d{14}$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 14; i++) {
+    let n = parseInt(s[i], 10);
+    if (i % 2 === 0) { n *= 2; if (n > 9) n -= 9; }
+    sum += n;
+  }
+  return sum % 10 === 0;
 }
 
 export default async function handler(req, res) {
@@ -124,6 +144,16 @@ export default async function handler(req, res) {
 
       const userData = await userRes.json();
       const userEmail = userData.email;
+
+      // Validation SIRET serveur pour les prestataires professionnels
+      if (action === "approve") {
+        const metaForSiret = userData.user_metadata || {};
+        const rawSiret = metaForSiret.kbis ? String(metaForSiret.kbis).replace(/\s/g, "") : null;
+        if (rawSiret && rawSiret.length > 0 && !validateSiret(rawSiret)) {
+          console.warn(`[approve] SIRET invalide — profileId=${profileId} siret=${rawSiret}`);
+          return res.status(400).json({ error: "SIRET invalide (algorithme de Luhn)" });
+        }
+      }
 
       // Anti-abus à l'approbation : vérifier si les identifiants du nouveau compte
       // correspondent à un compte précédemment supprimé

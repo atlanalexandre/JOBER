@@ -1003,7 +1003,7 @@ export default async function handler(req, res) {
       const prData = await prRes.json();
       if (Array.isArray(prData)) {
         const chunks = [];
-        for (let i = 0; i < prData.length; i += 5) chunks.push(prData.slice(i, i + 5));
+        for (let i = 0; i < prData.length; i += 20) chunks.push(prData.slice(i, i + 20));
         for (const chunk of chunks) {
           await Promise.all(chunk.map(async (p) => {
             if (p.id === caller.id) return;
@@ -1113,7 +1113,7 @@ export default async function handler(req, res) {
       let notified = 0;
       if (Array.isArray(profiles)) {
         const chunks = [];
-        for (let i = 0; i < profiles.length; i += 5) chunks.push(profiles.slice(i, i + 5));
+        for (let i = 0; i < profiles.length; i += 20) chunks.push(profiles.slice(i, i + 20));
         for (const chunk of chunks) {
           await Promise.all(chunk.map(async (p) => {
             try {
