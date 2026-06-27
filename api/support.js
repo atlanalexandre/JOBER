@@ -1,3 +1,14 @@
+// Rate limiting anti-spam pour les soumissions de contact publiques
+const _contactRl = new Map();
+function checkContactRateLimit(ip) {
+  const now = Date.now();
+  const rec = _contactRl.get(ip) || { count: 0, reset: now + 600_000 }; // 10 min
+  if (now > rec.reset) { rec.count = 0; rec.reset = now + 600_000; }
+  rec.count++;
+  _contactRl.set(ip, rec);
+  return rec.count > 3; // max 3 tickets/10min par IP
+}
+
 async function verifyUser(req, supabaseUrl, serviceRoleKey) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
@@ -312,12 +323,18 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   }
 
   // ── default: support ticket ───────────────────────────────────────
-  const { subject, message, userEmail, userName, userId } = req.body || {};
+  const { subject, message, userEmail, userName, userId, _hp } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
   if (message.length < 10) return res.status(400).json({ error: "Le message doit contenir au moins 10 caractères" });
   if (subject.length > 200) return res.status(400).json({ error: "Le sujet ne doit pas dépasser 200 caractères" });
   if (message.length > 5000) return res.status(400).json({ error: "Le message ne doit pas dépasser 5000 caractères" });
   if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return res.status(400).json({ error: "Adresse email invalide" });
+  // Anti-spam : honeypot + rate limit pour les soumissions anonymes (sans userId)
+  if (_hp) return res.status(200).json({ success: true }); // Champ honeypot rempli = bot
+  if (!userId) {
+    const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+    if (checkContactRateLimit(ip)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
+  }
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -285,6 +285,11 @@ function RoleScreen({ onSelect }) {
       <p style={{ color:C.textMuted, fontSize:11, textAlign:"center", marginTop:16 }}>
         En continuant, vous acceptez nos <span onClick={()=>setShowCGU(true)} style={{ color:C.violet, cursor:"pointer", textDecoration:"underline" }}>CGU</span>
       </p>
+      <div style={{ textAlign:"center", marginTop:12 }}>
+        <button onClick={()=>onSelect("contact")} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline" }}>
+          📩 Nous contacter sans créer de compte
+        </button>
+      </div>
       {showCGU && (
         <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
@@ -314,7 +319,124 @@ function RoleScreen({ onSelect }) {
 
 
 
-// ── CONTACT SUPPORT ───────────────────────────────────────────────
+// ── CONTACT PUBLIC (sans compte) ──────────────────────────────────
+function PublicContactScreen({ onBack }) {
+  const [name, setName]       = useState("");
+  const [email, setEmail]     = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState("");
+
+  const SUBJECTS = ["Question générale","Problème technique","Question commerciale","Partenariat","Presse / Médias","Autre"];
+
+  const handleSend = async () => {
+    if (!name.trim())    { setError("Votre nom est requis"); return; }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Adresse email invalide"); return; }
+    if (!subject)        { setError("Choisissez un sujet"); return; }
+    if (!message.trim() || message.length < 20) { setError("Message trop court (20 caractères minimum)"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), userId: "", _hp: "" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(()=>({}));
+        throw new Error(d.error || "Erreur serveur");
+      }
+      setSent(true);
+    } catch(e) {
+      setError(e.message || "Envoi échoué. Réessayez dans quelques instants.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20 0%, #0A1628 60%, #162547 100%)`, display:"flex", flexDirection:"column" }}>
+      <div style={{ padding:"52px 22px 24px", borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+        <button onClick={onBack} aria-label="Retour à l'accueil" style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:16, fontFamily:"inherit" }}>
+          ← Retour
+        </button>
+        <div style={{ marginBottom:14 }}><ALANELogo size="sm" /></div>
+        <h1 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Nous contacter</h1>
+        <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6 }}>Pas besoin de compte — notre équipe répond sous 24h ouvrées.</p>
+      </div>
+
+      <div style={{ flex:1, padding:"28px 22px 60px", overflowY:"auto" }}>
+        {sent ? (
+          <div style={{ textAlign:"center", paddingTop:48 }}>
+            <div aria-hidden="true" style={{ fontSize:64, marginBottom:20 }}>✅</div>
+            <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:"0 0 10px" }}>Message envoyé !</h2>
+            <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 32px" }}>
+              Nous vous répondrons à <strong style={{ color:C.white }}>{email}</strong> sous 24h ouvrées.
+            </p>
+            <button onClick={onBack} style={{ background:C.violet, color:"#fff", border:"none", borderRadius:r, padding:"14px 28px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              ← Retour à l'accueil
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:24, display:"flex", gap:10 }}>
+              <span aria-hidden="true" style={{ fontSize:18 }}>💬</span>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Question, partenariat, problème technique… remplissez le formulaire et nous vous répondrons par email.</p>
+            </div>
+
+            {/* Champ honeypot anti-spam — invisible pour les humains */}
+            <input aria-hidden="true" tabIndex={-1} name="_hp" style={{ position:"absolute", left:"-9999px", width:1, height:1, overflow:"hidden" }} />
+
+            <div style={{ marginBottom:16 }}>
+              <label htmlFor="pc-name" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:0.8 }}>Votre nom *</label>
+              <input id="pc-name" type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Prénom Nom" autoComplete="name"
+                style={{ width:"100%", padding:"13px 16px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", boxSizing:"border-box", outline:"none" }} />
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <label htmlFor="pc-email" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:0.8 }}>Votre email *</label>
+              <input id="pc-email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="vous@exemple.com" autoComplete="email"
+                style={{ width:"100%", padding:"13px 16px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", boxSizing:"border-box", outline:"none" }} />
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Sujet *</label>
+              <div role="group" aria-label="Choix du sujet" style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {SUBJECTS.map(s=>(
+                  <button key={s} onClick={()=>setSubject(s)} aria-pressed={subject===s}
+                    style={{ padding:"9px 14px", borderRadius:20, border:`2px solid ${subject===s?C.violet:C.border}`, background:subject===s?`${C.violet}20`:"transparent", color:subject===s?C.violet:C.textSub, fontWeight:subject===s?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:24 }}>
+              <label htmlFor="pc-msg" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Votre message *</label>
+              <textarea id="pc-msg" value={message} onChange={e=>setMessage(e.target.value)}
+                placeholder="Décrivez votre demande en détail…"
+                style={{ width:"100%", padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:140, boxSizing:"border-box", outline:"none", color:C.text, background:"#112240", lineHeight:1.6 }}
+              />
+              <div style={{ textAlign:"right", color:C.textMuted, fontSize:11, marginTop:4 }}>{message.length} / 5000</div>
+            </div>
+
+            {error && <div role="alert" style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:16, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+
+            <button onClick={handleSend} disabled={loading} aria-busy={loading}
+              style={{ width:"100%", background:loading?"rgba(124,111,224,0.5)":C.violet, color:"#fff", border:"none", borderRadius:r, padding:"16px", fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", fontFamily:"inherit", boxShadow:loading?"none":`0 8px 24px ${C.violet}44`, transition:"all 0.2s" }}>
+              {loading ? "Envoi en cours…" : "📤 Envoyer mon message"}
+            </button>
+
+            <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20, lineHeight:1.7 }}>
+              Vos données sont utilisées uniquement pour répondre à votre demande et ne sont pas partagées.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
 function PendingApprovalScreen({ onLogout, onApproved }) {
   const [userEmail, setUserEmail] = useState("");
@@ -1288,7 +1410,8 @@ export default function App() {
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
-      {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
+      {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
+      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
