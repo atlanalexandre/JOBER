@@ -118,18 +118,38 @@ export default async function handler(req, res) {
   }
 
   if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const userId  = session.metadata?.user_id || session.client_reference_id;
-    const plan    = session.metadata?.plan;
-    const billing = session.metadata?.billing || "monthly";
+    const session        = event.data.object;
+    const userId         = session.metadata?.user_id || session.client_reference_id;
+    const plan           = session.metadata?.plan;
+    const billing        = session.metadata?.billing || "monthly";
+    const subscriptionId = session.subscription || null;
+    const customerId     = session.customer     || null;
+
     if (userId && plan && SUPABASE_URL && SERVICE_ROLE_KEY) {
       const hdrs = {
         "apikey":        SERVICE_ROLE_KEY,
         "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
         "Content-Type":  "application/json",
       };
-      const daysToAdd = billing === "yearly" ? 365 : 30;
-      const endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
+
+      // Use actual current_period_end from Stripe subscription rather than estimating
+      let endDate = null;
+      if (subscriptionId && STRIPE_SECRET_KEY) {
+        try {
+          const subR = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+          });
+          if (subR.ok) {
+            const sub = await subR.json();
+            if (sub.current_period_end) endDate = new Date(sub.current_period_end * 1000).toISOString();
+          }
+        } catch {}
+      }
+      if (!endDate) {
+        const daysToAdd = billing === "yearly" ? 365 : 30;
+        endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
+      }
+
       try {
         // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
         const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
@@ -142,7 +162,12 @@ export default async function handler(req, res) {
         const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
           method: "PUT",
           headers: hdrs,
-          body: JSON.stringify({ user_metadata: { ...existingMeta, plan_abonnement: plan, subscription_end_date: endDate } }),
+          body: JSON.stringify({ user_metadata: {
+            ...existingMeta,
+            plan_abonnement: plan,
+            subscription_end_date: endDate,
+            ...(customerId ? { stripe_customer_id: customerId } : {}),
+          }}),
         });
         if (!r.ok) {
           console.error("stripe-webhook: user metadata update failed", r.status);
@@ -151,6 +176,97 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("stripe-webhook: Supabase down on checkout.session.completed", e);
         return res.status(500).json({ error: "Supabase unavailable" });
+      }
+
+      // Store subscription/customer IDs in profiles table for lifecycle tracking
+      const profilePatch = {
+        plan_abonnement: plan,
+        subscription_end_date: endDate ? endDate.split("T")[0] : null,
+        ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
+        ...(customerId     ? { stripe_customer_id: customerId }         : {}),
+      };
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        method: "PATCH",
+        headers: { ...hdrs, "Prefer": "return=minimal" },
+        body: JSON.stringify(profilePatch),
+      }).catch(e => console.error("[checkout] profile patch failed:", e.message));
+    }
+  }
+
+  // ── Subscription lifecycle (auto-renewal + cancellation) ──────────────────
+  if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+    const sub        = event.data.object;
+    const customerId = sub.customer;
+    const isActive   = event.type === "customer.subscription.updated" && ["active", "trialing"].includes(sub.status);
+    const plan       = isActive ? (sub.metadata?.plan || null) : null;
+
+    if (customerId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const hdrs = {
+        "apikey":        SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type":  "application/json",
+      };
+
+      // Find user by stripe_customer_id stored in profiles
+      let userId = null;
+      try {
+        const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_customer_id=eq.${customerId}&select=id`, { headers: hdrs });
+        if (profR.ok) {
+          const profData = await profR.json().catch(() => []);
+          userId = Array.isArray(profData) && profData[0]?.id || null;
+        }
+      } catch {}
+
+      if (!userId) {
+        console.warn("[subscription] user not found for customer:", customerId);
+        return res.status(200).json({ received: true });
+      }
+
+      if (isActive && plan) {
+        const endDate = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+
+        // Update user_metadata
+        try {
+          const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
+          if (getR.ok) {
+            const u = await getR.json();
+            const meta = u.user_metadata || {};
+            await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+              method: "PUT", headers: hdrs,
+              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: plan, subscription_end_date: endDate } }),
+            });
+          }
+        } catch (e) { console.error("[sub.updated] metadata update failed:", e.message); }
+
+        // Update profiles table
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            plan_abonnement: plan,
+            subscription_end_date: endDate ? endDate.split("T")[0] : null,
+          }),
+        }).catch(e => console.error("[sub.updated] profile patch failed:", e.message));
+
+      } else {
+        // Downgrade to free (subscription canceled or payment failed past grace period)
+        try {
+          const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
+          if (getR.ok) {
+            const u = await getR.json();
+            const meta = u.user_metadata || {};
+            await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+              method: "PUT", headers: hdrs,
+              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
+            });
+          }
+        } catch (e) { console.error("[sub.deleted] metadata downgrade failed:", e.message); }
+
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({ plan_abonnement: "free", subscription_end_date: null, stripe_subscription_id: null }),
+        }).catch(e => console.error("[sub.deleted] profile downgrade failed:", e.message));
       }
     }
   }

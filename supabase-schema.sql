@@ -424,6 +424,10 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_presta_signe_at timestampt
 -- Ne se remet pas à zéro lors du reset mensuel du cron
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_exhausted boolean DEFAULT false;
 
+-- Stripe subscription tracking
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_customer_id     text;
+
 -- ── TABLE account_blacklist ──────────────────────────────────
 -- Mémorise les identifiants des comptes prestataires supprimés
 -- pour empêcher de recréer un compte et retrouver les missions gratuites
