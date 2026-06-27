@@ -458,7 +458,7 @@ function ClientNav({ active, onNavigate, unreadCount }) {
     {id:"settings",        icon:"⚙️", label:"Réglages"},
   ];
   return (
-    <div style={{
+    <nav aria-label="Navigation client" style={{
       position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
       width:"100%", maxWidth:430,
       background:"#0D1B3E",
@@ -470,20 +470,24 @@ function ClientNav({ active, onNavigate, unreadCount }) {
     }}>
       {tabs.map(t=>{
         const active2 = active===t.id;
+        const badgeCount = t.id==="mission_history" && unreadCount > 0 ? unreadCount : 0;
         return (
-          <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+          <button key={t.id} onClick={()=>onNavigate(t.id)}
+            aria-current={active2 ? "page" : undefined}
+            aria-label={badgeCount > 0 ? `${t.label} (${badgeCount > 9 ? "9+" : badgeCount} non lu${badgeCount > 1 ? "s" : ""})` : t.label}
+            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0", fontFamily:"inherit" }}>
+            <span aria-hidden="true" style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
               {t.icon}
-              {t.id==="mission_history" && unreadCount > 0 && (
-                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              {badgeCount > 0 && (
+                <div aria-hidden="true" style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{badgeCount > 9 ? "9+" : badgeCount}</div>
               )}
             </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.violet:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
-            {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
+            {active2 && <div aria-hidden="true" style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
@@ -496,7 +500,7 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
     {id:"settings",        icon:"⚙️", label:"Réglages"  },
   ];
   return (
-    <div style={{
+    <nav aria-label="Navigation prestataire" style={{
       position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
       width:"100%", maxWidth:430,
       background:"#0D1B3E",
@@ -506,20 +510,24 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
     }}>
       {tabs.map(t=>{
         const active2 = active===t.id;
+        const badgeCount = t.id==="p_missions" && unreadCount > 0 ? unreadCount : 0;
         return (
-          <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+          <button key={t.id} onClick={()=>onNavigate(t.id)}
+            aria-current={active2 ? "page" : undefined}
+            aria-label={badgeCount > 0 ? `${t.label} (${badgeCount > 9 ? "9+" : badgeCount} non lu${badgeCount > 1 ? "s" : ""})` : t.label}
+            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0", fontFamily:"inherit" }}>
+            <span aria-hidden="true" style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
               {t.icon}
-              {t.id==="p_missions" && unreadCount > 0 && (
-                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              {badgeCount > 0 && (
+                <div aria-hidden="true" style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{badgeCount > 9 ? "9+" : badgeCount}</div>
               )}
             </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.accent:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
-            {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
+            {active2 && <div aria-hidden="true" style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
@@ -639,7 +647,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
   const accentColor = role === "prestataire" ? C.accent : C.violet;
 
   return (
-    <div style={{
+    <nav aria-label="Navigation principale" style={{
       width: 240, flexShrink: 0,
       background: `linear-gradient(180deg, ${C.navy} 0%, ${C.navyMid} 100%)`,
       height: "100vh", display: "flex", flexDirection: "column",
@@ -648,9 +656,9 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     }}>
       {/* Logo */}
       <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer", display:"inline-flex" }}>
+        <button onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} aria-label="Aller à l'accueil" style={{ cursor:"pointer", display:"inline-flex", background:"none", border:"none", padding:0 }}>
           <ALANELogo size="sm" />
-        </div>
+        </button>
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
@@ -663,61 +671,68 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
       </div>
 
       {/* Navigation */}
-      <div style={{ flex:1, padding:"16px 12px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+      <ul role="list" style={{ flex:1, padding:"16px 12px", overflowY:"auto", WebkitOverflowScrolling:"touch", margin:0, listStyle:"none" }}>
         {nav.map(item => {
           const active = screen === item.id;
           return (
-            <div key={item.id} onClick={() => onNavigate(item.id)}
-              style={{
-                display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
-                borderRadius:12, marginBottom:4, cursor:"pointer",
-                background: active ? `${accentColor}22` : "transparent",
-                border: `1px solid ${active ? accentColor+"44" : "transparent"}`,
-                transition:"all 0.18s",
-              }}
-              onMouseEnter={e=>{ if(!active) e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}
-              onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}
-            >
-              <span style={{ fontSize:17 }}>{item.icon}</span>
-              <span style={{ fontSize:13, fontWeight:active?700:400, color:active?C.white:"rgba(255,255,255,0.55)", transition:"color 0.18s" }}>{item.label}</span>
-              {active && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
-            </div>
+            <li key={item.id}>
+              <button
+                onClick={() => onNavigate(item.id)}
+                aria-current={active ? "page" : undefined}
+                aria-label={item.label}
+                style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
+                  borderRadius:12, marginBottom:4, cursor:"pointer",
+                  background: active ? `${accentColor}22` : "transparent",
+                  border: `1px solid ${active ? accentColor+"44" : "transparent"}`,
+                  transition:"all 0.18s", fontFamily:"inherit",
+                }}
+                onMouseEnter={e=>{ if(!active) e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}
+              >
+                <span aria-hidden="true" style={{ fontSize:17 }}>{item.icon}</span>
+                <span style={{ fontSize:13, fontWeight:active?700:400, color:active?C.white:"rgba(255,255,255,0.55)", transition:"color 0.18s" }}>{item.label}</span>
+                {active && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
       {/* Bottom actions */}
       <div style={{ padding:"12px", borderTop:"1px solid rgba(255,255,255,0.07)" }}>
         {role==="prestataire" && (
-          <div onClick={onToggleOnline} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:12, cursor:"pointer", background:onlineStatus?`${C.success}22`:"rgba(255,255,255,0.05)", border:`1px solid ${onlineStatus?C.success+"44":"rgba(255,255,255,0.1)"}`, marginBottom:8, transition:"all 0.2s" }}>
+          <button onClick={onToggleOnline} aria-pressed={onlineStatus} aria-label={onlineStatus ? "Passer hors ligne" : "Passer en ligne"} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:12, cursor:"pointer", background:onlineStatus?`${C.success}22`:"rgba(255,255,255,0.05)", border:`1px solid ${onlineStatus?C.success+"44":"rgba(255,255,255,0.1)"}`, marginBottom:8, transition:"all 0.2s", fontFamily:"inherit" }}>
             <div style={{ width:9, height:9, borderRadius:"50%", background:onlineStatus?C.success:C.gray, boxShadow:onlineStatus?`0 0 6px ${C.success}`:"none" }} />
             <span style={{ fontSize:12, color:onlineStatus?C.success:"rgba(255,255,255,0.4)", fontWeight:600 }}>{onlineStatus?"En ligne":"Hors ligne"}</span>
-            <div style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:onlineStatus?C.success:C.gray, position:"relative", transition:"all 0.3s" }}>
+            <div aria-hidden="true" style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:onlineStatus?C.success:C.gray, position:"relative", transition:"all 0.3s" }}>
               <div style={{ width:14, height:14, borderRadius:"50%", background:"#0D1B3E", position:"absolute", top:2, left:onlineStatus?16:2, transition:"left 0.3s" }} />
             </div>
-          </div>
+          </button>
         )}
-        <div onClick={()=>onNavigate("settings")}
-          style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, cursor:"pointer", marginBottom:6,
+        <button onClick={()=>onNavigate("settings")}
+          aria-current={screen==="settings" ? "page" : undefined}
+          aria-label="Réglages"
+          style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, cursor:"pointer", marginBottom:6,
             background: screen==="settings" ? `${accentColor}22` : "rgba(255,255,255,0.05)",
             border: `1px solid ${screen==="settings" ? accentColor+"55" : "rgba(255,255,255,0.1)"}`,
-            transition:"all 0.18s" }}
+            transition:"all 0.18s", fontFamily:"inherit" }}
           onMouseEnter={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.1)"; }}
           onMouseLeave={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
         >
-          <span style={{ fontSize:16 }}>⚙️</span>
+          <span aria-hidden="true" style={{ fontSize:16 }}>⚙️</span>
           <span style={{ fontSize:13, fontWeight: screen==="settings"?700:500, color: screen==="settings"?C.white:"rgba(255,255,255,0.75)" }}>Réglages</span>
           {screen==="settings" && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
-        </div>
-        <div onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)" }}
+        </button>
+        <button onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} aria-label="Se déconnecter" style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)", fontFamily:"inherit" }}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(242,94,94,0.18)"}
           onMouseLeave={e=>e.currentTarget.style.background="rgba(242,94,94,0.08)"}
         >
-          <span style={{ fontSize:14 }}>🚪</span>
+          <span aria-hidden="true" style={{ fontSize:14 }}>🚪</span>
           <span style={{ fontSize:11, color:"#F25E5E", fontWeight:600 }}>Se déconnecter</span>
-        </div>
+        </button>
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -770,9 +785,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {hybridBanner}
         {(showClientNav || showPrestaNav) && (
           <div style={{ flexShrink:0, padding:"10px 18px", borderBottom:`1px solid rgba(255,255,255,0.06)`, display:"flex", alignItems:"center", background:"#050E20" }}>
-            <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer" }}>
+            <button onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} aria-label="Aller à l'accueil" style={{ cursor:"pointer", background:"none", border:"none", padding:0 }}>
               <ALANELogo size="sm" />
-            </div>
+            </button>
           </div>
         )}
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", WebkitOverflowScrolling:"touch" }}>
@@ -1223,6 +1238,10 @@ export default function App() {
 
   return (
     <>
+    {/* Région aria-live pour les annonces dynamiques (screen readers) */}
+    <div aria-live="polite" aria-atomic="true" style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0 0 0 0)", whiteSpace:"nowrap" }}>
+      {notifCount > 0 ? `${notifCount} nouvelle${notifCount > 1 ? "s" : ""} notification${notifCount > 1 ? "s" : ""}` : ""}
+    </div>
     {showOnboarding && supaUser && (
       <OnboardingScreen
         role={role}
