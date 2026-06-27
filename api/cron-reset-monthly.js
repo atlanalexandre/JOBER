@@ -287,7 +287,7 @@ ${(() => {
         }
       } catch (e) { console.error("cron validation reminders error:", e); }
 
-      // ── 3. Auto-validation après 24h si le prestataire a validé ─────
+      // ── 3. Auto-validation après 24h — que le prestataire ait confirmé ou non ─────
       let autoValidated = 0;
       try {
         // DST-safe : soustraire 1 jour calendaire plutôt que 86400000ms
@@ -295,8 +295,10 @@ ${(() => {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
+        // On récupère toutes les missions assignées (peu importe validation_prestataire)
+        // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector,date,heure_debut`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector,date,heure_debut,validation_prestataire`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -341,10 +343,10 @@ ${(() => {
               const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-              // Marquer la mission complétée
+              // Marquer la mission complétée (forcer validation_prestataire=true si le prestataire n'avait pas confirmé)
               const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ status: "completed", validation_client: true, montant_total: montantTotal }),
+                body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal }),
               });
               if (!patchRes.ok) {
                 console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());

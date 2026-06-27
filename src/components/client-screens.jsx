@@ -5557,19 +5557,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           )}
           </>)}
           {selected.status === "assigned" && !completedResult && selected.arrived_at && (() => {
-            const elapsed = Date.now() - new Date(selected.arrived_at).getTime();
+            const maxMs = (selected.hours || 1) * 3600 * 1000;
+            const elapsed = Math.min(Date.now() - new Date(selected.arrived_at).getTime(), maxMs);
+            const done = elapsed >= maxMs;
             const s = Math.floor(elapsed / 1000);
             const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
             const timerStr = h > 0 ? `${h}h ${String(min).padStart(2,"0")}min` : `${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+            const color = done ? C.accentGold : C.success;
             return (
-              <div style={{ marginTop:16, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ marginTop:16, background:`${color}12`, border:`1px solid ${color}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div>
-                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>📍 Prestataire sur place</div>
+                  <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "📍 Prestataire sur place"}</div>
                   <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ color:C.success, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
-                  <div style={{ color:C.textMuted, fontSize:10 }}>en cours</div>
+                  <div style={{ color, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+                  <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "en cours"}</div>
                 </div>
               </div>
             );
