@@ -1035,7 +1035,7 @@ export function PrestaProfileEditScreen({ onBack }) {
           <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:`${color}22`, border:`2px solid ${color}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0 }}>
               {photoUrl
-                ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                ? <img src={photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                 : "📷"}
             </div>
             <div>
