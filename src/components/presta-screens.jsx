@@ -1844,9 +1844,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
                 {/* Timer / Checkin / Start */}
-                {startedAtMap[m.id] ? (
-                  // ── Prestation démarrée : timer ──
-                  {(() => {
+                {startedAtMap[m.id] ? (() => {
+                    // ── Prestation démarrée : timer ──
                     const maxMs = (m.hours || 1) * 3600 * 1000;
                     const elapsed = Math.min(now - new Date(startedAtMap[m.id]).getTime(), maxMs);
                     const done = elapsed >= maxMs;
@@ -1865,8 +1864,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         </div>
                       </div>
                     );
-                  })()}
-                ) : arrivedAtMap[m.id] ? (
+                  })() : arrivedAtMap[m.id] ? (
                   // ── Sur place, pas encore démarré : bouton "Je commence" ──
                   <div style={{ marginBottom:10 }}>
                     <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"8px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
