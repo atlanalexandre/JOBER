@@ -24,10 +24,10 @@ export class ErrorBoundary extends Component {
         <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, maxWidth:300, lineHeight:1.7, margin:"0 auto 24px" }}>
           Une erreur inattendue s'est produite. Nos équipes sont notifiées. Essayez de recharger la page.
         </p>
-        <button onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
+        <button aria-label="Recharger la page" onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
           &#128260; Recharger la page
         </button>
-        <button onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        <button aria-label="Réessayer sans recharger la page" onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
           Réessayer sans recharger
         </button>
       </div>

@@ -5414,7 +5414,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div onClick={navToProfile} style={{ display:"flex", alignItems:"center", gap:14, cursor:"pointer" }}>
                 <div onClick={navToProfile} style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
                   {prestaDetails.photo_url
-                    ? <img src={prestaDetails.photo_url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    ? <img src={prestaDetails.photo_url} alt={`Photo de profil de ${prestaName || prestaDetails.initials || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                     : prestaDetails.initials}
                 </div>
                 <div style={{ flex:1 }}>
@@ -5816,7 +5816,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                   <div
                     onClick={() => onNavigate("profile", navProv)}
                     style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
-                    {photoUrl ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
+                    {photoUrl ? <img src={photoUrl} alt={`Photo de profil de ${ph.name || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
                   </div>
                   <div style={{ flex:1, minWidth:0 }} onClick={() => onNavigate("profile", navProv)} >
                     <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{ph.name}</div>
