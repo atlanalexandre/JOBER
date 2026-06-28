@@ -1125,16 +1125,19 @@ export default function App() {
     }
   },[]);
 
-  // Recharge le plan prestataire dès qu'un utilisateur est connecté (évite l'état "free" en mémoire)
+  // Recharge le plan prestataire dès que connecté — refreshSession pour user_metadata frais
   useEffect(()=>{
     if(!supaUser || role!=="prestataire") return;
-    supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single()
-      .then(({data:pr})=>{
-        if(!pr) return;
-        setTrialExhausted(!!pr.trial_exhausted);
-        const plan = pr.plan_abonnement || supaUser.user_metadata?.plan_abonnement || "free";
+    (async()=>{
+      try {
+        const { data:{ session } } = await supabase.auth.refreshSession();
+        const freshUser = session?.user;
+        const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
+        if(pr?.trial_exhausted !== undefined) setTrialExhausted(!!pr.trial_exhausted);
+        const plan = pr?.plan_abonnement || freshUser?.user_metadata?.plan_abonnement || "free";
         setPrestaPlan(plan);
-      }).catch(()=>{});
+      } catch {}
+    })();
   },[supaUser, role]);
 
   // Tracking visiteur — une seule fois par session
