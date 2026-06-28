@@ -190,6 +190,38 @@ export default async function handler(req, res) {
         headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify(profilePatch),
       }).catch(e => console.error("[checkout] profile patch failed:", e.message));
+
+      // Email de confirmation d'abonnement
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+      const userEmail      = session.customer_details?.email || existingUser?.email;
+      const userName       = existingUser?.user_metadata?.prenom || existingUser?.user_metadata?.name || "";
+      const planLabel      = plan === "elite" ? "Elite" : "Premium";
+      const billingLabel   = billing === "yearly" ? "annuel" : "mensuel";
+      const endDateFr      = endDate ? new Date(endDate).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" }) : "";
+      if (RESEND_API_KEY && userEmail) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: userEmail,
+            subject: `✅ Votre abonnement ${planLabel} est activé — ALANE`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px">
+  <h2 style="color:#F0B429;margin:0 0 8px">Abonnement ${planLabel} activé 🎉</h2>
+  <p style="color:rgba(255,255,255,0.7);margin:0 0 24px">Bonjour${userName ? " " + userName : ""},</p>
+  <p style="color:rgba(255,255,255,0.85);line-height:1.6">Votre abonnement <strong style="color:#F0B429">${planLabel} ${billingLabel}</strong> est maintenant actif sur ALANE.</p>
+  <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin:20px 0">
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Plan</span><strong>${planLabel}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Facturation</span><strong>${billingLabel}</strong></div>
+    ${endDateFr ? `<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:rgba(255,255,255,0.5)">Renouvellement</span><strong>${endDateFr}</strong></div>` : ""}
+  </div>
+  <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6">Vous pouvez gérer ou annuler votre abonnement à tout moment depuis votre espace prestataire → Abonnements.</p>
+  <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p>
+</div>`,
+          }),
+        }).catch(e => console.error("[checkout] confirmation email failed:", e.message));
+      }
     }
   }
 
