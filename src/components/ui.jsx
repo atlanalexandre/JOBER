@@ -412,9 +412,12 @@ export const DonutChart = ({ sectors, size=120 }) => {
 
 export function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
+  const spotsText = spotsLeft !== null
+    ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
+    : "Réservé aux 100 premiers prestataires inscrits";
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:"10 missions gratuites pour les 100 premiers prestataires inscrits" },
-    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:`10 missions gratuites · ${spotsText}` },
+    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;

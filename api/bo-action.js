@@ -587,6 +587,66 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(data) ? data : []);
     }
 
+    if (action === "list_disputes") {
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,dispute_reason,stripe_payment_intent&order=created_at.desc`, { headers });
+      const missions = await missionsRes.json();
+      if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
+
+      // Récupérer les emails des clients et prestataires depuis auth.users
+      const userIds = [...new Set([
+        ...missions.map(m => m.client_id).filter(Boolean),
+        ...missions.map(m => m.prestataire_id).filter(Boolean),
+      ])];
+      let emailMap = {};
+      if (userIds.length > 0) {
+        try {
+          const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+          const authData = await authRes.json();
+          (authData.users || []).forEach(u => { emailMap[u.id] = u.email; });
+        } catch {}
+      }
+
+      const enriched = missions.map(m => ({
+        ...m,
+        client_email: emailMap[m.client_id] || null,
+        presta_email: m.prestataire_id ? (emailMap[m.prestataire_id] || null) : null,
+      }));
+      return res.status(200).json(enriched);
+    }
+
+    if (action === "resolve_dispute") {
+      const { mission_id, resolution } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!["refunded", "rejected"].includes(resolution)) return res.status(400).json({ error: "resolution invalide (refunded|rejected)" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      // "refunded" → closed, "rejected" → completed (prestation validée malgré le litige)
+      const newStatus = resolution === "refunded" ? "closed" : "completed";
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (resolution === "rejected") {
+        // Litige rejeté — notifier le client et le prestataire
+        if (m.client_id) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige clôturé ℹ️", body:"Après examen de votre dossier, le litige a été clôturé en faveur du prestataire. La prestation a été validée.", read:false }) }).catch(()=>{});
+        }
+        if (m.prestataire_id) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Litige résolu en votre faveur ✅", body:"Le litige a été examiné et clôturé en votre faveur. La prestation est validée.", read:false }) }).catch(()=>{});
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"resolve_dispute", target_id:mission_id, details:{ resolution } }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "close_ticket") {
       if (!profileId) return res.status(400).json({ error: "ticketId requis" });
       const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
