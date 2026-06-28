@@ -8,7 +8,7 @@ import { CP_COORDS, cpToCoords, genMissionCode, SECTORS, METIERS_TARIFS, METIERS
 import { PrestaRegisterFlow, ClientRegisterFlow, AuthScreen } from "./components/auth.jsx";
 import { boFetch, useBoData, BackofficeLogin, BOComptes, BOSupport, BOModerationTab, BOExportCSV, BOExportMissions, BOExportPDF, EmailTestButton, BOTest, BOLogs, BOSettingsTab, BOResetMonthly, BOReminders, BOMissions, BORefundSection, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen } from "./components/payment.jsx";
-import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfileEditScreen, PrestaPointageScreen, PrestaOnboardingChecklist, UpgradeNudge, PMissionsTab, PrestaTour, PrestaClientsTab, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfileEditScreen, PrestaPointageScreen, PrestaOnboardingChecklist, UpgradeNudge, PMissionsTab, PrestaTour, PrestaClientsTab, PrestaDashboard, MicroEntrepriseScreen, TrialExhaustedPaywall } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, ClientTour, HomeScreen, CatalogueScreen, useProviders, loadLeaflet, cityCoords, LeafletMap, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, MissionTimeline, RatingScreen, DocUploadScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, NOTIF_ICONS, NOTIF_COLORS, timeAgo, TOUR_STEPS, haversineKm, travelTimeStr, OnboardingScreen } from "./components/client-screens.jsx";
 
 export class ErrorBoundary extends Component {
@@ -904,6 +904,8 @@ export default function App() {
   const [screen,setScreen]=useState("splash");
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
+  const [trialExhausted,setTrialExhausted]=useState(false);
+  const [prestaPlan,setPrestaPlan]=useState("free");
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
@@ -972,9 +974,13 @@ export default function App() {
     const subSuccess = params.get("sub_success");
     const plan = params.get("plan");
     if(subSuccess === "1" && plan) {
-      // Rafraîchir la session pour obtenir le plan mis à jour par le webhook Stripe (ne pas faire confiance au paramètre URL)
-      supabase.auth.refreshSession().then(()=>{
+      supabase.auth.refreshSession().then(async({data:{session}})=>{
         window.history.replaceState({}, "", window.location.pathname);
+        if(session?.user){
+          const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
+          setTrialExhausted(!!pr?.trial_exhausted);
+          setPrestaPlan(pr?.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+        }
       });
     }
     if(params.get("sub_cancel") === "1") {
@@ -1184,9 +1190,13 @@ export default function App() {
         return;
       }
       setSupaUser(session.user);
-      const { data:profile } = await supabase.from("profiles").select("role,status").eq("id",session.user.id).single();
+      const { data:profile } = await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
       if(profile?.role){
         setRole(profile.role);
+        if(profile.role==="prestataire"){
+          setTrialExhausted(!!profile.trial_exhausted);
+          setPrestaPlan(profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+        }
         if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
         if(profile.status === "rejected"){ setScreen("role"); return; }
         setScreen(profile.role==="prestataire"?"p_home":"home");
@@ -1275,7 +1285,7 @@ export default function App() {
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={()=>{ setRole("prestataire"); setScreen("p_home"); }}
+          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); setPrestaPlan(pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free"); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
@@ -1394,6 +1404,9 @@ export default function App() {
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
+      {role==="prestataire" && trialExhausted && prestaPlan==="free" && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
+        <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} />
+      )}
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
