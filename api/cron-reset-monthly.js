@@ -207,15 +207,22 @@ ${(() => {
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut,validation_prestataire,validation_client`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
         const now = Date.now();
+        const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
         const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
           if (!m.heure_debut) return true;
           const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(m.hours || 0) * 3600000);
-          return endMs < now;
+          if (endMs >= now) return false;
+          // N-05: skip missions that already got a reminder less than 12h ago
+          if (m.last_validation_reminder_at) {
+            const lastReminderMs = new Date(m.last_validation_reminder_at).getTime();
+            if (!isNaN(lastReminderMs) && now - lastReminderMs < TWELVE_HOURS_MS) return false;
+          }
+          return true;
         }) : [];
         if (pastMissions.length && RESEND_API_KEY) {
           await Promise.all(pastMissions.map(async (m) => {
@@ -283,6 +290,14 @@ ${(() => {
             }
             await Promise.all(vSends);
             validationSent += vSends.length;
+            // N-05: stamp last_validation_reminder_at to prevent duplicate sends within 12h
+            if (vSends.length > 0) {
+              fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
+              }).catch(() => {});
+            }
           }));
         }
       } catch (e) { console.error("cron validation reminders error:", e); }
@@ -298,7 +313,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector,date,heure_debut,validation_prestataire`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,heure_debut,validation_prestataire,cashback_credited`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -328,7 +343,13 @@ ${(() => {
           // Traitement séquentiel pour éviter les écritures concurrentes sur le même client
           for (const m of autoMissions) {
             try {
-              const hours = m.hours || 0;
+              // B-05: skip if cashback was already credited (idempotence)
+              if (m.cashback_credited) {
+                console.log(`cron auto-validate: cashback already credited for mission ${m.id}, skipping`);
+                continue;
+              }
+              // B-02: use actual_hours (validated by prestataire) if available, fallback to planned hours
+              const hours = m.actual_hours ?? m.hours ?? 0;
               const tarif = m.tarif_horaire || 0;
               const montantTotal = Math.round(hours * tarif * 100) / 100;
               const mLabel = esc(m.metier || m.sector || "Mission");
@@ -343,10 +364,10 @@ ${(() => {
               const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-              // Marquer la mission complétée (forcer validation_prestataire=true si le prestataire n'avait pas confirmé)
+              // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard)
               const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal }),
+                body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal, cashback_credited: true }),
               });
               if (!patchRes.ok) {
                 console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());
@@ -468,15 +489,16 @@ ${(() => {
       const ended = allMissions.filter(m => {
         if (!m.date) return false;
         const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-        const missionEndMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime()
-          - 7200000  // UTC+2 → UTC
+        const _missionStart = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
+        const missionEndMs = _missionStart.getTime()
+          + frenchOffsetMs(_missionStart)
           + Number(m.hours || 1) * 3600000;
         return nowMs >= missionEndMs;
       });
 
       if (ended.length === 0) return res.status(200).json({ sent: 0 });
 
-      // Charger emails et téléphones une fois pour toutes
+      // Charger emails et téléphones une fois pour toutes — après le filtre pour ne charger que si nécessaire
       const uids = [...new Set(ended.flatMap(m => [m.client_id, m.prestataire_id].filter(Boolean)))];
       const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
       const usersData = await usersRes.json();
@@ -547,6 +569,16 @@ ${(() => {
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
+          // UPDATE atomique conditionnel : "réserver" la mission avant d'envoyer pour éviter les doubles envois
+          const reserved = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&end_notif_sent=is.false`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=representation" },
+            body: JSON.stringify({ end_notif_sent: true }),
+          }).catch(() => null);
+          if (!reserved) continue;
+          const reservedData = await reserved.json().catch(() => []);
+          if (!Array.isArray(reservedData) || reservedData.length === 0) continue; // Déjà traité par un autre run
+
           const sends = [];
           if (RESEND_API_KEY && prestaEmail)
             sends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html: prestaHtml }) }).catch(()=>{}));
@@ -559,13 +591,6 @@ ${(() => {
 
           await Promise.all(sends);
           sent += sends.length;
-
-          // Marquer end_notif_sent pour ne plus renvoyer
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ end_notif_sent: true }),
-          }).catch(() => {});
         } catch (e) { console.error(`end-notif mission ${m.id}:`, e); }
       }
 
@@ -592,25 +617,31 @@ ${(() => {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    // Downgrade des abonnements expirés
+    // Downgrade des abonnements expirés — traité par batch de 50 pour éviter le rate limiting Supabase Auth
     let downgrades = 0;
     try {
       const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
       const usersData = await usersRes.json();
-      const users = usersData.users || [];
+      const allUsers = usersData.users || [];
       const now = new Date();
-      await Promise.all(users.map(async u => {
+      const toDowngrade = allUsers.filter(u => {
         const meta = u.user_metadata || {};
-        if (meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date) {
-          if (new Date(meta.subscription_end_date) < now) {
-            await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
-              method: "PUT", headers,
-              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
-            }).catch(() => {});
-            downgrades++;
-          }
-        }
-      }));
+        return meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date
+          && new Date(meta.subscription_end_date) < now;
+      });
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < toDowngrade.length; i += BATCH_SIZE) {
+        const batch = toDowngrade.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async u => {
+          const meta = u.user_metadata || {};
+          await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
+            method: "PUT", headers,
+            body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
+          }).catch(() => {});
+          downgrades++;
+        }));
+        if (i + BATCH_SIZE < toDowngrade.length) await new Promise(r => setTimeout(r, 500));
+      }
     } catch (e) { console.error("cron downgrade error:", e); }
 
     console.log(`cron-reset-monthly: missions reset, ${downgrades} abonnements expirés downgradés`);

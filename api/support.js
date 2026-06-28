@@ -231,9 +231,16 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     if (!isUuid(newUserId) || !isUuid(referrerUUID)) return res.status(400).json({ error: "IDs invalides" });
     if (newUserId === referrerUUID) return res.status(400).json({ error: "Auto-parrainage interdit" });
 
-    const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config missing" });
+    // S-09: le parrainage ne peut être enregistré que par le nouvel utilisateur lui-même
+    const SUPABASE_URL_REF = process.env.VITE_SUPABASE_URL;
+    const SERVICE_ROLE_KEY_REF = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL_REF || !SERVICE_ROLE_KEY_REF) return res.status(500).json({ error: "Config missing" });
+    const callerRef = await verifyUser(req, SUPABASE_URL_REF, SERVICE_ROLE_KEY_REF);
+    if (!callerRef) return res.status(401).json({ error: "Non authentifié" });
+    if (callerRef.id !== newUserId) return res.status(403).json({ error: "Non autorisé — vous ne pouvez enregistrer que votre propre parrainage" });
+
+    const SUPABASE_URL     = SUPABASE_URL_REF;
+    const SERVICE_ROLE_KEY = SERVICE_ROLE_KEY_REF;
 
     const hdrs = {
       "apikey": SERVICE_ROLE_KEY,
@@ -291,6 +298,16 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     const userId = caller.id;
     const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
     try {
+      // S-10: block deletion if user has active missions
+      const activeMissionsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${userId},prestataire_id.eq.${userId})&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+        { headers: hdrs }
+      );
+      const activeMissions = await activeMissionsRes.json().catch(() => []);
+      if (Array.isArray(activeMissions) && activeMissions.length > 0) {
+        return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une mission en cours. Terminez ou annulez vos missions actives avant de supprimer votre compte." });
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0 }),

@@ -137,11 +137,14 @@ export default async function handler(req, res) {
     if (action === "approve" || action === "reject") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const status = action === "approve" ? "approved" : "rejected";
+      const profilePatch = action === "approve"
+        ? { status, trial_exhausted: false, missions_completed_month: 0 }
+        : { status };
       const [patchRes, userRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify(profilePatch),
         }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
       ]);
@@ -780,7 +783,10 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_missions") {
-      const statusFilter = req.body.status && req.body.status !== "all" ? `&status=eq.${req.body.status}` : "";
+      // S-11: whitelist status values to prevent injection via the status param
+      const VALID_STATUSES = ["open","pending_acceptance","assigned","completed","closed","rejected","refused","cancelled"];
+      const rawStatus = req.body.status;
+      const statusFilter = rawStatus && rawStatus !== "all" && VALID_STATUSES.includes(rawStatus) ? `&status=eq.${rawStatus}` : "";
       const [missionsRes, authRes, profilesRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence${statusFilter}&order=created_at.desc&limit=300`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),

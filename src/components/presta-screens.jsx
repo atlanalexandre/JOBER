@@ -1585,6 +1585,31 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
   useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
 
+  // Auto-démarrage : si arrivé depuis > 10 min et prestation pas encore démarrée → start_mission automatique
+  useEffect(() => {
+    const AUTO_START_MS = 10 * 60 * 1000;
+    const timers = [];
+    for (const m of assignedMissions) {
+      const arrivedAt = arrivedAtMap[m.id];
+      if (!arrivedAt || startedAtMap[m.id]) continue;
+      const delay = AUTO_START_MS - (Date.now() - new Date(arrivedAt).getTime());
+      const t = setTimeout(async () => {
+        if (startedAtMap[m.id]) return; // already started manually
+        const { data: sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+          body: JSON.stringify({ action: "start_mission", mission_id: m.id, auto_start: true }),
+        }).catch(() => null);
+        const d = r?.ok ? await r.json().catch(() => null) : null;
+        if (d?.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+      }, Math.max(0, delay));
+      timers.push(t);
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [assignedMissions, arrivedAtMap, startedAtMap]);
+
   // Geocode mission addresses for auto-checkin detection
   useEffect(() => {
     for (const m of assignedMissions) {
@@ -1611,7 +1636,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   // GPS watch for automatic check-in (< 150m)
   useEffect(() => {
-    const now = Date.now();
+    const now = Date.now(); // snapshot local à cet effet seulement
     const watchable = assignedMissions.filter(m => {
       const c = missionCoordCache[m.id];
       if (!c || typeof c !== "object" || arrivedAtMap[m.id]) return false;

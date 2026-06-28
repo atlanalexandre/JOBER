@@ -5249,8 +5249,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       }
     };
     pollPosition();
-    trackingPollRef.current = setInterval(pollPosition, 15000);
-    return () => { if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; } };
+    trackingPollRef.current = setInterval(pollPosition, 10000);
+    // Tick séparé toutes les 30s pour rafraîchir le "il y a X min" même sans nouvelle position
+    const agoTick = setInterval(() => setPrestaPosition(p => p ? { ...p } : p), 30000);
+    return () => {
+      if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
+      clearInterval(agoTick);
+    };
   }, [selected?.id, selected?.status]);
 
   useEffect(() => {
@@ -5625,9 +5630,35 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
           )}
           </>)}
-          {selected.status === "assigned" && !completedResult && selected.arrived_at && (() => {
+          {selected.status === "assigned" && !completedResult && selected.arrived_at && !selected.started_at && (() => {
+            // Prestataire arrivé mais pas encore démarré — afficher le statut + countdown auto-démarrage
+            const arrivedMs = new Date(selected.arrived_at).getTime();
+            const autoStartMs = arrivedMs + 10 * 60 * 1000; // +10 min
+            const secsUntilAuto = Math.max(0, Math.floor((autoStartMs - Date.now()) / 1000));
+            const autoMin = Math.floor(secsUntilAuto / 60);
+            const autoSec = secsUntilAuto % 60;
+            return (
+              <div style={{ marginTop:16, background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:14, padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:secsUntilAuto > 0 ? 8 : 0 }}>
+                  <div>
+                    <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>📍 Prestataire sur place</div>
+                    <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                  <div style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:20, padding:"4px 10px" }}>
+                    <span style={{ color:C.success, fontWeight:700, fontSize:11 }}>En attente</span>
+                  </div>
+                </div>
+                {secsUntilAuto > 0 && (
+                  <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.4 }}>
+                    ⏱ Démarrage automatique dans {autoMin > 0 ? `${autoMin}min ${String(autoSec).padStart(2,"0")}s` : `${autoSec}s`} si le prestataire ne démarre pas manuellement.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {selected.status === "assigned" && !completedResult && selected.started_at && (() => {
             const maxMs = (selected.hours || 1) * 3600 * 1000;
-            const elapsed = Math.min(Date.now() - new Date(selected.arrived_at).getTime(), maxMs);
+            const elapsed = Math.min(Date.now() - new Date(selected.started_at).getTime(), maxMs);
             const done = elapsed >= maxMs;
             const s = Math.floor(elapsed / 1000);
             const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
@@ -5636,8 +5667,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             return (
               <div style={{ marginTop:16, background:`${color}12`, border:`1px solid ${color}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div>
-                  <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "📍 Prestataire sur place"}</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                  <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "🚀 Prestation en cours"}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Démarré(e) à {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ color, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>

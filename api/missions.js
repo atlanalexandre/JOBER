@@ -350,15 +350,20 @@ export default async function handler(req, res) {
       const candidatures = await r.json();
       if (!Array.isArray(candidatures)) return res.status(200).json([]);
 
-      const enriched = await Promise.all(candidatures.map(async (c) => {
+      // T-01: batch mission lookup — one query instead of N
+      const missionIds = [...new Set(candidatures.map(c => c.mission_id).filter(Boolean).filter(isUuid))];
+      const missionsMap = {};
+      if (missionIds.length > 0) {
         const mr = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?id=eq.${c.mission_id}&select=sector,metier,date,hours,ville,status,tarif_horaire`,
+          `${SUPABASE_URL}/rest/v1/missions?id=in.(${missionIds.join(",")})&select=id,sector,metier,date,hours,ville,status,tarif_horaire`,
           { headers }
         );
         const missions = await mr.json();
-        const mission = Array.isArray(missions) && missions[0];
-        return { ...c, mission: mission || null };
-      }));
+        if (Array.isArray(missions)) {
+          for (const m of missions) missionsMap[m.id] = m;
+        }
+      }
+      const enriched = candidatures.map(c => ({ ...c, mission: missionsMap[c.mission_id] || null }));
       return res.status(200).json(enriched);
     }
 
@@ -418,19 +423,10 @@ export default async function handler(req, res) {
         if (limitOk) return res.status(403).json(limitOk);
       }
 
-      // Récupérer le tarif_net du prestataire depuis user_metadata
-      let tarifHoraire = 0;
-      if (verified_prestataire_id) {
-        try {
-          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers });
-          const ud = await ur.json();
-          tarifHoraire = Number(ud.user_metadata?.tarif_net) || 0;
-        } catch {}
-      }
-
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
+      // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,client_id,status`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
@@ -440,9 +436,12 @@ export default async function handler(req, res) {
       }
 
       if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
+        // P-01: tarif_horaire = 0 → refuser la création du PaymentIntent
+        const missionTarif = Number(missionCheck.tarif_horaire) || 0;
+        if (missionTarif <= 0) return res.status(400).json({ error: "Tarif horaire non défini sur cette mission — impossible de créer le paiement" });
         try {
           const hours = missionCheck.hours || 1;
-          const amountCents = Math.max(50, Math.round(tarifHoraire * hours * 100));
+          const amountCents = Math.max(50, Math.round(missionTarif * hours * 100));
           const params = new URLSearchParams({
             amount: String(amountCents),
             currency: "eur",
@@ -1118,13 +1117,21 @@ export default async function handler(req, res) {
       const ownerData = await ownerCheck.json();
       if (!Array.isArray(ownerData) || ownerData.length === 0) return res.status(403).json({ error: "Non autorisé" });
 
-      // Fetch mission details
+      // Fetch mission details (S-06: inclure broadcast_sent_at pour limiter la fréquence)
       const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector,metier,date,hours,ville`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector,metier,date,hours,ville,broadcast_sent_at`,
         { headers }
       );
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
+
+      // S-06: prevent duplicate broadcasts within 1 hour
+      if (mission?.broadcast_sent_at) {
+        const lastBroadcastMs = new Date(mission.broadcast_sent_at).getTime();
+        if (!isNaN(lastBroadcastMs) && Date.now() - lastBroadcastMs < 60 * 60 * 1000) {
+          return res.status(429).json({ error: "Broadcast déjà envoyé il y a moins d'une heure" });
+        }
+      }
       console.log("[broadcast] mission found:", !!mission);
 
       // Fetch all approved prestataires
@@ -1230,7 +1237,7 @@ export default async function handler(req, res) {
                   await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
                     headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
-                    body: JSON.stringify({ sender: "JOBER", recipient: e164, content: smsText }),
+                    body: JSON.stringify({ sender: "ALANE", recipient: e164, content: smsText }),
                   }).then(r => r.json()).then(d => console.log("[broadcast] SMS response:", JSON.stringify(d))).catch(e => console.log("[broadcast] SMS error:", e.message));
                 }
               }
@@ -1251,6 +1258,13 @@ export default async function handler(req, res) {
           }));
         }
       }
+      // S-06: stamp broadcast_sent_at to prevent duplicate sends within 1h
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ broadcast_sent_at: new Date().toISOString() }),
+      }).catch(() => {});
+
       return res.status(200).json({ success: true, notified });
     }
 
@@ -1284,6 +1298,16 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { recipient_id, sender_name, message_preview } = payload;
       if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "recipient_id requis" });
+
+      // S-04: verify caller shares an active mission with recipient
+      const sharedMissionRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(and(client_id.eq.${caller.id},prestataire_id.eq.${recipient_id}),and(client_id.eq.${recipient_id},prestataire_id.eq.${caller.id}))&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+        { headers }
+      );
+      const sharedMissions = await sharedMissionRes.json().catch(() => []);
+      if (!Array.isArray(sharedMissions) || sharedMissions.length === 0) {
+        return res.status(403).json({ error: "Non autorisé — aucune mission partagée active" });
+      }
 
       // Fetch recipient info (email + phone)
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${recipient_id}`, { headers });
@@ -1411,6 +1435,17 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      // S-05: verify caller is the client or prestataire of this mission
+      const authMissionRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&or=(client_id.eq.${caller.id},prestataire_id.eq.${caller.id})&select=id&limit=1`,
+        { headers }
+      );
+      const authMissionData = await authMissionRes.json().catch(() => []);
+      if (!Array.isArray(authMissionData) || authMissionData.length === 0) {
+        return res.status(403).json({ error: "Non autorisé" });
+      }
+
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/tracking_positions?mission_id=eq.${mission_id}&select=lat,lng,updated_at&order=updated_at.desc&limit=1`,
         { headers }
@@ -1687,6 +1722,37 @@ export default async function handler(req, res) {
       const tarifHoraire = Number(mission.tarif_horaire) || 0;
       const proratedAmount = billedHours * tarifHoraire;
 
+      // B-06: Stripe partial refund — executed BEFORE overwriting montant_total
+      const originalMontant = Number(mission.montant_total) || 0;
+      const refundAmount = Math.max(0, originalMontant - proratedAmount);
+      let stripeRefundId = null;
+      if (refundAmount > 0 && mission.stripe_payment_intent) {
+        try {
+          const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
+          if (STRIPE_SECRET_KEY_CANCEL) {
+            const refundCents = Math.round(refundAmount * 100);
+            const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                payment_intent: mission.stripe_payment_intent,
+                amount: String(refundCents),
+                reason: "requested_by_customer",
+              }).toString(),
+            });
+            const rfData = await rfRes.json();
+            if (rfData?.id) {
+              stripeRefundId = rfData.id;
+              console.log("[cancel_in_progress] Stripe partial refund ok:", rfData.id, "amount:", refundCents);
+            } else {
+              console.error("[cancel_in_progress] Stripe refund failed:", JSON.stringify(rfData));
+            }
+          }
+        } catch (e) {
+          console.error("[cancel_in_progress] Stripe refund exception:", e.message);
+        }
+      }
+
       // Mettre à jour la mission
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
@@ -1789,7 +1855,7 @@ export default async function handler(req, res) {
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
             subject: `[ARRÊT EN COURS] Mission ${mission_id.slice(0,8)} — paiement partiel ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
-            message: `Mission interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial : ${mission.montant_total || "—"} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. Rembourser le client partiellement sur Stripe (montant initial - prorata prestataire - frais de service)\n2. Virer le prorata au prestataire`,
+            message: `Mission interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial client : ${originalMontant.toFixed(2)} €\nRemboursement client : ${refundAmount.toFixed(2)} € ${stripeRefundId ? `(✅ effectué — ${stripeRefundId})` : "(⚠️ ÉCHEC — à traiter manuellement)"}\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. ${stripeRefundId ? `Remboursement de ${refundAmount.toFixed(2)} € effectué automatiquement (${stripeRefundId})` : `Rembourser le client manuellement de ${refundAmount.toFixed(2)} € sur Stripe`}\n2. Virer le prorata de ${proratedAmount.toFixed(2)} € HT au prestataire`,
             user_email: clientEmail,
             user_id: caller.id,
             status: "open",
@@ -2471,7 +2537,7 @@ export default async function handler(req, res) {
     if (action === "start_mission") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id } = payload;
+      const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at`, { headers });
@@ -2490,11 +2556,15 @@ export default async function handler(req, res) {
       // Notify client
       if (m.client_id) {
         const label = m.titre || m.metier || "la prestation";
+        const notifTitle = auto_start ? "⏱ Démarrage automatique" : "🚀 Prestation démarrée !";
+        const notifBody = auto_start
+          ? `La prestation « ${label} » a démarré automatiquement (10 min après l'arrivée du prestataire). Le timer est lancé.`
+          : `La prestation « ${label} » a démarré. Le timer est lancé.`;
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "🚀 Prestation démarrée !", body: `La prestation « ${label} » a démarré. Le timer est lancé.`, read: false }),
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
         }).catch(() => {});
-        await sendPushToUser(m.client_id, { title: "🚀 Prestation démarrée !", body: `La prestation « ${label} » a démarré.`, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+        await sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ started_at: startedAt });

@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   const priceId = process.env[priceEnvKey];
   if (!priceId) return res.status(500).json({ error: `Variable ${priceEnvKey} manquante dans l'environnement Vercel` });
 
-  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || "https://jober.vercel.app";
+  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || process.env.APP_URL || "https://www.alane.fr";
 
   // Reuse existing Stripe Customer to avoid duplicates
   let existingCustomerId = null;
