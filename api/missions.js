@@ -873,12 +873,14 @@ export default async function handler(req, res) {
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette mission" });
       if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
-        // heure_debut stored as French local time. France = UTC+2 in summer (CEST), UTC+1 in winter (CET).
-        // Use UTC+2 offset to be conservative (don't block during CEST). Add 15min grace buffer.
+        // heure_debut is stored as French local time (e.g. "14:00" = 14h CEST).
+        // Vercel runs in UTC, so new Date("...T14:00:00") parses as 14:00 UTC (naive, 2h too late).
+        // frenchOffsetMs returns the NEGATIVE UTC offset: -7200000 in summer, -3600000 in winter.
+        // To convert French local → UTC: UTC = naive + frenchOffsetMs (adds a negative = subtracts).
         const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStart = new Date(missionStartNaive.getTime() - frenchOffsetMs(missionStartNaive));
-        const missionEnd = new Date(missionStart.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
-        if (missionEnd > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
+        const missionStartUTC = new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive));
+        const missionEndUTC = new Date(missionStartUTC.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
+        if (missionEndUTC > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
 
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
