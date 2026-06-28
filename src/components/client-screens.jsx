@@ -5328,6 +5328,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     return () => clearInterval(t);
   }, [selected?.id, selected?.validation_prestataire, selected?.status]);
 
+
   useEffect(() => {
     if (tab !== "prestataires") return;
     try {
