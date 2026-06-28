@@ -5298,6 +5298,37 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     return () => { supabase.removeChannel(channel); };
   }, [selected?.id]);
 
+  // Poll direct toutes les 10s sur la mission sélectionnée quand on attend la validation prestataire
+  // (fallback si Realtime ne fonctionne pas ou si le cache mobile sert un vieux JS)
+  useEffect(() => {
+    if (!selected?.id || selected.status !== "assigned" || selected.validation_prestataire) return;
+    const poll = async () => {
+      const { data } = await supabase
+        .from("missions")
+        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total")
+        .eq("id", selected.id)
+        .single();
+      if (!data) return;
+      setSelected(prev => {
+        if (!prev) return prev;
+        if (
+          data.validation_prestataire !== prev.validation_prestataire ||
+          data.status !== prev.status ||
+          data.started_at !== prev.started_at ||
+          data.arrived_at !== prev.arrived_at
+        ) {
+          setMissions(list => list.map(m => m.id === prev.id ? { ...m, ...data } : m));
+          return { ...prev, ...data };
+        }
+        return prev;
+      });
+    };
+    poll();
+    const t = setInterval(poll, 10000);
+    return () => clearInterval(t);
+  }, [selected?.id, selected?.validation_prestataire, selected?.status]);
+
+
   useEffect(() => {
     if (tab !== "prestataires") return;
     try {
