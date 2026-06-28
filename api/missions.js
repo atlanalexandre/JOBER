@@ -458,7 +458,10 @@ export default async function handler(req, res) {
           if (intent.client_secret) {
             return res.status(200).json({ payment_required: true, client_secret: intent.client_secret, amount: amountCents / 100 });
           }
-        } catch {}
+        } catch (stripeErr) {
+          console.error("[accept] Stripe PaymentIntent creation failed:", stripeErr.message);
+          return res.status(500).json({ error: "Impossible de créer le paiement Stripe — réessayez" });
+        }
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}`, {
@@ -473,7 +476,6 @@ export default async function handler(req, res) {
       });
       const missionPatch = { status: "assigned" };
       if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
       const missionPatchRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`,
         {
@@ -1548,7 +1550,7 @@ export default async function handler(req, res) {
       if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
         const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStart.getTime() - frenchOffsetMs(missionStart));
+        const missionStartUTC = new Date(missionStart.getTime() + frenchOffsetMs(missionStart));
         lessThan24h = (missionStartUTC - new Date()) / 3600000 < 24;
       }
 
@@ -1731,7 +1733,7 @@ export default async function handler(req, res) {
         ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
         : null;
       const missionStart = missionStartNaive
-        ? new Date(missionStartNaive.getTime() - frenchOffsetMs(missionStartNaive))
+        ? new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive))
         : null;
       const elapsedMs = Math.max(0, missionStart ? Date.now() - missionStart.getTime() : 0);
       const elapsedHours = elapsedMs / 3600000;
