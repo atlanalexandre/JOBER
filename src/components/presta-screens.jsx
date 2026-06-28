@@ -1419,6 +1419,55 @@ export function UpgradeNudge({ onNavigate }) {
   );
 }
 
+function DeadlineCountdown({ deadline }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (!deadline) return null;
+  const secs = Math.floor((new Date(deadline).getTime() - now) / 1000);
+  const label = secs <= 0 ? "Délai dépassé" : (() => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return h > 0 ? `${h}h ${String(m).padStart(2,"0")}min restant` : `${String(m).padStart(2,"0")}min restant`;
+  })();
+  const expired = secs <= 0;
+  return (
+    <div style={{ textAlign:"right", flexShrink:0 }}>
+      <span style={{ fontSize:11, color:expired?C.textMuted:C.accentGold, fontWeight:700 }}>⏱ {label}</span>
+    </div>
+  );
+}
+
+function ElapsedTimer({ startedAt, maxMs }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.min(now - new Date(startedAt).getTime(), maxMs);
+  const done = elapsed >= maxMs;
+  const s = Math.floor(elapsed / 1000);
+  const ph = Math.floor(s / 3600);
+  const pm = Math.floor((s % 3600) / 60);
+  const ps = s % 60;
+  const timerStr = ph > 0 ? `${ph}h${String(pm).padStart(2,"0")}` : `${String(pm).padStart(2,"0")}:${String(ps).padStart(2,"0")}`;
+  const col = done ? "#F0B429" : C.success;
+  return (
+    <div style={{ background:`${col}12`, border:`1px solid ${col}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <div>
+        <div style={{ color:col, fontWeight:700, fontSize:12 }}>{done ? "✓ Temps écoulé" : "🚀 Prestation en cours"}</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+      </div>
+      <div style={{ textAlign:"right" }}>
+        <div style={{ color:col, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+        <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "écoulé"}</div>
+      </div>
+    </div>
+  );
+}
+
 export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [pendingMissions, setPendingMissions] = useState([]);
   const [assignedMissions, setAssignedMissions] = useState([]);
@@ -1427,7 +1476,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [userName, setUserName]   = useState("");
   const [actioning, setActioning] = useState(null);
   const [confirmRefuse, setConfirmRefuse] = useState(null);
-  const [now, setNow] = useState(Date.now());
   const [expandedDetail, setExpandedDetail] = useState(null);
   const [contractMission, setContractMission] = useState(null);
   const [contractSignedAt, setContractSignedAt] = useState({});
@@ -1517,11 +1565,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         setLoading(false);
       }
     })();
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -1648,15 +1691,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(null);
   };
 
-  const formatDeadline = (deadline) => {
-    if (!deadline) return null;
-    const secs = Math.floor((new Date(deadline).getTime() - now) / 1000);
-    if (secs <= 0) return "Délai dépassé";
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    if (h > 0) return `${h}h ${String(m).padStart(2,"0")}min restant`;
-    return `${String(m).padStart(2,"0")}min restant`;
-  };
+
 
   const computeEndTime = (heureDebut, hours) => {
     if (!heureDebut) return null;
@@ -1730,8 +1765,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
           {pendingMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
-            const deadlineLabel = formatDeadline(m.acceptance_deadline);
-            const expired = deadlineLabel === "Délai dépassé";
+            const expired = m.acceptance_deadline && new Date(m.acceptance_deadline).getTime() < Date.now();
             const isAct = actioning === m.id+"_acc" || actioning === m.id+"_ref";
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${expired ? C.textMuted : C.accent}55` }}>
@@ -1743,11 +1777,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                   </div>
-                  {deadlineLabel && (
-                    <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <span style={{ fontSize:11, color:expired?C.textMuted:C.accentGold, fontWeight:700 }}>⏱ {deadlineLabel}</span>
-                    </div>
-                  )}
+                  {m.acceptance_deadline && <DeadlineCountdown deadline={m.acceptance_deadline} />}
                 </div>
                 {(m.ville || m.adresse || m.description) && (
                   <div style={{ marginBottom:8 }}>
@@ -1822,8 +1852,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
-            const isStarted = missionStart > 0 && missionStart < now;
-            const isPast = missionEnd > 0 && missionEnd < now;
+            const renderNow = Date.now();
+            const isStarted = missionStart > 0 && missionStart < renderNow;
+            const isPast = missionEnd > 0 && missionEnd < renderNow;
             const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
             const badgeLabel = isPast ? "À valider" : isStarted ? "En cours" : "À venir";
             const borderColor = isPast ? C.accentGold+"88" : isStarted ? C.success+"44" : C.violet+"44";
@@ -1878,27 +1909,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
                 {/* Timer / Checkin / Start */}
-                {startedAtMap[m.id] ? (() => {
-                    // ── Prestation démarrée : timer ──
-                    const maxMs = (m.hours || 1) * 3600 * 1000;
-                    const elapsed = Math.min(now - new Date(startedAtMap[m.id]).getTime(), maxMs);
-                    const done = elapsed >= maxMs;
-                    const s = Math.floor(elapsed/1000); const ph=Math.floor(s/3600); const pm=Math.floor((s%3600)/60); const ps=s%60;
-                    const timerStr = ph>0?`${ph}h${String(pm).padStart(2,"0")}`:`${String(pm).padStart(2,"0")}:${String(ps).padStart(2,"0")}`;
-                    const col = done ? "#F0B429" : C.success;
-                    return (
-                      <div style={{ background:`${col}12`, border:`1px solid ${col}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                        <div>
-                          <div style={{ color:col, fontWeight:700, fontSize:12 }}>{done ? "✓ Temps écoulé" : "🚀 Prestation en cours"}</div>
-                          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
-                        </div>
-                        <div style={{ textAlign:"right" }}>
-                          <div style={{ color:col, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
-                          <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "écoulé"}</div>
-                        </div>
-                      </div>
-                    );
-                  })() : arrivedAtMap[m.id] ? (
+                {startedAtMap[m.id] ? (
+                    <ElapsedTimer startedAt={startedAtMap[m.id]} maxMs={(m.hours || 1) * 3600 * 1000} />
+                  ) : arrivedAtMap[m.id] ? (
                   // ── Sur place, pas encore démarré : bouton "Je commence" ──
                   <div style={{ marginBottom:10 }}>
                     <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"8px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>

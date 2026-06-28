@@ -2,6 +2,11 @@ import crypto from "crypto";
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
 
+// Alerte critique au démarrage si BO_SESSION_SECRET n'est pas défini
+if (!process.env.BO_SESSION_SECRET) {
+  console.error("[bo-action] CRITIQUE: BO_SESSION_SECRET n'est pas défini — le backoffice est inaccessible. Configurez cette variable dans Vercel.");
+}
+
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);

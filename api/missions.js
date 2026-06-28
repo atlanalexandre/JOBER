@@ -144,9 +144,19 @@ async function handleEmailAction(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️"));
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
-  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre`, { headers: hdrs });
+  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline`, { headers: hdrs });
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette mission a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
+
+  // Vérification serveur du délai d'acceptation
+  if (mission.acceptance_deadline && mission.acceptance_deadline < new Date().toISOString()) {
+    await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+      method: "PATCH",
+      headers: { ...hdrs, "Prefer": "return=minimal" },
+      body: JSON.stringify({ status: "open", prestataire_id: null }),
+    }).catch(() => {});
+    return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé. La mission est de nouveau disponible pour d'autres prestataires.", "#F5A623", "⏱"));
+  }
 
   const missionLabel = mission.titre || mission.metier || "la mission";
   const patchBody = action === "accept" ? { status: "assigned" } : { status: "open", prestataire_id: null };
@@ -1252,6 +1262,11 @@ export default async function handler(req, res) {
         if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
           return res.status(400).json({ error: "Subscription invalide" });
         }
+        // Valider que l'endpoint est un HTTPS URL (évite injection via endpoint)
+        try {
+          const epUrl = new URL(subscription.endpoint);
+          if (epUrl.protocol !== "https:") return res.status(400).json({ error: "Endpoint invalide — HTTPS requis" });
+        } catch { return res.status(400).json({ error: "Endpoint invalide" }); }
         await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
           method: "POST",
           headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
@@ -1468,7 +1483,7 @@ export default async function handler(req, res) {
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
-      if (!["open", "assigned", "pending_acceptance"].includes(mission.status)) {
+      if (!["open", "assigned", "pending_acceptance", "needs_replacement"].includes(mission.status)) {
         return res.status(400).json({ error: "Cette mission ne peut plus être annulée" });
       }
 
@@ -1489,7 +1504,7 @@ export default async function handler(req, res) {
         : Math.round(missionAmount * 100);
       const keptAmount = lessThan24h ? Math.min(FRAIS_SERVICE, missionAmount) : 0;
 
-      // Récupérer l'email du client pour le ticket
+      // Récupérer l'email du client pour les notifications
       let clientEmail = null;
       try {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
@@ -1497,18 +1512,9 @@ export default async function handler(req, res) {
         clientEmail = uData.email || null;
       } catch {}
 
-      // Marquer la mission comme annulée
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          status: "cancelled",
-          cancellation_reason: reason || null,
-          cancellation_penalty: keptAmount,
-        }),
-      });
-
-      // Remboursement Stripe automatique
+      // ── Remboursement Stripe en PREMIER (avant de marquer cancelled en DB)
+      // Si Vercel crashe entre les deux, la mission reste "assigned" (récupérable)
+      // plutôt que "cancelled" sans remboursement (irrécupérable côté client)
       let stripeRefundId = null;
       let stripeRefundError = null;
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -1539,6 +1545,17 @@ export default async function handler(req, res) {
           console.error("[cancel_client] Stripe refund exception:", e.message);
         }
       }
+
+      // ── Marquer la mission comme annulée (après tentative de remboursement)
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          status: "cancelled",
+          cancellation_reason: reason || null,
+          cancellation_penalty: keptAmount,
+        }),
+      });
 
       // Email au client — confirmation de remboursement
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -1594,8 +1611,9 @@ export default async function handler(req, res) {
         }).catch(() => {});
       }
 
-      // Notifier le prestataire
+      // Notifier le prestataire (in-app + SMS si assignée et potentiellement en route)
       if (mission.prestataire_id) {
+        const missionLabel = mission.metier || mission.sector || "la mission";
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
@@ -1603,10 +1621,34 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Mission annulée ❌",
-            body: `La mission "${mission.metier || mission.sector || ""}" a été annulée par le client. L'équipe ALANE vous contactera concernant le règlement.`,
+            body: `La mission "${missionLabel}" a été annulée par le client.`,
             read: false,
           }),
         }).catch(() => {});
+
+        // SMS d'alerte immédiat si le prestataire était assigné (peut être en déplacement)
+        if (mission.status === "assigned") {
+          try {
+            const prestaRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
+            const prestaData = await prestaRes.json();
+            const prestaPhone = prestaData.user_metadata?.telephone || null;
+            const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
+            const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+            const TWILIO_FROM  = process.env.TWILIO_FROM;
+            if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && prestaPhone) {
+              const smsAuth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
+              await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+                method: "POST",
+                headers: { "Authorization": `Basic ${smsAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                  From: TWILIO_FROM,
+                  To: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
+                  Body: `ALANE — ANNULATION : La mission "${missionLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
+                }).toString(),
+              }).catch(() => {});
+            }
+          } catch {}
+        }
       }
 
       return res.status(200).json({ success: true });
@@ -1947,10 +1989,31 @@ export default async function handler(req, res) {
         }
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou délai dépassé" });
+
+      // Vérification serveur du délai d'acceptation (le contrôle frontend seul est insuffisant)
+      if (mission.acceptance_deadline && mission.acceptance_deadline < new Date().toISOString()) {
+        // Remettre en open pour qu'elle soit re-proposable
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ status: "open", prestataire_id: null }),
+        }).catch(() => {});
+        return res.status(410).json({ error: "Le délai d'acceptation est dépassé. La mission est de nouveau disponible." });
+      }
+
+      // Récupérer le vrai nom du prestataire depuis la DB (pas depuis le payload client)
+      let resolvedPrestaName = "Votre prestataire";
+      try {
+        const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prenom,nom`, { headers });
+        const prData = await prRes.json();
+        if (Array.isArray(prData) && prData[0]) {
+          resolvedPrestaName = [prData[0].prenom, prData[0].nom].filter(Boolean).join(" ") || resolvedPrestaName;
+        }
+      } catch {}
 
       const patchBody = response === "accept"
         ? { status: "assigned" }
@@ -1974,8 +2037,8 @@ export default async function handler(req, res) {
             type: "mission",
             title: isAccepted ? "Mission acceptée ! 🎉" : "Mission refusée",
             body: isAccepted
-              ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
-              : `${presta_name || "Le prestataire"} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
+              ? `${resolvedPrestaName} a accepté votre demande de mission.`
+              : `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
             read: false,
             ref_id: mission_id,
           }),
@@ -1997,13 +2060,13 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               from: RESEND_FROM,
               to: [clientEmail],
-              subject: isAccepted ? `✅ ${presta_name || "Votre prestataire"} a accepté la mission !` : `❌ ${presta_name || "Le prestataire"} a refusé la mission`,
+              subject: isAccepted ? `✅ ${resolvedPrestaName} a accepté la mission !` : `❌ ${resolvedPrestaName} a refusé la mission`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
                 <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Mission acceptée ✅":"Mission refusée ❌"}</h2>
                 <p>Bonjour ${esc(clientName)},</p>
                 ${isAccepted
-                  ? `<p><strong>${esc(presta_name || "Votre prestataire")}</strong> a accepté votre demande de mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
-                  : `<p><strong>${esc(presta_name || "Le prestataire")}</strong> a décliné votre mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+                  ? `<p><strong>${esc(resolvedPrestaName)}</strong> a accepté votre demande de mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la mission.</p>`
+                  : `<p><strong>${esc(resolvedPrestaName)}</strong> a décliné votre mission <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
                 }
                 <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
@@ -2023,8 +2086,8 @@ export default async function handler(req, res) {
                 sender: "ALANE",
                 recipient: e164,
                 content: smsClean(isAccepted
-                  ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
-                  : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
+                  ? `ALANE - ${resolvedPrestaName} a accepté votre mission ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
+                  : `ALANE - ${resolvedPrestaName} a refusé votre mission ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
             }).catch(() => {});
           }
@@ -2033,8 +2096,8 @@ export default async function handler(req, res) {
         // Web push client
         const pushTitle = isAccepted ? "Mission acceptée ✅" : "Mission refusée";
         const pushBody  = isAccepted
-          ? `${presta_name || "Votre prestataire"} a accepté votre demande de mission.`
-          : `${presta_name || "Le prestataire"} a refusé. Connectez-vous pour choisir un autre prestataire.`;
+          ? `${resolvedPrestaName} a accepté votre demande de mission.`
+          : `${resolvedPrestaName} a refusé. Connectez-vous pour choisir un autre prestataire.`;
         await sendPushToUser(mission.client_id, { title: pushTitle, body: pushBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
