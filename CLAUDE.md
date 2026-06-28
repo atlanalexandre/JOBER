@@ -26,12 +26,9 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `BO_SESSION_SECRET` | Secret HMAC pour signer les tokens de session BO (CRITIQUE — doit être aléatoire, ne pas laisser la valeur par défaut) |
 | `CRON_SECRET` | Secret optionnel pour protéger `/api/cron-reset-monthly` (header Authorization) |
 | `APP_URL` | URL publique de l'app ex: `https://www.alane.fr` — fallback automatique si absent |
-| `BREVO_API_KEY` | Clé API Brevo (emails transactionnels alternatifs dans `missions.js` et `cron-reset-monthly.js`) |
+| `BREVO_API_KEY` | Clé API Brevo — SMS transactionnels (`missions.js`) et emails (`cron-reset-monthly.js`) |
 | `VAPID_PUBLIC_KEY` | Clé publique VAPID pour les push notifications web (`missions.js`) |
 | `VAPID_PRIVATE_KEY` | Clé privée VAPID pour les push notifications web (`missions.js`) |
-| `TWILIO_ACCOUNT_SID` | SID du compte Twilio pour les SMS (`missions.js`) |
-| `TWILIO_AUTH_TOKEN` | Token d'auth Twilio (`missions.js`) |
-| `TWILIO_FROM` | Numéro expéditeur Twilio ex: `+33XXXXXXXXX` (`missions.js`) |
 
 ## Base de données Supabase
 

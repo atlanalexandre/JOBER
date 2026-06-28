@@ -1632,19 +1632,16 @@ export default async function handler(req, res) {
             const prestaRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
             const prestaData = await prestaRes.json();
             const prestaPhone = prestaData.user_metadata?.telephone || null;
-            const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
-            const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-            const TWILIO_FROM  = process.env.TWILIO_FROM;
-            if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && prestaPhone) {
-              const smsAuth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
-              await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+            const BREVO_KEY = process.env.BREVO_API_KEY;
+            if (BREVO_KEY && prestaPhone) {
+              await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                 method: "POST",
-                headers: { "Authorization": `Basic ${smsAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                  From: TWILIO_FROM,
-                  To: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-                  Body: `ALANE — ANNULATION : La mission "${missionLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
-                }).toString(),
+                headers: { "api-key": BREVO_KEY, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sender: "ALANE",
+                  recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
+                  content: `ANNULATION : La mission "${missionLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
+                }),
               }).catch(() => {});
             }
           } catch {}
@@ -1756,20 +1753,17 @@ export default async function handler(req, res) {
         }).catch(() => {});
       }
 
-      // SMS au prestataire via Twilio (optionnel — nécessite TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)
-      const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
-      const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-      const TWILIO_FROM  = process.env.TWILIO_FROM;
-      if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && prestaPhone) {
-        const smsAuth = Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString("base64");
-        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+      // SMS au prestataire via Brevo
+      const BREVO_KEY_CANCEL = process.env.BREVO_API_KEY;
+      if (BREVO_KEY_CANCEL && prestaPhone) {
+        await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
           method: "POST",
-          headers: { "Authorization": `Basic ${smsAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            From: TWILIO_FROM,
-            To: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-            Body: `ALANE — Mission "${missionLabel}" interrompue par le client après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
-          }).toString(),
+          headers: { "api-key": BREVO_KEY_CANCEL, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: "ALANE",
+            recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
+            content: `Mission "${missionLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
+          }),
         }).catch(() => {});
       }
 
