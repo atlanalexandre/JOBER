@@ -723,9 +723,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
   const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  const [prestaCount, setPrestaCount] = useState(null);
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
+    fetch("/api/prestataires?action=count").then(r => r.json()).then(d => { if (d.count != null) setPrestaCount(d.count); }).catch(() => {});
   }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -1042,7 +1044,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={prestaCount != null ? Math.max(0, 100 - prestaCount) : null} /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -4281,6 +4283,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
   const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  const [prestaCountHIW, setPrestaCountHIW] = useState(null);
   useEffect(() => {
     Promise.all([
       supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
@@ -4289,6 +4292,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     ]).then(([l, p, lp]) => {
       setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
     });
+    fetch("/api/prestataires?action=count").then(r => r.json()).then(d => { if (d.count != null) setPrestaCountHIW(d.count); }).catch(() => {});
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
@@ -4334,7 +4338,9 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire" ? "10 prestations gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
+                {role==="prestataire"
+                  ? `10 prestations gratuites · ${prestaCountHIW != null ? (Math.max(0, 100 - prestaCountHIW) > 0 ? `Plus que ${Math.max(0, 100 - prestaCountHIW)} place${Math.max(0, 100 - prestaCountHIW) > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers inscrits"}`
+                  : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
               </div>
             </div>
           </div>
@@ -5148,6 +5154,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [showDisputeModal, setShowDisputeModal] = useState(null);
   const [disputeMsg, setDisputeMsg] = useState("");
   const [disputing, setDisputing] = useState(false);
+  const [disputingId, setDisputingId] = useState(null);
+  const [disputeSuccess, setDisputeSuccess] = useState({});
   const [prestaPosition, setPrestaPosition] = useState(null);
   const [clientCoords, setClientCoords] = useState(null);
   const trackingPollRef = useRef(null);
@@ -6078,6 +6086,43 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 <div style={{ color:C.textMuted, fontSize:18, alignSelf:"center", paddingLeft:4 }}>›</div>
               </div>
+              {m.status === "completed" && !disputeSuccess[m.id] && (() => {
+                const mDate = m.date ? new Date(m.date) : null;
+                const daysElapsed = mDate ? (Date.now() - mDate.getTime()) / 86400000 : 999;
+                if (daysElapsed > 7) return null;
+                return (
+                  <div style={{ padding:"0 14px 12px" }} onClick={e => e.stopPropagation()}>
+                    <button
+                      disabled={disputingId === m.id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const motif = window.prompt("Décrivez le problème...");
+                        if (!motif || !motif.trim()) return;
+                        setDisputingId(m.id);
+                        try {
+                          const { data: sd } = await supabase.auth.getSession();
+                          const tok = sd?.session?.access_token;
+                          const res = await fetch("/api/missions", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...(tok ? { "Authorization": `Bearer ${tok}` } : {}) },
+                            body: JSON.stringify({ action: "raise_dispute", mission_id: m.id, reason: motif.trim() }),
+                          });
+                          const j = await res.json();
+                          if (j.ok) {
+                            setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
+                          } else {
+                            alert(j.error || "Erreur lors de l'envoi du signalement.");
+                          }
+                        } catch { alert("Erreur réseau, réessayez."); }
+                        setDisputingId(null);
+                      }}
+                      style={{ background:"transparent", border:"1px solid rgba(242,94,94,0.3)", color:"#F25E5E", fontSize:12, padding:"8px", borderRadius:10, width:"100%", marginTop:6, cursor:"pointer", fontFamily:"inherit", opacity: disputingId === m.id ? 0.6 : 1 }}
+                    >
+                      {disputingId === m.id ? "Envoi…" : "⚠️ Signaler un problème"}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

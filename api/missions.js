@@ -2518,10 +2518,35 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou non annulable" });
+
+      // Remboursement Stripe si la mission était payée
+      if (mission.stripe_payment_intent) {
+        try {
+          const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              payment_intent: mission.stripe_payment_intent,
+              reason: "requested_by_customer",
+            }).toString(),
+          });
+          const refundData = await refundRes.json();
+          if (refundData.id) {
+            console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour mission ${mission_id}`);
+          } else {
+            console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+          }
+        } catch (stripeErr) {
+          console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
+        }
+      }
 
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
@@ -2588,6 +2613,87 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ started_at: startedAt });
+    }
+
+    if (action === "raise_dispute") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, reason } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      // Vérifier que le caller est bien le client de la mission et que le status est "completed"
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.completed&select=id,metier,titre,date,montant_total,prestataire_id`, { headers });
+      const mData = await mr.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable ou non éligible au litige" });
+
+      // Vérifier délai de contestation (7 jours après date de mission)
+      if (mission.date) {
+        const missionDate = new Date(mission.date + "T23:59:59");
+        if (Date.now() - missionDate.getTime() > 7 * 86400000) {
+          return res.status(400).json({ error: "Le délai de contestation de 7 jours est dépassé" });
+        }
+      }
+
+      // Passer la mission en "disputed"
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "disputed" }),
+      });
+
+      // Récupérer email du client
+      let clientEmail = null; let clientName = "";
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+        const uData = await uRes.json();
+        clientEmail = uData.email || null;
+        clientName = [uData.user_metadata?.prenom, uData.user_metadata?.nom].filter(Boolean).join(" ") || "Client";
+      } catch {}
+
+      const label = mission.titre || mission.metier || "prestation";
+      const ticketSubject = `⚠️ Litige — Mission : ${label} (${mission.date || ""})`;
+      const ticketMessage = `Client : ${clientName} (${clientEmail || caller.id})\nMission ID : ${mission_id}\nPrestataire ID : ${mission.prestataire_id || "inconnu"}\nMontant : ${mission.montant_total || 0} €\n\nMotif : ${reason || "(non précisé)"}\n\nAction : Vérifier et décider du remboursement depuis le Backoffice.`;
+
+      // Créer ticket de support
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          subject: ticketSubject,
+          message: ticketMessage,
+          user_email: clientEmail,
+          user_name: clientName,
+          user_id: caller.id,
+          status: "open",
+        }),
+      }).catch(e => console.error("[raise_dispute] ticket creation failed:", e.message));
+
+      // Notifier le client
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: caller.id, type: "system", title: "Litige enregistré ✅", body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 48h.", read: false }),
+      }).catch(() => {});
+
+      // Email admin
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+      const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+      if (RESEND_API_KEY && ADMIN_EMAIL) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: ADMIN_EMAIL,
+            subject: ticketSubject,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px"><h2 style="color:#c0392b">⚠️ Litige Client</h2><pre style="font-size:14px;line-height:1.6">${ticketMessage}</pre></div>`,
+          }),
+        }).catch(e => console.error("[raise_dispute] admin email failed:", e.message));
+      }
+
+      return res.status(200).json({ success: true });
     }
 
     return res.status(400).json({ error: "Action invalide" });

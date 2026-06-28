@@ -1004,6 +1004,93 @@ export function BOSupport() {
   );
 }
 
+export function BOLitiges() {
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await boFetch({ action: "list_disputes" });
+      const d = await r.json();
+      if (Array.isArray(d)) setDisputes(d);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleRefund = async (m) => {
+    if (!window.confirm(`Rembourser ${m.montant_total || 0} € au client pour la mission "${m.titre || m.metier}" ?`)) return;
+    setProcessingId(m.id);
+    try {
+      const r = await boFetch({ action: "refund_dispute", mission_id: m.id });
+      const d = await r.json();
+      if (d.success) {
+        alert("Remboursement effectué ✅");
+        load();
+      } else {
+        alert(d.error || "Erreur lors du remboursement");
+      }
+    } catch { alert("Erreur réseau"); }
+    setProcessingId(null);
+  };
+
+  const handleReject = async (m) => {
+    if (!window.confirm(`Rejeter le litige pour "${m.titre || m.metier}" ? Le client ne sera pas remboursé.`)) return;
+    setProcessingId(m.id);
+    try {
+      const r = await boFetch({ action: "resolve_dispute", mission_id: m.id, resolution: "rejected" });
+      const d = await r.json();
+      if (d.success) {
+        alert("Litige rejeté ✅");
+        load();
+      } else {
+        alert(d.error || "Erreur lors du rejet");
+      }
+    } catch { alert("Erreur réseau"); }
+    setProcessingId(null);
+  };
+
+  if (loading) return <div style={{ padding:24, textAlign:"center", color:"rgba(255,255,255,0.4)" }}>Chargement…</div>;
+  if (!disputes.length) return (
+    <div style={{ padding:24, textAlign:"center" }}>
+      <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
+      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:14 }}>Aucun litige en cours</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding:16 }}>
+      <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Litiges en cours ({disputes.length})</h3>
+      {disputes.map(m => (
+        <div key={m.id} style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+            <div>
+              <div style={{ fontWeight:700, color:"#F25E5E", fontSize:14 }}>⚠️ {m.titre || m.metier || "Prestation"}</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {m.montant_total || 0} €</div>
+              {m.client_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Client : {m.client_email}</div>}
+              {m.presta_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Prestataire : {m.presta_email}</div>}
+            </div>
+          </div>
+          {m.dispute_reason && <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:10 }}>"{m.dispute_reason}"</div>}
+          <div style={{ display:"flex", gap:8 }}>
+            <button disabled={processingId === m.id} onClick={() => handleRefund(m)}
+              style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+              {processingId === m.id ? "…" : "💰 Rembourser"}
+            </button>
+            <button disabled={processingId === m.id} onClick={() => handleReject(m)}
+              style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+              {processingId === m.id ? "…" : "✕ Rejeter le litige"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BroadcastNotifSection() {
   const [title, setTitle] = useState("");
   const [body, setBody]   = useState("");
@@ -2284,6 +2371,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"documents",  l:"📂 Documents"},
             {id:"prestations",   l:"📋 Prestations"},
             {id:"support",    l:"🎧 Support"},
+            {id:"litiges",    l:"⚠️ Litiges"},
             {id:"sectors",    l:"🗂️ Secteurs"},
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
@@ -2321,6 +2409,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
+
+        {/* ── LITIGES ── */}
+        {tab==="litiges" && <BOLitiges />}
 
         {/* ── TEST ── */}
         {tab==="test" && <BOTest onNavigate={onNavigate} />}
