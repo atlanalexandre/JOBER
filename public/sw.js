@@ -1,9 +1,8 @@
 // Service Worker — ALANE
-// Push notifications + cache strategy (stale-while-revalidate pour assets statiques)
+// Push notifications + cache strategy
 
-const CACHE_NAME = "alane-v1";
+const CACHE_NAME = "alane-v3";
 const STATIC_ASSETS = [
-  "/",
   "/manifest.json",
   "/favicon.svg",
   "/icon-512.png",
@@ -62,7 +61,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Shell de l'app (HTML) + assets statiques → stale-while-revalidate
+  // Shell HTML → network-first pour toujours servir la dernière version Vite
+  // (stale-while-revalidate causait des crashs : vieux index.html + nouveaux hashes JS absents)
+  if (url.pathname === "/" || url.pathname.endsWith(".html")) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Autres assets statiques (manifest, icons) → stale-while-revalidate
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) =>
       cache.match(request).then((cached) => {
@@ -71,7 +87,7 @@ self.addEventListener("fetch", (event) => {
             if (response.ok) cache.put(request, response.clone());
             return response;
           })
-          .catch(() => cached); // Offline fallback : retourner le cache
+          .catch(() => cached);
         return cached || fetchPromise;
       })
     )
