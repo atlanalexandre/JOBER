@@ -1568,9 +1568,20 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   // GPS watch for automatic check-in (< 150m)
   useEffect(() => {
+    const now = Date.now();
     const watchable = assignedMissions.filter(m => {
       const c = missionCoordCache[m.id];
-      return !arrivedAtMap[m.id] && c && typeof c === "object";
+      if (!c || typeof c !== "object" || arrivedAtMap[m.id]) return false;
+      // N'activer la détection que si la mission commence dans moins de 30 min ou a déjà commencé
+      if (m.date && m.heure_debut) {
+        try {
+          const [yr, mo, dy] = m.date.split("-").map(Number);
+          const [hh, mm] = m.heure_debut.split(":").map(Number);
+          const missionStart = new Date(yr, mo - 1, dy, hh, mm).getTime();
+          if (now < missionStart - 30 * 60 * 1000) return false;
+        } catch {}
+      }
+      return true;
     });
 
     if (geoWatchRef.current != null) { navigator.geolocation?.clearWatch(geoWatchRef.current); geoWatchRef.current = null; }
@@ -1912,15 +1923,34 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 ) : !isPast && (
                   // ── Pas encore arrivé : détection GPS ou fallback manuel ──
                   <div style={{ marginBottom:10 }}>
-                    {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (
-                      <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
-                        <div>
-                          <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
-                          <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
+                    {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (() => {
+                      // Vérifier si la mission commence dans plus de 30 min
+                      let tooEarly = false;
+                      if (m.date && m.heure_debut) {
+                        try {
+                          const [yr,mo,dy] = m.date.split("-").map(Number);
+                          const [hh,mm] = m.heure_debut.split(":").map(Number);
+                          tooEarly = Date.now() < new Date(yr, mo-1, dy, hh, mm).getTime() - 30*60*1000;
+                        } catch {}
+                      }
+                      return tooEarly ? (
+                        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                          <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                          <div>
+                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection inactive</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>La détection GPS s'activera 30 min avant le début de la prestation.</div>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
+                      ) : (
+                        <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                          <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                          <div>
+                            <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
+                            <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
+                          </div>
+                        </div>
+                      );
+                    })() : (
                       // Fallback : GPS refusé ou adresse non géocodable → bouton manuel
                       <button disabled={checkingInId === m.id} onClick={async () => {
                         setCheckingInId(m.id);
