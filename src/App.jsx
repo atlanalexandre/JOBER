@@ -1040,6 +1040,7 @@ export default function App() {
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [trialExhausted,setTrialExhausted]=useState(false);
+  const [profileLoaded,setProfileLoaded]=useState(false);
   const [prestaPlan,setPrestaPlan]=useState("free");
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
@@ -1141,6 +1142,7 @@ export default function App() {
         // trial_exhausted vient toujours de profiles (pas dans user_metadata)
         const { data:pr } = await supabase.from("profiles").select("trial_exhausted").eq("id",supaUser.id).single();
         if(pr) setTrialExhausted(!!pr.trial_exhausted);
+        setProfileLoaded(true);
       } catch {}
     })();
   },[supaUser, role]);
@@ -1283,6 +1285,8 @@ export default function App() {
         try { sessionStorage.removeItem("alane_session_active"); sessionStorage.removeItem("bo_token"); } catch(e) {}
         setBoUnlocked(false);
         setBoTestMode(false);
+        setProfileLoaded(false);
+        setTrialExhausted(false);
         setClientCashback(null);
         setRole(null);
         setSelectedProvider(null);
@@ -1366,6 +1370,7 @@ export default function App() {
         if(profile.role==="prestataire"){
           setTrialExhausted(!!profile.trial_exhausted);
           setPrestaPlan(profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+          setProfileLoaded(true);
         }
         if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
         if(profile.status === "rejected" || profile.status === "suspended"){ await supabase.auth.signOut(); setScreen("role"); return; }
@@ -1462,7 +1467,7 @@ export default function App() {
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); setPrestaPlan(pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free"); } }}
+          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); setPrestaPlan(pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free"); setProfileLoaded(true); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
@@ -1583,7 +1588,7 @@ export default function App() {
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {/* ── Paywall prestataire — bloque l'accès si trial épuisé et pas d'abonnement ── */}
-      {role==="prestataire" && trialExhausted && prestaPlan==="free" && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
+      {role==="prestataire" && trialExhausted && prestaPlan==="free" && profileLoaded && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
         <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} onUnblocked={()=>setTrialExhausted(false)} />
       )}
 
