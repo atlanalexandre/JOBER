@@ -1981,24 +1981,63 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   // ── Pas encore arrivé : détection GPS ou fallback manuel ──
                   <div style={{ marginBottom:10 }}>
                     {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (() => {
-                      // Vérifier si la mission commence dans plus de 30 min
                       let tooEarly = false;
+                      let missionStarted = true;
                       if (m.date && m.heure_debut) {
                         try {
                           const [yr,mo,dy] = m.date.split("-").map(Number);
                           const [hh,mm] = m.heure_debut.split(":").map(Number);
-                          tooEarly = Date.now() < new Date(yr, mo-1, dy, hh, mm).getTime() - 30*60*1000;
+                          const missionStartMs = new Date(yr, mo-1, dy, hh, mm).getTime();
+                          tooEarly = Date.now() < missionStartMs - 30*60*1000;
+                          missionStarted = Date.now() >= missionStartMs;
                         } catch {}
                       }
+                      const checkinBtn = (
+                        <button disabled={checkingInId === m.id} onClick={async () => {
+                          setCheckingInId(m.id);
+                          setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+                          const { data: sd } = await supabase.auth.getSession();
+                          const token = sd?.session?.access_token;
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                          const d = await r.json();
+                          if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                          setCheckingInId(null);
+                        }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                          {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                        </button>
+                      );
                       return tooEarly ? (
-                        <div>
-                          <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-                            <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                          <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                          <div>
+                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 30 min avant le début de la mission.</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
                             <div>
-                              <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
-                              <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 30 min avant. Si vous êtes déjà sur place, signalez-le manuellement.</div>
+                              <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
+                              <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
                             </div>
                           </div>
+                          {missionStarted && checkinBtn}
+                        </div>
+                      );
+                    })() : (
+                      // Fallback : GPS refusé ou adresse non géocodable → bouton manuel à l'heure de début
+                      (() => {
+                        let missionStarted = true;
+                        if (m.date && m.heure_debut) {
+                          try {
+                            const [yr,mo,dy] = m.date.split("-").map(Number);
+                            const [hh,mm] = m.heure_debut.split(":").map(Number);
+                            missionStarted = Date.now() >= new Date(yr, mo-1, dy, hh, mm).getTime();
+                          } catch {}
+                        }
+                        return missionStarted ? (
                           <button disabled={checkingInId === m.id} onClick={async () => {
                             setCheckingInId(m.id);
                             setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
@@ -2011,30 +2050,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
                             {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
                           </button>
-                        </div>
-                      ) : (
-                        <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
-                          <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
-                          <div>
-                            <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
-                            <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
+                        ) : (
+                          <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                            <div style={{ color:C.textMuted, fontSize:12 }}>Le bouton de présence sera disponible à l'heure de début de la mission.</div>
                           </div>
-                        </div>
-                      );
-                    })() : (
-                      // Fallback : GPS refusé ou adresse non géocodable → bouton manuel
-                      <button disabled={checkingInId === m.id} onClick={async () => {
-                        setCheckingInId(m.id);
-                        setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
-                        const { data: sd } = await supabase.auth.getSession();
-                        const token = sd?.session?.access_token;
-                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
-                        const d = await r.json();
-                        if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
-                        setCheckingInId(null);
-                      }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
-                        {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
-                      </button>
+                        );
+                      })()
                     )}
                     {checkInGeoError[m.id] && (
                       <div style={{ marginTop:8, background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"10px 13px", fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>

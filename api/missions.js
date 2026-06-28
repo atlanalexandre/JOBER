@@ -574,12 +574,20 @@ export default async function handler(req, res) {
         }).catch(() => ({ ok: false, status: 0 }));
       }
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
+      let atomicBalance = newBalance;
       if (!rpcRes.ok) {
-        console.error("[complete] increment_cashback RPC failed (mission marked completed, cashback NOT credited):", rpcRes.status, "mission_id:", mission_id, "client_id:", client_id, "delta:", cashbackEarned);
+        console.error("[complete] increment_cashback RPC failed, fallback direct PATCH:", rpcRes.status, "mission_id:", mission_id);
+        // Fallback : mise à jour directe avec service role key
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+        }).catch(e => console.error("[complete] fallback cashback PATCH failed:", e.message));
+      } else {
+        atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
+          ? rpcData[0].cashback_balance
+          : newBalance;
       }
-      const atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null
-        ? rpcData[0].cashback_balance
-        : newBalance;
 
       // Notification mission validée — toujours envoyée, même si RPC cashback a échoué
       await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
