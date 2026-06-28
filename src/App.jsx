@@ -1584,7 +1584,7 @@ export default function App() {
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {/* ── Paywall prestataire — bloque l'accès si trial épuisé et pas d'abonnement ── */}
       {role==="prestataire" && trialExhausted && prestaPlan==="free" && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
-        <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} />
+        <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} onUnblocked={()=>setTrialExhausted(false)} />
       )}
 
       {boTestMode && screen!=="bo_dashboard" && (

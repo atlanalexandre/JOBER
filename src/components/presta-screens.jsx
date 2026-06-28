@@ -1359,20 +1359,38 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   );
 }
 
-export function TrialExhaustedPaywall({ onUpgrade }) {
+export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
+  const [checking, setChecking] = useState(false);
+  const handleRetry = async () => {
+    setChecking(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: pr } = await supabase.from("profiles").select("trial_exhausted").eq("id", user.id).single();
+        if (pr && !pr.trial_exhausted) {
+          onUnblocked?.();
+          return;
+        }
+      }
+    } catch {}
+    setChecking(false);
+  };
   return (
     <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
       <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
       <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"inherit" }}>Accès suspendu</h2>
       <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
-        Votre offre gratuite a été entièrement utilisée.
+        Votre offre gratuite a été entièrement utilisée ce mois-ci.
       </p>
       <p style={{ color:"rgba(255,255,255,0.35)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
-        Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite.
+        Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite. Le quota gratuit se réinitialise le 1er de chaque mois.
       </p>
       <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 }}>
         <button onClick={onUpgrade} style={{ padding:"16px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C6FE0,#5B4FCF)", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 20px rgba(124,111,224,0.4)" }}>
           💎 Voir les abonnements
+        </button>
+        <button onClick={handleRetry} disabled={checking} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(16,217,143,0.3)", background:"rgba(16,217,143,0.06)", color:"#10D98F", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:checking?0.6:1 }}>
+          {checking ? "Vérification…" : "🔄 Vérifier mon accès"}
         </button>
         <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.4)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
           Se déconnecter
@@ -1585,6 +1603,31 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
   useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
 
+  // Auto-démarrage : si arrivé depuis > 10 min et prestation pas encore démarrée → start_mission automatique
+  useEffect(() => {
+    const AUTO_START_MS = 10 * 60 * 1000;
+    const timers = [];
+    for (const m of assignedMissions) {
+      const arrivedAt = arrivedAtMap[m.id];
+      if (!arrivedAt || startedAtMap[m.id]) continue;
+      const delay = AUTO_START_MS - (Date.now() - new Date(arrivedAt).getTime());
+      const t = setTimeout(async () => {
+        if (startedAtMap[m.id]) return; // already started manually
+        const { data: sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+          body: JSON.stringify({ action: "start_mission", mission_id: m.id, auto_start: true }),
+        }).catch(() => null);
+        const d = r?.ok ? await r.json().catch(() => null) : null;
+        if (d?.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+      }, Math.max(0, delay));
+      timers.push(t);
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [assignedMissions, arrivedAtMap, startedAtMap]);
+
   // Geocode mission addresses for auto-checkin detection
   useEffect(() => {
     for (const m of assignedMissions) {
@@ -1611,7 +1654,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   // GPS watch for automatic check-in (< 150m)
   useEffect(() => {
-    const now = Date.now();
+    const now = Date.now(); // snapshot local à cet effet seulement
     const watchable = assignedMissions.filter(m => {
       const c = missionCoordCache[m.id];
       if (!c || typeof c !== "object" || arrivedAtMap[m.id]) return false;
