@@ -1794,6 +1794,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             const { data:{ session } } = await supabase.auth.getSession();
             const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
             if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
+            else { const e = await r.json().catch(()=>({})); alert(e.error || "Erreur lors de la validation — réessayez."); }
           }}
           onClose={() => setContractMission(null)}
         />
@@ -2039,6 +2040,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           const { data:{ session } } = await supabase.auth.getSession();
                           const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                          else { const e = await r.json().catch(()=>({})); alert(e.error || "Erreur lors de la validation — réessayez."); }
                           setValidatingMission(null);
                         }
                       }}
