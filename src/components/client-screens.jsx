@@ -778,21 +778,29 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(() => {
     let mounted = true;
-    const loadValidations = () => supabase.auth.getUser().then(({ data }) => {
+    const loadValidations = async () => {
+      const { data } = await supabase.auth.getUser();
       const user = data?.user;
       if (!user || !mounted) return;
-      supabase.from("missions")
-        .select("id,metier,sector,date,heure_debut,hours,validation_prestataire")
-        .eq("client_id", user.id)
-        .eq("status", "assigned")
-        .eq("validation_prestataire", true)
-        .then(({ data: ms }) => {
-          if (mounted && Array.isArray(ms)) setMissionsToValidate(ms);
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      try {
+        const res = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ action: "list_client" }),
         });
-    });
+        const missions = await res.json();
+        if (!mounted || !Array.isArray(missions)) return;
+        const toValidate = missions.filter(m => m.status === "assigned" && m.validation_prestataire);
+        setMissionsToValidate(toValidate);
+      } catch {}
+    };
     loadValidations();
-    const t = setInterval(loadValidations, 30000);
-    return () => { mounted = false; clearInterval(t); };
+    const t = setInterval(loadValidations, 8000);
+    const onVisible = () => { if (document.visibilityState === "visible") loadValidations(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { mounted = false; clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   useEffect(() => {
@@ -5214,8 +5222,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       if (Array.isArray(data2)) setMissions(data2);
     };
     poll(); // appel immédiat pour avoir des données fraîches dès l'ouverture
-    const t = setInterval(poll, 30000);
-    return () => clearInterval(t);
+    const t = setInterval(poll, 10000);
+    const onVisible = () => { if (document.visibilityState === "visible") poll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   // Synchroniser selected quand le poll ramène des données fraîches
@@ -5324,7 +5334,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       });
     };
     poll();
-    const t = setInterval(poll, 10000);
+    const t = setInterval(poll, 5000);
     return () => clearInterval(t);
   }, [selected?.id, selected?.validation_prestataire, selected?.status]);
 
