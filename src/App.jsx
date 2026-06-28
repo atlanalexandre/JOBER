@@ -1338,8 +1338,21 @@ export default function App() {
   const handleSplashNext = async () => {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
-      let stayLoggedIn; try { stayLoggedIn = localStorage.getItem("alane_stay_logged_in"); } catch(e) {}
-      let sessionActive; try { sessionActive = sessionStorage.getItem("alane_session_active"); } catch(e) {}
+      let stayLoggedIn; try {
+        stayLoggedIn = localStorage.getItem("alane_stay_logged_in");
+        // Migration one-time depuis l'ancienne clé "jober_*" (renommée "alane_*")
+        if (!stayLoggedIn) {
+          const legacy = localStorage.getItem("jober_stay_logged_in");
+          if (legacy) { localStorage.setItem("alane_stay_logged_in", legacy); localStorage.removeItem("jober_stay_logged_in"); stayLoggedIn = legacy; }
+        }
+      } catch(e) {}
+      let sessionActive; try {
+        sessionActive = sessionStorage.getItem("alane_session_active");
+        if (!sessionActive) {
+          const legacy = sessionStorage.getItem("jober_session_active");
+          if (legacy) { sessionStorage.setItem("alane_session_active", legacy); sessionStorage.removeItem("jober_session_active"); sessionActive = legacy; }
+        }
+      } catch(e) {}
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
         await supabase.auth.signOut();

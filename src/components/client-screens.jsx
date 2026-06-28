@@ -4523,7 +4523,7 @@ export function ClientOnboarding({ onComplete, onBack }) {
 export function ContractScreen({ provider, amount, hours, date, missionId, onSign, onBack }) {
   const p = provider;
   if (!p) return null;
-  const [clientSigned, setClientSigned] = useState(true);
+  const [clientSigned, setClientSigned] = useState(false);
   const [prestaSigned, setPrestaSigned] = useState(false);
   const [prestaSignedAt, setPrestaSignedAt] = useState(null);
   const [finalised, setFinalised] = useState(false);
@@ -4543,12 +4543,16 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   },[]);
   useEffect(()=>{
     if (!missionId) return;
-    supabase.from("missions").select("status,contrat_presta_signe_at").eq("id", missionId).single()
+    supabase.from("missions").select("status,contrat_presta_signe_at,contrat_client_signe_at").eq("id", missionId).single()
       .then(({ data }) => {
         if (!data) return;
         if (data.contrat_presta_signe_at || data.status === "assigned") {
           setPrestaSigned(true);
           setPrestaSignedAt(data.contrat_presta_signe_at || null);
+        }
+        // Si le client a déjà signé (mission en cours ou contrat_client_signe_at), ne pas re-demander
+        if (data.contrat_client_signe_at || data.status === "assigned") {
+          setClientSigned(true);
         }
       });
   },[missionId]);
@@ -5597,6 +5601,18 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
               <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
+            </div>
+          )}
+          {selected.status === "open" && candidatures.length > 0 && candidatures.every(c => c.status === "rejected") && (
+            <div style={{ marginTop:16, background:"rgba(124,111,224,0.07)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"16px", textAlign:"center" }}>
+              <div style={{ fontSize:24, marginBottom:6 }}>🔍</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>Aucun prestataire disponible pour l'instant</div>
+              <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                Toutes les candidatures ont été refusées. Votre mission reste active — vous pouvez aussi chercher un prestataire directement.
+              </div>
+              <button onClick={() => onNavigate("search_filters")} style={{ padding:"10px 20px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                Trouver un prestataire →
+              </button>
             </div>
           )}
           {selected.status === "needs_replacement" && (

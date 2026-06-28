@@ -19,22 +19,26 @@ export default async function handler(req, res) {
 
   if (!STRIPE_SECRET_KEY) return res.status(500).end();
 
+  // STRIPE_WEBHOOK_SECRET est obligatoire en production — sans lui, n'importe qui peut forger des événements
+  if (!STRIPE_WEBHOOK_SECRET) {
+    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET non configuré — webhook rejeté pour sécurité");
+    return res.status(500).json({ error: "Webhook non configuré" });
+  }
+
   const rawBody = await getRawBody(req);
   const sig     = req.headers["stripe-signature"];
 
-  // Vérification signature — obligatoire si STRIPE_WEBHOOK_SECRET est configuré
-  if (STRIPE_WEBHOOK_SECRET) {
-    if (!sig) return res.status(400).json({ error: "Signature manquante" });
-    try {
-      const crypto = await import("crypto");
-      const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
-      if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
-      if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
-      const payload  = `${tsStr}.${rawBody.toString()}`;
-      const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
-      if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
-    } catch { return res.status(400).json({ error: "Erreur signature" }); }
-  }
+  // Vérification signature — toujours obligatoire
+  if (!sig) return res.status(400).json({ error: "Signature manquante" });
+  try {
+    const crypto = await import("crypto");
+    const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
+    if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
+    if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
+    const payload  = `${tsStr}.${rawBody.toString()}`;
+    const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
+    if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
+  } catch { return res.status(400).json({ error: "Erreur signature" }); }
 
   let event;
   try { event = JSON.parse(rawBody.toString()); }
@@ -301,6 +305,79 @@ export default async function handler(req, res) {
         }).catch(e => console.error("[sub.deleted] profile downgrade failed:", e.message));
       }
     }
+  }
+
+  // ── Paiement échoué : remettre la mission en open pour qu'elle reste bookable ──
+  if (event.type === "payment_intent.payment_failed") {
+    const intent    = event.data.object;
+    const missionId = intent.metadata?.mission;
+    if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const headers = {
+        "apikey":        SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
+      };
+      // Remettre en open uniquement si encore en pending_acceptance (pas déjà paid/cancelled)
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=eq.pending_acceptance`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ status: "open", prestataire_id: null, stripe_payment_intent: null }),
+      }).catch(e => console.error("[payment_failed] mission reopen failed:", e.message));
+
+      // Notifier le client
+      try {
+        const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=client_id,metier,titre`, { headers });
+        const mData = await mRes.json().catch(() => []);
+        const m = Array.isArray(mData) && mData[0];
+        if (m?.client_id) {
+          const label = m.titre || m.metier || "la mission";
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers,
+            body: JSON.stringify({
+              user_id: m.client_id, type: "mission",
+              title: "Paiement échoué ⚠️",
+              body: `Le paiement pour « ${label} » a échoué. Veuillez réessayer depuis l'application.`,
+              read: false,
+            }),
+          }).catch(() => {});
+        }
+      } catch {}
+      console.log("[payment_intent.payment_failed] mission remise en open:", missionId);
+    }
+  }
+
+  // ── Chargeback (dispute) : alerter l'admin immédiatement ──
+  if (event.type === "charge.dispute.created") {
+    const dispute   = event.data.object;
+    const chargeId  = dispute.charge;
+    const amount    = (dispute.amount / 100).toFixed(2) + " €";
+    const reason    = dispute.reason || "inconnu";
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+    const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+    if (RESEND_API_KEY && ADMIN_EMAIL) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: RESEND_FROM,
+          to: ADMIN_EMAIL,
+          subject: `🚨 [CHARGEBACK] Dispute Stripe — ${amount}`,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+            <h2 style="color:#c0392b">🚨 Chargeback Stripe</h2>
+            <p>Un client a contesté un paiement. Répondez dans les délais Stripe (généralement 7 jours).</p>
+            <table style="width:100%;font-size:14px;border-collapse:collapse">
+              <tr><td style="padding:6px 0;color:#666">Montant disputé</td><td style="font-weight:700;color:#c0392b">${amount}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Charge ID</td><td style="font-size:12px">${chargeId || "—"}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Raison</td><td style="font-weight:700">${reason}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Statut</td><td>${dispute.status || "—"}</td></tr>
+            </table>
+            <p style="margin-top:16px"><a href="https://dashboard.stripe.com/disputes/${dispute.id}" style="color:#7C6FE0;font-weight:700">Gérer dans Stripe Dashboard →</a></p>
+          </div>`,
+        }),
+      }).catch(e => console.error("[dispute] email admin failed:", e.message));
+    }
+    console.warn("[charge.dispute.created] chargeback détecté:", dispute.id, amount, reason);
   }
 
   if (event.type === "account.updated") {

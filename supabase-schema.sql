@@ -74,7 +74,10 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "profiles_select" ON profiles;
 CREATE POLICY "profiles_select" ON profiles
-  FOR SELECT USING (true);  -- lecture publique nécessaire pour les listings prestataires, le parrainage, etc.
+  FOR SELECT USING (
+    auth.uid() = id          -- toujours accès à son propre profil
+    OR role = 'prestataire'  -- profils prestataires lisibles pour les listings clients
+  );
 
 DROP POLICY IF EXISTS "profiles_insert" ON profiles;
 CREATE POLICY "profiles_insert" ON profiles
@@ -264,7 +267,7 @@ CREATE POLICY "ratings_read" ON ratings
 CREATE TABLE IF NOT EXISTS contracts (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   mission_id            text,
-  contract_number       text,
+  contract_number       text UNIQUE,
   client_id             uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   prestataire_name      text,
   prestataire_role      text,
