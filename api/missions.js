@@ -1472,20 +1472,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Cette mission ne peut plus être annulée" });
       }
 
-      // Calculer la pénalité côté serveur selon la politique d'annulation
-      let penalty = 0;
-      if (mission.stripe_payment_intent && mission.date) {
+      // Politique d'annulation : seuls les frais de service sont retenus si < 24h
+      const FRAIS_SERVICE = 4.90; // frais de service standard retenus en cas d'annulation < 24h
+      let lessThan24h = false;
+      if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
         const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
         const missionStartUTC = new Date(missionStart.getTime() - frenchOffsetMs(missionStart));
-        const hoursUntilMission = (missionStartUTC - new Date()) / 3600000;
-        if (hoursUntilMission < 24) penalty = 100;
-        else if (hoursUntilMission < 48) penalty = 50;
+        lessThan24h = (missionStartUTC - new Date()) / 3600000 < 24;
       }
 
-      // Calculer le montant de pénalité en euros (plafonné au montant total)
       const missionAmount = Number(mission.montant_total) || 0;
-      const penaltyEur = Math.min(Math.round(missionAmount * penalty / 100 * 100) / 100, missionAmount);
+      // > 24h : remboursement intégral / < 24h : frais de service retenus (4,90€)
+      const refundAmount = lessThan24h
+        ? Math.max(0, Math.round((missionAmount - FRAIS_SERVICE) * 100)) // en centimes
+        : Math.round(missionAmount * 100);
+      const keptAmount = lessThan24h ? Math.min(FRAIS_SERVICE, missionAmount) : 0;
 
       // Récupérer l'email du client pour le ticket
       let clientEmail = null;
@@ -1499,52 +1501,98 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "cancelled", cancellation_reason: reason || null, cancellation_penalty: penalty, cancellation_penalty_eur: penaltyEur }),
+        body: JSON.stringify({
+          status: "cancelled",
+          cancellation_reason: reason || null,
+          cancellation_penalty: lessThan24h ? keptAmount : 0,
+          cancellation_penalty_eur: keptAmount,
+        }),
       });
 
-      // Créer un ticket support prioritaire si paiement existant (remboursement traité manuellement par ALANE)
-      if (mission.stripe_payment_intent) {
-        const penaltyLabel = penalty === 0 ? "remboursement intégral à traiter" : penalty === 50 ? "remboursement 50% à traiter" : "aucun remboursement (annulation <24h)";
-        await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+      // Remboursement Stripe automatique
+      let stripeRefundId = null;
+      let stripeRefundError = null;
+      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+      if (mission.stripe_payment_intent && refundAmount > 0 && STRIPE_SECRET_KEY) {
+        try {
+          const stripeBody = new URLSearchParams({
+            payment_intent: mission.stripe_payment_intent,
+            amount: String(refundAmount),
+            reason: "requested_by_customer",
+          });
+          const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: stripeBody.toString(),
+          });
+          const stripeData = await stripeRes.json();
+          if (stripeRes.ok && stripeData.id) {
+            stripeRefundId = stripeData.id;
+          } else {
+            stripeRefundError = stripeData.error?.message || "Erreur Stripe inconnue";
+            console.error("[cancel_client] Stripe refund failed:", stripeRefundError);
+          }
+        } catch (e) {
+          stripeRefundError = e.message;
+          console.error("[cancel_client] Stripe refund exception:", e.message);
+        }
+      }
+
+      // Email au client — confirmation de remboursement
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+      if (RESEND_API_KEY && clientEmail) {
+        const refundEur = (refundAmount / 100).toFixed(2).replace(".", ",");
+        const keptEur   = keptAmount.toFixed(2).replace(".", ",");
+        await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            subject: `[ANNULATION] Mission ${mission_id.slice(0, 8)} — ${penaltyLabel}`,
-            message: `Mission annulée par le client.\n\nMission : ${mission.metier || mission.sector || "—"}\nMontant : ${mission.montant_total || "—"} €\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\nPénalité appliquée : ${penalty ?? 0}%\nMotif : ${reason || "—"}\n\nAction requise : traiter le remboursement manuellement dans le dashboard Stripe.`,
-            user_email: clientEmail,
-            user_id: caller.id,
-            status: "open",
+            from: RESEND_FROM,
+            to: clientEmail,
+            subject: `Annulation confirmée — remboursement de ${refundEur} € en cours`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+              <h2 style="color:#050E20">✅ Annulation confirmée</h2>
+              <p style="color:#444">Votre mission <strong>${esc(mission.metier || mission.sector || "")}</strong> a bien été annulée.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
+                <tr><td style="padding:6px 0;color:#666">Montant payé</td><td style="font-weight:700">${esc(String(missionAmount.toFixed(2).replace(".",",")))} €</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
+                ${lessThan24h ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
+              </table>
+              <p style="font-size:13px;color:#666">${stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h."}</p>
+              ${lessThan24h ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus car l'annulation a eu lieu moins de 24h avant le début de la prestation.</p>` : ""}
+              <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+            </div>`,
           }),
         }).catch(() => {});
+      }
 
-        // Alerter l'admin par email
-        const RESEND_API_KEY = process.env.RESEND_API_KEY;
-        const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-        const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
-        if (RESEND_API_KEY && ADMIN_EMAIL) {
-          await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              from: RESEND_FROM,
-              to: ADMIN_EMAIL,
-              subject: `[ACTION REQUISE] Annulation mission — ${penaltyLabel}`,
-              html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
-                <h2 style="color:#050E20">⚠️ Annulation mission — remboursement à traiter</h2>
-                <table style="width:100%;border-collapse:collapse;font-size:14px">
-                  <tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${esc(mission.metier || mission.sector || "—")}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700">${esc(String(mission.montant_total || "—"))} €</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${esc(mission.stripe_payment_intent || "")}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Pénalité</td><td style="font-weight:700;color:${penalty === 0 ? "#10D98F" : "#F0B429"}">${penalty ?? 0}%</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Motif</td><td>${esc(reason || "—")}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail || caller.id)}</td></tr>
-                </table>
-                <p style="margin-top:20px;font-size:13px;color:#666">Traiter le remboursement depuis le <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">dashboard Stripe</a>.</p>
-                <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-              </div>`,
-            }),
-          }).catch(() => {});
-        }
+      // Email admin uniquement si le remboursement Stripe a échoué
+      if (stripeRefundError && RESEND_API_KEY && ADMIN_EMAIL) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: RESEND_FROM,
+            to: ADMIN_EMAIL,
+            subject: `[ACTION REQUISE] Remboursement Stripe échoué — mission ${mission_id.slice(0,8)}`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+              <h2 style="color:#c0392b">⚠️ Remboursement automatique échoué</h2>
+              <p>Le remboursement automatique a échoué pour la mission <strong>${esc(mission.metier || mission.sector || "—")}</strong>.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-weight:700;font-size:12px">${esc(mission.stripe_payment_intent || "")}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Montant à rembourser</td><td style="font-weight:700">${((refundAmount)/100).toFixed(2)} €</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Erreur</td><td style="color:#c0392b">${esc(stripeRefundError)}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail || caller.id)}</td></tr>
+              </table>
+              <p style="margin-top:16px"><a href="https://dashboard.stripe.com/payments/${esc(mission.stripe_payment_intent || "")}" style="color:#7C6FE0">Traiter manuellement dans Stripe →</a></p>
+            </div>`,
+          }),
+        }).catch(() => {});
       }
 
       // Notifier le prestataire
