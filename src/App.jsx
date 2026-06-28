@@ -1118,9 +1118,13 @@ export default function App() {
         try {
           const { data:{ user } } = await supabase.auth.getUser();
           if(user){
-            setPrestaPlan(user.user_metadata?.plan_abonnement || "free");
-            const {data:pr}=await supabase.from("profiles").select("trial_exhausted").eq("id",user.id).single();
-            if(pr) setTrialExhausted(!!pr.trial_exhausted);
+            const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single();
+            if(pr) {
+              setTrialExhausted(!!pr.trial_exhausted);
+              setPrestaPlan(pr.plan_abonnement || user.user_metadata?.plan_abonnement || "free");
+            } else {
+              setPrestaPlan(user.user_metadata?.plan_abonnement || "free");
+            }
           }
         } catch {}
       }, 2000);
@@ -1135,13 +1139,12 @@ export default function App() {
     if(!supaUser || role!=="prestataire") return;
     (async()=>{
       try {
-        // getUser() fait toujours un appel réseau (contrairement à getSession/refreshSession qui peuvent retourner le cache)
         const { data:{ user } } = await supabase.auth.getUser();
-        const plan = user?.user_metadata?.plan_abonnement || "free";
-        setPrestaPlan(plan);
-        // trial_exhausted vient toujours de profiles (pas dans user_metadata)
-        const { data:pr } = await supabase.from("profiles").select("trial_exhausted").eq("id",supaUser.id).single();
+        // profiles est la source de vérité pour plan_abonnement (le webhook Stripe y écrit en priorité)
+        const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
         if(pr) setTrialExhausted(!!pr.trial_exhausted);
+        const plan = pr?.plan_abonnement || user?.user_metadata?.plan_abonnement || "free";
+        setPrestaPlan(plan);
         setProfileLoaded(true);
       } catch {}
     })();
