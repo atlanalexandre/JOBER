@@ -1359,6 +1359,29 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   );
 }
 
+export function TrialExhaustedPaywall({ onUpgrade }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
+      <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
+      <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"inherit" }}>Accès suspendu</h2>
+      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
+        Votre offre gratuite a été entièrement utilisée.
+      </p>
+      <p style={{ color:"rgba(255,255,255,0.35)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
+        Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite.
+      </p>
+      <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 }}>
+        <button onClick={onUpgrade} style={{ padding:"16px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C6FE0,#5B4FCF)", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 20px rgba(124,111,224,0.4)" }}>
+          💎 Voir les abonnements
+        </button>
+        <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.4)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function UpgradeNudge({ onNavigate }) {
   const [plan, setPlan] = useState(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
