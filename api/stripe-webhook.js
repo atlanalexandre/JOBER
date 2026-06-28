@@ -119,6 +119,12 @@ export default async function handler(req, res) {
           console.error("stripe-webhook: user metadata update failed", r.status);
           return res.status(500).json({ error: "User update failed" });
         }
+        // Mettre à jour aussi la table profiles pour que le client puisse lire le plan
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({ plan_abonnement: plan, subscription_end_date: endDate }),
+        }).catch(e => console.error("stripe-webhook: profiles PATCH failed", e));
       } catch (e) {
         console.error("stripe-webhook: Supabase down on checkout.session.completed", e);
         return res.status(500).json({ error: "Supabase unavailable" });
