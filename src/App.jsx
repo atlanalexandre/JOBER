@@ -1111,31 +1111,36 @@ export default function App() {
     const subSuccess = params.get("sub_success");
     const plan = params.get("plan");
     if(subSuccess === "1" && plan) {
-      supabase.auth.refreshSession().then(async({data:{session}})=>{
-        window.history.replaceState({}, "", window.location.pathname);
-        if(session?.user){
-          const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
-          setTrialExhausted(!!pr?.trial_exhausted);
-          setPrestaPlan(pr?.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
-        }
-      });
+      window.history.replaceState({}, "", window.location.pathname);
+      // Petit délai pour laisser le webhook Stripe mettre à jour user_metadata avant getUser()
+      setTimeout(async()=>{
+        try {
+          const { data:{ user } } = await supabase.auth.getUser();
+          if(user){
+            setPrestaPlan(user.user_metadata?.plan_abonnement || "free");
+            const {data:pr}=await supabase.from("profiles").select("trial_exhausted").eq("id",user.id).single();
+            if(pr) setTrialExhausted(!!pr.trial_exhausted);
+          }
+        } catch {}
+      }, 2000);
     }
     if(params.get("sub_cancel") === "1") {
       window.history.replaceState({}, "", window.location.pathname);
     }
   },[]);
 
-  // Recharge le plan prestataire dès que connecté — refreshSession pour user_metadata frais
+  // Recharge le plan prestataire via getUser() — appel réseau garanti, jamais en cache
   useEffect(()=>{
     if(!supaUser || role!=="prestataire") return;
     (async()=>{
       try {
-        const { data:{ session } } = await supabase.auth.refreshSession();
-        const freshUser = session?.user;
-        const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
-        if(pr?.trial_exhausted !== undefined) setTrialExhausted(!!pr.trial_exhausted);
-        const plan = pr?.plan_abonnement || freshUser?.user_metadata?.plan_abonnement || "free";
+        // getUser() fait toujours un appel réseau (contrairement à getSession/refreshSession qui peuvent retourner le cache)
+        const { data:{ user } } = await supabase.auth.getUser();
+        const plan = user?.user_metadata?.plan_abonnement || "free";
         setPrestaPlan(plan);
+        // trial_exhausted vient toujours de profiles (pas dans user_metadata)
+        const { data:pr } = await supabase.from("profiles").select("trial_exhausted").eq("id",supaUser.id).single();
+        if(pr) setTrialExhausted(!!pr.trial_exhausted);
       } catch {}
     })();
   },[supaUser, role]);
