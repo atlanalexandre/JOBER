@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabase.js";
 import { C, font, r, shadow } from "./constants/colors.js";
 import { IS_LAUNCH, isLaunchPhase, MARGES, FRAIS_MER, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, CASHBACK_TIERS, getCashbackTier, calcCashback } from "./constants/plans.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Stars, Badge, Btn, Input, AddressAutocomplete, formatPhone, checkIban, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Card, SectionHeader, Divider, MiniBar, DonutChart } from "./components/ui.jsx";
+import { Stars, Badge, Btn, Input, AddressAutocomplete, formatPhone, checkIban, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Card, SectionHeader, Divider, MiniBar, DonutChart, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
 import { CP_COORDS, cpToCoords, genMissionCode, SECTORS, METIERS_TARIFS, METIERS, CV_DATA, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, PROVIDERS_CACHE_TTL, FR_CITY_COORDS, SECTOR_LABELS } from "./constants/data.js";
 import { PrestaRegisterFlow, ClientRegisterFlow, AuthScreen } from "./components/auth.jsx";
 import { boFetch, useBoData, BackofficeLogin, BOComptes, BOSupport, BOModerationTab, BOExportCSV, BOExportMissions, BOExportPDF, EmailTestButton, BOTest, BOLogs, BOSettingsTab, BOResetMonthly, BOReminders, BOMissions, BODocuments, BORefundSection, BORatings, BackofficeDashboard } from "./components/backoffice.jsx";
@@ -106,7 +106,7 @@ function SplashScreen({ onNext, onBackoffice }) {
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
-    fetch("/api/prestataires?action=count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
+    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
@@ -210,7 +210,7 @@ function RoleScreen({ onSelect }) {
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{
-    fetch("/api/prestataires?action=count").then(r=>r.json()).then(d=>{ if(d.count!=null) setPrestaCount(d.count); }).catch(()=>{});
+    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
@@ -1181,35 +1181,39 @@ export default function App() {
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
     let hasConsent = false; try { hasConsent = !!localStorage.getItem(consentKey); } catch(e) {}
-    if(!hasConsent) {
-      const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?");
-      if(!ok) return;
-      try { localStorage.setItem(consentKey, "1"); } catch(e) {}
-    }
     let watchId = null;
-    let currentPos = null;
-    watchId = navigator.geolocation.watchPosition(
-      pos=>{ currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude }; },
-      ()=>{}, { enableHighAccuracy:true }
-    );
-    const sendPos = async () => {
-      if(!currentPos) return;
-      try {
-        const { data:ms } = await supabase.from("missions")
-          .select("id").eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1);
-        if(!Array.isArray(ms) || !ms.length) return;
-        const { data:sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        fetch("/api/missions", {
-          method:"POST",
-          headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
-          body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
-        }).catch(()=>{});
-      } catch {}
+    let iv = null;
+    const startGps = () => {
+      let currentPos = null;
+      watchId = navigator.geolocation.watchPosition(
+        pos=>{ currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude }; },
+        ()=>{}, { enableHighAccuracy:true }
+      );
+      const sendPos = async () => {
+        if(!currentPos) return;
+        try {
+          const { data:ms } = await supabase.from("missions")
+            .select("id").eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1);
+          if(!Array.isArray(ms) || !ms.length) return;
+          const { data:sd } = await supabase.auth.getSession();
+          const token = sd?.session?.access_token;
+          fetch("/api/missions", {
+            method:"POST",
+            headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
+            body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
+          }).catch(()=>{});
+        } catch {}
+      };
+      iv = setInterval(sendPos, 30000);
+      sendPos();
     };
-    const iv = setInterval(sendPos, 30000);
-    sendPos();
-    return ()=>{ navigator.geolocation.clearWatch(watchId); clearInterval(iv); };
+    if(hasConsent) {
+      startGps();
+    } else {
+      showConfirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?")
+        .then(ok => { if(!ok) return; try { localStorage.setItem(consentKey, "1"); } catch(e) {} startGps(); });
+    }
+    return ()=>{ if(watchId!==null) navigator.geolocation.clearWatch(watchId); if(iv!==null) clearInterval(iv); };
   },[supaUser, role]);
 
   // Poll messages non lus toutes les 10 secondes
@@ -1722,6 +1726,9 @@ export default function App() {
         </div>
       )}
     </ResponsiveLayout>
+    <ToastContainer />
+    <ConfirmModal />
+    <PromptModal />
     </>
   );
 }
