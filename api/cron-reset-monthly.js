@@ -603,12 +603,12 @@ ${(() => {
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
-    // trial_exhausted=not.is.true : ne pas remettre à 0 les profils dont l'offre est épuisée
-    // → evite que le compteur "retombe" à 0 et laisse croire qu'un nouveau quota est disponible
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0&trial_exhausted=not.is.true`, {
+    // Reset mensuel : remet missions_completed_month à 0 ET débloque trial_exhausted pour TOUS les profils.
+    // Le quota free (2 missions/mois) est mensuel — trial_exhausted doit se réinitialiser chaque 1er du mois.
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,trial_exhausted.is.true)`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ missions_completed_month: 0 }),
+      body: JSON.stringify({ missions_completed_month: 0, trial_exhausted: false }),
     });
 
     if (!r.ok) {

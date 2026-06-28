@@ -117,7 +117,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,trial_exhausted,missions_completed_month,created_at&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
@@ -450,6 +450,21 @@ export default async function handler(req, res) {
         await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été réactivé", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été réactivé. Vous pouvez à nouveau vous connecter normalement.</p>`) });
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"unsuspend", target_id:profileId, target_email:userEmail||null }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "reset_trial") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ trial_exhausted: false, missions_completed_month: 0 }),
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "reset_trial", target_id: profileId }),
+      }).catch(() => {});
       return res.status(200).json({ success: true });
     }
 
