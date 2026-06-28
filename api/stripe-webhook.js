@@ -186,6 +186,7 @@ export default async function handler(req, res) {
       const profilePatch = {
         plan_abonnement: plan,
         subscription_end_date: endDate ? endDate.split("T")[0] : null,
+        trial_exhausted: false,
         ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
         ...(customerId     ? { stripe_customer_id: customerId }         : {}),
       };

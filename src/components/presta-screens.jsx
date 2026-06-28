@@ -1366,8 +1366,8 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: pr } = await supabase.from("profiles").select("trial_exhausted").eq("id", user.id).single();
-        if (pr && !pr.trial_exhausted) {
+        const { data: pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", user.id).single();
+        if (pr && (!pr.trial_exhausted || (pr.plan_abonnement && pr.plan_abonnement !== "free"))) {
           onUnblocked?.();
           return;
         }
@@ -1991,12 +1991,26 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         } catch {}
                       }
                       return tooEarly ? (
-                        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
-                          <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
-                          <div>
-                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection inactive</div>
-                            <div style={{ color:C.textMuted, fontSize:11 }}>La détection GPS s'activera 30 min avant le début de la prestation.</div>
+                        <div>
+                          <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                            <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                            <div>
+                              <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
+                              <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 30 min avant. Si vous êtes déjà sur place, signalez-le manuellement.</div>
+                            </div>
                           </div>
+                          <button disabled={checkingInId === m.id} onClick={async () => {
+                            setCheckingInId(m.id);
+                            setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+                            const { data: sd } = await supabase.auth.getSession();
+                            const token = sd?.session?.access_token;
+                            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                            const d = await r.json();
+                            if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                            setCheckingInId(null);
+                          }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                            {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                          </button>
                         </div>
                       ) : (
                         <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
