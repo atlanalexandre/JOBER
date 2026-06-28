@@ -46,7 +46,8 @@ export default async function handler(req, res) {
   const cronSecret  = process.env.CRON_SECRET;
   const boSecret    = process.env.BO_SESSION_SECRET;
 
-  const isCron = !cronSecret || authHeader === `Bearer ${cronSecret}`;
+  // CRON_SECRET required — if not set, only BO tokens accepted (Vercel crons need CRON_SECRET configured)
+  const isCron = cronSecret ? authHeader === `Bearer ${cronSecret}` : false;
   const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
   if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
 
