@@ -992,7 +992,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mr = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,hours,ville,stripe_payment_intent`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,prestataire_id,client_id,sector,metier,date,heure_debut,hours,ville,stripe_payment_intent`,
         { headers }
       );
       const mData = await mr.json();
@@ -1016,18 +1016,28 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "rejected" }),
       });
 
-      // Consommer un slot mensuel si annulation dans les 24h précédant la mission
+      // Consommer un slot mensuel si annulation moins de 2h avant la mission
       try {
-        const missionDate = new Date(mission.date);
-        const hoursUntilMission = (missionDate - new Date()) / (1000 * 60 * 60);
-        if (hoursUntilMission < 24) {
-          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month`, { headers });
+        const missionStartNaive = mission.date
+          ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}:00`)
+          : null;
+        const missionStartUTC = missionStartNaive
+          ? new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive))
+          : null;
+        const hoursUntilMission = missionStartUTC ? (missionStartUTC - new Date()) / 3600000 : 999;
+        if (hoursUntilMission < 2) {
+          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted`, { headers });
           const prData = await prRes.json();
-          const current = Array.isArray(prData) && prData[0] ? (prData[0].missions_completed_month || 0) : 0;
+          const prProfile = Array.isArray(prData) && prData[0];
+          const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
+          const newCount = current + 1;
+          const planLimit = 2; // missions gratuites par mois
+          const patchBody = { missions_completed_month: newCount };
+          if (newCount >= planLimit) patchBody.trial_exhausted = true;
           await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ missions_completed_month: current + 1 }),
+            body: JSON.stringify(patchBody),
           });
         }
       } catch {}
