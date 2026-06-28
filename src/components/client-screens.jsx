@@ -2409,8 +2409,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const totalHT = tarifHoraire * hours * nbJours;
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
-  // Urgence — arrondi au quart d'heure supérieur
-  const _urgentMs = Date.now() + 30 * 60 * 1000;
+  // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
+  const _urgentMs = Date.now() + 45 * 60 * 1000;
   const _urgentRounded = new Date(Math.ceil(_urgentMs / (15 * 60 * 1000)) * (15 * 60 * 1000));
   const urgentStartTime = _urgentRounded.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" });
   const urgentStartDate = _urgentRounded.toLocaleDateString("fr-FR");
@@ -2712,7 +2712,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {tooSoonError && !isUrgent && (
             <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
               <div style={{ fontSize:13, color:"#F0B429", marginBottom:12, lineHeight:1.5 }}>
-                ⚡ Cette prestation démarre dans moins de 2h — le mode urgence est requis pour cette plage horaire.
+                ⚡ Cette prestation démarre dans moins de 45 min — le mode urgence est requis pour cette plage horaire.
               </div>
               <button onClick={()=>{ setLocalUrgent(true); setTooSoonError(false); }} style={{
                 width:"100%", padding:"12px 16px", borderRadius:10,
@@ -2731,13 +2731,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
-              // Check if the mission starts within 2h → must use urgent mode
+              // Bloquer si la prestation démarre dans moins de 45 min → mode urgence requis
               const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
               const [hh,mm] = (startTime||"08:00").split(":").map(Number);
               const missionStart = new Date(yr, mo-1, dy, hh, mm);
-              const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
-              if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
+              const minFromNow = new Date(Date.now() + 45*60*1000);
+              if (missionStart < minFromNow) { setTooSoonError(true); return; }
               setTooSoonError(false);
               const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
               const dispoDays = p.dispon_jours || [];
