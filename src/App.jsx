@@ -1125,6 +1125,18 @@ export default function App() {
     }
   },[]);
 
+  // Recharge le plan prestataire dès qu'un utilisateur est connecté (évite l'état "free" en mémoire)
+  useEffect(()=>{
+    if(!supaUser || role!=="prestataire") return;
+    supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single()
+      .then(({data:pr})=>{
+        if(!pr) return;
+        setTrialExhausted(!!pr.trial_exhausted);
+        const plan = pr.plan_abonnement || supaUser.user_metadata?.plan_abonnement || "free";
+        setPrestaPlan(plan);
+      }).catch(()=>{});
+  },[supaUser, role]);
+
   // Tracking visiteur — une seule fois par session
   useEffect(()=>{
     try { if(sessionStorage.getItem("visit_tracked")) return; sessionStorage.setItem("visit_tracked","1"); } catch(e) { return; }
