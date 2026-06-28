@@ -1504,8 +1504,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           status: "cancelled",
           cancellation_reason: reason || null,
-          cancellation_penalty: lessThan24h ? keptAmount : 0,
-          cancellation_penalty_eur: keptAmount,
+          cancellation_penalty: keptAmount,
         }),
       });
 

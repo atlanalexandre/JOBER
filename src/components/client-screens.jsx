@@ -2972,6 +2972,8 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   const [trackingCancelling, setTrackingCancelling] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
   const [clientCoords, setClientCoords] = useState(clientCoordsFromApp || null);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractMissionData, setContractMissionData] = useState(null);
 
   const resolvedMissionId = missionId || p?._missionId;
 
@@ -3108,6 +3110,57 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la prestation</div>
           <MissionTimeline status={timelineStatus} />
         </div>
+
+        {/* Bouton voir le contrat */}
+        <button onClick={async () => {
+          if (!contractMissionData && resolvedMissionId) {
+            const { data } = await supabase.from("missions").select("metier,sector,date,heure_debut,hours,tarif_horaire,montant_total,titre,ville,adresse,contrat_presta_signe_at").eq("id", resolvedMissionId).single();
+            setContractMissionData(data || {});
+          }
+          setShowContractModal(true);
+        }} style={{ width:"100%", padding:"12px", borderRadius:10, border:"1px solid rgba(124,111,224,0.35)", background:"rgba(124,111,224,0.08)", color:C.violet, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          📄 Voir le contrat de prestation
+        </button>
+
+        {/* Modal contrat */}
+        {showContractModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:0 }}>📄 Contrat de prestation</h3>
+                <button onClick={() => setShowContractModal(false)} style={{ background:"transparent", border:"none", color:C.textMuted, fontSize:22, cursor:"pointer", lineHeight:1, padding:0 }}>×</button>
+              </div>
+              <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:10, padding:"10px 14px", marginBottom:18, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:16 }}>✅</span>
+                <span style={{ color:C.success, fontWeight:700, fontSize:13 }}>Contrat signé par les deux parties</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[
+                  ["Prestataire", providerName || p?.name || "—"],
+                  ["Rôle", p?.jobTitle || p?.role || contractMissionData?.sector || "—"],
+                  ["Mission", contractMissionData?.titre || contractMissionData?.metier || "—"],
+                  ["Date", contractMissionData?.date || "—"],
+                  ["Heure", contractMissionData?.heure_debut || "—"],
+                  ["Durée", contractMissionData?.hours ? `${contractMissionData.hours}h` : "—"],
+                  ["Lieu", [contractMissionData?.adresse, contractMissionData?.ville].filter(Boolean).join(", ") || "—"],
+                  ["Tarif horaire", contractMissionData?.tarif_horaire ? `${Number(contractMissionData.tarif_horaire).toFixed(2).replace(".", ",")} € HT/h` : "—"],
+                  ["Montant total", contractMissionData?.montant_total ? `${Number(contractMissionData.montant_total).toFixed(2).replace(".", ",")} € HT` : "—"],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", borderBottom:"1px solid rgba(255,255,255,0.06)", paddingBottom:8 }}>
+                    <span style={{ color:C.textSub, fontSize:13 }}>{label}</span>
+                    <span style={{ color:C.text, fontWeight:600, fontSize:13, textAlign:"right", maxWidth:"55%" }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ color:C.textMuted, fontSize:11, marginTop:18, textAlign:"center", lineHeight:1.6 }}>
+                Ce contrat a été accepté électroniquement par les deux parties via la plateforme ALANE conformément aux CGU.
+              </p>
+              <button onClick={() => setShowContractModal(false)} style={{ width:"100%", marginTop:16, padding:"13px", borderRadius:12, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Heures supplémentaires — visible dès que le prestataire est sur place */}
         {step >= 1 && step < 3 && (
