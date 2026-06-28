@@ -1040,6 +1040,7 @@ export default function App() {
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [trialExhausted,setTrialExhausted]=useState(false);
+  const [prestaPlan,setPrestaPlan]=useState("free");
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
@@ -1110,9 +1111,13 @@ export default function App() {
     const subSuccess = params.get("sub_success");
     const plan = params.get("plan");
     if(subSuccess === "1" && plan) {
-      // Rafraîchir la session pour obtenir le plan mis à jour par le webhook Stripe (ne pas faire confiance au paramètre URL)
-      supabase.auth.refreshSession().then(()=>{
+      supabase.auth.refreshSession().then(async({data:{session}})=>{
         window.history.replaceState({}, "", window.location.pathname);
+        if(session?.user){
+          const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
+          setTrialExhausted(!!pr?.trial_exhausted);
+          setPrestaPlan(pr?.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+        }
       });
     }
     if(params.get("sub_cancel") === "1") {
@@ -1322,10 +1327,13 @@ export default function App() {
         return;
       }
       setSupaUser(session.user);
-      const { data:profile } = await supabase.from("profiles").select("role,status,trial_exhausted").eq("id",session.user.id).single();
+      const { data:profile } = await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
       if(profile?.role){
         setRole(profile.role);
-        if(profile.role==="prestataire") setTrialExhausted(!!profile.trial_exhausted);
+        if(profile.role==="prestataire"){
+          setTrialExhausted(!!profile.trial_exhausted);
+          setPrestaPlan(profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+        }
         if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
         if(profile.status === "rejected" || profile.status === "suspended"){ await supabase.auth.signOut(); setScreen("role"); return; }
         setScreen(profile.role==="prestataire"?"p_home":"home");
@@ -1421,7 +1429,7 @@ export default function App() {
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); } }}
+          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); setPrestaPlan(pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free"); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
@@ -1542,7 +1550,7 @@ export default function App() {
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
       {/* ── Paywall prestataire — bloque l'accès si trial épuisé et pas d'abonnement ── */}
-      {role==="prestataire" && trialExhausted && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
+      {role==="prestataire" && trialExhausted && prestaPlan==="free" && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
         <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} />
       )}
 
