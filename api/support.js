@@ -77,6 +77,8 @@ export default async function handler(req, res) {
 
   // ── welcome: send welcome email after registration ────────────────
   if (req.body?.action === "welcome") {
+    const _welcomeCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_welcomeCaller) return res.status(401).json({ error: "Non authentifié" });
     const { email, prenom, nom, role } = req.body;
     if (!email || !prenom) return res.status(200).json({ ok: true });
 
@@ -163,6 +165,8 @@ export default async function handler(req, res) {
 
   // ── booking_confirm: send booking confirmation email to client ────
   if (req.body?.action === "booking_confirm") {
+    const _bookingCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
     const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
     if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
     if (RESEND_API_KEY) {
@@ -195,6 +199,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 
   // ── notify_signup: notify admin of new registration ──────────────
   if (req.body?.action === "notify_signup") {
+    const _signupCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_signupCaller) return res.status(401).json({ error: "Non authentifié" });
     const { prenom, nom, email, role } = req.body;
     if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
 

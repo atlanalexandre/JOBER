@@ -13,10 +13,12 @@ function verifyBoToken(token, secret) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const BO_SECRET        = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const BO_SECRET        = process.env.BO_SESSION_SECRET;
   const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!BO_SECRET) return res.status(500).json({ error: "BO_SESSION_SECRET non configuré" });
 
   const token = (req.headers["authorization"] || "").replace("Bearer ", "");
   if (!verifyBoToken(token, BO_SECRET)) return res.status(401).json({ error: "Non autorisé" });
