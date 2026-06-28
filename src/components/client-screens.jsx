@@ -778,7 +778,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => {
+    const loadValidations = () => supabase.auth.getUser().then(({ data }) => {
       const user = data?.user;
       if (!user || !mounted) return;
       supabase.from("missions")
@@ -790,7 +790,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           if (mounted && Array.isArray(ms)) setMissionsToValidate(ms);
         });
     });
-    return () => { mounted = false; };
+    loadValidations();
+    const t = setInterval(loadValidations, 30000);
+    return () => { mounted = false; clearInterval(t); };
   }, []);
 
   useEffect(() => {
@@ -5211,9 +5213,26 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       const data2 = await res.json();
       if (Array.isArray(data2)) setMissions(data2);
     };
+    poll(); // appel immédiat pour avoir des données fraîches dès l'ouverture
     const t = setInterval(poll, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // Synchroniser selected quand le poll ramène des données fraîches
+  // (evite que validation_prestataire reste stale après que le prestataire valide)
+  useEffect(() => {
+    if (!selected) return;
+    const updated = prestations.find(m => m.id === selected.id);
+    if (!updated) return;
+    if (
+      updated.validation_prestataire !== selected.validation_prestataire ||
+      updated.status !== selected.status ||
+      updated.started_at !== selected.started_at ||
+      updated.arrived_at !== selected.arrived_at
+    ) {
+      setSelected(prev => prev ? { ...prev, ...updated } : prev);
+    }
+  }, [prestations]);
 
   useEffect(() => {
     if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
@@ -5257,6 +5276,27 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       clearInterval(agoTick);
     };
   }, [selected?.id, selected?.status]);
+
+  // Realtime : mise à jour instantanée de selected quand validation_prestataire change
+  useEffect(() => {
+    if (!selected?.id) return;
+    const channel = supabase
+      .channel(`mission-validation-${selected.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "missions",
+        filter: `id=eq.${selected.id}`,
+      }, (payload) => {
+        const updated = payload.new;
+        if (!updated) return;
+        setSelected(prev => prev ? { ...prev, ...updated } : prev);
+        // Refresh aussi la liste pour que le polling reste cohérent
+        setMissions(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selected?.id]);
 
   useEffect(() => {
     if (tab !== "prestataires") return;
