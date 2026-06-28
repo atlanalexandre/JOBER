@@ -77,6 +77,33 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Portail de facturation Stripe (gérer / annuler abonnement) ───────────
+  if (action === "billing_portal") {
+    const SUPABASE_URL_BP = process.env.VITE_SUPABASE_URL;
+    const SERVICE_ROLE_BP = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const callerBp = await verifyUser(req, SUPABASE_URL_BP, SERVICE_ROLE_BP);
+    if (!callerBp) return res.status(401).json({ error: "Non authentifié" });
+    try {
+      const hdrs = { "apikey": SERVICE_ROLE_BP, "Authorization": `Bearer ${SERVICE_ROLE_BP}` };
+      const profR = await fetch(`${SUPABASE_URL_BP}/rest/v1/profiles?id=eq.${callerBp.id}&select=stripe_customer_id`, { headers: hdrs });
+      const profData = profR.ok ? await profR.json().catch(() => []) : [];
+      const customerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
+      if (!customerId) return res.status(400).json({ error: "Aucun abonnement Stripe trouvé" });
+      const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || "https://jober.vercel.app";
+      const portalR = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ customer: customerId, return_url: `${origin}/` }).toString(),
+      });
+      const portal = await portalR.json();
+      if (portal.error) return res.status(400).json({ error: portal.error.message });
+      return res.status(200).json({ url: portal.url });
+    } catch (e) {
+      console.error("billing_portal error:", e);
+      return res.status(500).json({ error: "Erreur portail Stripe" });
+    }
+  }
+
   // ── Créer un PaymentIntent ────────────────────────────────────────
   const SUPABASE_URL_PI = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_PI = process.env.SUPABASE_SERVICE_ROLE_KEY;

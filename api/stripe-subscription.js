@@ -29,6 +29,19 @@ export default async function handler(req, res) {
 
   const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || "https://jober.vercel.app";
 
+  // Reuse existing Stripe Customer to avoid duplicates
+  let existingCustomerId = null;
+  if (userId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+    try {
+      const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
+      const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=stripe_customer_id`, { headers: hdrs });
+      if (profR.ok) {
+        const profData = await profR.json();
+        existingCustomerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
+      }
+    } catch {}
+  }
+
   try {
     const params = new URLSearchParams({
       mode: "subscription",
@@ -39,8 +52,14 @@ export default async function handler(req, res) {
       "metadata[plan]":    plan,
       "metadata[billing]": billing,
       "metadata[user_id]": userId || "",
+      // Pass plan in subscription metadata so lifecycle webhooks can read it
+      "subscription_data[metadata][plan]":    plan,
+      "subscription_data[metadata][user_id]": userId || "",
     });
     if (userId) params.set("client_reference_id", userId);
+    if (existingCustomerId) {
+      params.set("customer", existingCustomerId);
+    }
 
     const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",

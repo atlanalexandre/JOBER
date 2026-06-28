@@ -5557,19 +5557,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           )}
           </>)}
           {selected.status === "assigned" && !completedResult && selected.arrived_at && (() => {
-            const elapsed = Date.now() - new Date(selected.arrived_at).getTime();
+            const maxMs = (selected.hours || 1) * 3600 * 1000;
+            const elapsed = Math.min(Date.now() - new Date(selected.arrived_at).getTime(), maxMs);
+            const done = elapsed >= maxMs;
             const s = Math.floor(elapsed / 1000);
             const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
             const timerStr = h > 0 ? `${h}h ${String(min).padStart(2,"0")}min` : `${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+            const color = done ? C.accentGold : C.success;
             return (
-              <div style={{ marginTop:16, background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ marginTop:16, background:`${color}12`, border:`1px solid ${color}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div>
-                  <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>📍 Prestataire sur place</div>
+                  <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "📍 Prestataire sur place"}</div>
                   <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ color:C.success, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
-                  <div style={{ color:C.textMuted, fontSize:10 }}>en cours</div>
+                  <div style={{ color, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+                  <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "en cours"}</div>
                 </div>
               </div>
             );
@@ -6645,6 +6648,8 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [planLimits,setPlanLimits]=useState(null);
   const [subPrices,setSubPrices]=useState(null);
   const [launchActive,setLaunchActive]=useState(isLaunchPhase());
+  const [hasStripeCustomer,setHasStripeCustomer]=useState(false);
+  const [portalLoading,setPortalLoading]=useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -6657,6 +6662,9 @@ export function AbonnementPrestaScreen({ onBack }) {
       supabase.from("missions").select("id",{count:"exact",head:true})
         .eq("prestataire_id",u.id).gte("created_at",startOfMonth)
         .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
+      // Check if user has a Stripe customer (to show billing portal button)
+      supabase.from("profiles").select("stripe_customer_id").eq("id",u.id).single()
+        .then(({data:pd})=>{ if(pd?.stripe_customer_id) setHasStripeCustomer(true); });
     });
     supabase.from("platform_settings").select("value").eq("key","plan_limits").single()
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
@@ -6665,6 +6673,23 @@ export function AbonnementPrestaScreen({ onBack }) {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({data})=>{ if(data?.value != null) setLaunchActive(Boolean(data.value)); });
   },[]);
+
+  const handleBillingPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/stripe-intent", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ action: "billing_portal" }),
+      });
+      const d = await r.json();
+      if(d.url) { window.location.href = d.url; return; }
+      alert(d.error || "Erreur lors de l'ouverture du portail");
+    } catch { alert("Erreur réseau"); }
+    setPortalLoading(false);
+  };
 
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
     const limit = planLimits?.[p.id];
@@ -6742,12 +6767,24 @@ export function AbonnementPrestaScreen({ onBack }) {
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Tarif transparent · prix affiché = prix réel</p>
         {endDate && current !== "free" && (
-          <div style={{ marginTop:10, display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
-            <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
-              {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
-              {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
-            </span>
+          <div style={{ marginTop:10, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+            <div style={{ display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
+              <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
+                {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
+                {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
+              </span>
+            </div>
+            {hasStripeCustomer && new Date(endDate)>=new Date() && (
+              <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:8, padding:"5px 10px" }}>
+                <span style={{ fontSize:11, color:C.violetLight, fontWeight:600 }}>🔄 Renouvellement automatique</span>
+              </div>
+            )}
           </div>
+        )}
+        {hasStripeCustomer && (
+          <button onClick={handleBillingPortal} disabled={portalLoading} style={{ marginTop:12, display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 14px", color:C.textSub, fontSize:12, fontWeight:600, cursor:portalLoading?"not-allowed":"pointer", fontFamily:"inherit" }}>
+            {portalLoading ? "…" : "⚙️ Gérer mon abonnement / Annuler"}
+          </button>
         )}
       </div>
       <div style={{ padding:"20px 18px" }}>

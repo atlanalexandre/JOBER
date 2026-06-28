@@ -1844,21 +1844,27 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
                 {/* Timer / Checkin / Start */}
-                {startedAtMap[m.id] ? (
-                  // ── Prestation démarrée : timer ──
-                  <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <div>
-                      <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>🚀 Prestation en cours</div>
-                      <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ color:C.success, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>
-                        {(() => { const s=Math.floor((now-new Date(startedAtMap[m.id]).getTime())/1000); const h=Math.floor(s/3600); const min=Math.floor((s%3600)/60); const sec=s%60; return h>0?`${h}h${String(min).padStart(2,"0")}`:`${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`; })()}
+                {startedAtMap[m.id] ? (() => {
+                    // ── Prestation démarrée : timer ──
+                    const maxMs = (m.hours || 1) * 3600 * 1000;
+                    const elapsed = Math.min(now - new Date(startedAtMap[m.id]).getTime(), maxMs);
+                    const done = elapsed >= maxMs;
+                    const s = Math.floor(elapsed/1000); const ph=Math.floor(s/3600); const pm=Math.floor((s%3600)/60); const ps=s%60;
+                    const timerStr = ph>0?`${ph}h${String(pm).padStart(2,"0")}`:`${String(pm).padStart(2,"0")}:${String(ps).padStart(2,"0")}`;
+                    const col = done ? "#F0B429" : C.success;
+                    return (
+                      <div style={{ background:`${col}12`, border:`1px solid ${col}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div>
+                          <div style={{ color:col, fontWeight:700, fontSize:12 }}>{done ? "✓ Temps écoulé" : "🚀 Prestation en cours"}</div>
+                          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                        </div>
+                        <div style={{ textAlign:"right" }}>
+                          <div style={{ color:col, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+                          <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "écoulé"}</div>
+                        </div>
                       </div>
-                      <div style={{ color:C.textMuted, fontSize:10 }}>écoulé</div>
-                    </div>
-                  </div>
-                ) : arrivedAtMap[m.id] ? (
+                    );
+                  })() : arrivedAtMap[m.id] ? (
                   // ── Sur place, pas encore démarré : bouton "Je commence" ──
                   <div style={{ marginBottom:10 }}>
                     <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"8px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
