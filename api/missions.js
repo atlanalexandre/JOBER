@@ -2617,11 +2617,21 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable ou non assignée" });
       if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
+
+      // Reject if called more than 10 min before scheduled start
+      if (m.date && m.heure_debut) {
+        try {
+          const missionStart = new Date(`${m.date}T${m.heure_debut}:00`).getTime();
+          if (missionStart - Date.now() > 10 * 60 * 1000) {
+            return res.status(400).json({ error: "Trop tôt pour démarrer la mission" });
+          }
+        } catch(e) { /* date parse failed — allow */ }
+      }
 
       const startedAt = new Date().toISOString();
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
