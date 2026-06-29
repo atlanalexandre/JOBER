@@ -5162,6 +5162,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const trackingPollRef = useRef(null);
   const approachNotifSentRef = useRef(new Set());
   const endNotifSentRef = useRef(new Set());
+  const [extraHoursModal, setExtraHoursModal] = useState(false);
+  const [extraHoursValue, setExtraHoursValue] = useState(1);
+  const [extraHoursSending, setExtraHoursSending] = useState(false);
 
   // Notification de fin de mission dès que le timer s'arrête (côté client)
   useEffect(() => {
@@ -5802,6 +5805,23 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
+          {selected.status === "assigned" && selected.started_at && !completedResult && (
+            <div style={{ marginTop:12 }}>
+              {selected.extra_hours_status === "pending" ? (
+                <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>
+                  ⏳ Demande d'heures supp. en attente de confirmation du prestataire
+                </div>
+              ) : selected.extra_hours_status === "accepted" ? (
+                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.success }}>
+                  ✅ Heures supplémentaires acceptées
+                </div>
+              ) : (
+                <button onClick={() => { setExtraHoursValue(1); setExtraHoursModal(true); }} style={{ width:"100%", padding:"12px", borderRadius:12, border:`1px solid rgba(240,180,41,0.4)`, background:"rgba(240,180,41,0.08)", color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  ⏱ Demander des heures supplémentaires
+                </button>
+              )}
+            </div>
+          )}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
@@ -6055,6 +6075,37 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
+
+          {extraHoursModal && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
+                <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
+                <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.5 }}>Le prestataire devra confirmer la demande.</p>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+                  <button onClick={()=>setExtraHoursValue(v=>Math.max(1,v-1))} style={{ width:40, height:40, borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.07)", color:C.text, fontSize:20, cursor:"pointer", fontFamily:"inherit" }}>−</button>
+                  <div style={{ flex:1, textAlign:"center", fontWeight:800, color:C.text, fontSize:22 }}>{extraHoursValue}h</div>
+                  <button onClick={()=>setExtraHoursValue(v=>Math.min(8,v+1))} style={{ width:40, height:40, borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.07)", color:C.text, fontSize:20, cursor:"pointer", fontFamily:"inherit" }}>+</button>
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={()=>setExtraHoursModal(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                  <button disabled={extraHoursSending} onClick={async()=>{
+                    setExtraHoursSending(true);
+                    const { data:sd } = await supabase.auth.getSession();
+                    const tok = sd?.session?.access_token;
+                    const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"request_extra_hours", mission_id:selected.id, extra_hours:extraHoursValue }) });
+                    if (res.ok) {
+                      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, extra_hours_status:"pending" } : m));
+                      setSelected(s => s ? { ...s, extra_hours_status:"pending" } : s);
+                      setExtraHoursModal(false);
+                    }
+                    setExtraHoursSending(false);
+                  }} style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:C.accentGold, color:"#fff", fontWeight:800, fontSize:14, cursor:extraHoursSending?"default":"pointer", opacity:extraHoursSending?0.6:1, fontFamily:"inherit" }}>
+                    {extraHoursSending ? "Envoi…" : "✓ Demander"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
