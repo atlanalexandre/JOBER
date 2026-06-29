@@ -2803,7 +2803,13 @@ export default async function handler(req, res) {
       const profile = Array.isArray(prData) && prData[0];
       if (!profile) return res.status(404).json({ error: "Profil introuvable" });
 
-      let plan = profile.plan_abonnement || "free";
+      // Lire user_metadata côté serveur (service role) — non affecté par le cache JWT client
+      const PLAN_RANK = { free:0, premium:1, elite:2 };
+      const uRes2 = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).catch(() => null);
+      const uData2 = uRes2?.ok ? await uRes2.json() : {};
+      const metaPlan2 = uData2?.user_metadata?.plan_abonnement || "free";
+      const profilePlan2 = profile.plan_abonnement || "free";
+      let plan = (PLAN_RANK[metaPlan2]||0) > (PLAN_RANK[profilePlan2]||0) ? metaPlan2 : profilePlan2;
       let trialExhausted = !!profile.trial_exhausted;
 
       // Vérification Stripe directe si un abonnement existe

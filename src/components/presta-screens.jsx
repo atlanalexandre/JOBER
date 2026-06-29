@@ -2408,6 +2408,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         const mp = u.user_metadata?.plan_abonnement || "free";
         const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
         setPlanActuel(resolvedPlan);
+        // Si le plan local semble "free", vérifier côté serveur (bypass cache JWT)
+        if (resolvedPlan === "free") {
+          const { data:{ session:sess } } = await supabase.auth.getSession();
+          if (sess?.access_token) {
+            fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
+              .then(r => r.ok ? r.json() : null)
+              .then(d => { if (d?.plan && d.plan !== "free") setPlanActuel(d.plan); })
+              .catch(() => {});
+          }
+        }
       }
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
