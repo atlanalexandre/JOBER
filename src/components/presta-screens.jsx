@@ -1365,10 +1365,17 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
   const handleRetry = async () => {
     setChecking(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", user.id).single();
-        if (pr && (!pr.trial_exhausted || (pr.plan_abonnement && pr.plan_abonnement !== "free"))) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setChecking(false); return; }
+      // Appel backend : vérifie Stripe + guérit DB si plan payant
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "refresh_plan" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.trial_exhausted || (data.plan && data.plan !== "free")) {
           onUnblocked?.();
           return;
         }
