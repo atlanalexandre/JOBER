@@ -2029,17 +2029,32 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         <div style={{ color:C.textSub, fontSize:11 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                       </div>
                     </div>
-                    <button disabled={startingMission === m.id} onClick={async () => {
-                      setStartingMission(m.id);
-                      const { data: sd } = await supabase.auth.getSession();
-                      const token = sd?.session?.access_token;
-                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
-                      const d = await r.json();
-                      if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
-                      setStartingMission(null);
-                    }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:15, cursor:startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
-                      {startingMission===m.id ? "Démarrage…" : "🚀 Je commence la prestation"}
-                    </button>
+                    {(() => {
+                      const missionStartDt = (() => { try { return m.date && m.heure_debut ? new Date(`${m.date}T${m.heure_debut}:00`) : null; } catch(e) { return null; } })();
+                      const msUntilUnlock = missionStartDt ? (missionStartDt.getTime() - 5*60*1000) - Date.now() : 0;
+                      const tooEarly = msUntilUnlock > 0;
+                      const unlockTime = missionStartDt ? new Date(missionStartDt.getTime() - 5*60*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : null;
+                      return (
+                        <>
+                          {tooEarly && (
+                            <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"8px 12px", marginBottom:8, textAlign:"center" }}>
+                              <span style={{ color:C.textSub, fontSize:12 }}>🔒 Démarrage disponible à <strong style={{ color:C.text }}>{unlockTime}</strong></span>
+                            </div>
+                          )}
+                          <button disabled={startingMission === m.id || tooEarly} onClick={async () => {
+                            setStartingMission(m.id);
+                            const { data: sd } = await supabase.auth.getSession();
+                            const token = sd?.session?.access_token;
+                            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
+                            const d = await r.json();
+                            if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+                            setStartingMission(null);
+                          }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:tooEarly?"rgba(255,255,255,0.07)":startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:tooEarly?"rgba(255,255,255,0.3)":"#fff", fontWeight:800, fontSize:15, cursor:tooEarly||startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                            {startingMission===m.id ? "Démarrage…" : tooEarly ? "🔒 Démarrage verrouillé" : "🚀 Je commence la prestation"}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : !isPast && (
                   // ── Pas encore arrivé : détection GPS ou fallback manuel ──
