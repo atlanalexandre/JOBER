@@ -749,7 +749,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 prestations/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -1445,7 +1445,7 @@ export function UpgradeNudge({ onNavigate }) {
     <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Prestations illimitées · Badge vérifié · Urgences</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
       </div>
       <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
     </div>
@@ -2130,6 +2130,25 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                 )}
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                  {/* Bouton "Je suis là" — visible si mission démarrée, pas encore validée, pas encore checké */}
+                  {isStarted && !isPast && !m.arrived_at && (
+                    <button onClick={async () => {
+                      const { data:{ session } } = await supabase.auth.getSession();
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                      if (r.ok) {
+                        const d = await r.json().catch(() => ({}));
+                        setAssignedMissions(prev => prev.map(x => x.id === m.id ? { ...x, arrived_at: d.arrived_at || new Date().toISOString() } : x));
+                      }
+                    }}
+                      style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      📍 Je suis là
+                    </button>
+                  )}
+                  {isStarted && !isPast && m.arrived_at && (
+                    <div style={{ padding:"9px 12px", borderRadius:10, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", color:"#10D98F", fontWeight:700, fontSize:12, textAlign:"center" }}>
+                      📍 Arrivée confirmée — client notifié ✅
+                    </div>
+                  )}
                   <div style={{ display:"flex", gap:8 }}>
                     {isPast && !m.validation_prestataire && (
                       <button disabled={validatingMission === m.id} onClick={async()=>{
@@ -2755,7 +2774,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     </div>
                   </div>
                   {m.status === "completed" && !ratedMissions.has(m.id) && (
-                    <button onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }} style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.accentGold}44`, background:`${C.accentGold}12`, color:C.accentGold, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }}
+                      style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.accentGold}44`, background:`${C.accentGold}12`, color:C.accentGold, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}
+                    >
                       ⭐ Noter le client
                     </button>
                   )}
@@ -2965,6 +2987,24 @@ export function MicroEntrepriseScreen({ onBack }) {
           ALANE n'est pas affilié à ces services. Ces liens sont fournis à titre informatif pour faciliter vos démarches.
         </p>
       </div>
+    </div>
+  );
+}
+
+export function TrialExhaustedPaywall({ onUpgrade }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
+      <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
+      <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"'Playfair Display',serif" }}>Accès suspendu</h2>
+      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:15, maxWidth:300, lineHeight:1.6, margin:"0 0 28px" }}>
+        Votre offre gratuite a été entièrement utilisée. Souscrivez un abonnement pour continuer à recevoir des missions.
+      </p>
+      <button onClick={onUpgrade} style={{ width:"100%", maxWidth:300, padding:"14px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C6FE0,#F0B429)", color:"#fff", fontSize:15, fontWeight:800, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
+        💎 Voir les abonnements
+      </button>
+      <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        Se déconnecter
+      </button>
     </div>
   );
 }

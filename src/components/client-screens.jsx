@@ -1809,7 +1809,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {urgentMode ? (
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"28px 20px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)", border:`2px solid ${C.accent}33` }}>
               <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
-              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Prestation envoyée à tous les prestataires</h3>
+              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Mission envoyée à tous les prestataires</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
                 Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la prestation.</strong>
               </p>
@@ -1831,7 +1831,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               </div>
 
               <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, urgentPrice, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
-                🚀 Envoyer la prestation maintenant
+                🚀 Envoyer la mission maintenant
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Annuler — choisir un prestataire manuellement
@@ -3651,7 +3651,7 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       </div>
       {p.readOnly ? (
         <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
-          <div style={{ textAlign:"center", color:C.textMuted, fontSize:12, padding:"8px 0" }}>🔒 Prestation terminée — conversation archivée</div>
+          <div style={{ textAlign:"center", color:C.textMuted, fontSize:12, padding:"8px 0" }}>🔒 Mission terminée — conversation archivée</div>
         </div>
       ) : (
         <div style={{ padding:"12px 18px 24px", background:"#0D1B3E", borderTop:`1px solid ${C.border}` }}>
@@ -5007,8 +5007,9 @@ export function LegalScreen({ type, onBack }) {
 export function PayslipScreen({ provider, prestation, onBack }) {
   const p = provider;
   if (!p) return null;
-  const m = prestation || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
-  const brut = m.tarifNet * m.hours;
+  const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
+  const billedHours = m.actual_hours ?? m.hours ?? 0;
+  const brut = m.tarifNet * billedHours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
   const [downloaded, setDownloaded] = useState(false);
   const [sendEmail, setSendEmail]   = useState("");
@@ -5067,7 +5068,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
           <div style={{ marginBottom:14 }}>
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>DÉTAILS DE LA MISSION</div>
             {[
-              ["Client",m.client],["Prestation",m.role],["Date",m.date],["Durée",`${m.hours} heures`],["Lieu","Paris, France"],
+              ["Client",m.client],["Mission",m.role],["Date",m.date],["Durée",`${billedHours} heures`],["Lieu","Paris, France"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{l}</span>
@@ -5081,7 +5082,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>RÉMUNÉRATION NETTE</div>
             {[
               ["Taux horaire net",`${m.tarifNet.toFixed(2)} €/h`],
-              ["Nombre d’heures",`${m.hours}h`],
+              ["Nombre d’heures",`${billedHours}h`],
               ["Montant net total",`${brut.toFixed(2)} €`],
               ["Statut","✅ Virement effectué"],
             ].map(([l,v],i)=>(
@@ -5253,7 +5254,14 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         body: JSON.stringify({ action: "list_client" }),
       });
       const data2 = await res.json();
-      if (Array.isArray(data2)) setMissions(data2);
+      if (Array.isArray(data2)) {
+        setMissions(data2);
+        setSelected(prev => {
+          if (!prev) return prev;
+          const fresh = data2.find(m => m.id === prev.id);
+          return fresh ? { ...prev, ...fresh } : prev;
+        });
+      }
     };
     poll(); // appel immédiat pour avoir des données fraîches dès l'ouverture
     const t = setInterval(poll, 10000);
@@ -5567,8 +5575,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 4px" }}>{selected.metier || sector?.label}</h2>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                 {selected.date && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📅 {selected.date}</span>}
-                {selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
-                {selected.hours && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.hours}h</span>}
+                {selected.started_at
+                  ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</span>
+                  : selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
+                {(selected.actual_hours ?? selected.hours) ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.actual_hours ?? selected.hours}h</span> : null}
                 {selected.ville && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📍 {selected.ville}</span>}
                 {selected.tarif_horaire > 0 && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>💶 {selected.tarif_horaire} €/h</span>}
               </div>
@@ -5737,9 +5747,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           )}
           {selected.status === "needs_replacement" && (
             <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
-              <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Prestation en cours de réassignation</div>
+              <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Mission en cours de réassignation</div>
               <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>
-                Le prestataire initialement assigné s'est désisté. Votre prestation reste active — nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte.
+                Le prestataire initialement assigné s'est désisté. Votre mission reste active — nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte.
               </div>
               <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune facturation supplémentaire ne sera effectuée.</div>
             </div>
@@ -5853,18 +5863,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
           )}
 
-          {selected.status === "completed" && (() => {
-            const mEnd = selected.date ? new Date(`${selected.date}T${selected.heure_fin || "23:59"}`) : null;
-            const hoursElapsed = mEnd ? (Date.now() - mEnd.getTime()) / 3600000 : 999;
-            if (hoursElapsed > 48) return null;
-            return (
-              <div style={{ marginTop:8 }}>
-                <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                  ⚠️ Signaler un problème
-                </button>
-              </div>
-            );
-          })()}
+          {selected.status === "completed" && (
+            <div style={{ marginTop:8 }}>
+              <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                ⚠️ Signaler un problème
+              </button>
+            </div>
+          )}
 
           {(selected.status === "completed" || selected.status === "closed") && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
@@ -5982,6 +5987,73 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
               )}
             </>);
+          })()}
+
+          {/* Modal "Signaler un problème" — dans la vue détail */}
+          {showDisputeModal === selected.id && (() => {
+            const CATEGORIES = [
+              { id:"incomplete", icon:"🔧", label:"Travail incomplet" },
+              { id:"attitude",   icon:"😤", label:"Attitude non professionnelle" },
+              { id:"timing",     icon:"⏰", label:"Horaires non respectés" },
+              { id:"quality",    icon:"💎", label:"Qualité insuffisante" },
+              { id:"other",      icon:"📝", label:"Autre problème" },
+            ];
+            const selCats = (disputeMsg.split("||")[0] || "").split(",").filter(Boolean);
+            const detail = disputeMsg.split("||")[1] || "";
+            const setDetail = (v) => setDisputeMsg((disputeMsg.split("||")[0] || "") + "||" + v);
+            const isReady = selCats.length > 0;
+            return (
+              <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.85)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                <div style={{ background:"linear-gradient(180deg,#0D1B3E,#0A1628)", borderRadius:"24px 24px 0 0", padding:"28px 20px 44px", width:"100%", maxWidth:480 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                    <div style={{ fontSize:28 }}>🚨</div>
+                    <div>
+                      <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17 }}>Signaler un problème</div>
+                      <div style={{ color:C.textMuted, fontSize:11 }}>ALANE examine votre dossier sous 72h ouvrées</div>
+                    </div>
+                  </div>
+                  <div style={{ height:1, background:"rgba(255,255,255,0.08)", margin:"16px 0" }} />
+                  <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10 }}>Quel est le problème ? (sélectionnez)</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:16 }}>
+                    {CATEGORIES.map(cat => {
+                      const active = selCats.includes(cat.id);
+                      return (
+                        <button key={cat.id} onClick={() => {
+                          const next = active ? selCats.filter(c=>c!==cat.id) : [...selCats, cat.id];
+                          setDisputeMsg(next.join(",") + "||" + detail);
+                        }} style={{ padding:"8px 12px", borderRadius:20, border:`1.5px solid ${active?"#F25E5E":"rgba(255,255,255,0.12)"}`, background:active?"rgba(242,94,94,0.15)":"rgba(255,255,255,0.04)", color:active?"#F25E5E":C.textSub, fontWeight:active?700:400, fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:5 }}>
+                          {cat.icon} {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea value={detail} onChange={e=>setDisputeMsg((disputeMsg.split("||")[0]||"")+"||"+e.target.value)} placeholder="Détails supplémentaires (facultatif)…" rows={3} style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:12, color:C.text, fontSize:13, padding:"10px 12px", fontFamily:"inherit", resize:"none", boxSizing:"border-box", outline:"none" }} />
+                  <div style={{ display:"flex", gap:10, marginTop:14 }}>
+                    <button onClick={()=>{setShowDisputeModal(null);setDisputeMsg("");}} style={{ flex:1, padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button disabled={disputing || !isReady} onClick={async()=>{
+                      setDisputing(true);
+                      try {
+                        const { data:sd } = await supabase.auth.getSession();
+                        const tok = sd?.session?.access_token;
+                        const cats = selCats.map(id => CATEGORIES.find(c=>c.id===id)?.label).filter(Boolean).join(", ");
+                        const fullMsg = cats + (detail.trim() ? "\n\n" + detail.trim() : "");
+                        const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"dispute", mission_id: showDisputeModal, message: fullMsg }) });
+                        const j = await res.json();
+                        if (j.ok) {
+                          setShowDisputeModal(null); setDisputeMsg("");
+                          setMissions(ms => ms.map(m => m.id === showDisputeModal ? { ...m, status:"disputed" } : m));
+                          setSelected(s => s ? { ...s, status:"disputed" } : s);
+                          showToast("✅ Signalement envoyé ! ALANE vous répond sous 72h ouvrées.", "success");
+                        } else { showToast(j.error || "Erreur lors de l'envoi."); }
+                      } catch { showToast("Erreur réseau, réessayez."); }
+                      setDisputing(false);
+                    }} style={{ flex:2, padding:"13px", borderRadius:12, border:"none", background:isReady&&!disputing?"linear-gradient(135deg,#F25E5E,#c0392b)":"rgba(242,94,94,0.3)", color:"#fff", fontWeight:700, fontSize:13, cursor:isReady&&!disputing?"pointer":"default", fontFamily:"inherit" }}>
+                      {disputing ? "Envoi en cours…" : "🚨 Envoyer le signalement"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
           })()}
         </div>
       </div>
@@ -6493,8 +6565,8 @@ export function MissionTimeline({ status="in_progress" }) {
     { id:"booked",    label:"Réservé",       icon:"📋", desc:"Prestation confirmée"          },
     { id:"signed",    label:"Contrat signé", icon:"✍️", desc:"Les deux parties ont signé" },
     { id:"enroute",   label:"En route",      icon:"🚗", desc:"Le prestataire arrive"       },
-    { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Prestation en cours"            },
-    { id:"done",      label:"Terminé",       icon:"✅", desc:"Prestation effectuée"           },
+    { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Mission en cours"            },
+    { id:"done",      label:"Terminé",       icon:"✅", desc:"Mission effectuée"           },
     { id:"paid",      label:"Payé",          icon:"💶", desc:"Paiement libéré"             },
   ];
   const activeIdx = steps.findIndex(s=>s.id===status);

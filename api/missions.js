@@ -1,9 +1,11 @@
-// DST-aware UTC offset for France (CEST = -7200000ms, CET = -3600000ms)
+// Returns the UTC offset in ms for a given date in France (CEST = -7200000, CET = -3600000)
 function frenchOffsetMs(date) {
   const d = date instanceof Date ? date : new Date(date);
   const y = d.getUTCFullYear();
-  const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
-  const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
+  // Last Sunday in March at 01:00 UTC (clocks go forward: CET→CEST)
+  const marchEnd = new Date(Date.UTC(y, 2, 31)); marchEnd.setUTCDate(31 - marchEnd.getUTCDay()); marchEnd.setUTCHours(1, 0, 0, 0);
+  // Last Sunday in October at 01:00 UTC (clocks go back: CEST→CET)
+  const octEnd   = new Date(Date.UTC(y, 9, 31)); octEnd.setUTCDate(31 - octEnd.getUTCDay());   octEnd.setUTCHours(1, 0, 0, 0);
   return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
 }
 
@@ -464,6 +466,21 @@ export default async function handler(req, res) {
           console.error("[accept] Stripe PaymentIntent creation failed:", stripeErr.message);
           return res.status(500).json({ error: "Impossible de créer le paiement Stripe — réessayez" });
         }
+      }
+
+      // Assigner la mission — condition sur status pour éviter la double-assignation en mode urgence
+      // (si deux requêtes accept arrivent simultanément, une seule réussira)
+      const missionPatch = { status: "assigned" };
+      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
+      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
+      const assignRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
+        body: JSON.stringify(missionPatch),
+      });
+      const assignedRows = await assignRes.json().catch(() => []);
+      if (!Array.isArray(assignedRows) || assignedRows.length === 0) {
+        return res.status(409).json({ error: "Mission déjà assignée à un autre prestataire" });
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidature_id}`, {
@@ -1538,7 +1555,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire`,
         { headers }
       );
       const mData = await mRes.json();
@@ -1558,7 +1575,6 @@ export default async function handler(req, res) {
         const missionStartUTC = new Date(missionStart.getTime() + frenchOffsetMs(missionStart));
         lessThan24h = (missionStartUTC - new Date()) / 3600000 < 24;
       }
-
       const missionAmount = Number(mission.montant_total) || 0;
       // > 24h : remboursement intégral / < 24h : frais de service retenus (4,90€)
       const refundAmount = lessThan24h

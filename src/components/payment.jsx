@@ -484,7 +484,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la mission.
       </p>
       <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 18px", marginBottom:24, fontSize:13, color:"rgba(255,255,255,0.85)" }}>
-        ⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation.
+        ⏳ Mission en cours d'activation — vous serez notifié(e) dès la confirmation.
       </div>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", width:"100%", maxWidth:300, marginBottom:24, textAlign:"left" }}>
         {[
@@ -669,13 +669,14 @@ export function InvoiceScreen({ prestation, onBack }) {
   const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [loading,     setLoading]     = useState(true);
 
-  const missionDate = mission?.created_at ? new Date(mission.created_at) : new Date();
-  const invoiceNum  = mission
+  const billedHours  = mission?.actual_hours ?? mission?.hours ?? 0;
+  const missionDate  = mission?.created_at ? new Date(mission.created_at) : new Date();
+  const invoiceNum   = mission
     ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${mission.id.slice(-6).toUpperCase()}`
     : "ALA-000000";
   const emittedDate  = missionDate.toLocaleDateString("fr-FR");
-  const htCalc      = Math.round(Number(mission?.hours||0) * Number(mission?.tarif_horaire||0) * 100) / 100;
-  const ht          = htCalc > 0 ? htCalc : (Number(mission?.montant_total||0));
+  const htCalc       = Math.round(billedHours * Number(mission?.tarif_horaire||0) * 100) / 100;
+  const ht           = htCalc > 0 ? htCalc : (Number(mission?.montant_total||0));
   const htFormatted  = ht.toFixed(2).replace(".",",");
 
   useEffect(() => {
@@ -781,10 +782,16 @@ export function InvoiceScreen({ prestation, onBack }) {
                   <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{mission.metier || "Prestation de service"}</div>
                   {mission.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {mission.sector}</div>}
                   {mission.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {mission.date}</div>}
+                  {mission.started_at
+                    ? <div style={{ color:C.textSub, fontSize:11 }}>Début réel : {new Date(mission.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                    : mission.heure_debut && <div style={{ color:C.textSub, fontSize:11 }}>Début : {mission.heure_debut}</div>}
+                  {mission.delay_status === "rejected" && mission.actual_hours && (
+                    <div style={{ color:"#F59E0B", fontSize:11 }}>Décalage refusé — {mission.actual_hours}h facturées</div>
+                  )}
                   {mission.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {mission.ville}</div>}
                   {htCalc > 0 && (
                     <div style={{ color:C.textSub, fontSize:11 }}>
-                      {mission.hours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
+                      {billedHours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
                     </div>
                   )}
                 </div>

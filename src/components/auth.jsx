@@ -873,7 +873,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
-              { id:"ponctuel",  label:"Ponctuel",           desc:"Prestations occasionnelles selon les besoins",  icon:"⏱" },
+              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⏱" },
               { id:"regulier",  label:"Régulier",           desc:"Besoin récurrent chaque semaine ou mois",    icon:"📅" },
               { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de prestations récurrentes et ponctuelles", icon:"🔄" },
             ].map(f => (
