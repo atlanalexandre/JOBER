@@ -1412,7 +1412,7 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
   const [plan, setPlan] = useState(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.refreshSession().catch(()=>null).then(()=>supabase.auth.getUser()).then(({ data }) => {
       const uid = data?.user?.id;
       const metaPlan = data?.user?.user_metadata?.plan_abonnement || "free";
       if (uid) {
@@ -2385,7 +2385,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
   },[activeScreen]);
   useEffect(()=>{
-    supabase.auth.getUser().then(async ({data})=>{
+    // refreshSession force un nouveau JWT avec les user_metadata à jour (BO peut avoir changé le plan)
+    supabase.auth.refreshSession().catch(()=>null).then(()=>supabase.auth.getUser()).then(async ({data})=>{
       const u=data?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
