@@ -4690,7 +4690,8 @@ export function PayslipScreen({ provider, mission, onBack }) {
   const p = provider;
   if (!p) return null;
   const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
-  const brut = m.tarifNet * m.hours;
+  const billedHours = m.actual_hours ?? m.hours ?? 0;
+  const brut = m.tarifNet * billedHours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
   const [downloaded, setDownloaded] = useState(false);
   const [sendEmail, setSendEmail]   = useState("");
@@ -4749,7 +4750,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
           <div style={{ marginBottom:14 }}>
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>DÉTAILS DE LA MISSION</div>
             {[
-              ["Client",m.client],["Mission",m.role],["Date",m.date],["Durée",`${m.hours} heures`],["Lieu","Paris, France"],
+              ["Client",m.client],["Mission",m.role],["Date",m.date],["Durée",`${billedHours} heures`],["Lieu","Paris, France"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{l}</span>
@@ -4763,7 +4764,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>RÉMUNÉRATION NETTE</div>
             {[
               ["Taux horaire net",`${m.tarifNet.toFixed(2)} €/h`],
-              ["Nombre d’heures",`${m.hours}h`],
+              ["Nombre d’heures",`${billedHours}h`],
               ["Montant net total",`${brut.toFixed(2)} €`],
               ["Statut","✅ Virement effectué"],
             ].map(([l,v],i)=>(
@@ -5095,8 +5096,10 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 4px" }}>{selected.metier || sector?.label}</h2>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                 {selected.date && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📅 {selected.date}</span>}
-                {selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
-                {selected.hours && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.hours}h</span>}
+                {selected.started_at
+                  ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</span>
+                  : selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
+                {(selected.actual_hours ?? selected.hours) ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.actual_hours ?? selected.hours}h</span> : null}
                 {selected.ville && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📍 {selected.ville}</span>}
                 {selected.tarif_horaire > 0 && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>💶 {selected.tarif_horaire} €/h</span>}
               </div>
