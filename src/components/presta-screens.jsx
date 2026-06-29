@@ -1763,6 +1763,27 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     return `${String(Math.floor(endMin / 60) % 24).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
   };
 
+  // Retourne HH:MM depuis un timestamp ISO
+  const isoToHHMM = (iso) => {
+    if (!iso) return null;
+    return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+  };
+
+  // Horaires affichés pour une mission avec démarrage réel
+  // start = toujours l'heure réelle si started_at, sinon heure_debut
+  // end   = décalé seulement si delay_status==="approved", sinon heure_debut + hours
+  const computeMissionTimes = (m) => {
+    const startedAt = startedAtMap[m.id];
+    const displayStart = startedAt ? isoToHHMM(startedAt) : m.heure_debut;
+    let displayEnd;
+    if (startedAt && m.delay_status === "approved") {
+      displayEnd = computeEndTime(displayStart, m.hours);
+    } else {
+      displayEnd = computeEndTime(m.heure_debut, m.hours);
+    }
+    return { displayStart, displayEnd };
+  };
+
 
   if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
 
@@ -1964,7 +1985,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Prestation"}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
+                    {(() => { const {displayStart,displayEnd} = computeMissionTimes(m); return (
+                      <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{displayStart ? ` · ${displayStart}${displayEnd ? ` – ${displayEnd}` : ""}` : ` · ${m.hours}h`}</div>
+                    ); })()}
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.ville && <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
@@ -2336,11 +2359,17 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
       if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
+        supabase.from("profiles").select("status,missions_enabled,plan_abonnement,trial_exhausted").eq("id",u.id).single(),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
       ]);
-      if(prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
+      if(prof) {
+        setUserStatus(prof.status);
+        setMissionsEnabled(prof.missions_enabled === true);
+        // profiles est la source de vérité — priorité sur user_metadata
+        const resolvedPlan = prof.plan_abonnement || u.user_metadata?.plan_abonnement || "free";
+        setPlanActuel(resolvedPlan);
+      }
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
