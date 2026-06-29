@@ -1413,11 +1413,18 @@ export function UpgradeNudge({ onNavigate }) {
   const [trialExhausted, setTrialExhausted] = useState(false);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setPlan(data?.user?.user_metadata?.plan_abonnement || "free");
       const uid = data?.user?.id;
+      const metaPlan = data?.user?.user_metadata?.plan_abonnement || "free";
       if (uid) {
-        supabase.from("profiles").select("trial_exhausted").eq("id", uid).single()
-          .then(({ data: p }) => { if (p?.trial_exhausted) setTrialExhausted(true); });
+        supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", uid).single()
+          .then(({ data: p }) => {
+            const resolvedPlan = p?.plan_abonnement || metaPlan;
+            setPlan(resolvedPlan);
+            if (resolvedPlan !== "free") setTrialExhausted(false);
+            else if (p?.trial_exhausted) setTrialExhausted(true);
+          });
+      } else {
+        setPlan(metaPlan);
       }
     });
   }, []);
@@ -1581,9 +1588,14 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         setUserId(u.id);
         const meta = u.user_metadata || {};
         setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
-        setUserPlan(meta.plan_abonnement || "free");
-        supabase.from("profiles").select("trial_exhausted").eq("id", u.id).single()
-          .then(({ data: pr }) => { if (pr?.trial_exhausted) setTrialExhausted(true); });
+        supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", u.id).single()
+          .then(({ data: pr }) => {
+            const plan = pr?.plan_abonnement || meta.plan_abonnement || "free";
+            setUserPlan(plan);
+            // Invariant : plan payant → jamais trial_exhausted
+            if (plan !== "free") setTrialExhausted(false);
+            else if (pr?.trial_exhausted) setTrialExhausted(true);
+          });
         await loadPending();
       } catch (e) {
         console.error("[PMissionsTab] load error:", e);
