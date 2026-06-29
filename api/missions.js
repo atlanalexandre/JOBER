@@ -392,11 +392,13 @@ export default async function handler(req, res) {
 
             const [urRes, prRes] = await Promise.all([
               fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers }),
-              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
+              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
             ]);
             const urData = await urRes.json();
             const prData = await prRes.json();
-            let plan = urData.user_metadata?.plan_abonnement || "free";
+            const prDataProfile = Array.isArray(prData) && prData[0];
+            // profiles.plan_abonnement prioritaire — écrit en premier par le webhook Stripe
+            let plan = prDataProfile?.plan_abonnement || urData.user_metadata?.plan_abonnement || "free";
             const endDate = urData.user_metadata?.subscription_end_date;
             const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
             if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
@@ -778,7 +780,7 @@ export default async function handler(req, res) {
         try {
           // Récupérer le compteur actuel du prestataire et son plan
           const [prMonthRes, prPlanRes] = await Promise.all([
-            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted`, { headers }),
+            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
             fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers }),
           ]);
           const prMonthData = await prMonthRes.json();
@@ -786,7 +788,8 @@ export default async function handler(req, res) {
           const prProfile = Array.isArray(prMonthData) && prMonthData[0];
           if (prProfile && !prProfile.trial_exhausted) {
             const newCount = (prProfile.missions_completed_month || 0) + 1;
-            const plan = prPlan?.user_metadata?.plan_abonnement || "free";
+            // profiles.plan_abonnement a priorité sur user_metadata (écrit en premier par le webhook Stripe)
+            const plan = prProfile?.plan_abonnement || prPlan?.user_metadata?.plan_abonnement || "free";
 
             // Récupérer la limite du plan depuis platform_settings
             let PLAN_LIMITS_C = { free: 2, premium: 10, elite: 999 };
@@ -2060,11 +2063,11 @@ export default async function handler(req, res) {
       // Vérification quota : bloquer l'acceptation si trial épuisé et plan free
       if (response === "accept") {
         const [prRow, urData] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=trial_exhausted`, { headers }).then(r => r.json()),
+          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=trial_exhausted,plan_abonnement`, { headers }).then(r => r.json()),
           fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).then(r => r.json()),
         ]);
         const trialExhausted = Array.isArray(prRow) && prRow[0]?.trial_exhausted === true;
-        const plan = urData?.user_metadata?.plan_abonnement || "free";
+        const plan = (Array.isArray(prRow) && prRow[0]?.plan_abonnement) || urData?.user_metadata?.plan_abonnement || "free";
         if (trialExhausted && plan === "free") {
           return res.status(403).json({ error: "quota_exhausted", message: "Votre quota gratuit est épuisé. Passez Premium pour accepter des prestations." });
         }
