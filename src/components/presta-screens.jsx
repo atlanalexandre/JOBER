@@ -1630,30 +1630,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
   useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
 
-  // Auto-démarrage : si arrivé depuis > 10 min et prestation pas encore démarrée → start_mission automatique
-  useEffect(() => {
-    const AUTO_START_MS = 10 * 60 * 1000;
-    const timers = [];
-    for (const m of assignedMissions) {
-      const arrivedAt = arrivedAtMap[m.id];
-      if (!arrivedAt || startedAtMap[m.id]) continue;
-      const delay = AUTO_START_MS - (Date.now() - new Date(arrivedAt).getTime());
-      const t = setTimeout(async () => {
-        if (startedAtMap[m.id]) return; // already started manually
-        const { data: sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        const r = await fetch("/api/missions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
-          body: JSON.stringify({ action: "start_mission", mission_id: m.id, auto_start: true }),
-        }).catch(() => null);
-        const d = r?.ok ? await r.json().catch(() => null) : null;
-        if (d?.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
-      }, Math.max(0, delay));
-      timers.push(t);
-    }
-    return () => timers.forEach(clearTimeout);
-  }, [assignedMissions, arrivedAtMap, startedAtMap]);
 
   // Geocode mission addresses for auto-checkin detection
   useEffect(() => {
@@ -2031,17 +2007,32 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         <div style={{ color:C.textSub, fontSize:11 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
                       </div>
                     </div>
-                    <button disabled={startingMission === m.id} onClick={async () => {
-                      setStartingMission(m.id);
-                      const { data: sd } = await supabase.auth.getSession();
-                      const token = sd?.session?.access_token;
-                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
-                      const d = await r.json();
-                      if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
-                      setStartingMission(null);
-                    }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:15, cursor:startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
-                      {startingMission===m.id ? "Démarrage…" : "🚀 Je commence la prestation"}
-                    </button>
+                    {(() => {
+                      const missionStartDt = (() => { try { return m.date && m.heure_debut ? new Date(`${m.date}T${m.heure_debut}:00`) : null; } catch(e) { return null; } })();
+                      const msUntilUnlock = missionStartDt ? (missionStartDt.getTime() - 5*60*1000) - Date.now() : 0;
+                      const tooEarly = msUntilUnlock > 0;
+                      const unlockTime = missionStartDt ? new Date(missionStartDt.getTime() - 5*60*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : null;
+                      return (
+                        <>
+                          {tooEarly && (
+                            <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"8px 12px", marginBottom:8, textAlign:"center" }}>
+                              <span style={{ color:C.textSub, fontSize:12 }}>🔒 Démarrage disponible à <strong style={{ color:C.text }}>{unlockTime}</strong></span>
+                            </div>
+                          )}
+                          <button disabled={startingMission === m.id || tooEarly} onClick={async () => {
+                            setStartingMission(m.id);
+                            const { data: sd } = await supabase.auth.getSession();
+                            const token = sd?.session?.access_token;
+                            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
+                            const d = await r.json();
+                            if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+                            setStartingMission(null);
+                          }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:tooEarly?"rgba(255,255,255,0.07)":startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:tooEarly?"rgba(255,255,255,0.3)":"#fff", fontWeight:800, fontSize:15, cursor:tooEarly||startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                            {startingMission===m.id ? "Démarrage…" : tooEarly ? "🔒 Démarrage verrouillé" : "🚀 Je commence la prestation"}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : !isPast && (
                   // ── Pas encore arrivé : détection GPS ou fallback manuel ──
@@ -2497,36 +2488,43 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* ── Recap Card ── */}
       {recapCard && (() => {
-        const getAmt = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+        const getAmt = m => Number(m.montant_total||(m.tarif_horaire&&(m.actual_hours??m.hours)?Number(m.tarif_horaire)*Number(m.actual_hours??m.hours):0));
         const amt = getAmt(recapCard);
+        const billedHours = recapCard.actual_hours ?? recapCard.hours;
         const sector = SECTORS.find(s => s.id === recapCard.sector);
+        const dateLabel = recapCard.date
+          ? (() => { try { return new Date(recapCard.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}); } catch(e) { return recapCard.date; } })()
+          : "";
         return (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
-            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"28px 24px 48px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center" }}>
-              <div style={{ width:40, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 24px" }} />
-              {/* Confetti ring */}
-              <div style={{ width:88, height:88, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"3px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px", boxShadow:"0 0 40px rgba(16,217,143,0.3)" }}>
-                {sector?.icon || "✅"}
-              </div>
-              <h2 style={{ color:"#10D98F", fontSize:22, fontWeight:900, margin:"0 0 6px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
-              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 24px" }}>{recapCard.metier || sector?.label || "Prestation"} · {recapCard.date || ""}</p>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
-                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:14, padding:"16px 12px" }}>
-                  <div style={{ fontSize:24, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Montant gagné</div>
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
+            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"14px 20px 32px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"80vh", overflowY:"auto" }}>
+              <div style={{ width:36, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 14px" }} />
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12, marginBottom:10 }}>
+                <div style={{ width:52, height:52, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"2px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0, boxShadow:"0 0 20px rgba(16,217,143,0.25)" }}>
+                  {sector?.icon || "✅"}
                 </div>
-                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:14, padding:"16px 12px" }}>
-                  <div style={{ fontSize:24, fontWeight:900, color:C.violet }}>{recapCard.hours ? `${recapCard.hours}h` : "—"}</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Durée réalisée</div>
+                <div style={{ textAlign:"left" }}>
+                  <h2 style={{ color:"#10D98F", fontSize:18, fontWeight:900, margin:"0 0 2px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
+                  <p style={{ color:C.textSub, fontSize:12, margin:0 }}>{recapCard.metier || sector?.label || "Prestation"} · {dateLabel}</p>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"12px 10px" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Montant gagné</div>
+                </div>
+                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:12, padding:"12px 10px" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:C.violet }}>{billedHours ? `${billedHours}h` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Durée réalisée</div>
                 </div>
               </div>
               {streak >= 2 && (
-                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:12, padding:"10px 16px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span style={{ fontSize:20 }}>🔥</span>
-                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>{streak} jours de suite — continuez comme ça !</span>
+                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:10, padding:"8px 12px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                  <span style={{ fontSize:16 }}>🔥</span>
+                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:12 }}>{streak} jours de suite — continuez comme ça !</span>
                 </div>
               )}
-              <button onClick={dismissRecap} style={{ width:"100%", padding:"14px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={dismissRecap} style={{ width:"100%", padding:"13px", borderRadius:13, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
                 Super ! 🚀
               </button>
             </div>

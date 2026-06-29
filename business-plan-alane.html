@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Business Plan — ALANE 2026–2029</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: #f8f7f4;
+      color: #1a1a2e;
+      line-height: 1.7;
+    }
+
+    .cover {
+      background: linear-gradient(135deg, #050E20 0%, #0D1B3E 60%, #1a2d5a 100%);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 60px 40px;
+      page-break-after: always;
+    }
+
+    .cover-logo {
+      font-size: 64px;
+      margin-bottom: 24px;
+    }
+
+    .cover h1 {
+      font-size: 52px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: #10D98F;
+      font-family: 'Georgia', serif;
+      margin-bottom: 8px;
+    }
+
+    .cover-tagline {
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 60px;
+    }
+
+    .cover-divider {
+      width: 80px;
+      height: 2px;
+      background: #10D98F;
+      margin: 0 auto 60px;
+    }
+
+    .cover-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 12px;
+    }
+
+    .cover-subtitle {
+      font-size: 16px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 80px;
+    }
+
+    .cover-meta {
+      display: flex;
+      gap: 48px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .cover-meta-item {
+      text-align: center;
+    }
+
+    .cover-meta-item .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 4px;
+    }
+
+    .cover-meta-item .value {
+      font-size: 16px;
+      font-weight: 700;
+      color: #10D98F;
+    }
+
+    .content {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 60px 40px;
+    }
+
+    .section {
+      margin-bottom: 56px;
+      page-break-inside: avoid;
+    }
+
+    .section-number {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #10D98F;
+      font-family: 'Arial', sans-serif;
+      margin-bottom: 6px;
+    }
+
+    h2 {
+      font-size: 28px;
+      font-weight: 900;
+      color: #050E20;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #10D98F;
+      font-family: 'Georgia', serif;
+    }
+
+    h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0D1B3E;
+      margin: 28px 0 14px;
+      font-family: 'Arial', sans-serif;
+    }
+
+    p {
+      font-size: 15px;
+      color: #333;
+      margin-bottom: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 28px;
+      font-family: 'Arial', sans-serif;
+      font-size: 14px;
+    }
+
+    thead tr {
+      background: #050E20;
+      color: white;
+    }
+
+    thead th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f0f4ff;
+    }
+
+    tbody tr:hover {
+      background: #e8f5ee;
+    }
+
+    tbody td {
+      padding: 11px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #1a1a2e;
+    }
+
+    tbody td:first-child {
+      font-weight: 600;
+    }
+
+    .highlight {
+      background: linear-gradient(135deg, #0D1B3E, #1a2d5a);
+      color: white;
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin: 24px 0;
+    }
+
+    .highlight h3 {
+      color: #10D98F;
+      margin-top: 0;
+    }
+
+    .highlight p, .highlight td, .highlight th {
+      color: rgba(255,255,255,0.85);
+    }
+
+    .highlight table thead tr {
+      background: rgba(16,217,143,0.2);
+    }
+
+    .highlight table thead th {
+      color: #10D98F;
+    }
+
+    .highlight table tbody tr:nth-child(even) {
+      background: rgba(255,255,255,0.05);
+    }
+
+    .highlight table tbody td {
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.85);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 20px 0 32px;
+    }
+
+    .kpi-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .kpi-card .year {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #888;
+      font-family: 'Arial', sans-serif;
+      margin-bottom: 8px;
+    }
+
+    .kpi-card .amount {
+      font-size: 26px;
+      font-weight: 900;
+      color: #10D98F;
+      font-family: 'Arial', sans-serif;
+      margin-bottom: 4px;
+    }
+
+    .kpi-card .label {
+      font-size: 12px;
+      color: #666;
+      font-family: 'Arial', sans-serif;
+    }
+
+    .warning-box {
+      background: #fff8e6;
+      border-left: 4px solid #f0b429;
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-family: 'Arial', sans-serif;
+      font-size: 14px;
+      color: #7a5c00;
+    }
+
+    .green-box {
+      background: #e8f9f0;
+      border-left: 4px solid #10D98F;
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-family: 'Arial', sans-serif;
+      font-size: 14px;
+      color: #0a5c3a;
+    }
+
+    .equity-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .equity-card {
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .equity-card.founder {
+      background: linear-gradient(135deg, #050E20, #0D1B3E);
+      color: white;
+    }
+
+    .equity-card.associate {
+      background: #f0f4ff;
+      color: #050E20;
+    }
+
+    .equity-card .pct {
+      font-size: 48px;
+      font-weight: 900;
+      color: #10D98F;
+      font-family: 'Arial', sans-serif;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .equity-card.associate .pct {
+      color: #7C6FE0;
+    }
+
+    .equity-card .role {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: 'Arial', sans-serif;
+      opacity: 0.8;
+      margin-bottom: 16px;
+    }
+
+    .equity-card .earnings {
+      font-size: 13px;
+      font-family: 'Arial', sans-serif;
+      opacity: 0.7;
+      line-height: 1.6;
+    }
+
+    .footer {
+      background: #050E20;
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      padding: 32px;
+      font-size: 12px;
+      font-family: 'Arial', sans-serif;
+      letter-spacing: 1px;
+    }
+
+    .footer strong {
+      color: #10D98F;
+    }
+
+    .year-header {
+      background: linear-gradient(135deg, #10D98F, #0ABF7A);
+      color: white;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin: 32px 0 20px;
+      font-family: 'Arial', sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .year-header .ca {
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0.85;
+    }
+
+    .result-row {
+      background: #050E20 !important;
+      color: white !important;
+      font-weight: 800 !important;
+    }
+
+    .result-row td {
+      color: #10D98F !important;
+      border-bottom: none !important;
+    }
+
+    ul {
+      padding-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    ul li {
+      font-size: 15px;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    @media print {
+      body { background: white; }
+      .cover { min-height: 100vh; }
+      .section { page-break-inside: avoid; }
+      .kpi-grid { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- COVER -->
+  <div class="cover">
+    <div class="cover-logo">🏨</div>
+    <h1>ALANE</h1>
+    <div class="cover-tagline">Tarif transparent · Prix affiché = Prix réel</div>
+    <div class="cover-divider"></div>
+    <div class="cover-title">Business Plan</div>
+    <div class="cover-subtitle">Projection financière 2026 – 2029 · Confidentiel</div>
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <div class="label">Secteur</div>
+        <div class="value">Hôtellerie · Restauration</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Marché</div>
+        <div class="value">National (France)</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Horizon</div>
+        <div class="value">3 ans</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Date</div>
+        <div class="value">Juin 2026</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- 1. RÉSUMÉ EXÉCUTIF -->
+    <div class="section">
+      <div class="section-number">Section 01</div>
+      <h2>Résumé exécutif</h2>
+      <p>
+        <strong>Alane</strong> est une plateforme numérique nationale qui connecte des clients professionnels (hôtels, restaurants, grande distribution) avec des prestataires indépendants micro-entrepreneurs spécialisés dans l'hôtellerie et la restauration.
+      </p>
+      <p>
+        La proposition de valeur est simple : un tarif 100% transparent où le prix affiché est le prix réel, sans surprise. Les clients payent uniquement des frais de service fixes par commande. Les prestataires accèdent aux missions via un abonnement mensuel.
+      </p>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="year">Année 1</div>
+          <div class="amount">37 000 €</div>
+          <div class="label">Chiffre d'affaires</div>
+        </div>
+        <div class="kpi-card">
+          <div class="year">Année 2</div>
+          <div class="amount">164 000 €</div>
+          <div class="label">Chiffre d'affaires</div>
+        </div>
+        <div class="kpi-card">
+          <div class="year">Année 3</div>
+          <div class="amount">383 000 €</div>
+          <div class="label">Chiffre d'affaires</div>
+        </div>
+      </div>
+
+      <div class="green-box">
+        ✅ <strong>Rentabilité dès le mois 4–5</strong> de l'année 1, avec environ 35 prestataires actifs. Aucun investissement externe requis au lancement.
+      </div>
+    </div>
+
+    <!-- 2. MODÈLE ÉCONOMIQUE -->
+    <div class="section">
+      <div class="section-number">Section 02</div>
+      <h2>Modèle économique</h2>
+
+      <h3>Sources de revenus</h3>
+      <p>Alane génère deux flux de revenus distincts et complémentaires :</p>
+
+      <h3>A — Abonnements prestataires (MRR récurrent)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th>Prix mensuel</th>
+            <th>Missions / mois</th>
+            <th>Cible</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>🆓 Free</td>
+            <td>0 €</td>
+            <td>2</td>
+            <td>Découverte — outil d'acquisition</td>
+          </tr>
+          <tr>
+            <td>⭐ Premium</td>
+            <td>29,99 €</td>
+            <td>8</td>
+            <td>Prestataire actif régulier</td>
+          </tr>
+          <tr>
+            <td>💎 Élite</td>
+            <td>79,99 €</td>
+            <td>Illimité</td>
+            <td>Professionnel intensif — activité principale</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>B — Frais de service clients (par commande)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Type de commande</th>
+            <th>Frais fixe</th>
+            <th>Remarque</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Commande standard</td>
+            <td>4,90 €</td>
+            <td>70% des commandes estimées</td>
+          </tr>
+          <tr>
+            <td>Commande récurrente</td>
+            <td>2,90 €</td>
+            <td>25% — client fidèle, même prestataire</td>
+          </tr>
+          <tr>
+            <td>Commande urgente</td>
+            <td>9,90 € + 5 €/h</td>
+            <td>10% — besoin de dernière minute</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="green-box">
+        📊 <strong>Frais de service moyen pondéré retenu : 5,50 € / mission</strong><br/>
+        Basé sur un mix 70% standard / 25% récurrente / 10% urgente.
+      </div>
+    </div>
+
+    <!-- 3. RÉPARTITION PRESTATAIRES -->
+    <div class="section">
+      <div class="section-number">Section 03</div>
+      <h2>Répartition des prestataires</h2>
+
+      <p>La logique de répartition repose sur un principe simple : le plan Free est un outil d'acquisition, pas une source de revenus. L'objectif est de convertir rapidement vers Premium. Le plan Élite monte en puissance à mesure qu'Alane devient l'activité principale des prestataires.</p>
+
+      <h3>Année 1 — 100 prestataires</h3>
+      <table>
+        <thead><tr><th>Plan</th><th>Nombre</th><th>Part</th><th>Raisonnement</th></tr></thead>
+        <tbody>
+          <tr><td>Free</td><td>25</td><td>25%</td><td>Nouveaux inscrits en phase de test</td></tr>
+          <tr><td>Premium</td><td>55</td><td>55%</td><td>Cœur actif — revenus réguliers</td></tr>
+          <tr><td>Élite</td><td>20</td><td>20%</td><td>Early adopters très engagés</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Année 2 — 250 prestataires</h3>
+      <table>
+        <thead><tr><th>Plan</th><th>Nombre</th><th>Part</th><th>Raisonnement</th></tr></thead>
+        <tbody>
+          <tr><td>Free</td><td>40</td><td>16%</td><td>Uniquement les nouveaux — les testeurs ont converti</td></tr>
+          <tr><td>Premium</td><td>130</td><td>52%</td><td>Segment dominant stable</td></tr>
+          <tr><td>Élite</td><td>80</td><td>32%</td><td>Les Premium de Y1 intensifient leur activité</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Année 3 — 500 prestataires</h3>
+      <table>
+        <thead><tr><th>Plan</th><th>Nombre</th><th>Part</th><th>Raisonnement</th></tr></thead>
+        <tbody>
+          <tr><td>Free</td><td>60</td><td>12%</td><td>Seulement les toutes nouvelles inscriptions</td></tr>
+          <tr><td>Premium</td><td>250</td><td>50%</td><td>Base stable</td></tr>
+          <tr><td>Élite</td><td>190</td><td>38%</td><td>Alane est l'activité principale — forte fidélité</td></tr>
+        </tbody>
+      </table>
+
+      <div class="warning-box">
+        ⚠️ <strong>Note sur le churn :</strong> Les projections modélisent des effectifs nets. En réalité, prévoir ~10% de churn mensuel sur le Free et ~3% sur le Premium, ce qui implique d'acquérir ~120 prestataires bruts pour en conserver 100 en fin d'année 1.
+      </div>
+    </div>
+
+    <!-- 4. PROJECTIONS -->
+    <div class="section">
+      <div class="section-number">Section 04</div>
+      <h2>Projections financières</h2>
+
+      <p><strong>Hypothèses communes :</strong></p>
+      <ul>
+        <li>Mission moyenne : 3,5h × 16 €/h = <strong>56 € HT</strong></li>
+        <li>Utilisation mensuelle : Free 1,5 missions — Premium 5 — Élite 12</li>
+        <li>Frais de service moyen : <strong>5,50 €/mission</strong></li>
+        <li>Frais Stripe : ~2% du CA encaissé</li>
+        <li>Infrastructure : Vercel Pro + Supabase Pro</li>
+        <li>Montée en charge progressive sur chaque année</li>
+      </ul>
+
+      <!-- ANNÉE 1 -->
+      <div class="year-header">
+        <span>📅 ANNÉE 1 — Lancement national</span>
+        <span class="ca">100 prestataires fin d'année · ~50 actifs en moyenne</span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Période</th>
+            <th>Prestataires actifs</th>
+            <th>Abonnements / mois</th>
+            <th>Frais service / mois</th>
+            <th>Total / mois</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>M1 – M3</td><td>~15</td><td>490 €</td><td>290 €</td><td><strong>780 €</strong></td></tr>
+          <tr><td>M4 – M6</td><td>~35</td><td>1 140 €</td><td>680 €</td><td><strong>1 820 €</strong></td></tr>
+          <tr><td>M7 – M9</td><td>~65</td><td>2 120 €</td><td>1 260 €</td><td><strong>3 380 €</strong></td></tr>
+          <tr><td>M10 – M12</td><td>~90</td><td>2 940 €</td><td>1 750 €</td><td><strong>4 690 €</strong></td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Charges Année 1</th><th>Montant</th><th>Nature</th></tr></thead>
+        <tbody>
+          <tr><td>Création SAS + pacte d'associés</td><td>2 500 €</td><td>One-shot</td></tr>
+          <tr><td>Dépôt au capital</td><td>5 000 €</td><td>Reste dans la société</td></tr>
+          <tr><td>Infrastructure (Vercel + Supabase)</td><td>540 €</td><td>Récurrent</td></tr>
+          <tr><td>Frais Stripe (~2% du CA)</td><td>740 €</td><td>Variable</td></tr>
+          <tr><td>Expert-comptable</td><td>1 500 €</td><td>Récurrent</td></tr>
+          <tr><td>Marketing / acquisition</td><td>3 000 €</td><td>Investissement</td></tr>
+          <tr><td>Domaine, email pro, divers</td><td>300 €</td><td>Récurrent</td></tr>
+          <tr><td><strong>Salaire fondateur</strong></td><td><strong>0 €</strong></td><td>—</td></tr>
+          <tr class="result-row"><td>CA Année 1</td><td colspan="2">~37 000 €</td></tr>
+          <tr class="result-row"><td>Résultat net après IS (15%)</td><td colspan="2">~24 140 €</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ANNÉE 2 -->
+      <div class="year-header">
+        <span>📅 ANNÉE 2 — Consolidation</span>
+        <span class="ca">250 prestataires fin d'année · ~175 actifs en moyenne</span>
+      </div>
+
+      <table>
+        <thead><tr><th></th><th>Mensuel (moyenne)</th><th>Annuel</th></tr></thead>
+        <tbody>
+          <tr><td>Abonnements</td><td>7 210 €</td><td>86 520 €</td></tr>
+          <tr><td>Frais de service</td><td>6 430 €</td><td>77 160 €</td></tr>
+          <tr class="result-row"><td>CA Total</td><td>13 640 €</td><td>163 680 €</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Charges Année 2</th><th>Montant</th></tr></thead>
+        <tbody>
+          <tr><td>Infrastructure</td><td>1 200 €</td></tr>
+          <tr><td>Frais Stripe</td><td>3 274 €</td></tr>
+          <tr><td>Expert-comptable + juridique</td><td>3 000 €</td></tr>
+          <tr><td>Marketing</td><td>8 000 €</td></tr>
+          <tr><td>Salaire fondateur (2 500 € net/mois)</td><td>45 000 € brut chargé</td></tr>
+          <tr><td>Divers</td><td>500 €</td></tr>
+          <tr class="result-row"><td>Résultat net après IS</td><td>~81 279 €</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Revenus fondateur (Année 2)</th><th>Montant</th></tr></thead>
+        <tbody>
+          <tr><td>Salaire net annuel</td><td>30 000 €</td></tr>
+          <tr><td>Dividendes (60%)</td><td>36 767 €</td></tr>
+          <tr class="result-row"><td>Total perçu</td><td>~66 767 €</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ANNÉE 3 -->
+      <div class="year-header">
+        <span>📅 ANNÉE 3 — Accélération</span>
+        <span class="ca">500 prestataires fin d'année · ~375 actifs en moyenne</span>
+      </div>
+
+      <table>
+        <thead><tr><th></th><th>Mensuel (moyenne)</th><th>Annuel</th></tr></thead>
+        <tbody>
+          <tr><td>Abonnements</td><td>17 022 €</td><td>204 264 €</td></tr>
+          <tr><td>Frais de service</td><td>14 933 €</td><td>179 196 €</td></tr>
+          <tr class="result-row"><td>CA Total</td><td>31 955 €</td><td>383 460 €</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Charges Année 3</th><th>Montant</th></tr></thead>
+        <tbody>
+          <tr><td>Infrastructure</td><td>2 400 €</td></tr>
+          <tr><td>Frais Stripe</td><td>7 669 €</td></tr>
+          <tr><td>Expert-comptable + juridique</td><td>5 000 €</td></tr>
+          <tr><td>Marketing</td><td>20 000 €</td></tr>
+          <tr><td>Salaire fondateur (4 500 € net/mois)</td><td>80 000 € brut chargé</td></tr>
+          <tr><td>Support client (1 freelance)</td><td>15 000 €</td></tr>
+          <tr><td>Divers</td><td>1 000 €</td></tr>
+          <tr class="result-row"><td>Résultat net après IS</td><td>~193 543 €</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Revenus fondateur (Année 3)</th><th>Montant</th></tr></thead>
+        <tbody>
+          <tr><td>Salaire net annuel</td><td>54 000 €</td></tr>
+          <tr><td>Dividendes (60%)</td><td>97 526 €</td></tr>
+          <tr class="result-row"><td>Total perçu</td><td>~151 526 €</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 5. SYNTHÈSE -->
+    <div class="section">
+      <div class="section-number">Section 05</div>
+      <h2>Synthèse sur 3 ans</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Indicateur</th>
+            <th>Année 1</th>
+            <th>Année 2</th>
+            <th>Année 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Prestataires (fin d'année)</td><td>100</td><td>250</td><td>500</td></tr>
+          <tr><td>Chiffre d'affaires</td><td>37 000 €</td><td>163 680 €</td><td>383 460 €</td></tr>
+          <tr><td>Charges totales</td><td>8 580 €</td><td>60 974 €</td><td>131 069 €</td></tr>
+          <tr><td>Résultat net</td><td>24 140 €</td><td>81 279 €</td><td>193 543 €</td></tr>
+          <tr><td>Marge nette</td><td>65%</td><td>50%</td><td>50%</td></tr>
+          <tr><td>Revenu total fondateur</td><td>~14 484 €</td><td>~66 767 €</td><td>~151 526 €</td></tr>
+          <tr><td>Dividendes associé (40%)</td><td>~9 656 €</td><td>~24 512 €</td><td>~65 017 €</td></tr>
+        </tbody>
+      </table>
+
+      <div class="green-box">
+        📈 <strong>Croissance CA × 4,4 entre Y1 et Y2, × 2,3 entre Y2 et Y3.</strong><br/>
+        Marge nette structurellement élevée grâce au modèle SaaS + marketplace sans stock ni logistique.
+      </div>
+    </div>
+
+    <!-- 6. CAPITAL & GOUVERNANCE -->
+    <div class="section">
+      <div class="section-number">Section 06</div>
+      <h2>Capital &amp; gouvernance</h2>
+
+      <p>Structure juridique recommandée : <strong>SAS</strong> — flexibilité sur la répartition des dividendes, possibilité d'accueillir des investisseurs futurs, statut président assimilé-salarié.</p>
+
+      <div class="equity-grid">
+        <div class="equity-card founder">
+          <div class="pct">60%</div>
+          <div class="role">Fondateur — Président</div>
+          <div class="earnings">
+            Y1 : 14 484 € dividendes<br/>
+            Y2 : 30 000 € salaire + 36 767 € div.<br/>
+            Y3 : 54 000 € salaire + 97 526 € div.
+          </div>
+        </div>
+        <div class="equity-card associate">
+          <div class="pct">40%</div>
+          <div class="role">Associé</div>
+          <div class="earnings">
+            Y1 : 9 656 € dividendes<br/>
+            Y2 : 24 512 € dividendes<br/>
+            Y3 : 65 017 € dividendes
+          </div>
+        </div>
+      </div>
+
+      <div class="warning-box">
+        ⚠️ <strong>Recommandation :</strong> Formaliser un pacte d'associés dès la création précisant les conditions de dilution future, le droit de préemption et les clauses de sortie. Indispensable si un investisseur entre au capital.
+      </div>
+    </div>
+
+    <!-- 7. POINTS DE VIGILANCE -->
+    <div class="section">
+      <div class="section-number">Section 07</div>
+      <h2>Points de vigilance</h2>
+
+      <h3>1. Acquisition des prestataires</h3>
+      <p>Atteindre 100 prestataires en 12 mois est réalisable mais nécessite une démarche active dès M1 : réseaux hôteliers, LinkedIn, partenariats avec écoles hôtelières (CFA, lycées professionnels), bouche-à-oreille.</p>
+
+      <h3>2. TVA</h3>
+      <p>Au-delà de 34 400 € de CA en prestations de services, la TVA à 20% s'applique sur les frais de service. À prévoir dès la fin de l'année 1. Les prestataires micro-entrepreneurs étant en franchise de TVA, cela ne les impacte pas directement.</p>
+
+      <h3>3. Le plan Élite est stratégique</h3>
+      <p>20 prestataires Élite en Y1 représentent <strong>32% du MRR abonnements</strong>. Les fidéliser est critique. Envisager des avantages exclusifs (mise en avant, missions prioritaires, support dédié).</p>
+
+      <h3>4. Seuil de rentabilité</h3>
+      <p>Le point mort est atteint dès <strong>M4–M5</strong> de l'année 1, avec environ 35 prestataires actifs payants. La trésorerie initiale (capital + économies personnelles) doit couvrir les 3–4 premiers mois.</p>
+
+      <h3>5. Trésorerie personnelle</h3>
+      <p>Aucun salaire en année 1. S'assurer d'avoir au minimum <strong>6 mois de charges personnelles</strong> couvertes avant le lancement pour opérer sans pression financière.</p>
+
+      <h3>6. Saisonnalité</h3>
+      <p>L'hôtellerie-restauration connaît des pics (été, fêtes de fin d'année) et des creux (janvier-février). Prévoir une trésorerie tampon de 2–3 mois de charges pour traverser les périodes basses.</p>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <strong>ALANE</strong> — Document confidentiel · Juin 2026<br/>
+    Tous droits réservés · Ne pas diffuser sans autorisation
+  </div>
+
+</body>
+</html>

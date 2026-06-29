@@ -1456,15 +1456,25 @@ export default async function handler(req, res) {
         body: JSON.stringify({ mission_id, prestataire_id, lat, lng, updated_at: new Date().toISOString() }),
       });
 
-      // On first activation, push "en route" to client
+      // On first activation, push "en route" to client — only within 5 min of mission start
       if (isFirstUpdate) {
         try {
-          const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,metier,ville&limit=1`, { headers });
+          const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,metier,ville,date,heure_debut&limit=1`, { headers });
           const mRows = await mRes.json().catch(() => []);
           const mission = Array.isArray(mRows) && mRows[0];
           if (mission?.client_id) {
-            const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
-            await sendPushToUser(mission.client_id, notif, SUPABASE_URL, headers);
+            let withinWindow = true;
+            if (mission.date && mission.heure_debut) {
+              try {
+                const missionStart = new Date(`${mission.date}T${mission.heure_debut}:00`);
+                const msUntilStart = missionStart.getTime() - Date.now();
+                withinWindow = msUntilStart <= 60 * 60 * 1000;
+              } catch(e) { /* date parse failed — allow notification */ }
+            }
+            if (withinWindow) {
+              const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
+              await sendPushToUser(mission.client_id, notif, SUPABASE_URL, headers);
+            }
           }
         } catch (e) { console.error("[update_position] push error:", e.message); }
       }
@@ -2607,11 +2617,29 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable ou non assignée" });
       if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
+
+      // Only allow start within [H-10min … H+2h] — rejects stale auto-start calls
+      if (m.date && m.heure_debut) {
+        try {
+          const missionStart = new Date(`${m.date}T${m.heure_debut}:00`).getTime();
+          const now = Date.now();
+          if (now < missionStart - 10 * 60 * 1000) {
+            return res.status(400).json({ error: "Trop tôt pour démarrer la mission" });
+          }
+          if (now > missionStart + 2 * 60 * 60 * 1000) {
+            return res.status(400).json({ error: "Fenêtre de démarrage expirée" });
+          }
+        } catch(e) { /* date parse failed — allow */ }
+      }
+      // Require prestataire to have checked in first
+      if (!m.arrived_at) {
+        return res.status(400).json({ error: "Vous devez d'abord confirmer votre arrivée sur place" });
+      }
 
       const startedAt = new Date().toISOString();
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
