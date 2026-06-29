@@ -1630,30 +1630,6 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
   useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
 
-  // Auto-démarrage : si arrivé depuis > 10 min et prestation pas encore démarrée → start_mission automatique
-  useEffect(() => {
-    const AUTO_START_MS = 10 * 60 * 1000;
-    const timers = [];
-    for (const m of assignedMissions) {
-      const arrivedAt = arrivedAtMap[m.id];
-      if (!arrivedAt || startedAtMap[m.id]) continue;
-      const delay = AUTO_START_MS - (Date.now() - new Date(arrivedAt).getTime());
-      const t = setTimeout(async () => {
-        if (startedAtMap[m.id]) return; // already started manually
-        const { data: sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        const r = await fetch("/api/missions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
-          body: JSON.stringify({ action: "start_mission", mission_id: m.id, auto_start: true }),
-        }).catch(() => null);
-        const d = r?.ok ? await r.json().catch(() => null) : null;
-        if (d?.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
-      }, Math.max(0, delay));
-      timers.push(t);
-    }
-    return () => timers.forEach(clearTimeout);
-  }, [assignedMissions, arrivedAtMap, startedAtMap]);
 
   // Geocode mission addresses for auto-checkin detection
   useEffect(() => {
@@ -2519,30 +2495,34 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           : "";
         return (
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
-            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"16px 24px 36px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"85vh", overflowY:"auto" }}>
-              <div style={{ width:40, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 18px" }} />
-              <div style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"3px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, margin:"0 auto 14px", boxShadow:"0 0 30px rgba(16,217,143,0.3)" }}>
-                {sector?.icon || "✅"}
-              </div>
-              <h2 style={{ color:"#10D98F", fontSize:21, fontWeight:900, margin:"0 0 5px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
-              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 18px" }}>{recapCard.metier || sector?.label || "Prestation"} · {dateLabel}</p>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:14, padding:"14px 12px" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Montant gagné</div>
+            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"14px 20px 32px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"80vh", overflowY:"auto" }}>
+              <div style={{ width:36, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 14px" }} />
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12, marginBottom:10 }}>
+                <div style={{ width:52, height:52, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"2px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0, boxShadow:"0 0 20px rgba(16,217,143,0.25)" }}>
+                  {sector?.icon || "✅"}
                 </div>
-                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:14, padding:"14px 12px" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:C.violet }}>{billedHours ? `${billedHours}h` : "—"}</div>
-                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Durée réalisée</div>
+                <div style={{ textAlign:"left" }}>
+                  <h2 style={{ color:"#10D98F", fontSize:18, fontWeight:900, margin:"0 0 2px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
+                  <p style={{ color:C.textSub, fontSize:12, margin:0 }}>{recapCard.metier || sector?.label || "Prestation"} · {dateLabel}</p>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"12px 10px" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Montant gagné</div>
+                </div>
+                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:12, padding:"12px 10px" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:C.violet }}>{billedHours ? `${billedHours}h` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>Durée réalisée</div>
                 </div>
               </div>
               {streak >= 2 && (
-                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:12, padding:"9px 14px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span style={{ fontSize:18 }}>🔥</span>
-                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>{streak} jours de suite — continuez comme ça !</span>
+                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:10, padding:"8px 12px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                  <span style={{ fontSize:16 }}>🔥</span>
+                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:12 }}>{streak} jours de suite — continuez comme ça !</span>
                 </div>
               )}
-              <button onClick={dismissRecap} style={{ width:"100%", padding:"14px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={dismissRecap} style={{ width:"100%", padding:"13px", borderRadius:13, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
                 Super ! 🚀
               </button>
             </div>
