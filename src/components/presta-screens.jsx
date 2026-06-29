@@ -1418,7 +1418,9 @@ export function UpgradeNudge({ onNavigate }) {
       if (uid) {
         supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", uid).single()
           .then(({ data: p }) => {
-            const resolvedPlan = p?.plan_abonnement || metaPlan;
+            const RANK = { free:0, premium:1, elite:2 };
+            const pp = p?.plan_abonnement || "free";
+            const resolvedPlan = (RANK[metaPlan]||0) > (RANK[pp]||0) ? metaPlan : pp;
             setPlan(resolvedPlan);
             if (resolvedPlan !== "free") setTrialExhausted(false);
             else if (p?.trial_exhausted) setTrialExhausted(true);
@@ -1597,9 +1599,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
         supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", u.id).single()
           .then(({ data: pr }) => {
-            const plan = pr?.plan_abonnement || meta.plan_abonnement || "free";
+            const RANK = { free:0, premium:1, elite:2 };
+            const pp = pr?.plan_abonnement || "free";
+            const mp = meta.plan_abonnement || "free";
+            const plan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
             setUserPlan(plan);
-            // Invariant : plan payant → jamais trial_exhausted
             if (plan !== "free") setTrialExhausted(false);
             else if (pr?.trial_exhausted) setTrialExhausted(true);
           });
@@ -2399,8 +2403,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
-        // profiles est la source de vérité — priorité sur user_metadata
-        const resolvedPlan = prof.plan_abonnement || u.user_metadata?.plan_abonnement || "free";
+        const RANK = { free:0, premium:1, elite:2 };
+        const pp = prof.plan_abonnement || "free";
+        const mp = u.user_metadata?.plan_abonnement || "free";
+        const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
         setPlanActuel(resolvedPlan);
       }
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
