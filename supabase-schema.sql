@@ -68,13 +68,20 @@ CREATE TABLE IF NOT EXISTS documents (
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance        numeric DEFAULT 0;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS missions_completed_month integer DEFAULT 0;
 
+-- [Str-06] Stripe Connect — colonnes manquantes sur profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_account_id     text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_account_status text DEFAULT 'pending';
+
 -- ── RLS sur profiles ──────────────────────────────────────────
 -- (la table profiles n'avait pas de RLS — correctif)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "profiles_select" ON profiles;
 CREATE POLICY "profiles_select" ON profiles
-  FOR SELECT USING (true);  -- lecture publique nécessaire pour les listings prestataires, le parrainage, etc.
+  FOR SELECT USING (
+    auth.uid() = id          -- toujours accès à son propre profil
+    OR role = 'prestataire'  -- profils prestataires lisibles pour les listings clients
+  );
 
 DROP POLICY IF EXISTS "profiles_insert" ON profiles;
 CREATE POLICY "profiles_insert" ON profiles
@@ -172,9 +179,15 @@ CREATE INDEX IF NOT EXISTS visits_created_at_idx ON visits (created_at);
 ALTER TABLE visits ENABLE ROW LEVEL SECURITY;
 
 -- Tout le monde peut insérer sa propre visite (anon inclus)
+-- [Str-05] Restreindre INSERT sur visits aux rôles authenticated et anon uniquement
 DROP POLICY IF EXISTS "visits_insert" ON visits;
 CREATE POLICY "visits_insert" ON visits
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'anon');
+
+-- [Str-05] Contrainte anti-abus : une session ne peut insérer qu'une fois par path
+-- NOTE: visits n'a pas de colonne `path` — si elle est ajoutée ultérieurement :
+-- ALTER TABLE visits ADD COLUMN IF NOT EXISTS path text;
+-- ALTER TABLE visits ADD CONSTRAINT visits_session_path_unique UNIQUE (session_id, path);
 
 -- Lecture réservée au service role (BO uniquement via service_role_key)
 
@@ -261,11 +274,16 @@ CREATE POLICY "ratings_read" ON ratings
   FOR SELECT USING (true);
 
 -- ── TABLE contracts (contrats de mission signés) ─────────────────────
+-- [Str-03] NOTE MIGRATION: contracts.mission_id devrait être uuid REFERENCES missions(id)
+-- Pour migrer : ALTER TABLE contracts ADD COLUMN mission_uuid uuid REFERENCES missions(id);
+-- UPDATE contracts SET mission_uuid = mission_id::uuid WHERE mission_id ~ '^[0-9a-f-]{36}$';
+-- ALTER TABLE contracts DROP COLUMN mission_id; ALTER TABLE contracts RENAME COLUMN mission_uuid TO mission_id;
 CREATE TABLE IF NOT EXISTS contracts (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   mission_id            text,
-  contract_number       text,
+  contract_number       text UNIQUE,
   client_id             uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  prestataire_id        uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   prestataire_name      text,
   prestataire_role      text,
   nb_heures             numeric,
@@ -277,13 +295,25 @@ CREATE TABLE IF NOT EXISTS contracts (
   created_at            timestamptz DEFAULT now()
 );
 
+-- [S-07] Colonne prestataire_id ajoutée en migration idempotente
+ALTER TABLE contracts ADD COLUMN IF NOT EXISTS prestataire_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
 ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "contracts_client_own" ON contracts;
 CREATE POLICY "contracts_client_own" ON contracts
   FOR ALL USING (client_id = auth.uid());
 
+-- [S-07] Policy SELECT pour le prestataire
+DROP POLICY IF EXISTS "contracts_presta_read" ON contracts;
+CREATE POLICY "contracts_presta_read" ON contracts
+  FOR SELECT USING (prestataire_id = auth.uid());
+
 -- ── TABLE tracking_positions (localisation GPS prestataires) ─────────
+-- [Str-04] NOTE MIGRATION: tracking_positions.mission_id devrait être uuid REFERENCES missions(id)
+-- Pour migrer : ALTER TABLE tracking_positions ADD COLUMN mission_uuid uuid REFERENCES missions(id);
+-- UPDATE tracking_positions SET mission_uuid = mission_id::uuid WHERE mission_id ~ '^[0-9a-f-]{36}$';
+-- ALTER TABLE tracking_positions DROP COLUMN mission_id; ALTER TABLE tracking_positions RENAME COLUMN mission_uuid TO mission_id;
 CREATE TABLE IF NOT EXISTS tracking_positions (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   mission_id      text NOT NULL,
@@ -343,8 +373,17 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS client_nom           text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_reason  text;
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS cancellation_penalty numeric DEFAULT 0;
 
--- ── plan_abonnement sur profiles (sync avec user_metadata) ───────────
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement text DEFAULT 'free';
+-- [Str-07 + B-05 + N-05 + S-06] Colonnes manquantes sur missions
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS payout_status                  text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS stripe_transfer_id             text;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS end_notif_sent                 boolean DEFAULT false;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS cashback_credited              boolean DEFAULT false;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS last_validation_reminder_at    timestamptz;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS broadcast_sent_at              timestamptz;
+
+-- ── plan_abonnement + subscription_end_date sur profiles ────────────
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_abonnement        text DEFAULT 'free';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_end_date  date;
 
 -- ── TABLE bo_logs (audit trail des actions backoffice) ─────────────────
 CREATE TABLE IF NOT EXISTS bo_logs (
@@ -423,6 +462,10 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS contrat_presta_signe_at timestampt
 -- Ne se remet pas à zéro lors du reset mensuel du cron
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_exhausted boolean DEFAULT false;
 
+-- Stripe subscription tracking
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_customer_id     text;
+
 -- ── TABLE account_blacklist ──────────────────────────────────
 -- Mémorise les identifiants des comptes prestataires supprimés
 -- pour empêcher de recréer un compte et retrouver les missions gratuites
@@ -466,3 +509,47 @@ BEGIN
 END;
 $$;
 CREATE INDEX IF NOT EXISTS idx_blacklist_email     ON account_blacklist(email)     WHERE email IS NOT NULL;
+
+-- Checkin prestataire : horodatage d'arrivée sur place
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
+
+-- Démarrage effectif de la prestation (déclenche le timer côté prestataire)
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS started_at timestamptz;
+
+-- ── FONCTION atomique vérification limite de plan ────────────────────
+-- Vérifie si le prestataire peut encore accepter une mission (lecture atomique FOR UPDATE)
+-- Retourne le nombre de slots disponibles (0 = limite atteinte)
+CREATE OR REPLACE FUNCTION check_prestataire_slot(
+  p_prestataire_id uuid,
+  p_limit          integer
+)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_completed integer;
+  v_active    integer;
+  v_total     integer;
+BEGIN
+  -- FOR UPDATE verrouille la ligne pendant la transaction pour éviter les races
+  SELECT COALESCE(missions_completed_month, 0) INTO v_completed
+  FROM profiles WHERE id = p_prestataire_id FOR UPDATE;
+
+  SELECT COUNT(*) INTO v_active
+  FROM missions
+  WHERE prestataire_id = p_prestataire_id
+    AND status IN ('assigned', 'pending_acceptance');
+
+  v_total := v_completed + v_active;
+  RETURN GREATEST(0, p_limit - v_total);
+END;
+$$;
+
+-- ── INDEX de performance ──────────────────────────────────────────────
+-- Requêtes fréquentes : missions ouvertes triées par date, missions par client/prestataire
+CREATE INDEX IF NOT EXISTS idx_missions_status_created        ON missions(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_missions_client_status         ON missions(client_id, status);
+CREATE INDEX IF NOT EXISTS idx_missions_prestataire_status    ON missions(prestataire_id, status);
+CREATE INDEX IF NOT EXISTS idx_candidatures_mission_status    ON candidatures(mission_id, status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread      ON notifications(user_id, read) WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created     ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user        ON push_subscriptions(user_id);

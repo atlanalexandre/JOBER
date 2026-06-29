@@ -82,8 +82,8 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
       supabase.from("missions").update({ status: "refused" }).eq("id", missionId).then(()=>{});
       if (clientId) {
         supabase.from("notifications").insert({
-          user_id: clientId, type: "mission",
-          title: "Mission non confirmée",
+          user_id: clientId, type: "prestation",
+          title: "Prestation non confirmée",
           body: `${p.name} n'a pas répondu dans le délai imparti. Vous pouvez choisir un autre prestataire.`,
           read: false,
         }).then(()=>{});
@@ -144,7 +144,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
             <div style={{ display:"flex", gap:6, marginTop:6, alignItems:"center" }}>
               <span style={{ color:C.accentGold, fontSize:13 }}>★</span>
               <span style={{ color:C.text, fontSize:13, fontWeight:700 }}>{p.rating}</span>
-              <span style={{ color:C.textSub, fontSize:12 }}>· {p.missions} missions</span>
+              <span style={{ color:C.textSub, fontSize:12 }}>· {p.missions} prestations</span>
               <span style={{ color:C.textSub, fontSize:12 }}>· {p.responseTime}</span>
             </div>
           </div>
@@ -160,14 +160,24 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
             <div style={{ width:10, height:10, borderRadius:"50%", background:C.violet, boxShadow:"0 0 8px "+C.violet, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
             <div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Notification envoyée à {p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Il dispose d'une heure pour accepter ou refuser la mission</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Il dispose d'une heure pour accepter ou refuser la prestation</div>
             </div>
           </div>
         </div>
 
         {/* Info paiement sécurisé */}
-        <div style={{ width:"100%", background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"12px 14px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont sécurisés via Stripe mais ne seront libérés que si {p.name} accepte la mission. En cas de refus ou de timeout, contactez le support pour un remboursement.
+        <div style={{ width:"100%", background:"rgba(255,255,255,0.03)", border:"1px solid "+C.border, borderRadius:r, padding:"12px 14px", marginBottom:14, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          🔒 <strong style={{ color:C.text }}>Votre paiement est sécurisé</strong> — Les fonds sont bloqués via Stripe et ne seront libérés qu'à l'acceptation. En cas de refus ou d'expiration, vous êtes intégralement remboursé(e).
+        </div>
+
+        {/* Info si pas de réponse */}
+        <div style={{ width:"100%", background:`${C.accentGold}08`, border:`1px solid ${C.accentGold}30`, borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:12, color:C.textSub, lineHeight:1.7 }}>
+          <div style={{ fontWeight:700, color:C.accentGold, fontSize:12, marginBottom:6 }}>📧 Si {p.name} ne répond pas dans le délai imparti…</div>
+          Vous recevrez un email vous proposant de :
+          <ul style={{ margin:"6px 0 0", paddingLeft:18, display:"flex", flexDirection:"column", gap:3 }}>
+            <li><strong style={{ color:C.text }}>Choisir un autre prestataire</strong> disponible pour le même métier</li>
+            <li><strong style={{ color:C.text }}>Diffuser la mission</strong> à l'ensemble des prestataires {p.jobTitle||p.role ? `(${p.jobTitle||p.role})` : "du même métier"} — le premier à accepter prend la prestation</li>
+          </ul>
         </div>
 
         {/* Bouton annuler */}
@@ -185,7 +195,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
     <div style={{ minHeight:"100%", background:"linear-gradient(180deg,#0A1628,#0D1B3E)", padding:"0 0 40px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
       <div style={{ padding:"48px 28px", textAlign:"center", maxWidth:360, width:"100%" }}>
         <div style={{ width:100, height:100, borderRadius:"50%", background:C.success+"20", border:"3px solid "+C.success, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48, margin:"0 auto 24px" }}>✅</div>
-        <h2 style={{ color:C.success, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Mission acceptée !</h2>
+        <h2 style={{ color:C.success, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Prestation acceptée !</h2>
         <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:28 }}>
           <strong style={{ color:C.text }}>{p.name}</strong> a accepté votre demande. Le contrat est en cours de génération.
         </p>
@@ -215,7 +225,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
     <div style={{ minHeight:"100%", background:"linear-gradient(180deg,#0A1628,#0D1B3E)", padding:"0 0 40px", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
       <div style={{ padding:"48px 28px", textAlign:"center", maxWidth:360, width:"100%" }}>
         <div style={{ width:100, height:100, borderRadius:"50%", background:C.accent+"15", border:"3px solid "+C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48, margin:"0 auto 24px" }}>❌</div>
-        <h2 style={{ color:C.accent, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Mission refusée</h2>
+        <h2 style={{ color:C.accent, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Prestation refusée</h2>
         <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:8 }}>
           <strong style={{ color:C.text }}>{p.name}</strong> a décliné la mission. Votre paiement est intégralement remboursé.
         </p>
@@ -258,7 +268,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
         <div style={{ width:100, height:100, borderRadius:"50%", background:C.accentGold+"15", border:"3px solid "+C.accentGold, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48, margin:"0 auto 24px" }}>⏰</div>
         <h2 style={{ color:C.accentGold, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Délai dépassé</h2>
         <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:8 }}>
-          <strong style={{ color:C.text }}>{p.name}</strong> n'a pas répondu dans le délai d'une heure. La mission est automatiquement annulée.
+          <strong style={{ color:C.text }}>{p.name}</strong> n'a pas répondu dans le délai d'une heure. La prestation est automatiquement annulée.
         </p>
         <div style={{ background:C.success+"08", border:"1px solid "+C.success+"25", borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:13, color:C.textSub, lineHeight:1.6 }}>
           ✅ <strong style={{ color:C.text }}>Paiement annulé</strong> — Aucun débit n'a été effectué. Le paiement Stripe est annulé instantanément.
@@ -313,6 +323,11 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
+  const [wireConfirmed, setWireConfirmed] = useState(false);
+  const [applePayAvailable, setApplePayAvailable] = useState(false);
+  const applePayBtnRef    = useRef(null);
+  const paymentRequestRef = useRef(null);
+  const applePayStripeRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -359,7 +374,63 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
     return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
   }, [method, useSavedCard]);
 
+  // ── Apple Pay / Google Pay ──────────────────────────────────────────
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
+
+  useEffect(() => {
+    const amountCents = Math.round(total * 100);
+    (async () => {
+      const { loadStripe } = await import("@stripe/stripe-js");
+      const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+      if (!pk) return;
+      const stripe = await loadStripe(pk);
+      if (!stripe) return;
+      applePayStripeRef.current = stripe;
+      const pr = stripe.paymentRequest({
+        country: "FR", currency: "eur",
+        total: { label: "ALANE", amount: amountCents },
+        requestPayerName: false, requestPayerEmail: false,
+      });
+      const result = await pr.canMakePayment();
+      if (!result) return;
+      paymentRequestRef.current = pr;
+      pr.on("paymentmethod", async (ev) => {
+        setProcessing(true);
+        try {
+          const { data: { session: apSess } } = await supabase.auth.getSession();
+          const apToken = apSess?.access_token;
+          const r = await fetch("/api/stripe-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
+            body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
+          });
+          const { clientSecret, error: intentErr } = await r.json();
+          if (intentErr || !clientSecret) { ev.complete("fail"); setStripeError(intentErr || "Erreur création paiement"); setProcessing(false); return; }
+          const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, { payment_method: ev.paymentMethod.id }, { handleActions: false });
+          if (error) { ev.complete("fail"); setStripeError(error.message); setProcessing(false); return; }
+          ev.complete("success");
+          if (paymentIntent.status === "requires_action") {
+            const { error: e2 } = await stripe.confirmCardPayment(clientSecret);
+            if (e2) { setStripeError(e2.message); setProcessing(false); return; }
+          }
+          setDone(true); setProcessing(false);
+          onSuccess && onSuccess(paymentIntent.id);
+        } catch (e) { ev.complete("fail"); setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
+      });
+      setApplePayAvailable(true);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!applePayAvailable || !applePayBtnRef.current || !paymentRequestRef.current || !applePayStripeRef.current) return;
+    const btn = applePayStripeRef.current.elements().create("paymentRequestButton", {
+      paymentRequest: paymentRequestRef.current,
+      style: { paymentRequestButton: { type: "buy", theme: "dark", height: "52px" } },
+    });
+    btn.mount(applePayBtnRef.current);
+    return () => btn.destroy();
+  }, [applePayAvailable]);
+
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
   if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
@@ -381,9 +452,10 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
       if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
       setProcessing(true);
       try {
+        const { data: { session: piSession } } = await supabase.auth.getSession();
         const r = await fetch("/api/stripe-intent", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
           body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
         });
         const { clientSecret, error: intentErr } = await r.json();
@@ -398,7 +470,9 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
     } else if (method === "wire") {
-      setStripeError("Le paiement par virement nécessite une confirmation manuelle. Notre équipe vous contactera pour finaliser.");
+      setProcessing(false);
+      setWireConfirmed(true);
+      onSuccess && onSuccess("wire_pending");
     }
   };
 
@@ -417,7 +491,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           "🔒 Argent sécurisé jusqu'à validation",
           "📧 Confirmation envoyée par email",
           teamMode ? `👥 ${providers.length} prestataires notifiés` : `👤 ${providers[0]?.name} notifié(e)`,
-          "📄 Contrat de mission généré",
+          "📄 Contrat de prestation généré",
         ].map((s,i) => <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"5px 0" }}>{s}</div>)}
       </div>
     </div>
@@ -449,6 +523,18 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
             🔒 Libéré uniquement après validation des deux parties
           </div>
         </div>
+
+        {/* Apple Pay / Google Pay */}
+        {applePayAvailable && (
+          <div style={{ marginBottom:16 }}>
+            <div ref={applePayBtnRef} style={{ borderRadius:12, overflow:"hidden" }} />
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:14 }}>
+              <div style={{ flex:1, height:1, background:C.border }} />
+              <span style={{ color:C.textSub, fontSize:11, fontWeight:600 }}>ou payer par carte / virement</span>
+              <div style={{ flex:1, height:1, background:C.border }} />
+            </div>
+          </div>
+        )}
 
         {/* Méthode de paiement */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
@@ -529,6 +615,11 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
               <div style={{ marginTop:10, color:C.warning, fontSize:11, fontWeight:600 }}>⚠️ Délai de validation : 1-2 jours ouvrés</div>
             </div>
           )}
+          {method==="wire" && wireConfirmed && (
+            <div style={{ background:"#16a34a15", border:"1px solid #16a34a40", borderRadius:10, padding:"12px 14px", color:"#4ade80", fontSize:13, marginTop:12, lineHeight:1.6 }}>
+              ✅ <strong>Commande confirmée.</strong> Effectuez le virement avec la référence ci-dessus dans les 48h. Notre équipe vous confirmera la réception et la mission sera activée.
+            </div>
+          )}
         </div>
 
         {/* IBAN remboursement */}
@@ -557,11 +648,11 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           ))}
         </div>
 
-        <Btn full onClick={handlePay} disabled={processing}
+        <Btn full onClick={handlePay} disabled={processing || (method==="wire" && wireConfirmed)}
           style={{ fontSize:16, padding:"18px", position:"relative" }}>
-          {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
+          {processing ? "⏳ Traitement en cours…" : method==="wire" ? (wireConfirmed ? "✅ Commande confirmée" : "✓ Confirmer ma commande par virement") : `🔒 Payer ${total} € en sécurité`}
         </Btn>
-        <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>Aucun débit avant validation de votre mission</p>
+        <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>Aucun débit avant validation de votre prestation</p>
       </div>
     </div>
   );
@@ -573,7 +664,7 @@ const ALANE_ADRESSE = ""; // ex: "12 rue du Commerce, 75015 Paris"
 const ALANE_FORME   = "SAS";
 
 // ── FACTURE / INVOICE ─────────────────────────────────────────────
-export function InvoiceScreen({ mission, onBack }) {
+export function InvoiceScreen({ prestation, onBack }) {
   const [clientInfo,  setClientInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [loading,     setLoading]     = useState(true);
@@ -589,7 +680,7 @@ export function InvoiceScreen({ mission, onBack }) {
   const htFormatted  = ht.toFixed(2).replace(".",",");
 
   useEffect(() => {
-    if (!mission) { setLoading(false); return; }
+    if (!prestation) { setLoading(false); return; }
     (async () => {
       try {
         const [{ data: cu }, { data: cp }] = await Promise.all([
@@ -622,7 +713,7 @@ export function InvoiceScreen({ mission, onBack }) {
     })();
   }, [mission?.id]);
 
-  if (!mission) return (
+  if (!prestation) return (
     <div style={{ padding:40, textAlign:"center", color:C.textSub }}>
       <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>
       Facture introuvable.
@@ -634,7 +725,7 @@ export function InvoiceScreen({ mission, onBack }) {
       {/* Header — masqué à l'impression */}
       <div className="no-print" style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Facture de mission</h2>
+        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Facture de prestation</h2>
         <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{invoiceNum}</p>
       </div>
 
@@ -679,7 +770,7 @@ export function InvoiceScreen({ mission, onBack }) {
               </div>
             </div>
 
-            {/* Détail mission */}
+            {/* Détail prestation */}
             <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Détail de la prestation</div>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -724,7 +815,7 @@ export function InvoiceScreen({ mission, onBack }) {
             <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px 16px", marginBottom:14, display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:24 }}>✅</span>
               <div>
-                <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Mission validée</div>
+                <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Prestation validée</div>
                 <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Paiement traité via ALANE</div>
               </div>
             </div>
@@ -749,7 +840,7 @@ export function InvoiceScreen({ mission, onBack }) {
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
 export function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Mission introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestation introuvable.</div>;
   const p = provider;
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
@@ -758,7 +849,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
   const { providers: allProviders } = _useProviders();
   const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
 
-  // Calcul réel du délai avant mission + pénalité
+  // Calcul réel du délai avant prestation + pénalité
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
   const hoursLeft = Math.max(0, Math.floor((missionTs - Date.now()) / 3600000));
   const penalty = hoursLeft >= 24 ? 0 : 100;
@@ -824,7 +915,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:`linear-gradient(135deg,${C.accent},#c0392b)`, padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>❌ Annuler la mission</h2>
+        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>❌ Annuler la prestation</h2>
         <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:0 }}>{p.name} · {p.role}</p>
       </div>
 
@@ -836,14 +927,14 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
             L'annulation est <strong style={{ color:C.success }}>sans retenue</strong> sur le montant de la mission. Seuls les <strong style={{ color:C.text }}>frais de service</strong> engagés restent dus.
           </div>
           <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.textSub }}>
-            ✅ Aucun frais d'annulation sur le montant de la mission
+            ✅ Aucun frais d'annulation sur le montant de la prestation
           </div>
         </div>
 
         {/* Raison */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>Motif d'annulation</div>
-          {["Erreur de date / horaire","Prestataire ne convient plus","Mission annulée par mon client","Problème de budget","Autre"].map(r => (
+          {["Erreur de date / horaire","Prestataire ne convient plus","Prestation annulée par mon client","Problème de budget","Autre"].map(r => (
             <div key={r} onClick={()=>setReason(r)} style={{ padding:"10px 14px", borderRadius:10, marginBottom:6, border:`2px solid ${reason===r?C.violet:C.grayLight}`, background:reason===r?`${C.violet}08`:C.white, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:13, fontWeight:reason===r?700:400, color:reason===r?C.violet:C.text }}>{r}</span>
               {reason===r && <span style={{ color:C.violet, fontSize:16 }}>✓</span>}
@@ -852,7 +943,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
         </div>
 
         <div style={{ display:"flex", gap:10 }}>
-          <Btn variant="secondary" onClick={onBack} style={{ flex:1, padding:"13px", fontSize:13 }}>Garder la mission</Btn>
+          <Btn variant="secondary" onClick={onBack} style={{ flex:1, padding:"13px", fontSize:13 }}>Garder la prestation</Btn>
           <Btn variant="danger" disabled={!reason||cancelling} onClick={async()=>{
             setCancelling(true);
             try {

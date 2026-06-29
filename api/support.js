@@ -1,3 +1,14 @@
+// Rate limiting anti-spam pour les soumissions de contact publiques
+const _contactRl = new Map();
+function checkContactRateLimit(ip) {
+  const now = Date.now();
+  const rec = _contactRl.get(ip) || { count: 0, reset: now + 600_000 }; // 10 min
+  if (now > rec.reset) { rec.count = 0; rec.reset = now + 600_000; }
+  rec.count++;
+  _contactRl.set(ip, rec);
+  return rec.count > 3; // max 3 tickets/10min par IP
+}
+
 async function verifyUser(req, supabaseUrl, serviceRoleKey) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
@@ -66,8 +77,58 @@ export default async function handler(req, res) {
 
   // ── welcome: send welcome email after registration ────────────────
   if (req.body?.action === "welcome") {
+    const _welcomeCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_welcomeCaller) return res.status(401).json({ error: "Non authentifié" });
     const { email, prenom, nom, role } = req.body;
     if (!email || !prenom) return res.status(200).json({ ok: true });
+
+    // Anti-abus : vérifier immédiatement la blacklist dès l'inscription
+    // Si un identifiant match, marquer trial_exhausted=true avant même l'approbation BO
+    const SUPABASE_URL2 = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY2  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (SUPABASE_URL2 && SERVICE_KEY2) {
+      try {
+        const svcHeaders = {
+          "apikey": SERVICE_KEY2,
+          "Authorization": `Bearer ${SERVICE_KEY2}`,
+          "Content-Type": "application/json",
+        };
+        // Récupérer les métadonnées du compte qui vient d'être créé (phone + IBAN)
+        const usersRes = await fetch(
+          `${SUPABASE_URL2}/auth/v1/admin/users?email=${encodeURIComponent(email)}&per_page=1`,
+          { headers: svcHeaders }
+        );
+        const usersData = await usersRes.json();
+        const newUser = usersData?.users?.[0];
+        if (newUser) {
+          const meta3 = newUser.user_metadata || {};
+          const tel3   = meta3.telephone || null;
+          const iban3  = meta3.rib ? String(meta3.rib).replace(/\s/g, "").toUpperCase() : null;
+          const siret3 = meta3.kbis || null;
+          const orFilters3 = [];
+          if (email)   orFilters3.push(`email.eq.${email}`);
+          if (tel3)    orFilters3.push(`telephone.eq.${tel3}`);
+          if (iban3)   orFilters3.push(`iban.eq.${iban3}`);
+          if (siret3)  orFilters3.push(`siret.eq.${siret3}`);
+          if (orFilters3.length > 0) {
+            const blParams3 = new URLSearchParams({ or: `(${orFilters3.join(",")})`, select: "id", limit: "1" });
+            const blRes3 = await fetch(`${SUPABASE_URL2}/rest/v1/account_blacklist?${blParams3}`, { headers: svcHeaders });
+            const blData3 = await blRes3.json();
+            if (Array.isArray(blData3) && blData3.length > 0) {
+              await fetch(`${SUPABASE_URL2}/rest/v1/profiles?id=eq.${newUser.id}`, {
+                method: "PATCH",
+                headers: { ...svcHeaders, "Prefer": "return=minimal" },
+                body: JSON.stringify({ trial_exhausted: true }),
+              }).catch(() => {});
+              console.log(`[welcome] Compte blacklisté détecté à l'inscription — email=${email} trial_exhausted=true`);
+            }
+          }
+        }
+      } catch (blErr) {
+        console.error("[welcome] Erreur check blacklist:", blErr.message);
+      }
+    }
+
     if (RESEND_API_KEY) {
       const isPresta = role === "prestataire";
       const welcomeHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
@@ -104,6 +165,8 @@ export default async function handler(req, res) {
 
   // ── booking_confirm: send booking confirmation email to client ────
   if (req.body?.action === "booking_confirm") {
+    const _bookingCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
     const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
     if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
     if (RESEND_API_KEY) {
@@ -136,6 +199,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 
   // ── notify_signup: notify admin of new registration ──────────────
   if (req.body?.action === "notify_signup") {
+    const _signupCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    if (!_signupCaller) return res.status(401).json({ error: "Non authentifié" });
     const { prenom, nom, email, role } = req.body;
     if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
 
@@ -172,9 +237,16 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     if (!isUuid(newUserId) || !isUuid(referrerUUID)) return res.status(400).json({ error: "IDs invalides" });
     if (newUserId === referrerUUID) return res.status(400).json({ error: "Auto-parrainage interdit" });
 
-    const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config missing" });
+    // S-09: le parrainage ne peut être enregistré que par le nouvel utilisateur lui-même
+    const SUPABASE_URL_REF = process.env.VITE_SUPABASE_URL;
+    const SERVICE_ROLE_KEY_REF = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL_REF || !SERVICE_ROLE_KEY_REF) return res.status(500).json({ error: "Config missing" });
+    const callerRef = await verifyUser(req, SUPABASE_URL_REF, SERVICE_ROLE_KEY_REF);
+    if (!callerRef) return res.status(401).json({ error: "Non authentifié" });
+    if (callerRef.id !== newUserId) return res.status(403).json({ error: "Non autorisé — vous ne pouvez enregistrer que votre propre parrainage" });
+
+    const SUPABASE_URL     = SUPABASE_URL_REF;
+    const SERVICE_ROLE_KEY = SERVICE_ROLE_KEY_REF;
 
     const hdrs = {
       "apikey": SERVICE_ROLE_KEY,
@@ -232,6 +304,16 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     const userId = caller.id;
     const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
     try {
+      // S-10: block deletion if user has active missions
+      const activeMissionsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${userId},prestataire_id.eq.${userId})&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+        { headers: hdrs }
+      );
+      const activeMissions = await activeMissionsRes.json().catch(() => []);
+      if (Array.isArray(activeMissions) && activeMissions.length > 0) {
+        return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une mission en cours. Terminez ou annulez vos missions actives avant de supprimer votre compte." });
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0 }),
@@ -264,12 +346,18 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   }
 
   // ── default: support ticket ───────────────────────────────────────
-  const { subject, message, userEmail, userName, userId } = req.body || {};
+  const { subject, message, userEmail, userName, userId, _hp } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
   if (message.length < 10) return res.status(400).json({ error: "Le message doit contenir au moins 10 caractères" });
   if (subject.length > 200) return res.status(400).json({ error: "Le sujet ne doit pas dépasser 200 caractères" });
   if (message.length > 5000) return res.status(400).json({ error: "Le message ne doit pas dépasser 5000 caractères" });
   if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return res.status(400).json({ error: "Adresse email invalide" });
+  // Anti-spam : honeypot + rate limit pour les soumissions anonymes (sans userId)
+  if (_hp) return res.status(200).json({ success: true }); // Champ honeypot rempli = bot
+  if (!userId) {
+    const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+    if (checkContactRateLimit(ip)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
+  }
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

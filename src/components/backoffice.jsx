@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
 import { MARGES } from "../constants/plans.js";
-import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars } from "./ui.jsx";
+import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
@@ -142,6 +142,10 @@ export function BOComptes() {
   const [contactMessage, setContactMessage] = useState("");
   const [contactSending, setContactSending] = useState(false);
   const [contactResult, setContactResult] = useState(null);
+  const [docModal, setDocModal] = useState(null); // { profileId, name }
+  const [search, setSearch] = useState("");
+  const [cashbackAdj, setCashbackAdj] = useState({});
+  const [cashbackSaving, setCashbackSaving] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -303,14 +307,23 @@ export function BOComptes() {
 
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
   const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
-  const filtered = profiles.filter(p =>
-    (filter==="all" || p.status===filter) &&
-    (roleFilter==="all" || p.role===roleFilter)
-  );
+  const searchLow = search.toLowerCase().trim();
+  const filtered = profiles.filter(p => {
+    if (filter !== "all" && p.status !== filter) return false;
+    if (roleFilter !== "all" && p.role !== roleFilter) return false;
+    if (searchLow) {
+      const hay = [p.email, p.prenom, p.nom, p.telephone, p.societe_nom].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(searchLow)) return false;
+    }
+    return true;
+  });
 
   return (
     <div style={{ padding:"16px 18px" }}>
       <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Validation des comptes</h3>
+
+      <input type="text" placeholder="🔍 Rechercher par email, prénom, nom, téléphone…" value={search} onChange={e=>setSearch(e.target.value)}
+        style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:12, boxSizing:"border-box", outline:"none" }} />
 
       {/* Filtre statut */}
       <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
@@ -360,6 +373,11 @@ export function BOComptes() {
               <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
                 {statusLabel[p.status]||p.status}
               </div>
+              {p.trial_exhausted && (
+                <div style={{ background:"rgba(242,94,94,0.15)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:8, padding:"3px 10px", color:"#F25E5E", fontSize:10, fontWeight:700 }}>
+                  🔒 Quota épuisé
+                </div>
+              )}
               <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} style={{ fontSize:10, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
                 {expanded===p.id?"▲ Masquer":"▼ Détails"}
               </button>
@@ -479,6 +497,28 @@ export function BOComptes() {
                     <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
                     <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
                   </div>
+                  {p.role === "client" && (
+                    <div style={{ marginTop:10, background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ color:C.success, fontWeight:700, fontSize:12, marginBottom:8 }}>💰 Cashback client</div>
+                      <div style={{ color:C.textSub, fontSize:12, marginBottom:8 }}>Solde actuel : <strong style={{ color:C.success }}>{(p.cashback_balance||0).toFixed(2)} €</strong></div>
+                      <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                        <input type="text" inputMode="decimal" placeholder="Montant (ex: 5 ou -2)" value={cashbackAdj[p.id]?.delta||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],delta:e.target.value}}))
+                        } style={{ width:120, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
+                        <input type="text" placeholder="Motif (optionnel)" value={cashbackAdj[p.id]?.reason||""} onChange={e=>setCashbackAdj(a=>({...a,[p.id]:{...a[p.id],reason:e.target.value}}))} style={{ flex:1, minWidth:100, padding:"6px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:12, fontFamily:"inherit" }} />
+                        <button disabled={cashbackSaving===p.id||!cashbackAdj[p.id]?.delta} onClick={async()=>{
+                          const delta = parseFloat(String(cashbackAdj[p.id]?.delta||"").replace(",","."));
+                          if (isNaN(delta)) return;
+                          setCashbackSaving(p.id);
+                          const res = await boFetch({ action:"adjust_cashback", profileId:p.id, delta, reason:cashbackAdj[p.id]?.reason||"" });
+                          const j = await res.json();
+                          if (j.ok) setCashbackAdj(a=>({...a,[p.id]:{delta:"",reason:""}}));
+                          setCashbackSaving(null);
+                        }} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:cashbackSaving===p.id?0.5:1 }}>
+                          {cashbackSaving===p.id?"…":"Appliquer"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {p.role === "prestataire" && p.bio && (
                     <div style={{ marginTop:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
                       <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>BIO</div>
@@ -553,14 +593,22 @@ export function BOComptes() {
 
                   {/* Checklist docs requis */}
                   {docs[p.id] && (() => {
-                    const REQ = [
-                      { type:"photo", label:"Photo de profil", icon:"📸" },
-                      { type:"cni", label:"Pièce d'identité", icon:"🪪" },
-                      { type:"kbis", label:"KBIS / SIRET", icon:"🏢" },
-                      { type:"urssaf", label:"Attestation URSSAF", icon:"🏛️" },
-                      { type:"rib", label:"RIB / IBAN", icon:"💳" },
-                      { type:"domicile", label:"Justificatif domicile", icon:"🏠" },
-                    ];
+                    const REQ = p.role === "client" && p.type_compte === "entreprise"
+                      ? [
+                          { type:"kbis",    label:"KBIS / Sirene",    icon:"🏢" },
+                          { type:"rib",     label:"RIB entreprise",   icon:"🏦" },
+                          { type:"cni",     label:"CNI du gérant",    icon:"🪪" },
+                          { type:"tva",     label:"Attestation TVA",  icon:"📋" },
+                        ]
+                      : [
+                          { type:"photo",   label:"Photo de profil",      icon:"📸" },
+                          { type:"cni",     label:"Pièce d'identité",     icon:"🪪" },
+                          { type:"kbis",    label:"KBIS / SIRET",         icon:"🏢" },
+                          { type:"urssaf",  label:"Attestation URSSAF",   icon:"🏛️" },
+                          { type:"rib",     label:"RIB / IBAN",           icon:"💳" },
+                          { type:"domicile",label:"Justificatif domicile",icon:"🏠" },
+                          { type:"rc_pro",  label:"RC Professionnelle",   icon:"🛡️" },
+                        ];
                     const uploaded = docs[p.id].map(d=>d.type);
                     const missing = REQ.filter(r => !uploaded.includes(r.type));
                     if (!missing.length) return null;
@@ -582,38 +630,38 @@ export function BOComptes() {
                     const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
                     const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
                     return (
-                      <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}` }}>
+                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
                         <span style={{ fontSize:16 }}>{DOC_ICON[doc.type]||"📄"}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
                           <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
                         </div>
-                        {doc.signedUrl && (
-                          <button onClick={()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })} style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit" }}>
-                            {isImg ? "🖼 Voir" : "📄 Voir"}
-                          </button>
-                        )}
-                        {!doc.verified && (
-                          <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
-                            {docVerifying===doc.id ? "…" : "✓ Valider"}
-                          </button>
-                        )}
-                        {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
+                        <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5 }}>
+                          {doc.signedUrl && (
+                            <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                          )}
+                          {!doc.verified && (
+                            <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                              {docVerifying===doc.id ? "…" : "✓"}
+                            </button>
+                          )}
+                          {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
+                        </div>
                       </div>
                     );
                   })}
-                  {/* Bouton valider l'accès aux missions */}
+                  {/* Bouton valider l'accès aux prestations */}
                   <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                     {p.missions_enabled ? (
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Missions activées</div>
+                        <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Prestations activées</div>
                         <button onClick={()=>handleAction(p.id,"disable_missions")} disabled={!!actioning} style={{ padding:"7px 14px", borderRadius:10, border:`1px solid rgba(240,80,80,0.4)`, background:"rgba(240,80,80,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
                           {actioning===p.id+"disable_missions" ? "…" : "🚫 Désactiver"}
                         </button>
                       </div>
                     ) : (
                       <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
-                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux missions"}
+                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux prestations"}
                       </button>
                     )}
                   </div>
@@ -665,6 +713,24 @@ export function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
+            {p.status==="approved" && (
+              <button onClick={async()=>{ const reason=await showPrompt("Motif de suspension (optionnel) :","Motif..."); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                {actioning===p.id+"suspend"?"…":"🔒 Suspendre"}
+              </button>
+            )}
+            {p.role==="prestataire" && p.trial_exhausted && (
+              <button onClick={async()=>{ if(!await showConfirm(`Réinitialiser le quota missions de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                {actioning===p.id+"reset_trial"?"…":"🔓 Débloquer quota"}
+              </button>
+            )}
+            {p.status==="suspended" && (
+              <button onClick={async()=>{ if(!await showConfirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); await boFetch({ action:"unsuspend", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                {actioning===p.id+"unsuspend"?"…":"🔓 Réactiver"}
+              </button>
+            )}
+            <button onClick={()=>{ setDocModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email }); if(!docs[p.id]) loadDocs(p.id); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid rgba(255,255,255,0.15)`, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+              📂
+            </button>
             <button onClick={()=>{ setContactSubject(""); setContactMessage(""); setContactResult(null); setContactModal({ profileId:p.id, name:`${p.prenom||""} ${p.nom||""}`.trim()||p.email, email:p.email }); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
               📧
             </button>
@@ -696,6 +762,110 @@ export function BOComptes() {
           </div>
         </div>
       )}
+
+      {docModal && (() => {
+        const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+        const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+        const p = profiles.find(x=>x.id===docModal.profileId)||{};
+        const REQ = p.role === "client" && p.type_compte === "entreprise"
+          ? [
+              { type:"kbis",    label:"KBIS / Sirene",   icon:"🏢" },
+              { type:"rib",     label:"RIB entreprise",  icon:"🏦" },
+              { type:"cni",     label:"CNI du gérant",   icon:"🪪" },
+              { type:"tva",     label:"Attestation TVA", icon:"📋" },
+            ]
+          : p.role === "client"
+            ? [] // client particulier — pas de docs requis
+            : [
+                { type:"photo",    label:"Photo de profil",      icon:"📸" },
+                { type:"cni",      label:"Pièce d'identité",     icon:"🪪" },
+                { type:"kbis",     label:"KBIS / SIRET",         icon:"🏢" },
+                { type:"urssaf",   label:"Attestation URSSAF",   icon:"🏛️" },
+                { type:"rib",      label:"RIB / IBAN",           icon:"💳" },
+                { type:"domicile", label:"Justif. domicile",     icon:"🏠" },
+                { type:"rc_pro",   label:"RC Professionnelle",   icon:"🛡️" },
+              ];
+        const userDocs = docs[docModal.profileId];
+        const isLoading = docsLoading[docModal.profileId];
+        return (
+          <div onClick={()=>setDocModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1500, padding:"0" }}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:600, maxHeight:"88vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)", borderBottom:"none" }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)", flexShrink:0 }}>
+                <div>
+                  <div style={{ fontWeight:800, color:"#fff", fontSize:15 }}>📂 Documents</div>
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:12, marginTop:2 }}>{docModal.name}</div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={()=>{ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); }} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>🔄</button>
+                  <button onClick={()=>setDocModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:14, fontFamily:"inherit", fontWeight:700 }}>✕</button>
+                </div>
+              </div>
+              {/* Content */}
+              <div style={{ flex:1, overflowY:"auto", padding:"16px 18px" }}>
+                {isLoading && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0" }}>Chargement…</div>}
+                {!isLoading && !userDocs && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0" }}>Aucun document</div>}
+                {!isLoading && userDocs && (() => {
+                  const uploaded = userDocs.map(d=>d.type);
+                  const missing = REQ.filter(r=>!uploaded.includes(r.type));
+                  return (
+                    <>
+                      {missing.length > 0 && (
+                        <div style={{ background:"rgba(240,180,41,0.07)", border:"1px solid rgba(240,180,41,0.22)", borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
+                          <div style={{ color:"#F0B429", fontSize:11, fontWeight:700, marginBottom:6 }}>⚠️ Documents manquants ({missing.length})</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                            {missing.map(r=>(
+                              <span key={r.type} style={{ fontSize:11, color:"rgba(255,255,255,0.5)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 9px" }}>{r.icon} {r.label}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {userDocs.length === 0 && (
+                        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"16px 0", fontSize:13 }}>Aucun document uploadé</div>
+                      )}
+                      {userDocs.length > 0 && (
+                        <div style={{ marginBottom:8 }}>
+                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>
+                            Documents uploadés ({userDocs.filter(d=>d.verified).length}/{userDocs.length} validés)
+                          </div>
+                          {userDocs.map(doc => {
+                            const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+                            return (
+                              <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
+                                <span style={{ fontSize:20 }}>{DOC_ICON[doc.type]||"📄"}</span>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
+                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}{doc.signedUrl?" · Appuyer pour voir":""}</div>
+                                </div>
+                                <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:6 }}>
+                                  {doc.signedUrl && (
+                                    <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                                  )}
+                                  {!doc.verified && (
+                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
+                                      {docVerifying===doc.id ? "…" : "✓"}
+                                    </button>
+                                  )}
+                                  {doc.verified && <span style={{ fontSize:16 }}>✅</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {userDocs.some(d=>!d.verified) && (
+                            <button onClick={()=>handleVerifyAllDocs(docModal.profileId)} disabled={validatingAll===docModal.profileId} style={{ width:"100%", marginTop:4, padding:"10px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:validatingAll===docModal.profileId?0.5:1 }}>
+                              {validatingAll===docModal.profileId ? "Validation en cours…" : "✓ Tout valider"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {contactModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
@@ -834,6 +1004,175 @@ export function BOSupport() {
   );
 }
 
+export function BOLitiges() {
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await boFetch({ action: "list_disputes" });
+      const d = await r.json();
+      if (Array.isArray(d)) setDisputes(d);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleRefund = async (m) => {
+    if (!await showConfirm(`Rembourser ${m.montant_total || 0} € au client pour la mission "${m.titre || m.metier}" ?`)) return;
+    setProcessingId(m.id);
+    try {
+      const r = await boFetch({ action: "refund_dispute", mission_id: m.id });
+      const d = await r.json();
+      if (d.success) {
+        showToast("Remboursement effectué ✅", "success");
+        load();
+      } else {
+        showToast(d.error || "Erreur lors du remboursement");
+      }
+    } catch { showToast("Erreur réseau"); }
+    setProcessingId(null);
+  };
+
+  const handleReject = async (m) => {
+    if (!await showConfirm(`Rejeter le litige pour "${m.titre || m.metier}" ? Le client ne sera pas remboursé.`)) return;
+    setProcessingId(m.id);
+    try {
+      const r = await boFetch({ action: "resolve_dispute", mission_id: m.id, resolution: "rejected" });
+      const d = await r.json();
+      if (d.success) {
+        showToast("Litige rejeté ✅", "success");
+        load();
+      } else {
+        showToast(d.error || "Erreur lors du rejet");
+      }
+    } catch { showToast("Erreur réseau"); }
+    setProcessingId(null);
+  };
+
+  if (loading) return <div style={{ padding:24, textAlign:"center", color:"rgba(255,255,255,0.4)" }}>Chargement…</div>;
+  if (!disputes.length) return (
+    <div style={{ padding:24, textAlign:"center" }}>
+      <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
+      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:14 }}>Aucun litige en cours</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding:16 }}>
+      <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Litiges en cours ({disputes.length})</h3>
+      {disputes.map(m => (
+        <div key={m.id} style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+            <div>
+              <div style={{ fontWeight:700, color:"#F25E5E", fontSize:14 }}>⚠️ {m.titre || m.metier || "Prestation"}</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {m.montant_total || 0} €</div>
+              {m.client_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Client : {m.client_email}</div>}
+              {m.presta_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Prestataire : {m.presta_email}</div>}
+            </div>
+          </div>
+          {m.dispute_reason && <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:10 }}>"{m.dispute_reason}"</div>}
+          <div style={{ display:"flex", gap:8 }}>
+            <button disabled={processingId === m.id} onClick={() => handleRefund(m)}
+              style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+              {processingId === m.id ? "…" : "💰 Rembourser"}
+            </button>
+            <button disabled={processingId === m.id} onClick={() => handleReject(m)}
+              style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+              {processingId === m.id ? "…" : "✕ Rejeter le litige"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BroadcastNotifSection() {
+  const [title, setTitle] = useState("");
+  const [body, setBody]   = useState("");
+  const [target, setTarget] = useState("all");
+  const [sending, setSending] = useState(false);
+  const [result, setResult]   = useState(null);
+  const send = async () => {
+    if (!title.trim() || !body.trim()) return;
+    setSending(true); setResult(null);
+    try {
+      const r = await boFetch({ action:"broadcast_notification", title:title.trim(), body:body.trim(), target });
+      const j = await r.json();
+      setResult(j.ok ? { ok:true, msg:`✅ Notification envoyée à ${j.sent} utilisateurs` } : { ok:false, msg:`❌ ${j.error}` });
+      if (j.ok) { setTitle(""); setBody(""); }
+    } catch { setResult({ ok:false, msg:"❌ Erreur réseau" }); }
+    setSending(false);
+    setTimeout(() => setResult(null), 5000);
+  };
+  return (
+    <>
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📣 Notification in-app</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Titre de la notification" style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:8, boxSizing:"border-box" }} />
+        <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Message…" rows={2} style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", resize:"vertical", marginBottom:8, boxSizing:"border-box" }} />
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <select value={target} onChange={e=>setTarget(e.target.value)} style={{ flex:1, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit" }}>
+            <option value="all">Tous les utilisateurs</option>
+            <option value="clients">Clients uniquement</option>
+            <option value="prestataires">Prestataires uniquement</option>
+          </select>
+          <button onClick={send} disabled={sending||!title.trim()||!body.trim()} style={{ padding:"8px 16px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:sending?0.5:1 }}>
+            {sending?"Envoi…":"Envoyer 📣"}
+          </button>
+        </div>
+        {result && <div style={{ marginTop:8, fontSize:12, color:result.ok?C.success:"#F25E5E", fontWeight:600 }}>{result.msg}</div>}
+      </div>
+    </>
+  );
+}
+
+export function BORatings() {
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(null);
+  useEffect(() => {
+    boFetch({ action:"list_ratings" }).then(r=>r.json()).then(d=>{ setRatings(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
+  }, []);
+  const handleDelete = async (id) => {
+    if (!await showConfirm("Supprimer cet avis définitivement ?")) return;
+    setDeleting(id);
+    await boFetch({ action:"delete_rating", ratingId:id });
+    setRatings(rs => rs.filter(r=>r.id!==id));
+    setDeleting(null);
+  };
+  if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>;
+  if (!ratings.length) return <div style={{ color:C.textSub, fontSize:13, textAlign:"center", padding:"20px 0" }}>Aucun avis pour l'instant</div>;
+  return (
+    <div>
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>⭐ Gestion des avis</div>
+      {ratings.map(r => (
+        <div key={r.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 14px", marginBottom:8, border:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                <span style={{ color:C.accentGold, fontSize:14 }}>{"⭐".repeat(r.rating)}</span>
+                <span style={{ color:C.textSub, fontSize:11 }}>{new Date(r.created_at).toLocaleDateString("fr-FR")}</span>
+              </div>
+              <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>
+                <strong style={{ color:C.text }}>{r.reviewer_name}</strong> → <strong style={{ color:C.violet }}>{r.reviewee_name}</strong>
+              </div>
+              {r.comment && <div style={{ color:"rgba(255,255,255,0.65)", fontSize:12, lineHeight:1.5, fontStyle:"italic" }}>"{r.comment}"</div>}
+            </div>
+            <button onClick={()=>handleDelete(r.id)} disabled={deleting===r.id} style={{ padding:"5px 10px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
+              {deleting===r.id?"…":"🗑 Supprimer"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function BOModerationTab({ d }) {
   const [suspendEmail, setSuspendEmail]   = useState("");
   const [suspendReason, setSuspendReason] = useState("");
@@ -852,7 +1191,7 @@ export function BOModerationTab({ d }) {
       const users = await r.json();
       const user = (Array.isArray(users)?users:[]).find(u=>u.email===suspendEmail.trim());
       if(!user) { setSuspendResult({ ok:false, msg:"Email introuvable" }); setSuspending(false); return; }
-      const r2 = await boFetch({ action:"reject", profileId: user.id });
+      const r2 = await boFetch({ action:"suspend", profileId: user.id, reason: suspendReason.trim() });
       const j = await r2.json();
       setSuspendResult(j.success ? { ok:true, msg:`Compte ${suspendEmail} suspendu.` } : { ok:false, msg:"Erreur lors de la suspension" });
       if(j.success) { setSuspendEmail(""); setSuspendReason(""); }
@@ -905,6 +1244,8 @@ export function BOModerationTab({ d }) {
         </button>
         {commResult && <div style={{ marginTop:8, fontSize:12, color:commResult.ok?C.success:C.accent, fontWeight:600 }}>{commResult.ok?"✅":"❌"} {commResult.msg}</div>}
       </div>
+
+      <BroadcastNotifSection />
 
       <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🔧 Outils</div>
       <div onClick={handleSync} style={{ background:"#0D1B3E", borderRadius:13, padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}
@@ -965,7 +1306,7 @@ function StripeStatsCard() {
           <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>📊</div>
             <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{fmt(stats.last30days.volume)} €</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> missions</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Volume 30 jours · <strong style={{ color:C.text }}>{stats.last30days.count}</strong> prestations</div>
           </div>
           <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.2)", borderRadius:12, padding:"14px 12px" }}>
             <div style={{ fontSize:20, marginBottom:6 }}>💰</div>
@@ -1011,10 +1352,10 @@ export function BOExportMissions() {
     setExporting(true);
     try {
       const r = await boFetch({ action: "list_missions_export" });
-      const missions = await r.json();
+      const prestations = await r.json();
       const COMMISSION = 0.20;
-      const rows = [["ID","Date création","Date mission","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
-      (Array.isArray(missions) ? missions : []).forEach(m => {
+      const rows = [["ID","Date création","Date prestation","Secteur","Métier","Heures","Tarif/h (€)","Montant TTC (€)","Commission ALANE (€)","Net prestataire (€)","Statut","Stripe ID"]];
+      (Array.isArray(prestations) ? prestations : []).forEach(m => {
         const montant = Number(m.montant_total) || 0;
         const comm    = Math.round(montant * COMMISSION * 100) / 100;
         const net     = Math.round((montant - comm) * 100) / 100;
@@ -1024,7 +1365,7 @@ export function BOExportMissions() {
       const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href = url; a.download = `alane-missions-comptable-${new Date().toISOString().slice(0,10)}.csv`;
+      a.href = url; a.download = `alane-prestations-comptable-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
     } catch(_) {}
     setExporting(false);
@@ -1056,7 +1397,7 @@ export function BOExportPDF({ d }) {
       `Taux completion : ${d.missions?.tauxCompletion || 0}%`,
       "",
       "── FINANCE ──",
-      `CA Total (missions terminées) : ${d.finance?.caTotal || 0} €`,
+      `CA Total (prestations terminées) : ${d.finance?.caTotal || 0} €`,
       "",
       "── TICKETS SUPPORT ──",
       `Ouverts : ${d.tickets?.open || 0}`,
@@ -1112,7 +1453,7 @@ export function BOTest({ onNavigate }) {
     id:"bo-test-001", name:"Jean Demo", jobTitle:"Agent de démonstration", role:"Agent de démonstration",
     avatar:"🧪", color:C.violet, rating:4.8, reviews:42, hourlyRate:"20 €/h HT", rateNum:20, tarifNet:15,
     available:true, sector:"logistique", skills:["Test","Démo","Présentation"], experience:"5 ans",
-    distance:"0,5 km", responseTime:"~2 min", missions:42, bio:"Prestataire fictif pour les tests BO.",
+    distance:"0,5 km", responseTime:"~2 min", prestations:42, bio:"Prestataire fictif pour les tests BO.",
   };
 
   const clientScreens = [
@@ -1120,11 +1461,11 @@ export function BOTest({ onNavigate }) {
     { id:"catalogue",         label:"Catalogue secteurs",      icon:"🗂️" },
     { id:"search_filters",    label:"Recherche / filtres",     icon:"🔍" },
     { id:"dashboard",         label:"Dashboard client",        icon:"📊" },
-    { id:"mission_history",   label:"Historique missions",     icon:"📋" },
+    { id:"mission_history",   label:"Historique prestations",     icon:"📋" },
     { id:"cashback",          label:"Wallet cashback",         icon:"💰" },
     { id:"notifications",     label:"Notifications",           icon:"🔔" },
     { id:"favorites",         label:"Favoris",                 icon:"❤️" },
-    { id:"mission_request",   label:"Créer une mission",       icon:"➕" },
+    { id:"mission_request",   label:"Créer une prestation",       icon:"➕" },
     { id:"team_booking",      label:"Réservation équipe",      icon:"👥" },
     { id:"settings",          label:"Paramètres",              icon:"⚙️" },
   ];
@@ -1134,8 +1475,8 @@ export function BOTest({ onNavigate }) {
     { id:"cv",          label:"CV prestataire",        icon:"📄", data:MOCK_P },
     { id:"booking",     label:"Réservation",           icon:"📅", data:MOCK_P },
     { id:"contract",    label:"Contrat",               icon:"✍️", data:MOCK_P },
-    { id:"tracking",    label:"Suivi mission",         icon:"📍", data:MOCK_P },
-    { id:"validation",  label:"Validation mission",    icon:"✅", data:MOCK_P },
+    { id:"tracking",    label:"Suivi prestation",         icon:"📍", data:MOCK_P },
+    { id:"validation",  label:"Validation prestation",    icon:"✅", data:MOCK_P },
     { id:"rating",      label:"Noter le prestataire",  icon:"⭐", data:MOCK_P },
     { id:"cancellation",label:"Annulation",            icon:"❌", data:MOCK_P },
     { id:"invoice",     label:"Facture",               icon:"🧾", data:MOCK_P },
@@ -1144,7 +1485,7 @@ export function BOTest({ onNavigate }) {
 
   const prestaScreens = [
     { id:"p_home",              label:"Accueil prestataire",  icon:"🏠" },
-    { id:"p_missions",          label:"Missions disponibles", icon:"📦" },
+    { id:"p_missions",          label:"Prestations disponibles", icon:"📦" },
     { id:"p_dashboard",         label:"Dashboard presta",     icon:"📊" },
     { id:"calendar",            label:"Calendrier",           icon:"📅" },
     { id:"abonnement_presta",   label:"Abonnement",           icon:"💳" },
@@ -1307,7 +1648,7 @@ export function BOSettingsTab() {
     const j = await r.json();
     setSaving(p => ({ ...p, [key]: false }));
     if (j.ok) { setSaved(p => ({ ...p, [key]: true })); setTimeout(() => setSaved(p => ({ ...p, [key]: false })), 2000); }
-    else alert("Erreur : " + (j.error || "inconnue"));
+    else showToast("Erreur : " + (j.error || "inconnue"));
   };
 
   const SectionTitle = ({ children }) => (
@@ -1325,14 +1666,14 @@ export function BOSettingsTab() {
     <div style={{ paddingBottom:40 }}>
 
       {/* ── Plans & Limites ── */}
-      <SectionTitle>📦 Plans & Limites missions/mois</SectionTitle>
+      <SectionTitle>📦 Plans & Limites prestations/mois</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
         {[["free","🆓 Gratuit"],["premium","⭐ Premium"],["elite","👑 Elite"]].map(([plan, label]) => (
           <div key={plan} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:120 }}>{label}</span>
             <input type="number" min={1} max={9999} value={localPl[plan]} onChange={e => setLocalPl(p => ({ ...p, [plan]: Number(e.target.value) }))}
               style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
-            <span style={{ color:C.textSub, fontSize:12 }}>missions/mois</span>
+            <span style={{ color:C.textSub, fontSize:12 }}>prestations/mois</span>
           </div>
         ))}
         <SaveBtn k="plan_limits" onClick={() => save("plan_limits", localPl)} />
@@ -1349,7 +1690,7 @@ export function BOSettingsTab() {
                 <div key={period} style={{ flex:1 }}>
                   <div style={{ color:C.textSub, fontSize:11, marginBottom:4 }}>{plabel}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    <input type="number" min={1} value={localSp[plan]?.[period] ?? ""} onChange={e => setLocalSp(p => ({ ...p, [plan]: { ...p[plan], [period]: Number(e.target.value) } }))}
+                    <input type="text" inputMode="decimal" value={localSp[plan]?.[period] ?? ""} onChange={e => setLocalSp(p => ({ ...p, [plan]: { ...p[plan], [period]: e.target.value } }))}
                       style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
                     <span style={{ color:C.textSub, fontSize:12 }}>€</span>
                   </div>
@@ -1358,7 +1699,12 @@ export function BOSettingsTab() {
             </div>
           </div>
         ))}
-        <SaveBtn k="subscription_prices" onClick={() => save("subscription_prices", localSp)} />
+        <SaveBtn k="subscription_prices" onClick={() => {
+          const parsed = Object.fromEntries(Object.entries(localSp).map(([plan, periods]) => [
+            plan, Object.fromEntries(Object.entries(periods).map(([period, v]) => [period, parseFloat(String(v).replace(",", ".")) || 0]))
+          ]));
+          save("subscription_prices", parsed);
+        }} />
       </div>
 
       {/* ── Secteurs ── */}
@@ -1393,13 +1739,16 @@ export function BOSettingsTab() {
         ].map(({ key, label }) => (
           <div key={key} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:180 }}>{label}</span>
-            <input type="number" min={0} step={0.1} value={localFs[key]} onChange={e => setLocalFs(p => ({ ...p, [key]: e.target.value }))}
+            <input type="text" inputMode="decimal" value={localFs[key]} onChange={e => setLocalFs(p => ({ ...p, [key]: e.target.value }))}
               style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
             <span style={{ color:C.textSub, fontSize:12 }}>€</span>
           </div>
         ))}
         <div style={{ marginBottom:16 }}>
-          <SaveBtn k="frais_service" onClick={() => save("frais_service", { single: Number(localFs.single), range: Number(localFs.range), urgent: Number(localFs.urgent) })} />
+          <SaveBtn k="frais_service" onClick={() => {
+            const toNum = v => parseFloat(String(v).replace(",", ".")) || 0;
+            save("frais_service", { single: toNum(localFs.single), range: toNum(localFs.range), urgent: toNum(localFs.urgent) });
+          }} />
         </div>
         <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:14 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -1450,7 +1799,7 @@ export function BOSettingsTab() {
       {/* ── Phase de lancement ── */}
       <SectionTitle>🚀 Phase de lancement</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 10 missions gratuites sur toute la plateforme.</div>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 10 prestations gratuites sur toute la plateforme.</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <button onClick={()=>setLaunchPhase(v=>!v)} style={{ width:48, height:28, borderRadius:99, border:"none", cursor:"pointer", background:launchPhase?"#4CC99B":"rgba(255,255,255,0.15)", transition:"background 0.2s", position:"relative" }}>
             <div style={{ position:"absolute", top:4, left:launchPhase?22:4, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -1466,7 +1815,7 @@ export function BOSettingsTab() {
         {localCbr.map((tier, i) => (
           <div key={tier.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:90 }}>{tier.id}</span>
-            <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} missions</span>
+            <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} prestations</span>
             <input type="number" min={0} max={100} step={0.1} value={tier.rate} onChange={e => setLocalCbr(prev => prev.map((t, j) => j === i ? { ...t, rate: e.target.value } : t))}
               style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
             <span style={{ color:C.textSub, fontSize:12 }}>%</span>
@@ -1484,7 +1833,7 @@ export function BOResetMonthly() {
   const [result, setResult]   = useState(null);
 
   const handleReset = async () => {
-    if (!window.confirm("Remettre les compteurs de missions à 0 pour tous les prestataires ?")) return;
+    if (!await showConfirm("Remettre les compteurs de prestations à 0 pour tous les prestataires ?")) return;
     setLoading(true); setResult(null);
     try {
       let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -1507,6 +1856,126 @@ export function BOResetMonthly() {
       <button onClick={handleReset} disabled={loading} style={{ background:"rgba(124,111,224,0.15)", border:`1px solid ${C.violet}`, color:C.violet, borderRadius:8, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
         {loading ? "…" : "Réinitialiser"}
       </button>
+    </div>
+  );
+}
+
+export function BODocuments() {
+  const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄" };
+  const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre" };
+  const [docs, setDocs]       = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter]   = useState("all");   // all | pending | verified
+  const [typeFilter, setType] = useState("all");
+  const [preview, setPreview] = useState(null);
+  const [verifying, setVerifying] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"list_all_docs" }) });
+      const data = await r.json();
+      setDocs(Array.isArray(data) ? data : []);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleVerify = async (doc) => {
+    setVerifying(doc.id);
+    try {
+      await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
+      setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
+    } finally { setVerifying(null); }
+  };
+
+  const displayed = docs.filter(d => {
+    if (filter === "pending"  && d.verified)  return false;
+    if (filter === "verified" && !d.verified) return false;
+    if (typeFilter !== "all" && d.type !== typeFilter) return false;
+    return true;
+  });
+
+  const types = [...new Set(docs.map(d => d.type))];
+  const pendingCount = docs.filter(d => !d.verified).length;
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, gap:10, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ fontWeight:800, fontSize:16, color:C.text }}>📂 Documents prestataires</div>
+          <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{docs.length} document{docs.length>1?"s":""} · {pendingCount} en attente de validation</div>
+        </div>
+        <button onClick={load} disabled={loading} style={{ fontSize:12, padding:"7px 14px", borderRadius:8, background:`${C.violet}15`, border:`1px solid ${C.violet}44`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          {loading ? "Chargement…" : "🔄 Actualiser"}
+        </button>
+      </div>
+
+      {/* Filtres */}
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+        {["all","pending","verified"].map(f => (
+          <button key={f} onClick={()=>setFilter(f)} style={{ fontSize:11, padding:"5px 12px", borderRadius:20, border:`1px solid ${filter===f?C.violet:C.border}`, background:filter===f?`${C.violet}20`:"transparent", color:filter===f?C.violet:C.textSub, fontWeight:filter===f?700:500, cursor:"pointer", fontFamily:"inherit" }}>
+            {f==="all"?"Tous":f==="pending"?"⏳ En attente":"✅ Validés"}
+          </button>
+        ))}
+        <select value={typeFilter} onChange={e=>setType(e.target.value)} style={{ fontSize:11, padding:"5px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#112240", color:C.text, fontFamily:"inherit", cursor:"pointer" }}>
+          <option value="all">Tous types</option>
+          {types.map(t => <option key={t} value={t}>{DOC_LABEL[t]||t}</option>)}
+        </select>
+      </div>
+
+      {loading && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Chargement…</div>}
+      {!loading && displayed.length === 0 && <div style={{ textAlign:"center", padding:30, color:C.textSub }}>Aucun document{filter!=="all"?" dans ce filtre":""}</div>}
+
+      {displayed.map(doc => {
+        const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+        const name = [doc.prenom, doc.nom].filter(Boolean).join(" ") || doc.email || doc.prestataire_id?.slice(0,8);
+        return (
+          <div key={doc.id} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":C.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <span style={{ fontSize:22, flexShrink:0 }}>{DOC_ICON[doc.type]||"📄"}</span>
+            <div style={{ flex:1, minWidth:120 }}>
+              <div style={{ fontWeight:700, fontSize:13, color:C.text }}>{DOC_LABEL[doc.type]||doc.type}</div>
+              <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{name} · {new Date(doc.created_at).toLocaleDateString("fr-FR")}</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+              <span style={{ fontSize:10, fontWeight:700, color:doc.verified?C.success:C.accentGold }}>{doc.verified?"✅ Validé":"⏳ En attente"}</span>
+              {doc.signedUrl && <>
+                <button onClick={()=>setPreview({...doc, isImg, name})} style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                  {isImg?"🖼 Voir":"📄 Voir"}
+                </button>
+                <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontWeight:700, textDecoration:"none" }}>⬇ DL</a>
+              </>}
+              {!doc.verified && (
+                <button onClick={()=>handleVerify(doc)} disabled={verifying===doc.id} style={{ fontSize:11, padding:"5px 10px", borderRadius:7, border:`1px solid ${C.success}44`, background:`${C.success}15`, color:C.success, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:verifying===doc.id?0.5:1 }}>
+                  {verifying===doc.id?"…":"✓ Valider"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Modal prévisualisation */}
+      {preview && (
+        <div onClick={()=>setPreview(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:9000, padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:16, width:"100%", maxWidth:780, maxHeight:"92vh", display:"flex", flexDirection:"column", border:"1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.text }}>{DOC_ICON[preview.type]||"📄"} {DOC_LABEL[preview.type]||preview.type} — {preview.name}</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <a href={preview.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 12px", borderRadius:8, border:`1px solid ${C.violet}44`, background:`${C.violet}15`, color:C.violet, fontWeight:700, textDecoration:"none" }}>⬇ Télécharger</a>
+                <a href={preview.signedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, padding:"5px 12px", borderRadius:8, border:`1px solid ${C.border}`, color:C.text, fontWeight:700, textDecoration:"none" }}>↗ Ouvrir</a>
+                <button onClick={()=>setPreview(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:13, fontFamily:"inherit", fontWeight:700 }}>✕</button>
+              </div>
+            </div>
+            <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300 }}>
+              {preview.isImg
+                ? <img src={preview.signedUrl} alt={preview.name} style={{ maxWidth:"100%", maxHeight:"80vh", display:"block", margin:"0 auto", borderRadius:8 }} />
+                : <iframe src={preview.signedUrl} title={preview.name} style={{ width:"100%", height:"78vh", border:"none", borderRadius:8, background:"#fff" }} />
+              }
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1551,14 +2020,20 @@ export function BOReminders() {
 }
 
 export function BOMissions() {
-  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée" };
-  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E" };
+  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée", disputed:"En litige" };
+  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E", disputed:"#F25E5E" };
 
-  const [missions, setMissions] = useState([]);
+  const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState("all");
   const [validating, setValidating] = useState(null);
+  const [disputing, setDisputing] = useState(null);
   const [result, setResult]     = useState({});
+  const [editingMission, setEditingMission] = useState(null);
+  const [editMissionVals, setEditMissionVals] = useState({});
+  const [reassignId, setReassignId] = useState(null);
+  const [reassignEmail, setReassignEmail] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
 
   const load = async (status = filter) => {
     setLoading(true);
@@ -1573,7 +2048,7 @@ export function BOMissions() {
   useEffect(() => { load(filter); }, [filter]);
 
   const handleValidate = async (missionId) => {
-    if (!window.confirm("Valider cette mission manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
+    if (!await showConfirm("Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
     setValidating(missionId);
     try {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
@@ -1588,15 +2063,82 @@ export function BOMissions() {
     setValidating(null);
   };
 
-  const filtered = missions;
+  const handleRelease = async (missionId) => {
+    if (!await showConfirm("Libérer les fonds au prestataire ? Le litige sera clos.")) return;
+    setDisputing(missionId + "_release");
+    try {
+      const res = await boFetch({ action:"release_dispute", mission_id: missionId });
+      const data = await res.json();
+      if (data.success) {
+        setResult(r => ({ ...r, [missionId]: "✅ Fonds libérés — prestation validée" }));
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
+      } else {
+        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
+      }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setDisputing(null);
+  };
+
+  const handleCancel = async (missionId, withRefund) => {
+    const reason = await showPrompt("Motif d'annulation (optionnel) :","Motif..."); if (reason === null) return;
+    setDisputing(missionId + "_cancel");
+    try {
+      const res = await boFetch({ action:"cancel_mission", mission_id:missionId, refund:withRefund, reason });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:`🚫 Annulée${withRefund?" + remboursement initié":""}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"cancelled"}:m)); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    setDisputing(null);
+  };
+
+  const handleReassign = async (missionId) => {
+    if (!reassignEmail.trim()) return;
+    setDisputing(missionId + "_reassign");
+    try {
+      const res = await boFetch({ action:"reassign_mission", mission_id:missionId, new_presta_email:reassignEmail.trim(), reason:reassignReason.trim()||undefined });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:`✅ Réassignée → ${data.new_presta_name}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"assigned"}:m)); setReassignId(null); setReassignEmail(""); setReassignReason(""); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    setDisputing(null);
+  };
+
+  const handleUpdateMission = async (missionId) => {
+    setDisputing(missionId + "_edit");
+    try {
+      const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
+      const data = await res.json();
+      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Mission mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
+      else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    setDisputing(null);
+  };
+
+  const handleRefund = async (missionId) => {
+    if (!await showConfirm("Rembourser le client ? Cette action est irréversible.")) return;
+    setDisputing(missionId + "_refund");
+    try {
+      const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
+      const data = await res.json();
+      if (data.success) {
+        setResult(r => ({ ...r, [missionId]: "💰 Remboursement initié" }));
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"closed" } : m));
+      } else {
+        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
+      }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    setDisputing(null);
+  };
+
+  const filtered = prestations;
 
   return (
     <div>
-      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>📋 Gestion des missions</div>
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>📋 Gestion des prestations</div>
 
       {/* Filtres */}
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
-        {["all","open","pending_acceptance","assigned","completed","closed"].map(s => (
+        {["all","open","pending_acceptance","assigned","completed","disputed","closed"].map(s => (
           <button key={s} onClick={()=>setFilter(s)} style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${filter===s?C.violet:C.border}`, background:filter===s?`${C.violet}20`:"transparent", color:filter===s?C.violet:C.textSub, fontWeight:filter===s?700:500, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
             {s==="all"?"Toutes":STATUS_LABELS[s]||s}
           </button>
@@ -1607,7 +2149,7 @@ export function BOMissions() {
       {loading && <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>}
 
       {!loading && filtered.length === 0 && (
-        <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune mission{filter!=="all"?` avec ce statut`:""}</div>
+        <div style={{ color:C.textSub, fontSize:13, padding:"20px 0", textAlign:"center" }}>Aucune prestation{filter!=="all"?` avec ce statut`:""}</div>
       )}
 
       {filtered.map(m => {
@@ -1649,6 +2191,74 @@ export function BOMissions() {
                 </button>
               )}
             </div>
+            {["completed","closed"].includes(m.status) && !result[m.id] && (
+              <div style={{ marginTop:8 }}>
+                <button onClick={async()=>{
+                  const reason = await showPrompt("Motif du remboursement (optionnel) :","Motif...");
+                  if (reason === null) return;
+                  setDisputing(m.id+"_manual");
+                  const res = await boFetch({ action:"manual_refund", mission_id:m.id, reason });
+                  const j = await res.json();
+                  setResult(r=>({...r,[m.id]:j.success?"💰 Remboursement initié":`❌ ${j.error||"Erreur"}`}));
+                  if (j.success) setMissions(ms=>ms.map(x=>x.id===m.id?{...x,status:"closed"}:x));
+                  setDisputing(null);
+                }} disabled={!!disputing} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(242,94,94,0.25)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:disputing===m.id+"_manual"?0.5:1 }}>
+                  {disputing===m.id+"_manual"?"…":"↩ Rembourser"}
+                </button>
+              </div>
+            )}
+            {m.status === "disputed" && !result[m.id] && (
+              <div style={{ display:"flex", gap:6, marginTop:8 }}>
+                <button onClick={()=>handleRelease(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:`${C.success}20`, color:C.success, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_release" ? "…" : "✅ Libérer les fonds"}
+                </button>
+                <button onClick={()=>handleRefund(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"rgba(242,94,94,0.15)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_refund" ? "…" : "💰 Rembourser le client"}
+                </button>
+              </div>
+            )}
+            {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
+            {!["cancelled","closed","completed"].includes(m.status) && !result[m.id] && (
+              <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button onClick={async()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=await showConfirm("Cette mission a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  {disputing===m.id+"_cancel"?"…":"🚫 Annuler"}
+                </button>
+                <button onClick={()=>{ setReassignId(reassignId===m.id?null:m.id); setReassignEmail(""); setReassignReason(""); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(162,155,254,0.3)", background:"rgba(162,155,254,0.08)", color:C.violet, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  🔄 Réassigner
+                </button>
+                <button onClick={()=>{ setEditingMission(editingMission===m.id?null:m.id); setEditMissionVals({ date:m.date||"", hours:m.hours||"", tarif_horaire:m.tarif_horaire||"", ville:m.ville||"", metier:m.metier||"" }); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(255,255,255,0.15)", background:"rgba(255,255,255,0.05)", color:C.textSub, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                  ✏️ Modifier
+                </button>
+              </div>
+            )}
+            {/* Formulaire réassignation */}
+            {reassignId===m.id && (
+              <div style={{ marginTop:8, background:"rgba(162,155,254,0.06)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:10, padding:"12px" }}>
+                <div style={{ fontWeight:700, color:C.violet, fontSize:12, marginBottom:8 }}>🔄 Réassigner à un autre prestataire</div>
+                <input value={reassignEmail} onChange={e=>setReassignEmail(e.target.value)} placeholder="Email du nouveau prestataire" style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box", marginBottom:6 }} />
+                <input value={reassignReason} onChange={e=>setReassignReason(e.target.value)} placeholder="Motif (optionnel)" style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 10px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box", marginBottom:8 }} />
+                <button onClick={()=>handleReassign(m.id)} disabled={!reassignEmail.trim()||!!disputing} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:!reassignEmail.trim()||disputing?0.5:1 }}>
+                  {disputing===m.id+"_reassign"?"…":"Confirmer la réassignation"}
+                </button>
+              </div>
+            )}
+            {/* Formulaire modification */}
+            {editingMission===m.id && (
+              <div style={{ marginTop:8, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:10, padding:"12px" }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>✏️ Modifier la prestation</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+                  {[["date","Date","date"],["hours","Heures","number"],["tarif_horaire","Tarif/h €","number"],["ville","Ville","text"],["metier","Métier","text"]].map(([k,label,type])=>(
+                    <div key={k} style={{ gridColumn: k==="metier"?"1/-1":"auto" }}>
+                      <div style={{ color:C.textMuted, fontSize:10, marginBottom:3 }}>{label}</div>
+                      <input type={type} value={editMissionVals[k]||""} onChange={e=>setEditMissionVals(v=>({...v,[k]:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:7, padding:"7px 9px", color:C.text, fontSize:12, fontFamily:"inherit", boxSizing:"border-box" }} />
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>handleUpdateMission(m.id)} disabled={!!disputing} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:disputing?0.5:1 }}>
+                  {disputing===m.id+"_edit"?"…":"Enregistrer"}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1657,7 +2267,7 @@ export function BOMissions() {
 }
 
 export function BORefundSection() {
-  const [missions, setMissions] = useState([]);
+  const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [refunding, setRefunding] = useState(null);
   const [done, setDone]         = useState({});
@@ -1670,7 +2280,7 @@ export function BORefundSection() {
   }, []);
 
   const handleRefund = async (m) => {
-    if (!window.confirm(`Rembourser ${m.montant_total} € pour la mission ${m.id.slice(0,8)} ?`)) return;
+    if (!await showConfirm(`Rembourser ${m.montant_total} € pour la prestation ${m.id.slice(0,8)} ?`)) return;
     setRefunding(m.id);
     let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     const r = await fetch("/api/stripe-refund", {
@@ -1681,16 +2291,16 @@ export function BORefundSection() {
     const j = await r.json();
     setRefunding(null);
     if (j.ok) setDone(prev => ({ ...prev, [m.id]: true }));
-    else alert(`Erreur : ${j.error}`);
+    else showToast(`Erreur : ${j.error}`);
   };
 
   if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"12px 0" }}>Chargement remboursements…</div>;
-  if (!missions.length) return null;
+  if (!prestations.length) return null;
 
   return (
     <div style={{ background:"#0D1B3E", borderRadius:16, padding:16, marginTop:4 }}>
       <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>↩ Remboursements Stripe</div>
-      {missions.map(m => (
+      {prestations.map(m => (
         <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
           <div>
             <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {m.montant_total} €</div>
@@ -1758,12 +2368,15 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           {[
             {id:"dashboard",  l:"📊 KPIs"},
             {id:"comptes",    l:"✅ Comptes"},
-            {id:"missions",   l:"📋 Missions"},
+            {id:"documents",  l:"📂 Documents"},
+            {id:"prestations",   l:"📋 Prestations"},
             {id:"support",    l:"🎧 Support"},
+            {id:"litiges",    l:"⚠️ Litiges"},
             {id:"sectors",    l:"🗂️ Secteurs"},
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
             {id:"moderation", l:"⚠️ Modération"},
+            {id:"ratings",    l:"⭐ Avis"},
             {id:"logs",       l:"📋 Logs"},
             {id:"reglages",   l:"⚙️ Réglages"},
             {id:"test",       l:"🧪 Test"},
@@ -1788,11 +2401,17 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
         {/* ── COMPTES ── */}
         {tab==="comptes" && <BOComptes />}
 
+        {/* ── DOCUMENTS ── */}
+        {tab==="documents" && <BODocuments />}
+
         {/* ── MISSIONS ── */}
-        {tab==="missions" && <BOMissions />}
+        {tab==="prestations" && <BOMissions />}
 
         {/* ── SUPPORT ── */}
         {tab==="support" && <BOSupport />}
+
+        {/* ── LITIGES ── */}
+        {tab==="litiges" && <BOLitiges />}
 
         {/* ── TEST ── */}
         {tab==="test" && <BOTest onNavigate={onNavigate} />}
@@ -1828,9 +2447,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           {/* KPIs grid */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"14px 0" }}>
             <KPICard icon="👥" label="Utilisateurs total" value={d.users.total} sub={`${d.users.pending} en attente`} color={C.violet} />
-            <KPICard icon="✅" label="Missions terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
-            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Missions complétées" color={C.accentGold} />
-            <KPICard icon="📦" label="Missions actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
+            <KPICard icon="✅" label="Prestations terminées" value={d.missions.terminees} sub={`${d.missions.tauxCompletion}% de taux`} color={C.success} />
+            <KPICard icon="💶" label="CA total (€)" value={d.finance.caTotal > 0 ? `${(d.finance.caTotal/1000).toFixed(1)}k` : `${d.finance.caTotal} €`} sub="Prestations complétées" color={C.accentGold} />
+            <KPICard icon="📦" label="Prestations actives" value={d.missions.open + d.missions.assigned} sub={`${d.missions.open} ouvertes · ${d.missions.assigned} assignées`} color="#7C6FE0" />
           </div>
 
           {/* Visiteurs */}
@@ -1838,7 +2457,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>👁️ Visiteurs</div>
               <button onClick={async ()=>{
-                if(!window.confirm("Remettre le compteur de visites à 0 ?")) return;
+                if(!await showConfirm("Remettre le compteur de visites à 0 ?")) return;
                 await boFetch({ action:"reset_visits" }).catch(()=>{});
                 window.location.reload();
               }} style={{ background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.3)", color:"#E74C3C", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
@@ -1881,9 +2500,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             })()}
           </div>
 
-          {/* Missions par statut */}
+          {/* Prestations par statut */}
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des missions</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:14 }}>📋 Statut des prestations</div>
             <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
               {[
                 {l:"Ouvertes",  v:d.missions.open,      c:"#F0B429"},
@@ -1903,13 +2522,13 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             </div>
           </div>
 
-          {/* Missions créées par mois */}
+          {/* Prestations créées par mois */}
           {d.monthLabels.length > 0 && (() => {
             const vals = d.monthLabels.map((_,i) => Object.values(d.missionsByMonth)[i] || 0);
             const max = Math.max(...vals, 1);
             return (
               <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-                <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Missions créées par mois</div>
+                <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Prestations créées par mois</div>
                 <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:48, marginBottom:6 }}>
                   {vals.map((v,i) => (
                     <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
@@ -1946,13 +2565,13 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ display:"flex", gap:16, alignItems:"center", marginBottom:20 }}>
             <DonutChart sectors={d.sectors.length > 0 ? d.sectors : [{pct:100,color:"#162547"}]} />
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des missions</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} missions</div>
+              <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>Répartition des prestations</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>Total : {d.missions.total} prestations</div>
               {d.sectors[0] && <div style={{ marginTop:8 }}>
                 <div style={{ fontSize:12, color:C.textSub }}>Secteur #1</div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>{d.sectors[0].icon} {d.sectors[0].label} ({d.sectors[0].pct}%)</div>
               </div>}
-              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune mission pour l'instant</div>}
+              {d.sectors.length === 0 && <div style={{ marginTop:8, fontSize:12, color:C.textMuted }}>Aucune prestation pour l'instant</div>}
             </div>
           </div>
           {d.sectors.map((s,i) => (
@@ -1962,7 +2581,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
                   <div style={{ width:34, height:34, borderRadius:10, background:`${s.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{s.icon}</div>
                   <div>
                     <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{s.label}</div>
-                    <div style={{ color:C.textSub, fontSize:11 }}>{s.missions} missions</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>{s.missions} prestations</div>
                   </div>
                 </div>
                 <div style={{ fontWeight:800, color:s.color, fontSize:16 }}>{s.pct}%</div>
@@ -2043,11 +2662,11 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ background:`linear-gradient(135deg,${C.violet},${C.indigo})`, borderRadius:18, padding:"20px", marginBottom:16, textAlign:"center" }}>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 4px" }}>Chiffre d'affaires total plateforme</p>
             <div style={{ color:C.white, fontSize:36, fontWeight:900 }}>{d.finance.caTotal.toLocaleString()} €</div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Missions complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginTop:4 }}>Prestations complétées : <strong style={{ color:C.accentGold }}>{d.missions.terminees}</strong></div>
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Missions terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Missions actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
+            {[{l:"CA total",v:`${d.finance.caTotal.toLocaleString()} €`,c:C.accentGold,i:"💰"},{l:"Panier moyen",v:`${(d.finance.caMoyen||0).toLocaleString()} €`,c:C.violet,i:"📊"},{l:"Prestations terminées",v:d.missions.terminees,c:C.success,i:"✅"},{l:"Prestations actives",v:d.missions.open+d.missions.assigned,c:"#7C6FE0",i:"📦"}].map(s=>(
               <div key={s.l} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
                 <div style={{ fontSize:22, marginBottom:6 }}>{s.i}</div>
                 <div style={{ fontWeight:800, color:s.c, fontSize:18 }}>{s.v}</div>
@@ -2119,6 +2738,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── MODÉRATION ── */}
         {tab==="moderation" && <BOModerationTab d={d} />}
+        {tab==="ratings"    && <BORatings />}
 
         {/* ── RÉGLAGES ── */}
         {tab==="reglages" && <BOSettingsTab />}

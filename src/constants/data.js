@@ -17,7 +17,10 @@ export function cpToCoords(cp) {
 // Les deux parties (client et presta) calculent le même code sans communication
 export function genMissionCode(provId, type) {
   const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
-  const base = (provId * 7919 + parseInt(today.slice(-4)) * 31) % 9000;
+  const idStr = String(provId || "");
+  let h = 0;
+  for (let i = 0; i < idStr.length; i++) { h = (Math.imul(31, h) + idStr.charCodeAt(i)) | 0; }
+  const base = (Math.abs(h) + parseInt(today.slice(-4)) * 31) % 9000;
   const offset = type === "out" ? 4567 : 0;
   return String(((Math.abs(base) + offset) % 9000) + 1000).slice(-4);
 }
@@ -445,8 +448,15 @@ export const DOCS_REQUIS = [
   { id:"cni",      label:"Pièce d'identité",           icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },
   { id:"domicile", label:"Justificatif de domicile",   icon:"🏠", required:true,  info:"Facture EDF ou quittance de loyer -3 mois" },
   { id:"rib",      label:"RIB / IBAN",                 icon:"🏦", required:true,  info:"Pour le virement de vos paiements" },
-  { id:"rc_pro",   label:"Attestation RC Pro",         icon:"🛡️", required:false, info:"Responsabilité civile professionnelle" },
+  { id:"rc_pro",   label:"Attestation RC Pro",         icon:"🛡️", required:true,  info:"Assurance RC Professionnelle en cours de validité (obligatoire)" },
   { id:"diplomes", label:"Diplômes & Certifications",  icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
+];
+
+export const DOCS_REQUIS_CLIENT_PRO = [
+  { id:"kbis",      label:"Extrait KBIS / Sirene",                icon:"🏢", required:true, info:"Justificatif d'existence légale de votre société" },
+  { id:"rib",       label:"RIB de l'entreprise",                  icon:"🏦", required:true, info:"Coordonnées bancaires de la société pour la facturation" },
+  { id:"cni",       label:"CNI / Passeport du gérant",            icon:"🪪", required:true, info:"Pièce d'identité en cours de validité du représentant légal" },
+  { id:"tva",       label:"Attestation TVA intracommunautaire",   icon:"📋", required:true, info:"Numéro de TVA intracommunautaire de la société (si applicable)" },
 ];
 
 export const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];

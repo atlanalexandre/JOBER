@@ -1,0 +1,45 @@
+name: Audit quotidien
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * *"  # tous les jours à 4h UTC (6h Paris)
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Audit statique
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run audit
+        id: audit
+        run: |
+          set +e
+          OUTPUT=$(node .github/scripts/audit.cjs 2>&1)
+          EXIT_CODE=$?
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          echo "status=$([ $EXIT_CODE -eq 0 ] && echo 'OK' || echo 'ERREURS')" >> $GITHUB_OUTPUT
+          echo "$OUTPUT"
+          exit $EXIT_CODE
+
+      - name: Installer SDK Resend
+        if: always()
+        run: pip install resend --quiet
+
+      - name: Envoyer rapport par email
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          AUDIT_OUTPUT: ${{ steps.audit.outputs.output }}
+          AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          AUDIT_EXIT:   ${{ steps.audit.outputs.exit_code }}
+        run: python3 .github/scripts/send_audit_email.py

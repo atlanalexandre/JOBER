@@ -13,10 +13,12 @@ function verifyBoToken(token, secret) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const BO_SECRET        = process.env.BO_SESSION_SECRET || "alane-bo-secret-change-me-in-vercel";
+  const BO_SECRET        = process.env.BO_SESSION_SECRET;
   const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!BO_SECRET) return res.status(500).json({ error: "BO_SESSION_SECRET non configuré" });
 
   const token = (req.headers["authorization"] || "").replace("Bearer ", "");
   if (!verifyBoToken(token, BO_SECRET)) return res.status(401).json({ error: "Non autorisé" });
@@ -25,6 +27,22 @@ export default async function handler(req, res) {
 
   const { paymentIntentId, missionId, reason } = req.body || {};
   if (!paymentIntentId) return res.status(400).json({ error: "paymentIntentId requis" });
+
+  // S-06: cross-check missionId ↔ paymentIntentId to prevent cross-mission refund
+  if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+    const checkRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`,
+      { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
+    ).catch(() => null);
+    if (checkRes?.ok) {
+      const checkData = await checkRes.json().catch(() => []);
+      const mission = Array.isArray(checkData) && checkData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.stripe_payment_intent && mission.stripe_payment_intent !== paymentIntentId) {
+        return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette mission" });
+      }
+    }
+  }
 
   try {
     // Create refund via Stripe API

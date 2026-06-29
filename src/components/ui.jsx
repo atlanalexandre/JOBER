@@ -173,7 +173,7 @@ export const AddressAutocomplete = ({ label, value, onChange, onSelect, placehol
   };
 
   return (
-    <div ref={wrapRef} style={{ marginBottom:16, minWidth:0 }}>
+    <div ref={wrapRef} style={{ marginBottom:16, minWidth:0, position:"relative" }}>
       {label && <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>{label}</label>}
       <div style={{ position:"relative" }}>
         <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16, opacity:0.5, pointerEvents:"none" }}>📍</span>
@@ -182,7 +182,7 @@ export const AddressAutocomplete = ({ label, value, onChange, onSelect, placehol
           style={{ width:"100%", padding:"13px 14px 13px 44px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", transition:"border 0.2s, box-shadow 0.2s" }} />
       </div>
       {open && suggestions.length > 0 && (
-        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, marginTop:2, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.5)" }}>
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, marginTop:2, background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, zIndex:1000, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.5)" }}>
           {suggestions.map((feat, i) => (
             <button key={i} onMouseDown={()=>handleSelect(feat)} onTouchEnd={e=>{e.preventDefault();handleSelect(feat);}}
               style={{ width:"100%", padding:"11px 14px", background:"transparent", border:"none", borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit", display:"block" }}>
@@ -412,9 +412,12 @@ export const DonutChart = ({ sectors, size=120 }) => {
 
 export function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
+  const spotsText = spotsLeft !== null
+    ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
+    : "Réservé aux 100 premiers prestataires inscrits";
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:"10 missions gratuites pour les 100 premiers prestataires inscrits" },
-    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} places restantes sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:`10 missions gratuites · ${spotsText}` },
+    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;
@@ -427,4 +430,108 @@ export function LaunchBadge({ context="home", spotsLeft=null }) {
       </div>
     </div>
   );
+}
+
+// ── Toast ────────────────────────────────────────────────────────────
+const _toastRef = { fn: null };
+export function showToast(msg, type = "error") {
+  if (_toastRef.fn) _toastRef.fn(msg, type);
+}
+export function ToastContainer() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    _toastRef.fn = (msg, type) => {
+      const id = Date.now() + Math.random();
+      setItems(prev => [...prev.slice(-2), { id, msg, type }]);
+      setTimeout(() => setItems(prev => prev.filter(t => t.id !== id)), 4000);
+    };
+    return () => { _toastRef.fn = null; };
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, display:"flex", flexDirection:"column", gap:8, pointerEvents:"none", width:"calc(100% - 32px)", maxWidth:420 }}>
+      {items.map(t => (
+        <div key={t.id} style={{ background: t.type==="success" ? "#10D98F" : t.type==="info" ? "#7C6FE0" : "#F25E5E", color:"#fff", borderRadius:12, padding:"12px 16px", fontSize:14, fontWeight:600, boxShadow:"0 4px 20px rgba(0,0,0,0.4)", textAlign:"center" }}>
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── ConfirmModal ─────────────────────────────────────────────────────
+const _confirmRef = { fn: null };
+export async function showConfirm(msg) {
+  if (!_confirmRef.fn) return window.confirm(msg);
+  return _confirmRef.fn(msg);
+}
+export function ConfirmModal() {
+  const [state, setState] = useState(null);
+  const resolveRef = useRef(null);
+  useEffect(() => {
+    _confirmRef.fn = (msg) => new Promise(resolve => { resolveRef.current = resolve; setState({ msg }); });
+    return () => { _confirmRef.fn = null; };
+  }, []);
+  if (!state) return null;
+  const choose = (v) => { setState(null); resolveRef.current?.(v); };
+  return (
+    <div onClick={() => choose(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:380, border:"1px solid rgba(124,111,224,0.25)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+        <p style={{ color:"#F0F0F5", fontSize:15, lineHeight:1.6, margin:"0 0 24px", whiteSpace:"pre-wrap" }}>{state.msg}</p>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={() => choose(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#8B8FA8", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+          <button onClick={() => choose(true)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Confirmer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PromptModal ──────────────────────────────────────────────────────
+const _promptRef = { fn: null };
+export async function showPrompt(msg, placeholder = "") {
+  if (!_promptRef.fn) return window.prompt(msg);
+  return _promptRef.fn(msg, placeholder);
+}
+export function PromptModal() {
+  const [state, setState] = useState(null);
+  const [val, setVal] = useState("");
+  const resolveRef = useRef(null);
+  useEffect(() => {
+    _promptRef.fn = (msg, placeholder) => new Promise(resolve => { resolveRef.current = resolve; setState({ msg, placeholder }); setVal(""); });
+    return () => { _promptRef.fn = null; };
+  }, []);
+  if (!state) return null;
+  const choose = (v) => { setState(null); resolveRef.current?.(v); };
+  return (
+    <div onClick={() => choose(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:380, border:"1px solid rgba(124,111,224,0.25)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+        <p style={{ color:"#F0F0F5", fontSize:15, lineHeight:1.6, margin:"0 0 16px", whiteSpace:"pre-wrap" }}>{state.msg}</p>
+        <input
+          type="text" value={val} onChange={e => setVal(e.target.value)}
+          placeholder={state.placeholder || ""}
+          onKeyDown={e => { if (e.key==="Enter") choose(val||null); if (e.key==="Escape") choose(null); }}
+          autoFocus
+          style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:"1px solid rgba(124,111,224,0.3)", background:"#162547", color:"#F0F0F5", fontSize:14, fontFamily:"inherit", boxSizing:"border-box", marginBottom:16, outline:"none" }}
+        />
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={() => choose(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#8B8FA8", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+          <button onClick={() => choose(val||null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Envoyer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── prestaCount singleton ────────────────────────────────────────────
+let _prestaCountCache = null;
+let _prestaCountPending = null;
+export function fetchPrestaCount() {
+  if (_prestaCountCache !== null) return Promise.resolve(_prestaCountCache);
+  if (_prestaCountPending) return _prestaCountPending;
+  _prestaCountPending = fetch("/api/prestataires?action=count")
+    .then(r => r.json())
+    .then(d => { _prestaCountCache = d.count ?? null; _prestaCountPending = null; return _prestaCountCache; })
+    .catch(() => { _prestaCountPending = null; return null; });
+  return _prestaCountPending;
 }

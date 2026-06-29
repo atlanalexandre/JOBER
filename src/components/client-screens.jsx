@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput } from "./ui.jsx";
+import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
-function ContractModal({ title, contractText, onSign, onClose }) {
+function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
   return (
     <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -16,9 +16,14 @@ function ContractModal({ title, contractText, onSign, onClose }) {
           <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>{title}</h3>
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
-        <div style={{ overflowY:"auto", flex:1, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
+        <div style={{ overflowY:"auto", flex:1, marginBottom:12, WebkitOverflowScrolling:"touch" }}>
           <pre style={{ color:C.textSub, fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"inherit", margin:0 }}>{contractText}</pre>
         </div>
+        {onViewCgps && (
+          <button onClick={onViewCgps} style={{ flexShrink:0, width:"100%", padding:"10px 14px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}12`, color:C.violet, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            📄 Lire l'intégralité du contrat →
+          </button>
+        )}
         <div style={{ flexShrink:0 }}>
           <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", marginBottom:16 }}>
             <div onClick={()=>setAccepted(v=>!v)} style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepted ? C.violet : "#334"}`, background: accepted ? C.violet : "transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s", marginTop:1 }}>
@@ -196,7 +201,7 @@ function DeleteAccountSection({ onLogout }) {
         <div style={{ background:`${C.danger}12`, border:`1px solid ${C.danger}44`, borderRadius:14, padding:"14px 16px" }}>
           <div style={{ fontWeight:700, color:C.danger, fontSize:13, marginBottom:8 }}>⚠️ Cette action est irréversible</div>
           <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:14 }}>
-            Vos données personnelles seront supprimées conformément au RGPD art. 17 (droit à l'effacement). L'historique des missions sera anonymisé. Cette action ne peut pas être annulée.
+            Vos données personnelles seront supprimées conformément au RGPD art. 17 (droit à l'effacement). L'historique des prestations sera anonymisé. Cette action ne peut pas être annulée.
           </div>
           {deleteError && <div style={{ color:C.danger, fontSize:12, marginBottom:10, fontWeight:600 }}>⚠️ {deleteError}</div>}
           <div style={{ display:"flex", gap:10 }}>
@@ -314,7 +319,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       // Récupérer last4 + brand
       const pr = await fetch("/api/stripe-intent", {
         method: "POST",
-        headers: { "Content-Type":"application/json" },
+        headers: { "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
         body: JSON.stringify({ action:"get_pm", pmId }),
       });
       const { brand="card", last4="••••" } = await pr.json();
@@ -519,6 +524,22 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
           </div>
         ))}
 
+        {role === "client" && clientMeta?.type_compte === "entreprise" && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:8, paddingLeft:4 }}>Compte professionnel</div>
+            <div style={{ background:"#0D1B3E", borderRadius:r, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+              <div onClick={()=>onNavigate("client_pro_docs")} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", cursor:"pointer" }}>
+                <div style={{ width:32, height:32, borderRadius:10, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>📂</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, color:C.violet, fontSize:14 }}>Documents entreprise</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>KBIS, RIB, CNI gérant, Attestation TVA</div>
+                </div>
+                <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Thème */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -625,7 +646,7 @@ export const TOUR_STEPS = [
   {
     icon:"📅",
     title:"2. Réservez & payez",
-    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la mission n'est pas validée.",
+    desc:"Choisissez la date, la durée et confirmez. Le paiement est sécurisé via Stripe — vous n'êtes pas débité définitivement tant que la prestation n'est pas validée.",
     color:"#F0B429",
   },
   {
@@ -636,8 +657,8 @@ export const TOUR_STEPS = [
   },
   {
     icon:"✅",
-    title:"4. Validez la mission",
-    desc:"Une fois la mission terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
+    title:"4. Validez la prestation",
+    desc:"Une fois la prestation terminée, validez-la depuis votre espace. Les fonds sont libérés au prestataire et vous gagnez du cashback !",
     color:"#F06292",
   },
 ];
@@ -702,9 +723,11 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
   const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
+  const [prestaCount, setPrestaCount] = useState(null);
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
+    fetchPrestaCount().then(c => { if (c != null) setPrestaCount(c); });
   }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -757,19 +780,29 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => {
+    const loadValidations = async () => {
+      const { data } = await supabase.auth.getUser();
       const user = data?.user;
       if (!user || !mounted) return;
-      supabase.from("missions")
-        .select("id,metier,sector,date,heure_debut,hours,validation_prestataire")
-        .eq("client_id", user.id)
-        .eq("status", "assigned")
-        .eq("validation_prestataire", true)
-        .then(({ data: ms }) => {
-          if (mounted && Array.isArray(ms)) setMissionsToValidate(ms);
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      try {
+        const res = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ action: "list_client" }),
         });
-    });
-    return () => { mounted = false; };
+        const missions = await res.json();
+        if (!mounted || !Array.isArray(missions)) return;
+        const toValidate = missions.filter(m => m.status === "assigned" && m.validation_prestataire);
+        setMissionsToValidate(toValidate);
+      } catch {}
+    };
+    loadValidations();
+    const t = setInterval(loadValidations, 8000);
+    const onVisible = () => { if (document.visibilityState === "visible") loadValidations(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { mounted = false; clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   useEffect(() => {
@@ -778,7 +811,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const user = data?.user;
       if (!user || !mounted) return;
       supabase.from("missions")
-        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id")
+        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id,arrived_at")
         .eq("client_id", user.id)
         .eq("status", "assigned")
         .then(({ data: ms }) => {
@@ -786,7 +819,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           const now = Date.now();
           const active = ms.filter(m => {
             const start = m.date ? new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime() : 0;
-            const end   = start  ? start + Number(m.hours || 1) * 3600000 : 0;
+            const end   = start  ? start + Number(m.actual_hours ?? m.hours ?? 1) * 3600000 : 0;
             return start > 0 && start < now && end > now;
           });
           setMissionsInProgress(active);
@@ -799,7 +832,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
 
   useEffect(() => {
     if (missionsInProgress.length === 0) return;
-    const t = setInterval(() => setInProgressTick(Date.now()), 30000);
+    const t = setInterval(() => setInProgressTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, [missionsInProgress.length]);
 
@@ -832,10 +865,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
             <div>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
-                Mission à valider ({missionsToValidate.length})
+                Prestation à valider ({missionsToValidate.length})
               </div>
               <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
-                {missionsToValidate[0].metier || "Mission"} — le prestataire a confirmé la fin
+                {missionsToValidate[0].metier || "Prestation"} — le prestataire a confirmé la fin
               </div>
             </div>
           </div>
@@ -849,7 +882,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       )}
       {showTour && <ClientTour onDone={dismissTour} />}
 
-      {/* ── Fenêtre missions en cours ── */}
+      {/* ── Fenêtre prestations en cours ── */}
       {missionsInProgress.length > 0 && !inProgressDismissed && (
         <div style={{
           position:"fixed", bottom:80, left:12, right:12, zIndex:7500,
@@ -871,14 +904,14 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <div style={{ width:10, height:10, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 10px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
-                <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Mission{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
+                <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Prestation{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
                 <span style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:20, padding:"1px 8px", color:"#10D98F", fontSize:11, fontWeight:700 }}>{missionsInProgress.length}</span>
               </div>
               <button onClick={() => setInProgressDismissed(true)} style={{ background:"rgba(255,255,255,0.07)", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"rgba(255,255,255,0.4)", fontSize:14, fontFamily:"inherit" }}>✕</button>
             </div>
             {missionsInProgress.map((m, idx) => {
               const mStart = new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime();
-              const mEnd   = mStart + Number(m.hours || 1) * 3600000;
+              const mEnd   = mStart + Number(m.actual_hours ?? m.hours ?? 1) * 3600000;
               const now2   = inProgressTick;
               const elapsed = Math.max(0, now2 - mStart);
               const remaining = Math.max(0, mEnd - now2);
@@ -893,16 +926,23 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                   <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
                     <div style={{ width:38, height:38, borderRadius:11, background:`rgba(16,217,143,0.12)`, border:"1px solid rgba(16,217,143,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon || "🏢"}</div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Mission"}</div>
+                      <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Prestation"}</div>
                       <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>
                         {elapsedH > 0 ? `${elapsedH}h ${elapsedMin}min` : `${elapsedMin}min`} écoulées
                         {" · "}
                         {remH > 0 ? `${remH}h ${remMin}min` : `${remMin}min`} restantes
                       </div>
                     </div>
-                    <button onClick={() => onNavigate("mission_history")} style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"6px 12px", color:"#10D98F", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", flexShrink:0, whiteSpace:"nowrap" }}>
-                      Voir →
-                    </button>
+                    <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                      {m.prestataire_id && (
+                        <button onClick={() => onNavigate("tracking", { id: m.prestataire_id, jobTitle: m.metier || "Prestataire", name: m.prestataire_nom ? `${m.prestataire_prenom||""} ${m.prestataire_nom}`.trim() : "Prestataire", _missionId: m.id })} style={{ background:"rgba(162,155,254,0.15)", border:"1px solid rgba(162,155,254,0.3)", borderRadius:10, padding:"6px 10px", color:"#A29BFE", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                          📍
+                        </button>
+                      )}
+                      <button onClick={() => onNavigate("mission_history")} style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"6px 12px", color:"#10D98F", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                        Voir →
+                      </button>
+                    </div>
                   </div>
                   {/* Barre de progression */}
                   <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:10, overflow:"hidden" }}>
@@ -972,9 +1012,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         <div style={{ padding:"0 22px 16px", position:"relative", zIndex:2 }}>
           <div style={{ display:"flex", gap:8 }}>
             {[
-              { icon:"📋", value: liveStats.openMissions, label:"missions ouvertes" },
+              { icon:"📋", value: liveStats.openMissions, label:"prestations ouvertes" },
               { icon:"🟢", value: liveStats.dispoNow ?? providers.filter(p=>p.dispo_immediat).length, label:"pros dispo maintenant" },
-              { icon:"✅", value: liveStats.completedMonth, label:"missions réalisées" },
+              { icon:"✅", value: liveStats.completedMonth, label:"prestations réalisées" },
             ].map((s,i)=>(
               <div key={i} style={{
                 flex:1, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`,
@@ -1004,7 +1044,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={prestaCount != null ? Math.max(0, 100 - prestaCount) : null} /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -1023,12 +1063,12 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <span style={{ fontSize:20, flexShrink:0 }}>🔔</span>
           <div style={{ flex:1 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Activer les notifications</div>
-            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles missions</div>
+            <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Soyez alerté en temps réel des nouvelles prestations</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <button onClick={()=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); }} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Plus tard</button>
             <button onClick={()=>{
-              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles missions.",icon:"/favicon.svg"}); });
+              Notification.requestPermission().then(p=>{ try { localStorage.setItem("alane_notif_asked","1"); } catch(e) {} setNotifAsked(false); if(p==="granted") new Notification("ALANE",{body:"Notifications activées ! Vous serez alerté des nouvelles prestations.",icon:"/favicon.svg"}); });
             }} style={{ background:C.violet, border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>Activer</button>
           </div>
         </div>
@@ -1066,7 +1106,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               </div>
               <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.6)" }}>
                 {nextTier
-                  ? <>{missionsToNext} mission{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
+                  ? <>{missionsToNext} prestation{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
                   : <>Vous êtes au palier maximum 🎉</>}
               </div>
             </div>
@@ -1102,6 +1142,45 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           </div>
         </div>
       </div>
+
+      {/* ── Dispo maintenant ── */}
+      {(() => {
+        const dispoNow = providers.filter(p => p.dispo_immediat && p.available);
+        if (dispoNow.length === 0) return null;
+        return (
+          <div style={{ padding:"0 0 24px", position:"relative", zIndex:2 }}>
+            <div style={{ padding:"0 22px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 8px #10D98F", animation:"pulse 1.5s ease-in-out infinite" }} />
+                <h3 style={{ margin:0, fontFamily:font.display, fontWeight:700, fontSize:18, color:C.text }}>Dispo maintenant</h3>
+              </div>
+              <span style={{ fontSize:11, color:"#10D98F", fontWeight:700, background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:99, padding:"2px 8px" }}>{dispoNow.length} pro{dispoNow.length > 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ display:"flex", gap:12, paddingLeft:22, paddingRight:22, overflowX:"auto", WebkitOverflowScrolling:"touch", scrollbarWidth:"none", msOverflowStyle:"none" }}>
+              {dispoNow.map(p => {
+                const sector = SECTORS?.find?.(s => s.id === p.sector);
+                const initials = [p.prenom, p.nom].filter(Boolean).map(s => s[0]?.toUpperCase() || "").join("") || "?";
+                const name = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
+                return (
+                  <div key={p.id} onClick={() => onNavigate("profile", p)} style={{ flexShrink:0, width:124, background:"rgba(16,217,143,0.05)", border:"1.5px solid rgba(16,217,143,0.22)", borderRadius:16, padding:"14px 11px 12px", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:8, textAlign:"center" }}>
+                    <div style={{ position:"relative" }}>
+                      <div style={{ width:44, height:44, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.18),rgba(10,191,122,0.12))", border:"2px solid rgba(16,217,143,0.35)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16, color:"#10D98F", fontFamily:font.display }}>
+                        {initials}
+                      </div>
+                      <div style={{ position:"absolute", bottom:1, right:1, width:11, height:11, borderRadius:"50%", background:"#10D98F", border:"2px solid #0A1628" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:12, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:100 }}>{name}</div>
+                      <div style={{ fontSize:10, color:C.textSub, marginTop:2 }}>{sector?.icon || ""} {sector?.label || p.sector || "—"}</div>
+                    </div>
+                    <div style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:8, padding:"5px 8px", color:"#10D98F", fontSize:11, fontWeight:700, width:"100%", boxSizing:"border-box" }}>Voir →</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Secteurs ── */}
       <div style={{ padding:"0 22px 26px", position:"relative", zIndex:2 }}>
@@ -1553,7 +1632,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
         </div>
         <div style={{ fontSize:12, color:urgentMode?"rgba(255,255,255,0.75)":C.gray, marginTop:2 }}>
           {urgentMode
-            ? "Actif — le 1er prestataire disponible accepte la mission"
+            ? "Actif — le 1er prestataire disponible accepte la prestation"
             : "Prestataire disponible dans l’heure · Surcoût affiché au récapitulatif"}
         </div>
       </div>
@@ -1652,7 +1731,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             {showFilters && (
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
                 <div style={{ marginBottom:14 }}>
-                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la mission</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la prestation</div>
                   <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)} placeholder="AAAA-MM-JJ"
                     style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
                   {selectedDay && <div style={{ color:s.color, fontSize:11, fontWeight:700, marginTop:4 }}>📅 {selectedDay} — uniquement les prestataires disponibles ce jour</div>}
@@ -1699,7 +1778,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             <div style={{ width:44, height:44, borderRadius:12, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🚀</div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Ne pas choisir le prestataire</div>
-              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez votre demande · Le premier disponible accepte la mission</div>
+              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Diffusez votre demande · Le premier disponible accepte la prestation</div>
             </div>
             <span style={{ color:C.violet, fontSize:20, fontWeight:300 }}>›</span>
           </div>
@@ -1732,7 +1811,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
               <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Mission envoyée à tous les prestataires</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
-                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la mission.</strong>
+                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la prestation.</strong>
               </p>
 
               {/* Détail surcoût */}
@@ -1998,7 +2077,7 @@ export function CVScreen({ provider, onBack, onNavigate }) {
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <Badge color="rgba(255,255,255,0.9)" small>⭐ {p.rating}/5</Badge>
-          <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} missions</Badge>
+          <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} prestations</Badge>
           <Badge color="rgba(255,255,255,0.9)" small>🕐 {p.experience}</Badge>
         </div>
       </div>
@@ -2104,7 +2183,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
   const p = {
     rating: 0, reviews: 0, distance: "—", available: false,
-    jobTitle: "", experience: "—", missions: "—", responseTime: "—",
+    jobTitle: "", experience: "—", prestations: "—", responseTime: "—",
     bio: null, langues: [], skills: [], metiers_list: [], cv: null,
     avatar: "👷", color: "#7C6FE0", photo_url: null,
     ...provider,
@@ -2114,7 +2193,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
   useEffect(()=>{
     if (!provider?.id) return;
-    // Si les données clés manquent (navigation depuis carte mission), on les fetche
+    // Si les données clés manquent (navigation depuis carte prestation), on les fetche
     if (!provider.hourlyRate && !provider.jobTitle) {
       fetch("/api/prestataires")
         .then(r=>r.json())
@@ -2196,7 +2275,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           {[
-            { v: p.missions_count > 0 ? `${p.missions_count}` : "—", l: "Missions" },
+            { v: p.missions_count > 0 ? `${p.missions_count}` : "—", l: "Prestations" },
             { v: p.reviews > 0 ? `${p.rating}/5` : "—", l: "Note" },
             { v: p.available ? "Oui" : "Non", l: "Dispo" },
           ].map((s,i)=>(
@@ -2280,8 +2359,9 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
 
 export function BookingScreen({ provider, onNavigate, onBack }) {
   const p = provider;
+  const [localUrgent, setLocalUrgent] = useState(false);
   if (!p) return null;
-  const isUrgent = p.urgentMode || false;
+  const isUrgent = p.urgentMode || localUrgent || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
   const [payMethod,setPayMethod]=useState("carte");
@@ -2298,10 +2378,12 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [adresseError, setAdresseError] = useState(false);
   const [dateError, setDateError] = useState(false);
   const [availError, setAvailError] = useState("");
-  const [breakMin, setBreakMin] = useState(isUrgent ? 0 : 20); // 20min par défaut car hours=8 au démarrage
+  const [tooSoonError, setTooSoonError] = useState(false);
+  const [breakMin, setBreakMin] = useState(0);
   const [cvOpen, setCvOpen] = useState(false);
   const [showClientContract, setShowClientContract] = useState(false);
   const [clientContractSignedAt, setClientContractSignedAt] = useState(null);
+  const [showCgpsFromContract, setShowCgpsFromContract] = useState(false);
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [savedAddress, setSavedAddress] = useState(null);
@@ -2322,7 +2404,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   }, []);
 
 
-  const tarifHoraire = isUrgent && urgentPrice ? urgentPrice : (p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers'));
+  const baseRate = p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers');
+  const tarifHoraire = isUrgent ? (urgentPrice || (baseRate + 2)) : baseRate;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -2338,11 +2421,11 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const totalHT = tarifHoraire * hours * nbJours;
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
-  // Urgence
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + 30);
-  const urgentStartTime = now.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" });
-  const urgentStartDate = now.toLocaleDateString("fr-FR");
+  // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
+  const _urgentMs = Date.now() + 45 * 60 * 1000;
+  const _urgentRounded = new Date(Math.ceil(_urgentMs / (15 * 60 * 1000)) * (15 * 60 * 1000));
+  const urgentStartTime = _urgentRounded.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" });
+  const urgentStartDate = _urgentRounded.toLocaleDateString("fr-FR");
 
   // Formatage date lisible
   const formatDate = (d) => {
@@ -2353,23 +2436,38 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* Contrat électronique client */}
+      {showCgpsFromContract && (
+        <div style={{ position:"fixed", inset:0, zIndex:10000, overflowY:"auto", background:"#0A1628", WebkitOverflowScrolling:"touch" }}>
+          <ContractScreen
+            provider={p}
+            amount={parseFloat(totalGlobal)}
+            hours={hours}
+            date={isUrgent ? urgentStartDate : startDate || ""}
+            missionId={null}
+            onSign={()=>{}}
+            onBack={()=>{ setShowCgpsFromContract(false); setShowClientContract(true); }}
+          />
+        </div>
+      )}
+
       {showClientContract && (
         <ContractModal
           title="Contrat de prestation de services"
+          onViewCgps={()=>{ setShowClientContract(false); setShowCgpsFromContract(true); }}
           contractText={`CONTRAT DE PRESTATION DE SERVICES
 
 Parties :
 ALANE (plateforme) · ${p.name || ""} (prestataire) · (client)
 
-Mission :
+Prestation :
 Métier : ${p.jobTitle || p.role || ""}
 Date : ${isUrgent ? urgentStartDate : startDate || ""}
 Durée : ${hours} heure(s)
 Tarif horaire : ${tarifHoraire.toFixed(2)} €/h
 
-En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la mission telle que définie ci-dessus.
+En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la prestation telle que définie ci-dessus.
 
-Le paiement sera libéré au prestataire après validation mutuelle de la mission.
+Le paiement sera libéré au prestataire après validation mutuelle de la prestation.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={(ts) => {
@@ -2398,7 +2496,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                 <Badge color="rgba(255,255,255,0.9)" small>⭐ {p.rating}/5</Badge>
-                <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} missions</Badge>
+                <Badge color="rgba(255,255,255,0.9)" small>📋 {p.missions} prestations</Badge>
                 <Badge color="rgba(255,255,255,0.9)" small>🕐 {p.experience}</Badge>
               </div>
             </div>
@@ -2459,7 +2557,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       })()}
 
       <StepHeader step={step} total={4}
-        title={["Détails mission","Localisation","Paiement","Confirmation"][step-1]}
+        title={["Détails prestation","Localisation","Paiement","Confirmation"][step-1]}
         onBack={step===1?onBack:()=>setStep(s=>s-1)} />
       <div style={{ padding:"22px 18px" }}>
 
@@ -2493,9 +2591,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           )}
 
           {!isUrgent && <>
-            {/* Toggle mission simple / plage de dates */}
+            {/* Toggle prestation simple / plage de dates */}
             <div style={{ marginBottom:16 }}>
-              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de mission</label>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de prestation</label>
               <div style={{ display:"flex", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:4, border:`1px solid ${C.border}` }}>
                 {[
                   { id:"single", icon:"📅", label:"Date unique"      },
@@ -2531,7 +2629,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               /* ── Plage de dates ── */
               <>
                 <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-                  <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:12, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Période de la mission</label>
+                  <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:12, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Période de la prestation</label>
 
                   <div style={{ display:"flex", gap:10, marginBottom:14 }}>
                     <div style={{ flex:1 }}>
@@ -2589,7 +2687,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {/* Durée par jour */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:10, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>
-              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la mission"}
+              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la prestation"}
             </label>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
@@ -2615,21 +2713,44 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {/* Description */}
           <div style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Description de la mission</label>
+            <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:7, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Description de la prestation</label>
             <textarea value={description} onChange={e=>setDescription(e.target.value)}
-              placeholder="Décrivez la mission en détail…"
+              placeholder="Décrivez la prestation en détail…"
               style={{ width:"100%", padding:"13px 15px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.6 }} />
           </div>
 
           {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
+          {tooSoonError && !isUrgent && (
+            <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ fontSize:13, color:"#F0B429", marginBottom:12, lineHeight:1.5 }}>
+                ⚡ Cette prestation démarre dans moins de 2h — le mode urgence est requis pour cette plage horaire.
+              </div>
+              <button onClick={()=>{ setLocalUrgent(true); setTooSoonError(false); }} style={{
+                width:"100%", padding:"12px 16px", borderRadius:10,
+                background:"linear-gradient(135deg,#F0B429,#E09A1A)", border:"none",
+                color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}>
+                🚨 Activer le mode urgence (+2€ HT/h)
+              </button>
+              <div style={{ fontSize:11, color:"rgba(240,180,41,0.7)", textAlign:"center", marginTop:8 }}>
+                Ou choisissez une date ultérieure
+              </div>
+            </div>
+          )}
           <Btn full onClick={()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
-              // Vérification disponibilité prestataire
+              // Bloquer si la prestation démarre dans moins de 2h → mode urgence requis
               const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
               const [yr,mo,dy] = startDate.split("-").map(Number);
+              const [hh,mm] = (startTime||"08:00").split(":").map(Number);
+              const missionStart = new Date(yr, mo-1, dy, hh, mm);
+              const twoHoursFromNow = new Date(Date.now() + 2*60*60*1000);
+              if (missionStart < twoHoursFromNow) { setTooSoonError(true); return; }
+              setTooSoonError(false);
               const jourFr = JOURS_FR[new Date(yr, mo-1, dy).getDay()];
               const dispoDays = p.dispon_jours || [];
               if (dispoDays.length > 0 && !dispoDays.includes(jourFr)) {
@@ -2649,7 +2770,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 }
               }
             }
-            setDateError(false); setAvailError("");
+            setDateError(false); setAvailError(""); setTooSoonError(false);
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
@@ -2661,24 +2782,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         {step===2 && <>
           <div style={{ background:"#0D1B3E", borderRadius:16, overflow:"hidden", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             {(adresse || ville) ? (
-              <a
-                href={`https://maps.apple.com/?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(", "))}`}
-                target="_blank" rel="noreferrer"
-                style={{ display:"block", textDecoration:"none" }}
-              >
-                <img
-                  alt="Carte"
-                  width="100%"
-                  height="150"
-                  style={{ display:"block", objectFit:"cover" }}
-                  src={`https://staticmap.openstreetmap.de/staticmap.php?center=${encodeURIComponent([ville||"Paris", "France"].join(", "))}&zoom=15&size=480x150&markers=${encodeURIComponent([adresse, ville].filter(Boolean).join(", "))},red`}
-                  onError={e => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }}
-                />
-                <div style={{ display:"none", background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }}>
-                  <div style={{ fontSize:28 }}>📍</div>
-                  <div style={{ color:C.textMuted, fontSize:12 }}>Appuyer pour ouvrir la carte</div>
-                </div>
-              </a>
+              <iframe
+                title="Carte prestation"
+                src={`https://maps.google.com/maps?q=${encodeURIComponent([adresse, cp, ville].filter(Boolean).join(" "))}&output=embed&hl=fr&z=15`}
+                width="100%"
+                height="180"
+                style={{ border:0, display:"block" }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             ) : (
               <div style={{ background:`linear-gradient(135deg,${C.navy}18,${C.indigo}18)`, height:150, display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <div style={{ textAlign:"center", color:C.textMuted }}>
@@ -2689,7 +2801,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             )}
             <div style={{ padding:14, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
               <div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la mission</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Lieu de la prestation</div>
                 {(adresse || ville) && <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{[adresse, ville, cp].filter(Boolean).join(", ")}</div>}
               </div>
               {(adresse || ville) && (
@@ -2718,18 +2830,6 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </>}
 
         {step===3 && <>
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:800 }}>💳 Mode de paiement</h4>
-            {[{id:"carte",label:"Carte bancaire",icon:"💳",sub:"Visa, Mastercard, Amex"},{id:"virement",label:"Virement bancaire",icon:"🏦",sub:"Délai 1-2 jours"}].map(m=>(
-              <div key={m.id} onClick={()=>setPayMethod(m.id)} style={{ border:`1px solid ${payMethod===m.id?C.violet:C.border}`, borderRadius:r, padding:"13px 14px", marginBottom:8, cursor:"pointer", display:"flex", gap:12, alignItems:"center", background:payMethod===m.id?`${C.violet}15`:"#112240", transition:"all 0.2s" }}>
-                <span style={{ fontSize:22 }}>{m.icon}</span>
-                <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.label}</div><div style={{ color:C.textSub, fontSize:11 }}>{m.sub}</div></div>
-                <div style={{ width:18, height:18, borderRadius:"50%", border:`1px solid ${payMethod===m.id?C.violet:C.border}`, background:payMethod===m.id?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>{payMethod===m.id && <div style={{ width:8, height:8, borderRadius:"50%", background:C.white }} />}</div>
-              </div>
-            ))}
-            {payMethod==="carte" && <div style={{ marginTop:12 }}><Input label="Numéro de carte" placeholder="4242 4242 4242 4242" icon="💳" /><div style={{ display:"flex", gap:10 }}><div style={{ flex:1 }}><Input label="Expiration" placeholder="MM/AA" /></div><div style={{ flex:1 }}><Input label="CVV" placeholder="•••" /></div></div></div>}
-          </div>
-
           {/* Récapitulatif */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
             <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:15, fontWeight:700 }}>Récapitulatif</h4>
@@ -2738,11 +2838,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ["Métier", p.jobTitle||p.role],
               ["Date", isUrgent ? `Aujourd’hui — ${urgentStartDate}` : missionType==="range" && startDate && endDate ? `${formatDate(startDate)} → ${formatDate(endDate)}` : formatDate(startDate)],
               ["Heure de début", isUrgent ? `${urgentStartTime} (~30 min)` : startTime||"—"],
+              ["Heure de fin", (()=>{ const t = isUrgent ? urgentStartTime : (startTime||"08:00"); const [h,m] = t.split(":").map(Number); const endMin = h*60 + m + hours*60; return `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`; })()],
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
-              ["Lieu","Paris 75001"],
+              ["Lieu", [adresse, cp, ville].filter(Boolean).join(", ")||"—"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{l}</span>
@@ -2762,7 +2863,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:18 }}>{totalGlobal} €</span>
             </div>
 
-            {/* Cashback gagné sur cette mission */}
+            {/* Cashback gagné sur cette prestation */}
             {(() => {
               const tier = getCashbackTier(walletInfo.missionsThisMonth);
               const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
@@ -2796,12 +2897,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {isUrgent && (
             <div style={{ background:`${C.accent}10`, border:`1px solid ${C.accent}30`, borderRadius:r, padding:"11px 14px", marginBottom:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🚨 <strong>Mission urgente</strong> — Le premier prestataire disponible qui accepte assure la mission. Intervention prévue dans l'heure.
+              🚨 <strong>Prestation urgente</strong> — Le premier prestataire disponible qui accepte assure la prestation. Intervention prévue dans l'heure.
             </div>
           )}
 
           <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-            🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la mission
+            🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la prestation
           </div>
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
@@ -2816,7 +2917,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             ))}
           </div>
-          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -2839,19 +2940,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             })()}
             <div style={{ fontSize:60, marginBottom:14 }}>{isUrgent?"🚀":"✅"}</div>
             <h3 style={{ color:C.text, fontSize:21, fontWeight:700, marginBottom:6, fontFamily:font.display }}>
-              {isUrgent ? "Mission urgente envoyée !" : "Réservation confirmée !"}
+              {isUrgent ? "Prestation urgente envoyée !" : "Réservation confirmée !"}
             </h3>
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
-                ? <>Votre mission a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
+                ? <>Votre prestation a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
                 : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera libéré après validation mutuelle.</>
               }
             </p>
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"left" }}>
               <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:800 }}>📋 Prochaines étapes</h4>
               {(isUrgent
-                ? ["Un prestataire accepte la mission","Vous recevez une notification immédiate","Suivez son arrivée en temps réel","Validation + paiement libéré"]
-                : ["Le prestataire confirme sa venue","Suivez son arrivée en temps réel","Mission effectuée → Validation mutuelle","Paiement libéré automatiquement"]
+                ? ["Un prestataire accepte la prestation","Vous recevez une notification immédiate","Suivez son arrivée en temps réel","Validation + paiement libéré"]
+                : ["Le prestataire confirme sa venue","Suivez son arrivée en temps réel","Prestation effectuée → Validation mutuelle","Paiement libéré automatiquement"]
               ).map((s,i)=>(
                 <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:i<3?`1px solid ${C.grayLight}`:"none" }}>
                   <div style={{ width:24, height:24, borderRadius:"50%", background:`${isUrgent?C.accent:C.violet}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, color:isUrgent?C.accent:C.violet, flexShrink:0 }}>{i+1}</div>
@@ -2868,48 +2969,104 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
   );
 }
 
-export function TrackingScreen({ provider, missionId, onNavigate }) {
+export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: clientCoordsFromApp }) {
   const p = provider;
-  if (!p) return null;
+  const [providerName, setProviderName] = useState(p?.name || null);
   const [timelineStatus, setTimelineStatus] = useState("enroute");
-  const [eta, setEta] = useState(8);
+  const [eta, setEta] = useState(null);
   const statusMap = ["enroute","enroute","in_progress","done"];
   const [step, setStep] = useState(0);
+  const [extraHoursModal, setExtraHoursModal] = useState(false);
+  const [extraHoursValue, setExtraHoursValue] = useState(1);
+  const [extraHoursStatus, setExtraHoursStatus] = useState(null); // null | "pending" | "accepted" | "refused"
+  const [extraHoursSending, setExtraHoursSending] = useState(false);
+  const [showTrackingCancel, setShowTrackingCancel] = useState(false);
+  const [trackingCancelling, setTrackingCancelling] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
+  const [clientCoords, setClientCoords] = useState(clientCoordsFromApp || null);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractMissionData, setContractMissionData] = useState(null);
 
-  // Poll mission status + prestataire GPS every 20s
+  const resolvedMissionId = missionId || p?._missionId;
+
+  useEffect(() => {
+    if (clientCoords || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setClientCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}
+    );
+  }, []);
+
+  // Fetch prestataire name if not provided
+  useEffect(() => {
+    if (providerName && providerName !== "Prestataire") return;
+    if (!p?.id) return;
+    supabase.from("profiles").select("prenom,nom").eq("id", p.id).single()
+      .then(({ data }) => { if (data) setProviderName([data.prenom, data.nom].filter(Boolean).join(" ") || "Prestataire"); });
+  }, [p?.id]);
+
+  // Poll prestation status + prestataire GPS every 20s
   useEffect(()=>{
-    if(!missionId) return;
+    if(!resolvedMissionId) return;
     let mounted = true;
 
     const poll = async () => {
       if(!mounted) return;
-      // Poll mission status
-      const { data } = await supabase.from("missions").select("status").eq("id",missionId).single();
+      // Poll prestation status
+      const { data } = await supabase.from("missions").select("status,extra_hours_status,arrived_at,started_at").eq("id",resolvedMissionId).single();
       if(!mounted || !data) return;
-      if(data.status==="completed"||data.status==="closed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
-      else if(data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
-      else if(data.status==="assigned"){ setStep(1); setTimelineStatus("enroute"); }
+      if(data.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+      else if(data.status==="closed"||data.status==="cancelled"||data.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
+      else if(data.started_at || data.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+      else if(data.status==="assigned" && data.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
+      else if(data.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
+      if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
 
       // Poll GPS position
       const { data:{ session: posSession } } = await supabase.auth.getSession();
       const posRes = await fetch("/api/missions", {
         method:"POST",
         headers:{"Content-Type":"application/json", ...(posSession?.access_token ? {"Authorization":`Bearer ${posSession.access_token}`} : {})},
-        body: JSON.stringify({ action:"get_position", mission_id:missionId }),
+        body: JSON.stringify({ action:"get_position", mission_id:resolvedMissionId }),
       }).then(r=>r.json()).catch(()=>null);
       if(posRes?.lat != null && posRes?.lng != null && mounted) {
-        // Show "arrived" indicator if close
         setGpsPosition({ lat:posRes.lat, lng:posRes.lng, updated_at:posRes.updated_at });
+        // Calculer distance et ETA réels
+        setClientCoords(prev => {
+          if (prev) {
+            const km = haversineKm(prev.lat, prev.lng, posRes.lat, posRes.lng);
+            setEta(Math.round(km * 2));  // ~30 km/h en ville → 2 min/km
+          }
+          return prev;
+        });
       }
     };
 
     poll();
     const iv = setInterval(poll, 20000);
     return ()=>{ mounted=false; clearInterval(iv); };
-  },[missionId]);
+  },[resolvedMissionId]);
 
-  const statusLabels = ["En route vers vous","Arrivé sur place","Mission en cours","Mission terminée"];
+  // Realtime: react instantly when prestataire checks in or mission status changes
+  useEffect(() => {
+    if (!resolvedMissionId) return;
+    const channel = supabase
+      .channel(`tracking_${resolvedMissionId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "missions", filter: `id=eq.${resolvedMissionId}` }, (payload) => {
+        const d = payload.new;
+        if (!d) return;
+        if(d.status==="completed"){ setStep(3); setTimelineStatus("done"); setEta(0); }
+        else if(d.status==="closed"||d.status==="cancelled"||d.status==="refused"){ setStep(4); setTimelineStatus("done"); setEta(0); }
+        else if(d.started_at || d.status==="in_progress"){ setStep(2); setTimelineStatus("in_progress"); setEta(0); }
+        else if(d.status==="assigned" && d.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
+        else if(d.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
+        if(d.extra_hours_status) setExtraHoursStatus(d.extra_hours_status);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [resolvedMissionId]);
+
+  const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -2947,14 +3104,14 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
               </div>
             )}
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
-              {p.name} {step===0 && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
+              {providerName || p?.name || "Prestataire"} {step===0 && eta!=null && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
             </div>
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
+            <div style={{ width:40, height:40, borderRadius:12, background:`${p?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p?.avatar||"👤"}</div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>{p.jobTitle||p.role}</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{providerName || p?.name || "Prestataire"}</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>{p?.jobTitle||p?.role||""}</div>
             </div>
             <button onClick={()=>onNavigate("chat",p)} style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}30`, borderRadius:12, padding:"9px 14px", cursor:"pointer", color:C.violet, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>💬 Chat</button>
           </div>
@@ -2962,32 +3119,166 @@ export function TrackingScreen({ provider, missionId, onNavigate }) {
 
         {/* Timeline */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la mission</div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la prestation</div>
           <MissionTimeline status={timelineStatus} />
         </div>
 
-        {/* Codes de présence — communiquer au prestataire sur place */}
-        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:14 }}>🔐 Codes de présence</div>
-          <p style={{ color:C.textSub, fontSize:12, margin:"0 0 14px", lineHeight:1.6 }}>Communiquez ces codes au prestataire uniquement lorsqu'il est physiquement sur place.</p>
-          <div style={{ display:"flex", gap:10 }}>
-            <div style={{ flex:1, background:`${C.success}12`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
-              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Arrivée</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.success, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"in")}</div>
-            </div>
-            <div style={{ flex:1, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px", textAlign:"center" }}>
-              <div style={{ color:C.textSub, fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Départ</div>
-              <div style={{ fontSize:28, fontWeight:900, color:C.accentGold, letterSpacing:6, fontFamily:"monospace" }}>{genMissionCode(p.id,"out")}</div>
-            </div>
-          </div>
-          <div style={{ marginTop:10, background:"rgba(255,165,0,0.08)", border:"1px solid rgba(255,165,0,0.25)", borderRadius:8, padding:"8px 12px", fontSize:11, color:"#FFA500" }}>
-            ⚠️ Ces codes changent chaque jour. Ne les partagez qu'en présence du prestataire.
-          </div>
-        </div>
+        {/* Bouton voir le contrat */}
+        <button onClick={async () => {
+          if (!contractMissionData && resolvedMissionId) {
+            const { data } = await supabase.from("missions").select("metier,sector,date,heure_debut,hours,tarif_horaire,montant_total,titre,ville,adresse,contrat_presta_signe_at").eq("id", resolvedMissionId).single();
+            setContractMissionData(data || {});
+          }
+          setShowContractModal(true);
+        }} style={{ width:"100%", padding:"12px", borderRadius:10, border:"1px solid rgba(124,111,224,0.35)", background:"rgba(124,111,224,0.08)", color:C.violet, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          📄 Voir le contrat de prestation
+        </button>
 
+        {/* Modal contrat */}
+        {showContractModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:0 }}>📄 Contrat de prestation</h3>
+                <button onClick={() => setShowContractModal(false)} style={{ background:"transparent", border:"none", color:C.textMuted, fontSize:22, cursor:"pointer", lineHeight:1, padding:0 }}>×</button>
+              </div>
+              <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:10, padding:"10px 14px", marginBottom:18, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:16 }}>✅</span>
+                <span style={{ color:C.success, fontWeight:700, fontSize:13 }}>Contrat signé par les deux parties</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[
+                  ["Prestataire", providerName || p?.name || "—"],
+                  ["Rôle", p?.jobTitle || p?.role || contractMissionData?.sector || "—"],
+                  ["Mission", contractMissionData?.titre || contractMissionData?.metier || "—"],
+                  ["Date", contractMissionData?.date || "—"],
+                  ["Heure", contractMissionData?.heure_debut || "—"],
+                  ["Durée", contractMissionData?.hours ? `${contractMissionData.hours}h` : "—"],
+                  ["Lieu", [contractMissionData?.adresse, contractMissionData?.ville].filter(Boolean).join(", ") || "—"],
+                  ["Tarif horaire", contractMissionData?.tarif_horaire ? `${Number(contractMissionData.tarif_horaire).toFixed(2).replace(".", ",")} € HT/h` : "—"],
+                  ["Montant total", contractMissionData?.montant_total ? `${Number(contractMissionData.montant_total).toFixed(2).replace(".", ",")} € HT` : "—"],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", borderBottom:"1px solid rgba(255,255,255,0.06)", paddingBottom:8 }}>
+                    <span style={{ color:C.textSub, fontSize:13 }}>{label}</span>
+                    <span style={{ color:C.text, fontWeight:600, fontSize:13, textAlign:"right", maxWidth:"55%" }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ color:C.textMuted, fontSize:11, marginTop:18, textAlign:"center", lineHeight:1.6 }}>
+                Ce contrat a été accepté électroniquement par les deux parties via la plateforme ALANE conformément aux CGU.
+              </p>
+              <button onClick={() => setShowContractModal(false)} style={{ width:"100%", marginTop:16, padding:"13px", borderRadius:12, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Heures supplémentaires — visible dès que le prestataire est sur place */}
+        {step >= 1 && step < 3 && (
+          <div style={{ marginBottom:16 }}>
+            {extraHoursStatus === "pending" ? (
+              <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold, boxShadow:`0 0 8px ${C.accentGold}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                <div>
+                  <div style={{ fontWeight:700, color:C.accentGold, fontSize:13 }}>⏱ Demande en attente…</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>En attente de la confirmation du prestataire</div>
+                </div>
+              </div>
+            ) : extraHoursStatus === "accepted" ? (
+              <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"12px 16px", fontSize:13, color:C.success, fontWeight:700 }}>
+                ✅ Heures supplémentaires acceptées par le prestataire
+              </div>
+            ) : extraHoursStatus === "refused" ? (
+              <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"12px 16px", fontSize:13, color:"#F25E5E" }}>
+                ❌ Le prestataire n'a pas pu accepter la prolongation
+                <button onClick={()=>{ setExtraHoursStatus(null); setExtraHoursModal(true); }} style={{ display:"block", marginTop:6, background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Faire une nouvelle demande →</button>
+              </div>
+            ) : (
+              <button onClick={()=>setExtraHoursModal(true)} style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.accentGold}55`, background:`${C.accentGold}10`, color:C.accentGold, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                ⏱ Demander des heures supplémentaires
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Modal heures supplémentaires */}
+        {extraHoursModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
+              <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 20px", lineHeight:1.6 }}>Le prestataire devra accepter cette prolongation. Le montant sera ajusté en conséquence.</p>
+              <div style={{ marginBottom:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <span style={{ color:C.textSub, fontSize:13 }}>Heures à ajouter</span>
+                  <span style={{ color:C.text, fontWeight:800, fontSize:20 }}>{extraHoursValue}h</span>
+                </div>
+                <input type="range" min={1} max={8} step={1} value={extraHoursValue} onChange={e=>setExtraHoursValue(Number(e.target.value))}
+                  style={{ width:"100%", accentColor:C.accentGold }} />
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textMuted, marginTop:4 }}>
+                  <span>1h min</span><span>8h max</span>
+                </div>
+              </div>
+              <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:20, fontSize:13, color:C.text }}>
+                💳 Supplément estimé : <strong>{p?.rateNum ? `${(p.rateNum * extraHoursValue).toFixed(0)} €` : `${extraHoursValue}h × tarif horaire`}</strong>
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={()=>setExtraHoursModal(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                <button disabled={extraHoursSending} onClick={async()=>{
+                  setExtraHoursSending(true);
+                  const { data:{ session } } = await supabase.auth.getSession();
+                  const r = await fetch("/api/missions", {
+                    method:"POST",
+                    headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`},
+                    body: JSON.stringify({ action:"request_extra_hours", mission_id:resolvedMissionId, extra_hours:extraHoursValue }),
+                  });
+                  if (r.ok) { setExtraHoursStatus("pending"); setExtraHoursModal(false); }
+                  setExtraHoursSending(false);
+                }} style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:C.accentGold, color:"#fff", fontWeight:800, fontSize:14, cursor:extraHoursSending?"default":"pointer", opacity:extraHoursSending?0.6:1, fontFamily:"inherit" }}>
+                  {extraHoursSending ? "Envoi…" : "Envoyer la demande →"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Annulation mission — visible step 0 à 2 */}
+        {step < 3 && step !== 4 && !showTrackingCancel && (
+          <button onClick={()=>setShowTrackingCancel(true)} style={{ width:"100%", marginTop:8, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+            ✕ Annuler la prestation
+          </button>
+        )}
+        {step === 4 && (
+          <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
+            <div style={{ fontSize:14, color:"#F25E5E", fontWeight:700, marginBottom:12 }}>❌ Cette prestation a été annulée</div>
+            <button onClick={()=>onNavigate("dashboard")} style={{ padding:"11px 24px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              Retour à l'accueil
+            </button>
+          </div>
+        )}
+        {showTrackingCancel && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+            <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+              <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
+              <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
+              <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>L'annulation est immédiate. Le remboursement dépend de la politique d'annulation.</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={()=>setShowTrackingCancel(false)} disabled={trackingCancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
+                <button onClick={async()=>{
+                  setTrackingCancelling(true);
+                  const { data:{ session } } = await supabase.auth.getSession();
+                  await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"cancel_client", mission_id:resolvedMissionId }) });
+                  setStep(4); setShowTrackingCancel(false); setTrackingCancelling(false);
+                }} disabled={trackingCancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:trackingCancelling?"default":"pointer", fontFamily:"inherit" }}>
+                  {trackingCancelling ? "Annulation…" : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {step===3 && (
           <Btn full variant="success" onClick={()=>onNavigate("validation",provider)} style={{ fontSize:15, padding:"16px" }}>
-            ✅ Valider la mission
+            ✅ Valider la prestation
           </Btn>
         )}
       </div>
@@ -3050,7 +3341,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
           }).eq("id", user.id);
           await supabase.from("notifications").insert({
             user_id: user.id, type:"payment",
-            title:"Paiement libéré", body:`Mission validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
+            title:"Paiement libéré", body:`Prestation validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
           });
         }
       }
@@ -3066,7 +3357,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
       <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{totalNetPresta} €</strong> ont été virés sur le compte de {p.name}.</p>
       <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
-        {["✅ Mission validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
+        {["✅ Prestation validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
         ))}
       </div>
@@ -3077,9 +3368,9 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-      <StepHeader title="Validation de mission" subtitle="Les deux parties doivent valider pour déclencher le paiement" onBack={()=>onNavigate("home")} />
+      <StepHeader title="Validation de prestation" subtitle="Les deux parties doivent valider pour déclencher le paiement" onBack={()=>onNavigate("home")} />
       <div style={{ padding:"22px 18px" }}>
-        {/* Info mission */}
+        {/* Info prestation */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:12 }}>
             <div style={{ fontSize:32 }}>{p.avatar}</div>
@@ -3101,7 +3392,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
               <span style={{ fontSize:20 }}>🏢</span>
               <div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>Validation Client</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez que la mission est terminée</div>
+                <div style={{ color:C.textSub, fontSize:11 }}>Confirmez que la prestation est terminée</div>
               </div>
             </div>
             {clientValidated ? <Badge color={C.success} small>✓ Validé</Badge> : <Badge color={C.gray} small>En attente</Badge>}
@@ -3113,13 +3404,13 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                 {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setClientRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=clientRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
               </div>
             </div>
-            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
+            <textarea value={clientComment} onChange={e=>setClientComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Signaler</button>
               <Btn variant="success" disabled={clientRating===0} onClick={()=>{ persistValidation("client",clientRating,clientComment); setClientValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Valider</Btn>
             </div>
           </> : (
-            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Mission validée — Note : {"★".repeat(clientRating)}</div>
+            <div style={{ textAlign:"center", padding:"8px 0", color:C.success, fontWeight:700 }}>✅ Prestation validée — Note : {"★".repeat(clientRating)}</div>
           )}
         </div>
 
@@ -3142,7 +3433,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                 {[1,2,3,4,5].map(i=><span key={i} onClick={()=>setPrestaRating(i)} style={{ fontSize:32, cursor:"pointer", color:i<=prestaRating?C.accentGold:"#ddd", transition:"color 0.2s" }}>★</span>)}
               </div>
             </div>
-            <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la mission…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
+            <textarea value={prestaComment} onChange={e=>setPrestaComment(e.target.value)} placeholder="Commentaire sur la prestation…" style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"inherit", resize:"none", height:70, boxSizing:"border-box", outline:"none", marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setDispute(true)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${C.accent}`, background:"transparent", color:C.accent, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>⚠️ Litige</button>
               <Btn variant="success" disabled={prestaRating===0} onClick={()=>{ persistValidation("presta",prestaRating,prestaComment); setPrestaValidated(true); }} style={{ flex:2, padding:"10px", fontSize:13 }}>✓ Confirmer</Btn>
@@ -3195,8 +3486,8 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                   const user = authData?.user;
                   const refNum = "LIT-" + new Date().getFullYear() + "-" + Math.floor(Math.random()*9000+1000);
                   await supabase.from("support_tickets").insert({
-                    subject: `Litige mission — ${refNum}`,
-                    message: `Mission avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
+                    subject: `Litige prestation — ${refNum}`,
+                    message: `Prestation avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
                     user_id: user?.id || null,
                     user_email: user?.email || null,
                     user_name: user?.user_metadata?.prenom || null,
@@ -3440,23 +3731,23 @@ export function FavoritesScreen({ onNavigate, onBack }) {
 export function FAQScreen({ onBack, role }) {
   const [open, setOpen] = useState(null);
   const faqs = role === "prestataire" ? [
-    { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin de prestataires dans votre secteur. Vous recevez des propositions de missions correspondant à votre profil et vous choisissez d'accepter ou non." },
-    { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée directement sur votre IBAN après validation de la mission par le client. Le délai habituel est de 3 à 5 jours ouvrés." },
+    { q:"Comment fonctionne ALANE ?", a:"ALANE vous met en relation avec des clients qui ont besoin de prestataires dans votre secteur. Vous recevez des propositions de prestations correspondant à votre profil et vous choisissez d'accepter ou non." },
+    { q:"Comment recevoir ma rémunération ?", a:"Votre rémunération est versée directement sur votre IBAN après validation de la prestation par le client. Le délai habituel est de 3 à 5 jours ouvrés." },
     { q:"Quels documents dois-je fournir ?", a:"Pour être validé sur ALANE vous devez fournir : un KBIS ou extrait D1 (auto-entrepreneur), une attestation URSSAF à jour, une RC Professionnelle, et un RIB." },
     { q:"Comment changer ou upgrader mon abonnement ?", a:"Rendez-vous dans l'onglet Abonnement de votre espace prestataire. Vous pouvez changer de plan à tout moment, le changement est immédiat." },
-    { q:"Que se passe-t-il si je refuse une mission ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la mission à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
+    { q:"Que se passe-t-il si je refuse une prestation ?", a:"Aucun problème, vous êtes libre de refuser. ALANE proposera la prestation à un autre prestataire disponible dans votre secteur. Trop de refus répétés peuvent cependant affecter votre visibilité." },
     { q:"Comment fonctionne le parrainage ?", a:"Partagez votre code de parrainage à d'autres prestataires. Dès que 3 de vos filleuls souscrivent un abonnement Premium, vous recevez 1 mois Premium offert automatiquement." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ] : [
     { q:"Comment fonctionne ALANE ?", a:"ALANE vous permet de trouver et réserver des prestataires qualifiés dans votre secteur, vérifiés et assurés. Vous choisissez le profil, la date et l'horaire — ALANE s'occupe du reste." },
     { q:"Comment réserver un prestataire ?", a:"Parcourez les profils disponibles, sélectionnez celui qui correspond à vos besoins, choisissez le créneau et confirmez la réservation. Vous recevez une confirmation immédiate." },
     { q:"Le prix affiché est-il le prix final ?", a:"Oui. ALANE applique un tarif transparent : le prix affiché est le prix réel, sans frais cachés ni commission supplémentaire." },
-    { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque mission est encadrée par un contrat de prestation signé électroniquement, le prestataire travaille pour plusieurs clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
+    { q:"Puis-je recourir à un auto-entrepreneur sans risque juridique ?", a:"Oui, dans le cadre d'ALANE. La loi (art. L8221-6 du Code du travail) présume qu'un auto-entrepreneur immatriculé n'est pas salarié. Le risque de requalification en contrat de travail n'existe que si un lien de subordination est caractérisé — ce qu'ALANE est précisément conçu pour éviter.\n\nEn pratique : chaque prestation est encadrée par un contrat de prestation signé électroniquement, le prestataire travaille pour plusieurs clients, et ALANE vérifie que tous les prestataires sont à jour de leurs obligations URSSAF." },
     { q:"Qu'est-ce qui me protège contre une requalification ?", a:"Trois éléments vous protègent :\n\n① Le contrat ALANE — signé électroniquement, il établit explicitement l'absence de lien de subordination et cite les critères jurisprudentiels de la Cour de Cassation.\n\n② La multi-clientèle — nos prestataires travaillent pour plusieurs entreprises via ALANE, ce qui exclut tout état de dépendance économique exclusive, critère clé dans les décisions de requalification.\n\n③ La vérification des documents — ALANE s'assure que chaque prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance).\n\nBon réflexe complémentaire : évitez de faire appel au même prestataire de manière répétée et exclusive sur le long terme." },
-    { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque mission. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la mission, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de missions." },
-    { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la mission annulée." },
-    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler une mission depuis votre espace client. Les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission." },
-    { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la mission." },
+    { q:"Comment fonctionne le contrat de prestation ALANE ?", a:"Un contrat de prestation est automatiquement généré et signé électroniquement à chaque prestation. Il a la même valeur juridique qu'une signature manuscrite (règlement eIDAS n°910/2014 et loi du 13 mars 2000).\n\nIl précise : la nature de la prestation, les obligations de chaque partie, l'indépendance du prestataire, les modalités de paiement et de litige. Vous pouvez le consulter et le télécharger depuis votre historique de prestations." },
+    { q:"Que faire si le prestataire ne se présente pas ?", a:"Contactez immédiatement le support ALANE. Nous vous trouvons un remplaçant dans les meilleurs délais et vous n'êtes pas facturé pour la prestation annulée." },
+    { q:"Comment annuler une réservation ?", a:"Vous pouvez annuler une prestation depuis votre espace client. Les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation." },
+    { q:"Comment payer ?", a:"Le paiement s'effectue par carte bancaire sécurisée via Stripe au moment de la confirmation de réservation. Votre carte n'est débitée qu'après validation de la prestation." },
     { q:"Comment contacter le support ?", a:"Via la rubrique Support dans les réglages. Notre équipe répond sous 24h ouvrées." },
   ];
 
@@ -3630,16 +3921,16 @@ export function CalendarScreen() {
   const [viewYear,  setViewYear]  = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-based
   const [meta, setMeta]           = useState(null);
-  const [missions, setMissions]   = useState([]);
+  const [prestations, setMissions]   = useState([]);
   const [selected, setSelected]   = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       const u = data?.user; if (!u) return;
       setMeta(u.user_metadata || {});
-      // Charger les missions depuis la DB
+      // Charger les prestations depuis la DB
       const { data: m } = await supabase
-        .from("missions")
+        .from("prestations")
         .select("id,titre,client_nom,date_debut,date_fin,status,montant_total")
         .eq("prestataire_id", u.id)
         .in("status", ["assigned","open","completed"])
@@ -3675,9 +3966,9 @@ export function CalendarScreen() {
     (meta?.dispon_jours || []).map(j => JOURS_TO_DOW[j]).filter(x => x !== undefined)
   );
 
-  // Missions sur ce mois
+  // Prestations sur ce mois
   const missionsByDay = {};
-  missions.forEach(m => {
+  prestations.forEach(m => {
     if (!m.date_debut) return;
     const d = new Date(m.date_debut);
     if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
@@ -3693,8 +3984,8 @@ export function CalendarScreen() {
   const MONTH_NAMES = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
   const moisLabel = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
 
-  // Missions du mois sélectionné à afficher
-  const moisMissions = missions.filter(m => {
+  // Prestations du mois sélectionné à afficher
+  const moisMissions = prestations.filter(m => {
     if (!m.date_debut) return false;
     const d = new Date(m.date_debut);
     return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
@@ -3709,7 +4000,7 @@ export function CalendarScreen() {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>Planning</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et missions</p>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et prestations</p>
       </div>
 
       <div style={{ padding:"18px 18px 0" }}>
@@ -3722,7 +4013,7 @@ export function CalendarScreen() {
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <div style={{ width:10, height:10, borderRadius:3, background:C.violet }} />
-              <span style={{ color:C.textSub, fontSize:11 }}>Mission</span>
+              <span style={{ color:C.textSub, fontSize:11 }}>Prestation</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <div style={{ width:10, height:10, borderRadius:"50%", background:C.accentGold }} />
@@ -3782,23 +4073,23 @@ export function CalendarScreen() {
               <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderTop:i>0?`1px solid ${C.border}`:"none" }}>
                 <div style={{ width:4, height:36, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
                 <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Mission"}</div>
+                  <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Prestation"}</div>
                   <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                 </div>
                 <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
               </div>
             )) : (
               <div style={{ color:C.textMuted, fontSize:12 }}>
-                {availDow.has(dow(selected)) ? "✅ Disponible — aucune mission prévue" : "❌ Non disponible selon vos préférences"}
+                {availDow.has(dow(selected)) ? "✅ Disponible — aucune prestation prévue" : "❌ Non disponible selon vos préférences"}
               </div>
             )}
           </div>
         )}
 
-        {/* Missions du mois */}
+        {/* Prestations du mois */}
         {moisMissions.length > 0 ? (
           <>
-            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Missions de {MONTH_NAMES[viewMonth]}</div>
+            <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:10 }}>Prestations de {MONTH_NAMES[viewMonth]}</div>
             {moisMissions.map((m,i) => {
               const d = new Date(m.date_debut);
               const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
@@ -3806,7 +4097,7 @@ export function CalendarScreen() {
                 <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:4, height:44, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Mission"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
@@ -3820,8 +4111,8 @@ export function CalendarScreen() {
         ) : (
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:14, padding:"28px", textAlign:"center" }}>
             <div style={{ fontSize:32, marginBottom:10 }}>📅</div>
-            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucune mission ce mois</div>
-            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos missions confirmées apparaîtront ici une fois planifiées.</div>
+            <div style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:6 }}>Aucune prestation ce mois</div>
+            <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos prestations confirmées apparaîtront ici une fois planifiées.</div>
           </div>
         )}
       </div>
@@ -3928,7 +4219,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
                 </div>
               </div>
               <Btn full onClick={()=>setStep("configure")} style={{ padding:"13px", fontSize:14 }}>
-                Configurer la mission →
+                Configurer la prestation →
               </Btn>
             </div>
           )}
@@ -3948,7 +4239,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
           </div>
 
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Détails de la mission</div>
+            <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>📅 Détails de la prestation</div>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Date</label>
               <input type="date" value={date} onChange={e=>setDate(e.target.value)} placeholder="AAAA-MM-JJ" style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
@@ -3992,6 +4283,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
   const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  const [prestaCountHIW, setPrestaCountHIW] = useState(null);
   useEffect(() => {
     Promise.all([
       supabase.from("platform_settings").select("value").eq("key","plan_limits").single(),
@@ -4000,26 +4292,27 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     ]).then(([l, p, lp]) => {
       setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
     });
+    fetchPrestaCount().then(c => { if (c != null) setPrestaCountHIW(c); });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
-    const missions = planSettings.limits?.[p.id] ?? p.missions;
-    return { ...p, price, missions };
+    const prestations = planSettings.limits?.[p.id] ?? p.missions;
+    return { ...p, price, prestations };
   });
 
   const clientSteps = [
     { icon:"🔍", title:"Cherchez", desc:"Parcourez notre catalogue de prestataires par secteur. Filtrez par note, tarif, distance et disponibilité.", color:C.violet },
-    { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre mission en détail.", color:C.indigo },
-    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la mission soit validée par les deux parties.", color:C.accentGold },
-    { icon:"✅", title:"Validez & notez", desc:"Une fois la mission terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
+    { icon:"📅", title:"Réservez", desc:"Choisissez votre prestataire, sélectionnez la date, l’heure et la durée. Décrivez votre prestation en détail.", color:C.indigo },
+    { icon:"💳", title:"Payez en sécurité", desc:"Votre paiement est sécurisé via Stripe. Aucun débit définitif avant que la prestation soit validée par les deux parties.", color:C.accentGold },
+    { icon:"✅", title:"Validez & notez", desc:"Une fois la prestation terminée, validez-la. Le paiement est libéré et vous pouvez noter le prestataire.", color:C.success },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c’est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
 
   const prestaSteps = [
     { icon:"📝", title:"Inscrivez-vous", desc:"Créez votre profil auto-entrepreneur en quelques minutes. Renseignez vos métiers, vos documents et vos disponibilités.", color:C.accent },
-    { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de missions.", color:C.accentGold },
-    { icon:"📋", title:"Acceptez des missions", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
-    { icon:"💶", title:"Encaissez", desc:"Après validation mutuelle de la mission, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
+    { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de prestations.", color:C.accentGold },
+    { icon:"📋", title:"Acceptez des prestations", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
+    { icon:"💶", title:"Encaissez", desc:"Après validation mutuelle de la prestation, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;
@@ -4045,7 +4338,9 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                {role==="prestataire" ? "10 missions gratuites · Réservé aux 100 premiers prestataires inscrits" : "Tarif transparent · le prix affiché est le vrai prix de la mission"}
+                {role==="prestataire"
+                  ? `10 prestations gratuites · ${prestaCountHIW != null ? (Math.max(0, 100 - prestaCountHIW) > 0 ? `Plus que ${Math.max(0, 100 - prestaCountHIW)} place${Math.max(0, 100 - prestaCountHIW) > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers inscrits"}`
+                  : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
               </div>
             </div>
           </div>
@@ -4071,7 +4366,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                     </div>
                     {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
                     <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
-                      {plan.missions>=999 ? "Illimité" : `${plan.missions} missions`}
+                      {plan.missions>=999 ? "Illimité" : `${plan.missions} prestations`}
                     </div>
                   </div>
                 ))}
@@ -4090,7 +4385,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
             <div>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:4 }}>Tarification transparente</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
-                Les prestataires ALANE sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la mission.
+                Les prestataires ALANE sont abonnés — aucune commission cachée. Le tarif affiché est le vrai tarif de la prestation.
               </div>
             </div>
           </div>
@@ -4186,7 +4481,7 @@ export function ClientOnboarding({ onComplete, onBack }) {
             {[
               {id:"carte",      icon:"💳", label:"Carte bancaire",          sub:"Visa, Mastercard, Amex"          },
               {id:"virement",   icon:"🏦", label:"Virement SEPA",            sub:"Délai 1-2 jours"                 },
-              {id:"prelevement",icon:"🔄", label:"Prélèvement automatique",  sub:"Pour les missions récurrentes"   },
+              {id:"prelevement",icon:"🔄", label:"Prélèvement automatique",  sub:"Pour les prestations récurrentes"   },
             ].map(m=>(
               <div key={m.id} onClick={()=>setFacturation({...facturation,mode:m.id})} style={{
                 border:`1px solid ${facturation.mode===m.id ? C.violet+"88" : C.border}`,
@@ -4264,12 +4559,16 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   },[]);
   useEffect(()=>{
     if (!missionId) return;
-    supabase.from("missions").select("status,contrat_presta_signe_at").eq("id", missionId).single()
+    supabase.from("missions").select("status,contrat_presta_signe_at,contrat_client_signe_at").eq("id", missionId).single()
       .then(({ data }) => {
         if (!data) return;
         if (data.contrat_presta_signe_at || data.status === "assigned") {
           setPrestaSigned(true);
           setPrestaSignedAt(data.contrat_presta_signe_at || null);
+        }
+        // Si le client a déjà signé (mission en cours ou contrat_client_signe_at), ne pas re-demander
+        if (data.contrat_client_signe_at || data.status === "assigned") {
+          setClientSigned(true);
         }
       });
   },[missionId]);
@@ -4293,7 +4592,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             client_id: user.id,
             prestataire_name: p.name,
             prestataire_role: p.role || p.jobTitle,
-            nb_heures: missionHours,
+            hours: missionHours,
             montant: totalAmount,
             client_signed: true,
             prestataire_signed: true,
@@ -4312,7 +4611,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
       <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:20 }}>✍️</div>
       <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Contrat signé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto 24px" }}>
-        Le contrat <strong>{contractNum}</strong> est signé électroniquement et archivé. La mission peut démarrer.
+        Le contrat <strong>{contractNum}</strong> est signé électroniquement et archivé. La prestation peut démarrer.
       </p>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", marginBottom:28, width:"100%", maxWidth:300, textAlign:"left" }}>
         {[
@@ -4320,7 +4619,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
           "📁 Archivé dans vos espaces respectifs",
           "⏱️ Horodaté et certifié",
           "🔒 Fonds sécurisés via Stripe",
-          "✅ Mission autorisée à démarrer",
+          "✅ Prestation autorisée à démarrer",
         ].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:12, padding:"5px 0", borderBottom:i<4?"1px solid rgba(255,255,255,0.15)":"none" }}>{s}</div>
         ))}
@@ -4332,39 +4631,39 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const articles = [
     {
       title:"Article 1 — Objet du contrat",
-      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la mission : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
+      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
     },
     {
       title:"Article 2 — Indépendance du prestataire",
-      content:`Le Prestataire intervient en tant que travailleur indépendant au sens de l'article L8221-6 du Code du travail, lequel établit une présomption de non-salariat pour les personnes immatriculées en tant qu'auto-entrepreneur.\n\nConformément aux critères jurisprudentiels de la Chambre Sociale de la Cour de Cassation (notamment Cass. Soc. 13 novembre 1996 et Cass. Soc. 25 février 2003), la qualification de contrat de travail requiert la réunion cumulative de trois conditions : l'exécution d'un travail, le versement d'une rémunération, et l'existence d'un lien de subordination juridique caractérisé. Ce dernier élément, seul discriminant, est expressément exclu du présent accord.\n\n• Le Prestataire n'est soumis à aucune directive du Client sur les moyens d'exécution, uniquement sur les résultats attendus.\n• Le Prestataire organise librement son intervention dans le cadre horaire de la mission.\n• Le Prestataire exerce son activité auprès de plusieurs clients via la plateforme ALANE, ce qui exclut tout état de dépendance économique exclusive.\n• Le Prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance fournie à ALANE).\n• ALANE intervient en qualité de plateforme d'intermédiation et ne saurait être qualifiée d'employeur au sens du Code du travail.\n\nAucune requalification en contrat de travail ne saurait résulter du présent accord. Les parties reconnaissent expressément que leur relation est exclusivement de nature commerciale.`
+      content:`Le Prestataire intervient en tant que travailleur indépendant au sens de l'article L8221-6 du Code du travail, lequel établit une présomption de non-salariat pour les personnes immatriculées en tant qu'auto-entrepreneur.\n\nConformément aux critères jurisprudentiels de la Chambre Sociale de la Cour de Cassation (notamment Cass. Soc. 13 novembre 1996 et Cass. Soc. 25 février 2003), la qualification de contrat de travail requiert la réunion cumulative de trois conditions : l'exécution d'un travail, le versement d'une rémunération, et l'existence d'un lien de subordination juridique caractérisé. Ce dernier élément, seul discriminant, est expressément exclu du présent accord.\n\n• Le Prestataire n'est soumis à aucune directive du Client sur les moyens d'exécution, uniquement sur les résultats attendus.\n• Le Prestataire organise librement son intervention dans le cadre horaire de la prestation.\n• Le Prestataire exerce son activité auprès de plusieurs clients via la plateforme ALANE, ce qui exclut tout état de dépendance économique exclusive.\n• Le Prestataire est immatriculé et à jour de ses cotisations URSSAF (attestation de vigilance fournie à ALANE).\n• ALANE intervient en qualité de plateforme d'intermédiation et ne saurait être qualifiée d'employeur au sens du Code du travail.\n\nAucune requalification en contrat de travail ne saurait résulter du présent accord. Les parties reconnaissent expressément que leur relation est exclusivement de nature commerciale.`
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la mission par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
-      content:`Le Prestataire s'engage à :\n• Exécuter la mission avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et ALANE de tout empêchement dans un délai minimum de 4h avant la mission\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de mission\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
+      content:`Le Prestataire s'engage à :\n• Exécuter la prestation avec sérieux, professionnalisme et compétence\n• Respecter scrupuleusement les horaires et le lieu convenus\n• Informer le Client et ALANE de tout empêchement dans un délai minimum de 4h avant la prestation\n• Maintenir la confidentialité sur toute information relative à l'activité du Client\n• Respecter les consignes de sécurité applicables sur le lieu de prestation\n• Posséder et maintenir à jour tous les diplômes, certifications et habilitations nécessaires à l'exercice de sa prestation\n• Être à jour de ses cotisations URSSAF et déclarations fiscales`
     },
     {
       title:"Article 5 — Obligations du client",
-      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la mission\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la mission dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme ALANE pour des missions futures avec le même prestataire`
+      content:`Le Client s'engage à :\n• Fournir au Prestataire toutes les informations nécessaires à la bonne exécution de la prestation\n• Préparer les conditions matérielles requises pour l'exécution de la prestation\n• Valider ou contester la prestation dans un délai de 48h suivant son achèvement\n• Traiter le Prestataire avec respect et dans le respect de la dignité humaine\n• Ne pas demander au Prestataire d'effectuer des tâches sortant du cadre défini dans le présent contrat\n• Ne pas tenter de court-circuiter la plateforme ALANE pour des prestations futures avec le même prestataire`
     },
     {
       title:"Article 6 — Politique d’annulation",
-      content:`Annulation par le Client :\n• Plus de 48h avant la mission : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, ALANE propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine mission\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, ALANE s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
+      content:`Annulation par le Client :\n• Plus de 48h avant la prestation : remboursement intégral\n• Entre 24h et 48h avant : 50% du montant retenu\n• Moins de 24h avant : 100% du montant retenu\n\nAnnulation par le Prestataire :\n• Plus de 48h avant : aucune pénalité, ALANE propose un remplaçant\n• Entre 4h et 48h avant : pénalité de 15% sur la prochaine prestation\n• Moins de 4h avant : suspension temporaire du compte prestataire\n\nEn cas d'annulation par le Prestataire, ALANE s'engage à proposer un prestataire remplaçant dans les meilleurs délais. En l'absence de remplaçant, le Client est remboursé intégralement.`
     },
     {
       title:"Article 7 — Responsabilité et assurance",
-      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa mission et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nALANE agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de mission. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
+      content:`Le Prestataire est seul responsable des dommages causés dans le cadre de l'exécution de sa prestation et doit disposer d'une assurance Responsabilité Civile Professionnelle (RC Pro) en cours de validité.\n\nALANE agit en qualité de simple intermédiaire et ne saurait être tenu responsable des dommages résultant d'une inexécution ou mauvaise exécution de la prestation.\n\nLe Client est responsable des conditions matérielles d'accueil et de sécurité du lieu de prestation. En cas d'accident du travail survenant chez le Client, la responsabilité incombe au Client en sa qualité de donneur d'ordre.`
     },
     {
       title:"Article 8 — Confidentialité",
-      content:`Le Prestataire s'engage à maintenir strictement confidentielle toute information relative à l'activité, aux clients, aux procédés, aux données ou à la stratégie du Client dont il aurait connaissance dans le cadre de la mission.\n\nCette obligation de confidentialité s'applique pendant toute la durée de la mission et pendant une période de 2 ans suivant sa fin, sans limitation géographique.\n\nEn cas de violation de cette clause, le Client pourra réclamer des dommages et intérêts proportionnels au préjudice subi.`
+      content:`Le Prestataire s'engage à maintenir strictement confidentielle toute information relative à l'activité, aux clients, aux procédés, aux données ou à la stratégie du Client dont il aurait connaissance dans le cadre de la prestation.\n\nCette obligation de confidentialité s'applique pendant toute la durée de la prestation et pendant une période de 2 ans suivant sa fin, sans limitation géographique.\n\nEn cas de violation de cette clause, le Client pourra réclamer des dommages et intérêts proportionnels au préjudice subi.`
     },
     {
       title:"Article 9 — Propriété intellectuelle",
-      content:`Toute création, production ou livrable réalisé par le Prestataire dans le cadre de la mission appartient intégralement au Client, sauf accord contraire stipulé par écrit.\n\nLe Prestataire cède au Client l'intégralité des droits patrimoniaux sur les œuvres créées dans le cadre de la mission, pour toute exploitation, sur tous supports, pour le monde entier et pour toute la durée légale de protection.`
+      content:`Toute création, production ou livrable réalisé par le Prestataire dans le cadre de la prestation appartient intégralement au Client, sauf accord contraire stipulé par écrit.\n\nLe Prestataire cède au Client l'intégralité des droits patrimoniaux sur les œuvres créées dans le cadre de la prestation, pour toute exploitation, sur tous supports, pour le monde entier et pour toute la durée légale de protection.`
     },
     {
       title:"Article 10 — Règlement des litiges",
@@ -4383,7 +4682,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
-            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>✍️ Contrat de mission</h2>
+            <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>✍️ Contrat de prestation</h2>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>{contractNum} · Généré le {today}</p>
           </div>
           <div style={{ textAlign:"right" }}>
@@ -4397,7 +4696,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
       {/* Tabs */}
       <div className="no-print" style={{ display:"flex", gap:0, padding:"16px 18px 0", borderBottom:`1px solid ${C.border}` }}>
-        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"},{id:"signature",label:"✍️ Signature"}].map(t=>(
+        {[{id:"contrat",label:"📋 Contrat"},{id:"parties",label:"👥 Parties"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ padding:"8px 14px", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.violet:"transparent"}`, background:"transparent", color:activeTab===t.id?C.violet:C.gray, fontWeight:activeTab===t.id?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
         ))}
       </div>
@@ -4416,9 +4715,9 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 <div style={{ fontSize:11, color:C.textSub }}>N° {contractNum} · Établi le {today}</div>
               </div>
 
-              {/* Résumé mission */}
+              {/* Résumé prestation */}
               <div style={{ background:C.bg, borderRadius:12, padding:"14px", marginBottom:16 }}>
-                <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>Résumé de la mission</div>
+                <div style={{ fontSize:11, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>Résumé de la prestation</div>
                 {[
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
@@ -4499,7 +4798,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la mission.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la prestation.
               </div>
             </div>
           </div>
@@ -4557,7 +4856,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>
                     {prestaSignedAt
                       ? `Le ${new Date(prestaSignedAt).toLocaleDateString("fr-FR")} à ${new Date(prestaSignedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})} · IP masquée · Horodatée`
-                      : "Signé lors de l'acceptation de la mission · IP masquée · Horodatée"}
+                      : "Signé lors de l'acceptation de la prestation · IP masquée · Horodatée"}
                   </div>
                 </div>
               ) : (
@@ -4565,7 +4864,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <span style={{ fontSize:18 }}>⏳</span>
                   <div>
                     <div style={{ fontSize:12, color:C.accentGold, fontWeight:700 }}>En attente de la signature prestataire</div>
-                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la mission</div>
+                    <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>Le prestataire signera lors de l'acceptation de la prestation</div>
                   </div>
                 </div>
               )}
@@ -4587,14 +4886,14 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                      !clientSigned ? "En attente de la signature client" :
                      "En attente de la signature prestataire"}
                   </div>
-                  <div style={{ color:C.textSub, fontSize:11, marginTop:4 }}>La mission ne peut démarrer qu'après signature des deux parties</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginTop:4 }}>La prestation ne peut démarrer qu'après signature des deux parties</div>
                 </div>
               )}
             </div>
 
             {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la mission.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la prestation.
             </div>
           </div>
         )}
@@ -4611,9 +4910,9 @@ export function LegalScreen({ type, onBack }) {
       sections:[
         { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme ALANE, service de mise en relation entre clients et prestataires de services. En utilisant ALANE, vous acceptez sans réserve les présentes conditions." },
         { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
-        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la mission incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
-        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la mission et couvrent les coûts de traitement et de la plateforme." },
-        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Mission ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la mission." },
+        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la prestation incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
+        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la prestation et couvrent les coûts de traitement et de la plateforme." },
+        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la prestation." },
         { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
       ]
@@ -4623,8 +4922,8 @@ export function LegalScreen({ type, onBack }) {
       icon:"🔒",
       sections:[
         { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : direction@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
-        { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des missions." },
-        { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de mission, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
+        { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des prestations." },
+        { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de prestation, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
         { title:"4. Durée de conservation", text:"Comptes actifs : données conservées pendant toute la durée de la relation contractuelle. Comptes supprimés : données effacées sous 30 jours, à l’exception des données comptables obligatoires conservées 10 ans (art. L123-22 Code de commerce). Logs de connexion : 12 mois. Données de paiement : conservées par Stripe selon leurs propres politiques." },
         { title:"5. Destinataires des données", text:"Vos données peuvent être partagées avec : Supabase Inc. (USA) — hébergement base de données, couvert par les Clauses Contractuelles Types CE ; Stripe Inc. (USA) — traitement des paiements, certifié PCI-DSS, couvert par les CCT ; Resend Inc. (USA) — envoi d’emails transactionnels, couvert par les CCT. Aucune vente de données à des tiers à des fins commerciales." },
         { title:"6. Transferts hors Union Européenne", text:"Certains sous-traitants sont établis aux États-Unis (Supabase, Stripe, Resend). Ces transferts sont encadrés par les Clauses Contractuelles Types approuvées par la Commission Européenne, offrant un niveau de protection adéquat à vos données." },
@@ -4638,14 +4937,33 @@ export function LegalScreen({ type, onBack }) {
       title:"Conditions Générales de Prestation de Services",
       icon:"📋",
       sections:[
-        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des missions." },
-        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les missions conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
-        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les missions dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
+        { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des prestations." },
+        { title:"2. Statut des prestataires", text:"Les prestataires interviennent en qualité d'auto-entrepreneurs indépendants (art. L8221-6 Code du travail). ALANE n'est pas une entreprise de mise à disposition de personnel ni d'intérim au sens des art. L8241-1 et L1251-1 CT. Les prestations conclues via ALANE ne constituent pas des contrats de travail. Aucun lien de subordination n'existe entre vous (le client) et ALANE. Le contrat de prestation est conclu directement entre vous et le prestataire." },
+        { title:"3. Utilisation de la plateforme", text:"En tant que client, vous vous engagez à décrire honnêtement vos besoins, à respecter les prestataires et à valider les prestations dans les délais prévus. Toute utilisation frauduleuse entraîne la résiliation immédiate du compte." },
         { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont réglés directement entre les parties. ALANE prélève une commission de mise en relation selon les conditions tarifaires en vigueur." },
-        { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la mission. En cas de litige, ALANE propose une médiation." },
-        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des missions, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
+        { title:"5. Annulations", text:"En cas d'annulation avant le début de la prestation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant net de la prestation. Pour les litiges sur la qualité, voir l'article 9." },
+        { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. ALANE est un intermédiaire de mise en relation uniquement." },
         { title:"7. Données personnelles", text:"Vos données sont traitées conformément au RGPD. Elles ne sont jamais vendues à des tiers. Voir la Politique de confidentialité pour le détail complet." },
         { title:"8. Résiliation", text:"Vous pouvez clôturer votre compte à tout moment depuis les Réglages. ALANE se réserve le droit de suspendre ou supprimer un compte en cas de manquement grave aux présentes CGPS." },
+        { title:"9. Litiges et qualité des prestations", text:"En cas de contestation sur la qualité d'une prestation, le client dispose de 48 heures après la date de fin de la prestation pour signaler un problème via la plateforme (bouton « Signaler un problème » dans l'historique des prestations).\n\nALANE examine le litige sous 72 heures ouvrées sur la base des éléments fournis par les deux parties (échanges via le tchat, contrat signé, description initiale de la prestation). ALANE peut décider de :\n\n• Valider la prestation et libérer les fonds au prestataire si elle est jugée conforme\n• Procéder à un remboursement partiel ou total du client\n• Suspendre le compte du prestataire en cas de manquement grave\n\nAu-delà du délai de 48 heures sans signalement, la validation est réputée définitivement acquise et les fonds libérés. Aucune contestation ne pourra être acceptée après ce délai.\n\nLes fonds sont conservés par ALANE jusqu'à résolution du litige. ALANE agit en tant qu'arbitre neutre et sa décision est définitive dans le cadre des présentes CGPS." },
+      ]
+    },
+    contrat_prestation: {
+      title:"Contrat de Prestation de Services",
+      icon:"📄",
+      sections:[
+        { title:"Préambule", text:"Le présent contrat est conclu entre ALANE (la plateforme), le prestataire auto-entrepreneur et le client. Il régit les conditions d'exécution de la prestation définie lors de la réservation." },
+        { title:"Article 1 — Objet du contrat", text:"Le présent contrat a pour objet la réalisation par le prestataire d'une mission de services à la personne ou aux entreprises, dans le secteur et pour le métier définis au moment de la réservation sur la plateforme ALANE." },
+        { title:"Article 2 — Statut du prestataire", text:"Le prestataire intervient en qualité d'auto-entrepreneur indépendant, immatriculé au RCS ou au répertoire des métiers. Il n'existe aucun lien de subordination entre le prestataire et le client ni entre le prestataire et ALANE. La relation est régie par les dispositions applicables aux auto-entrepreneurs (art. L8221-6 du Code du travail)." },
+        { title:"Article 3 — Description de la prestation", text:"La prestation comprend : le métier et secteur sélectionnés lors de la réservation, la date et l'heure de début confirmées, la durée exprimée en heures, l'adresse d'intervention, le tarif horaire HT tel qu'affiché. Ces éléments sont consignés dans le récapitulatif de réservation accessible dans l'historique." },
+        { title:"Article 4 — Tarifs et paiement", text:"Le montant total TTC est calculé sur la base du tarif horaire × durée + frais de service ALANE. Le paiement est sécurisé via Stripe. Les fonds sont bloqués à la confirmation et libérés au prestataire après validation mutuelle de la fin de prestation. ALANE ne détient jamais les fonds directement." },
+        { title:"Article 5 — Obligations du prestataire", text:"Le prestataire s'engage à : se présenter à l'heure et à l'adresse convenues, exécuter la prestation selon les règles de l'art et les instructions du client, ne pas sous-traiter la mission sans accord écrit du client, respecter les règles d'hygiène, de sécurité et de confidentialité applicables, disposer des assurances professionnelles requises." },
+        { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, valider la prestation dans les 24 heures suivant son terme, payer le montant convenu via la plateforme. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité." },
+        { title:"Article 7 — Annulation", text:"Annulation par le client : avant le début de la prestation, les frais de service restent dus. Le montant de la prestation est remboursé intégralement si l'annulation intervient plus de 24h avant le début, sinon une retenue proportionnelle peut s'appliquer. Annulation par le prestataire : le client en est informé immédiatement via la plateforme et une proposition de remplacement lui est faite." },
+        { title:"Article 8 — Responsabilité", text:"ALANE agit en qualité d'intermédiaire de mise en relation et ne peut être tenu responsable de la mauvaise exécution de la prestation, des dommages causés durant la prestation ou de tout litige entre client et prestataire. La responsabilité professionnelle du prestataire est engagée dans le cadre de son activité indépendante." },
+        { title:"Article 9 — Litiges", text:"En cas de contestation sur la qualité de la prestation, le client dispose de 48 heures après la fin pour le signaler via la plateforme. ALANE examinera le litige sous 72 heures sur la base des éléments fournis (échanges chat, contrat signé, description de la prestation). Au-delà de 48h sans signalement, la prestation est réputée validée et les fonds libérés définitivement." },
+        { title:"Article 10 — Données personnelles", text:"Les données des parties sont traitées conformément au RGPD. Elles sont utilisées exclusivement dans le cadre de l'exécution du présent contrat. Voir la Politique de confidentialité pour le détail complet des traitements effectués par ALANE." },
+        { title:"Article 11 — Signature électronique", text:"La confirmation de la réservation via la plateforme ALANE vaut signature électronique du présent contrat par les deux parties. Cette signature a la même valeur juridique qu'une signature manuscrite conformément au Règlement eIDAS et à l'article 1366 du Code civil français." },
       ]
     },
     mentions_legales: {
@@ -4686,7 +5004,7 @@ export function LegalScreen({ type, onBack }) {
   );
 }
 
-export function PayslipScreen({ provider, mission, onBack }) {
+export function PayslipScreen({ provider, prestation, onBack }) {
   const p = provider;
   if (!p) return null;
   const m = mission || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
@@ -4702,10 +5020,10 @@ export function PayslipScreen({ provider, mission, onBack }) {
   useEffect(()=>{
     supabase.auth.getUser().then(({data})=>{
       if(!data?.user) return;
-      supabase.from("missions").select("montant_total,tarif_horaire,nb_heures").eq("prestataire_id",data.user.id).eq("status","completed")
+      supabase.from("missions").select("montant_total,tarif_horaire,hours").eq("prestataire_id",data.user.id).eq("status","completed")
         .then(({data:ms})=>{
           if(!Array.isArray(ms)) return;
-          const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0)),0);
+          const total=ms.reduce((s,m)=>s+Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0)),0);
           setCaReel(Math.round(total*100)/100);
         });
     });
@@ -4715,7 +5033,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:40 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Attestation de mission</h2>
+        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Attestation de prestation</h2>
         <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>{num}</p>
       </div>
 
@@ -4725,7 +5043,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16, paddingBottom:16, borderBottom:`1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:C.violet, fontFamily:font.display }}>ALANE</div>
-              <div style={{ fontSize:10, color:C.textSub }}>Attestation de mission</div>
+              <div style={{ fontSize:10, color:C.textSub }}>Attestation de prestation</div>
             </div>
             <div style={{ textAlign:"right" }}>
               <div style={{ fontSize:11, fontWeight:700, color:C.text }}>{num}</div>
@@ -4746,7 +5064,7 @@ export function PayslipScreen({ provider, mission, onBack }) {
             </div>
           </div>
 
-          {/* Détails mission */}
+          {/* Détails prestation */}
           <div style={{ marginBottom:14 }}>
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>DÉTAILS DE LA MISSION</div>
             {[
@@ -4814,10 +5132,10 @@ export function PayslipScreen({ provider, mission, onBack }) {
   );
 }
 
-export function MissionHistoryScreen({ onNavigate, onBack }) {
+export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
-  const [missions, setMissions]   = useState([]);
+  const [prestations, setMissions]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
   const [candidatures, setCandidatures] = useState([]);
@@ -4834,8 +5152,50 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
+  const [showDisputeModal, setShowDisputeModal] = useState(null);
+  const [disputeMsg, setDisputeMsg] = useState("");
+  const [disputing, setDisputing] = useState(false);
+  const [disputingId, setDisputingId] = useState(null);
+  const [disputeSuccess, setDisputeSuccess] = useState({});
+  const [prestaPosition, setPrestaPosition] = useState(null);
+  const [clientCoords, setClientCoords] = useState(null);
+  const trackingPollRef = useRef(null);
+  const approachNotifSentRef = useRef(new Set());
+  const endNotifSentRef = useRef(new Set());
+
+  // Notification de fin de mission dès que le timer s'arrête (côté client)
+  useEffect(() => {
+    if (!selected?.started_at || selected.status !== "assigned") return;
+    const maxMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
+    const endAt = new Date(selected.started_at).getTime() + maxMs;
+    const delay = endAt - Date.now();
+    if (endNotifSentRef.current.has(selected.id)) return;
+    const fire = () => {
+      if (endNotifSentRef.current.has(selected.id)) return;
+      endNotifSentRef.current.add(selected.id);
+      supabase.auth.getSession().then(({ data: sd }) => {
+        const tok = sd?.session?.access_token;
+        if (!tok) return;
+        fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+          body: JSON.stringify({ action: "notify_end", mission_id: selected.id }),
+        }).catch(() => {});
+      });
+    };
+    if (delay <= 0) { fire(); return; }
+    const t = setTimeout(fire, delay);
+    return () => clearTimeout(t);
+  }, [selected?.id, selected?.started_at, selected?.actual_hours, selected?.hours, selected?.status]);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
+
+  // Auto-ouvrir une mission depuis une notification
+  useEffect(()=>{
+    if (!openMissionId || loading || prestations.length === 0) return;
+    const mission = prestations.find(m => m.id === openMissionId);
+    if (mission) setSelected(mission);
+  }, [openMissionId, loading, prestations]);
 
   useEffect(() => {
     Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
@@ -4903,54 +5263,173 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         });
       }
     };
-    const t = setInterval(poll, 30000);
-    return () => clearInterval(t);
+    poll(); // appel immédiat pour avoir des données fraîches dès l'ouverture
+    const t = setInterval(poll, 10000);
+    const onVisible = () => { if (document.visibilityState === "visible") poll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
+
+  // Synchroniser selected quand le poll ramène des données fraîches
+  // (evite que validation_prestataire reste stale après que le prestataire valide)
+  useEffect(() => {
+    if (!selected) return;
+    const updated = prestations.find(m => m.id === selected.id);
+    if (!updated) return;
+    if (
+      updated.validation_prestataire !== selected.validation_prestataire ||
+      updated.status !== selected.status ||
+      updated.started_at !== selected.started_at ||
+      updated.arrived_at !== selected.arrived_at
+    ) {
+      setSelected(prev => prev ? { ...prev, ...updated } : prev);
+    }
+  }, [prestations]);
+
+  useEffect(() => {
+    if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
+    setPrestaPosition(null);
+    if (!selected || selected.status !== "assigned" || !selected.prestataire_id) return;
+    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => setClientCoords({ lat: p.coords.latitude, lng: p.coords.longitude }), () => {});
+    const pollPosition = async () => {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "get_position", mission_id: selected.id }),
+      }).catch(() => null);
+      if (!r?.ok) return;
+      const d = await r.json().catch(() => null);
+      if (d?.lat && d?.lng) {
+        setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
+        // "Arrive bientôt" notification quand distance < 500m (Notification API, fonctionne onglet arrière-plan)
+        setClientCoords(prev => {
+          if (prev && !approachNotifSentRef.current.has(selected.id)) {
+            const dLat = (d.lat - prev.lat) * Math.PI / 180;
+            const dLon = (d.lng - prev.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(d.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+            const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            if (dist < 0.5 && "Notification" in window && Notification.permission === "granted") {
+              approachNotifSentRef.current.add(selected.id);
+              new Notification("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m de chez vous.", icon: "/icon-192.png" });
+            }
+          }
+          return prev;
+        });
+      }
+    };
+    pollPosition();
+    trackingPollRef.current = setInterval(pollPosition, 10000);
+    // Tick séparé toutes les 30s pour rafraîchir le "il y a X min" même sans nouvelle position
+    const agoTick = setInterval(() => setPrestaPosition(p => p ? { ...p } : p), 30000);
+    return () => {
+      if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
+      clearInterval(agoTick);
+    };
+  }, [selected?.id, selected?.status]);
+
+  // Realtime : mise à jour instantanée de selected quand validation_prestataire change
+  useEffect(() => {
+    if (!selected?.id) return;
+    const channel = supabase
+      .channel(`mission-validation-${selected.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "missions",
+        filter: `id=eq.${selected.id}`,
+      }, (payload) => {
+        const updated = payload.new;
+        if (!updated) return;
+        setSelected(prev => prev ? { ...prev, ...updated } : prev);
+        // Refresh aussi la liste pour que le polling reste cohérent
+        setMissions(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selected?.id]);
+
+  // Poll direct toutes les 10s sur la mission sélectionnée quand on attend la validation prestataire
+  // (fallback si Realtime ne fonctionne pas ou si le cache mobile sert un vieux JS)
+  useEffect(() => {
+    if (!selected?.id || selected.status !== "assigned" || selected.validation_prestataire) return;
+    const poll = async () => {
+      const { data } = await supabase
+        .from("missions")
+        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total")
+        .eq("id", selected.id)
+        .single();
+      if (!data) return;
+      setSelected(prev => {
+        if (!prev) return prev;
+        if (
+          data.validation_prestataire !== prev.validation_prestataire ||
+          data.status !== prev.status ||
+          data.started_at !== prev.started_at ||
+          data.arrived_at !== prev.arrived_at
+        ) {
+          setMissions(list => list.map(m => m.id === prev.id ? { ...m, ...data } : m));
+          return { ...prev, ...data };
+        }
+        return prev;
+      });
+    };
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => clearInterval(t);
+  }, [selected?.id, selected?.validation_prestataire, selected?.status]);
+
 
   useEffect(() => {
     if (tab !== "prestataires") return;
-    const withPresta = missions.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
-    const byPresta = {};
-    for (const m of withPresta) {
-      if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
-      byPresta[m.prestataire_id].missions.push(m);
+    try {
+      const withPresta = prestations.filter(m => m.prestataire_id && ["pending_acceptance","assigned","completed","closed"].includes(m.status));
+      const byPresta = {};
+      for (const m of withPresta) {
+        if (!byPresta[m.prestataire_id]) byPresta[m.prestataire_id] = { prestataire_id: m.prestataire_id, missions: [] };
+        byPresta[m.prestataire_id].missions.push(m);
+      }
+      const ids = Object.keys(byPresta);
+      if (!ids.length) { setPrestaHistoire([]); return; }
+      const nameMap = {};
+      for (const id of ids) {
+        const m = byPresta[id].missions[0];
+        const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
+        const prenom = String(acceptedCand?.prenom || m?.prestataire_prenom || "");
+        const nom    = String(acceptedCand?.nom    || m?.prestataire_nom    || "");
+        nameMap[id] = {
+          prenom,
+          nom,
+          name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
+          initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
+        };
+      }
+      setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>(b.missions||[]).length-(a.missions||[]).length));
+    } catch(e) {
+      console.error("prestaHistoire build error:", e);
+      setPrestaHistoire([]);
     }
-    const ids = Object.keys(byPresta);
-    if (!ids.length) { setPrestaHistoire([]); return; }
-    const nameMap = {};
-    for (const id of ids) {
-      const m = byPresta[id].missions[0];
-      const acceptedCand = (m?.candidatures || []).find(c => c.status === "accepted");
-      const prenom = acceptedCand?.prenom || m.prestataire_prenom || "";
-      const nom    = acceptedCand?.nom    || m.prestataire_nom    || "";
-      nameMap[id] = {
-        prenom,
-        nom,
-        name:     [prenom, nom].filter(Boolean).join(" ") || "Prestataire",
-        initials: [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P",
-      };
-    }
-    setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>b.missions.length-a.missions.length));
-  }, [tab, missions]);
+  }, [tab, prestations]);
 
-  const openCandidatures = async (mission) => {
-    setSelected(mission);
+  const openCandidatures = async (prestation) => {
+    setSelected(prestation);
     setCompletedResult(null);
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
     const res = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ action: "get_candidatures", mission_id: mission.id }),
+      body: JSON.stringify({ action: "get_candidatures", mission_id: prestation.id }),
     });
     const data = await res.json();
     const cands = Array.isArray(data) ? data : [];
     setCandidatures(cands);
     // Mettre à jour le nom prestataire depuis get_candidatures, avec fallback sur prestataire_prenom/nom
-    if (mission.prestataire_id) {
+    if (prestation.prestataire_id) {
       const accepted = cands.find(c => c.status === "accepted");
-      const prenom = accepted?.prenom || mission.prestataire_prenom || "";
-      const nom    = accepted?.nom    || mission.prestataire_nom    || "";
+      const prenom = accepted?.prenom || prestation.prestataire_prenom || "";
+      const nom    = accepted?.nom    || prestation.prestataire_nom    || "";
       if (prenom || nom) {
         const name = [prenom, nom].filter(Boolean).join(" ");
         const initials = [prenom?.[0], nom?.[0]].filter(Boolean).join("").toUpperCase() || "P";
@@ -4980,7 +5459,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
       setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
       setSelected(s => s ? { ...s, status: "assigned" } : s);
-    } catch { alert("Erreur lors de l'acceptation. Réessayez."); }
+    } catch { showToast("Erreur lors de l'acceptation. Réessayez."); }
     setActioning(null);
   };
 
@@ -5001,9 +5480,9 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         setSelected(s => s ? { ...s, status: "completed" } : s);
         setCompletedResult(data);
       } else {
-        alert(data.error || "Erreur lors de la validation. Réessayez.");
+        showToast(data.error || "Erreur lors de la validation. Réessayez.");
       }
-    } catch { alert("Erreur lors de la validation. Réessayez."); }
+    } catch { showToast("Erreur lors de la validation. Réessayez."); }
     setCompleting(false);
   };
 
@@ -5019,7 +5498,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       });
       if (!res.ok) throw new Error();
       setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
-    } catch { alert("Erreur lors du refus. Réessayez."); }
+    } catch { showToast("Erreur lors du refus. Réessayez."); }
     setActioning(null);
   };
 
@@ -5034,7 +5513,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       });
       if (!res.ok) throw new Error();
       setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
-    } catch { alert("Erreur lors de la fermeture. Réessayez."); }
+    } catch { showToast("Erreur lors de la fermeture. Réessayez."); }
   };
 
   const handleCancel = async () => {
@@ -5056,7 +5535,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
       setSelected(null);
       setShowCancelConfirm(false);
-    } catch(e) { alert(e.message || "Erreur lors de l'annulation. Réessayez."); }
+    } catch(e) { showToast(e.message || "Erreur lors de l'annulation. Réessayez."); }
     setCancelling(false);
   };
 
@@ -5076,13 +5555,13 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
       setSelected(null);
       setShowStopConfirm(false);
-    } catch(e) { alert(e.message || "Erreur lors de l'arrêt. Réessayez."); }
+    } catch(e) { showToast(e.message || "Erreur lors de l'arrêt. Réessayez."); }
     setStopping(false);
   };
 
   const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché", cancelled:"Annulée" };
   const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
-  const filtered = tab === "all" ? missions : tab === "open" ? missions.filter(m => m.status === "open" || m.status === "needs_replacement") : missions.filter(m => m.status === tab);
+  const filtered = tab === "all" ? prestations : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement") : prestations.filter(m => m.status === tab);
 
   if (selected) {
     const sector = SECTORS.find(s => s.id === selected.sector);
@@ -5122,7 +5601,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div onClick={navToProfile} style={{ display:"flex", alignItems:"center", gap:14, cursor:"pointer" }}>
                 <div onClick={navToProfile} style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
                   {prestaDetails.photo_url
-                    ? <img src={prestaDetails.photo_url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    ? <img src={prestaDetails.photo_url} alt={`Photo de profil de ${prestaName || prestaDetails.initials || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                     : prestaDetails.initials}
                 </div>
                 <div style={{ flex:1 }}>
@@ -5143,50 +5622,84 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
             );
           })()}
-          {/* Gestion du retard prestataire */}
-          {selected.status === "assigned" && selected.delay_status === "pending" && (() => {
-            const delayMins = selected.arrival_delay_minutes || 0;
-            const [sh, smn] = (selected.heure_debut || "08:00").split(":").map(Number);
-            const endMins = sh * 60 + smn + Math.round((selected.hours || 0) * 60) + delayMins;
-            const newEnd = `${String(Math.floor(endMins/60)%24).padStart(2,"0")}h${String(endMins%60).padStart(2,"0")}`;
-            const handleDelay = async (response) => {
-              const { data: sd } = await supabase.auth.getSession();
-              const token = sd?.session?.access_token;
-              await fetch("/api/missions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-                body: JSON.stringify({ action: "respond_delay", mission_id: selected.id, response }),
-              }).catch(() => {});
-              setSelected(s => s ? { ...s, delay_status: response } : s);
-              setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status: response } : m));
+          {selected.delay_status === "pending" && (
+            <div style={{ background:"linear-gradient(135deg,rgba(240,180,41,0.1),rgba(240,180,41,0.05))", border:"1.5px solid rgba(240,180,41,0.4)", borderRadius:16, padding:"16px", marginBottom:16 }}>
+              <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Décalage d'arrivée</div>
+              <div style={{ color:C.textSub, fontSize:13, marginBottom:14, lineHeight:1.5 }}>
+                Votre prestataire est arrivé avec {selected.arrival_delay_minutes} min de retard. La fin de mission est proposée {selected.arrival_delay_minutes} min plus tard. Acceptez-vous ?
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button
+                  onClick={async () => {
+                    const { data: sd } = await supabase.auth.getSession();
+                    const tok = sd?.session?.access_token;
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"approved" }) });
+                    const j = await r.json();
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours } : s);
+                  }}
+                  style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ✅ Accepter le décalage
+                </button>
+                <button
+                  onClick={async () => {
+                    const { data: sd } = await supabase.auth.getSession();
+                    const tok = sd?.session?.access_token;
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"rejected" }) });
+                    const j = await r.json();
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours } : s);
+                  }}
+                  style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ❌ Refuser — fin à l'heure prévue
+                </button>
+              </div>
+            </div>
+          )}
+          {selected.delay_status === "approved" && selected.arrival_delay_minutes > 0 && (
+            <div style={{ background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
+              ✅ Décalage de {selected.arrival_delay_minutes} min accepté — fin ajustée
+            </div>
+          )}
+          {selected.delay_status === "rejected" && selected.arrival_delay_minutes > 0 && (
+            <div style={{ background:"rgba(242,94,94,0.06)", border:"1px solid rgba(242,94,94,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
+              ❌ Décalage refusé — {selected.actual_hours}h facturées (fin à l'heure prévue)
+            </div>
+          )}
+          {selected.status === "assigned" && (() => {
+            const haversine = (lat1, lon1, lat2, lon2) => {
+              const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+              const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+              return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             };
-            return (
-              <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:14, padding:"14px 16px", marginBottom:16 }}>
-                <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Retard de {delayMins} min</div>
-                <div style={{ color:"rgba(255,255,255,0.75)", fontSize:13, marginBottom:12 }}>
-                  Votre prestataire est arrivé en retard. Acceptez-vous le décalage ? La fin de prestation serait reportée à <strong style={{ color:"#fff" }}>{newEnd}</strong> (même durée).
+            const dist = (prestaPosition && clientCoords) ? haversine(clientCoords.lat, clientCoords.lng, prestaPosition.lat, prestaPosition.lng) : null;
+            return prestaPosition ? (
+              <div style={{ background:"linear-gradient(135deg,rgba(16,217,143,0.08),rgba(16,217,143,0.04))", border:"1.5px solid rgba(16,217,143,0.35)", borderRadius:16, padding:"14px 16px", marginBottom:16 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 8px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
+                  <span style={{ color:"#10D98F", fontWeight:700, fontSize:13 }}>Localisation en direct</span>
+                  {prestaPosition.updated_at && (() => {
+                    const ago = Math.floor((Date.now() - new Date(prestaPosition.updated_at).getTime()) / 60000);
+                    return <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>· il y a {ago < 1 ? "< 1 min" : `${ago} min`}</span>;
+                  })()}
                 </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={()=>handleDelay("rejected")} style={{ flex:1, padding:"9px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    ❌ Refuser (fin à l'heure initiale)
-                  </button>
-                  <button onClick={()=>handleDelay("approved")} style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:"#F0B429", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    ✅ Accepter le décalage
-                  </button>
-                </div>
+                {dist != null && (
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginBottom:10 }}>
+                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1)} km`}</strong> du lieu de mission
+                  </div>
+                )}
+                <a href={`https://www.google.com/maps?q=${prestaPosition.lat},${prestaPosition.lng}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display:"block", padding:"9px", borderRadius:10, background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", color:"#10D98F", fontWeight:700, fontSize:12, textDecoration:"none", textAlign:"center" }}>
+                  🗺 Voir sur Google Maps
+                </a>
+              </div>
+            ) : (
+              <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:16 }}>📍</span>
+                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Le prestataire n'a pas encore activé le partage de position</span>
               </div>
             );
           })()}
-          {selected.status === "assigned" && selected.delay_status === "approved" && (
-            <div style={{ background:"rgba(16,217,143,0.1)", border:"1px solid rgba(16,217,143,0.35)", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:13, color:"#10D98F", fontWeight:700 }}>
-              ✅ Décalage accepté — la fin de mission a été reportée en conséquence.
-            </div>
-          )}
-          {selected.status === "assigned" && selected.delay_status === "rejected" && (
-            <div style={{ background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", fontWeight:700 }}>
-              ⏰ Décalage refusé — {selected.actual_hours != null ? `${selected.actual_hours}h facturées` : "fin à l'heure initiale"}.
-            </div>
-          )}
           {(selected.status === "open" || selected.status === "needs_replacement") && (<>
           <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
             {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
@@ -5220,6 +5733,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
             </div>
           )}
+          {selected.status === "open" && candidatures.length > 0 && candidatures.every(c => c.status === "rejected") && (
+            <div style={{ marginTop:16, background:"rgba(124,111,224,0.07)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"16px", textAlign:"center" }}>
+              <div style={{ fontSize:24, marginBottom:6 }}>🔍</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>Aucun prestataire disponible pour l'instant</div>
+              <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+                Toutes les candidatures ont été refusées. Votre mission reste active — vous pouvez aussi chercher un prestataire directement.
+              </div>
+              <button onClick={() => onNavigate("search_filters")} style={{ padding:"10px 20px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                Trouver un prestataire →
+              </button>
+            </div>
+          )}
           {selected.status === "needs_replacement" && (
             <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
               <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Mission en cours de réassignation</div>
@@ -5230,22 +5755,69 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             </div>
           )}
           </>)}
+          {selected.status === "assigned" && !completedResult && selected.arrived_at && !selected.started_at && (() => {
+            // Prestataire arrivé mais pas encore démarré — afficher le statut + countdown auto-démarrage
+            const arrivedMs = new Date(selected.arrived_at).getTime();
+            const autoStartMs = arrivedMs + 10 * 60 * 1000; // +10 min
+            const secsUntilAuto = Math.max(0, Math.floor((autoStartMs - Date.now()) / 1000));
+            const autoMin = Math.floor(secsUntilAuto / 60);
+            const autoSec = secsUntilAuto % 60;
+            return (
+              <div style={{ marginTop:16, background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:14, padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:secsUntilAuto > 0 ? 8 : 0 }}>
+                  <div>
+                    <div style={{ color:C.success, fontWeight:700, fontSize:13 }}>📍 Prestataire sur place</div>
+                    <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Arrivé(e) à {new Date(selected.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                  <div style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:20, padding:"4px 10px" }}>
+                    <span style={{ color:C.success, fontWeight:700, fontSize:11 }}>En attente</span>
+                  </div>
+                </div>
+                {secsUntilAuto > 0 && (
+                  <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.4 }}>
+                    ⏱ Démarrage automatique dans {autoMin > 0 ? `${autoMin}min ${String(autoSec).padStart(2,"0")}s` : `${autoSec}s`} si le prestataire ne démarre pas manuellement.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {selected.status === "assigned" && !completedResult && selected.started_at && (() => {
+            const maxMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
+            const elapsed = Math.min(Date.now() - new Date(selected.started_at).getTime(), maxMs);
+            const done = elapsed >= maxMs;
+            const s = Math.floor(elapsed / 1000);
+            const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
+            const timerStr = h > 0 ? `${h}h ${String(min).padStart(2,"0")}min` : `${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+            const color = done ? C.accentGold : C.success;
+            return (
+              <div style={{ marginTop:16, background:`${color}12`, border:`1px solid ${color}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "🚀 Prestation en cours"}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Démarré(e) à {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ color, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+                  <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "en cours"}</div>
+                </div>
+              </div>
+            );
+          })()}
           {selected.status === "assigned" && !completedResult && (
             selected.validation_prestataire ? (
               <div style={{ marginTop:20, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}40`, borderRadius:14, padding:"16px" }}>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Mission terminée ?</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Prestation terminée ?</div>
                 <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-                  Le prestataire a confirmé la fin de mission. En validant, vous confirmez que la mission s'est bien déroulée. Le cashback sera crédité sur votre wallet.
+                  Le prestataire a confirmé la fin de prestation. En validant, vous confirmez que la prestation s'est bien déroulée. Le cashback sera crédité sur votre wallet.
                 </div>
                 <button onClick={handleComplete} disabled={completing} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:C.accentGold, color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
-                  {completing ? "Validation…" : "✅ Valider la mission"}
+                  {completing ? "Validation…" : "✅ Valider la prestation"}
                 </button>
               </div>
             ) : (
               <div style={{ marginTop:20, background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:14, padding:"16px" }}>
                 <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
                 <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
-                  Le prestataire n'a pas encore confirmé la fin de mission. Vous pourrez valider dès qu'il aura confirmé de son côté. La mission est automatiquement validée sous 24h si le prestataire a confirmé.
+                  Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. La prestation est automatiquement validée sous 24h si le prestataire a confirmé.
                 </div>
               </div>
             )
@@ -5255,7 +5827,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             <div style={{ marginTop:20 }}>
               <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}40`, borderRadius:14, padding:"20px", textAlign:"center", marginBottom:12 }}>
                 <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Mission validée !</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:15, marginBottom:4 }}>Prestation validée !</div>
                 <div style={{ color:C.textSub, fontSize:13, marginBottom:12 }}>
                   Montant : <strong style={{ color:C.text }}>{completedResult.montantTotal?.toFixed(2).replace(".",",")} € HT</strong>
                 </div>
@@ -5276,7 +5848,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
           {selected.status === "completed" && !completedResult && (
             <div style={{ marginTop:20 }}>
               <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:14, padding:"14px", textAlign:"center", marginBottom:10 }}>
-                <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Mission terminée et validée</div>
+                <div style={{ color:C.success, fontWeight:700, fontSize:14 }}>✅ Prestation terminée et validée</div>
                 {selected.montant_total > 0 && <div style={{ color:C.textSub, fontSize:12, marginTop:4 }}>Montant : {Number(selected.montant_total).toFixed(2).replace(".",",")} € HT</div>}
               </div>
               {selected.prestataire_id && !ratedMissions.has(selected.id) && (
@@ -5286,8 +5858,16 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </button>
               )}
               {ratedMissions.has(selected.id) && (
-                <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette mission</div>
+                <div style={{ textAlign:"center", color:C.accentGold, fontSize:12, fontWeight:600, padding:"8px 0" }}>✓ Vous avez déjà noté cette prestation</div>
               )}
+            </div>
+          )}
+
+          {selected.status === "completed" && (
+            <div style={{ marginTop:8 }}>
+              <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                ⚠️ Signaler un problème
+              </button>
             </div>
           )}
 
@@ -5317,7 +5897,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
 
           {selected.status === "open" && (
             <button onClick={()=>handleClose(selected.id)} style={{ width:"100%", marginTop:16, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-              Clôturer la mission
+              Clôturer la prestation
             </button>
           )}
 
@@ -5332,18 +5912,18 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
             const prorata   = billedH * Number(selected.tarif_horaire || 0);
 
             return (<>
-              {/* Mission pas encore démarrée : annulation classique */}
+              {/* Prestation pas encore démarrée : annulation classique */}
               {(selected.status === "open" || selected.status === "pending_acceptance" ||
                 (selected.status === "assigned" && !isStarted && !isEnded)) && (
                 <button onClick={()=>setShowCancelConfirm(true)} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ✕ Annuler la mission
+                  ✕ Annuler la prestation
                 </button>
               )}
 
-              {/* Mission en cours : interrompre avec prorata */}
+              {/* Prestation en cours : interrompre avec prorata */}
               {selected.status === "assigned" && isStarted && !isEnded && (
                 <button onClick={()=>setShowStopConfirm(true)} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ⏹ Interrompre la mission en cours
+                  ⏹ Interrompre la prestation en cours
                 </button>
               )}
 
@@ -5352,7 +5932,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⚠️</div>
-                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la mission ?</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:8 }}>Annuler la prestation ?</div>
                     {selected.stripe_payment_intent ? (
                       (() => {
                         const hoursUntil = mStart ? (mStart.getTime() - Date.now()) / 3600000 : Infinity;
@@ -5361,7 +5941,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                           : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
                       })()
                     ) : (
-                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette mission sera supprimée. Aucun paiement n'a été effectué.</div>
+                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette prestation sera supprimée. Aucun paiement n'a été effectué.</div>
                     )}
                     <div style={{ display:"flex", gap:10 }}>
                       <button onClick={()=>setShowCancelConfirm(false)} disabled={cancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Garder</button>
@@ -5378,8 +5958,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
-                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la mission ?</div>
-                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La mission est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la prestation ?</div>
+                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La prestation est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
                     <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"16px", marginBottom:18 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                         <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Durée effectuée</span>
@@ -5408,6 +5988,73 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               )}
             </>);
           })()}
+
+          {/* Modal "Signaler un problème" — dans la vue détail */}
+          {showDisputeModal === selected.id && (() => {
+            const CATEGORIES = [
+              { id:"incomplete", icon:"🔧", label:"Travail incomplet" },
+              { id:"attitude",   icon:"😤", label:"Attitude non professionnelle" },
+              { id:"timing",     icon:"⏰", label:"Horaires non respectés" },
+              { id:"quality",    icon:"💎", label:"Qualité insuffisante" },
+              { id:"other",      icon:"📝", label:"Autre problème" },
+            ];
+            const selCats = (disputeMsg.split("||")[0] || "").split(",").filter(Boolean);
+            const detail = disputeMsg.split("||")[1] || "";
+            const setDetail = (v) => setDisputeMsg((disputeMsg.split("||")[0] || "") + "||" + v);
+            const isReady = selCats.length > 0;
+            return (
+              <div style={{ position:"fixed", inset:0, background:"rgba(5,14,32,0.85)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+                <div style={{ background:"linear-gradient(180deg,#0D1B3E,#0A1628)", borderRadius:"24px 24px 0 0", padding:"28px 20px 44px", width:"100%", maxWidth:480 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                    <div style={{ fontSize:28 }}>🚨</div>
+                    <div>
+                      <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17 }}>Signaler un problème</div>
+                      <div style={{ color:C.textMuted, fontSize:11 }}>ALANE examine votre dossier sous 72h ouvrées</div>
+                    </div>
+                  </div>
+                  <div style={{ height:1, background:"rgba(255,255,255,0.08)", margin:"16px 0" }} />
+                  <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10 }}>Quel est le problème ? (sélectionnez)</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:16 }}>
+                    {CATEGORIES.map(cat => {
+                      const active = selCats.includes(cat.id);
+                      return (
+                        <button key={cat.id} onClick={() => {
+                          const next = active ? selCats.filter(c=>c!==cat.id) : [...selCats, cat.id];
+                          setDisputeMsg(next.join(",") + "||" + detail);
+                        }} style={{ padding:"8px 12px", borderRadius:20, border:`1.5px solid ${active?"#F25E5E":"rgba(255,255,255,0.12)"}`, background:active?"rgba(242,94,94,0.15)":"rgba(255,255,255,0.04)", color:active?"#F25E5E":C.textSub, fontWeight:active?700:400, fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:5 }}>
+                          {cat.icon} {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea value={detail} onChange={e=>setDisputeMsg((disputeMsg.split("||")[0]||"")+"||"+e.target.value)} placeholder="Détails supplémentaires (facultatif)…" rows={3} style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:12, color:C.text, fontSize:13, padding:"10px 12px", fontFamily:"inherit", resize:"none", boxSizing:"border-box", outline:"none" }} />
+                  <div style={{ display:"flex", gap:10, marginTop:14 }}>
+                    <button onClick={()=>{setShowDisputeModal(null);setDisputeMsg("");}} style={{ flex:1, padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button disabled={disputing || !isReady} onClick={async()=>{
+                      setDisputing(true);
+                      try {
+                        const { data:sd } = await supabase.auth.getSession();
+                        const tok = sd?.session?.access_token;
+                        const cats = selCats.map(id => CATEGORIES.find(c=>c.id===id)?.label).filter(Boolean).join(", ");
+                        const fullMsg = cats + (detail.trim() ? "\n\n" + detail.trim() : "");
+                        const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"dispute", mission_id: showDisputeModal, message: fullMsg }) });
+                        const j = await res.json();
+                        if (j.ok) {
+                          setShowDisputeModal(null); setDisputeMsg("");
+                          setMissions(ms => ms.map(m => m.id === showDisputeModal ? { ...m, status:"disputed" } : m));
+                          setSelected(s => s ? { ...s, status:"disputed" } : s);
+                          showToast("✅ Signalement envoyé ! ALANE vous répond sous 72h ouvrées.", "success");
+                        } else { showToast(j.error || "Erreur lors de l'envoi."); }
+                      } catch { showToast("Erreur réseau, réessayez."); }
+                      setDisputing(false);
+                    }} style={{ flex:2, padding:"13px", borderRadius:12, border:"none", background:isReady&&!disputing?"linear-gradient(135deg,#F25E5E,#c0392b)":"rgba(242,94,94,0.3)", color:"#fff", fontWeight:700, fontSize:13, cursor:isReady&&!disputing?"pointer":"default", fontFamily:"inherit" }}>
+                      {disputing ? "Envoi en cours…" : "🚨 Envoyer le signalement"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -5417,8 +6064,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes missions</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{missions.length} mission{missions.length!==1?"s":""} au total</p>
+        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes prestations</h2>
+        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{prestations.length} prestation{prestations.length!==1?"s":""} au total</p>
       </div>
       <div style={{ padding:"16px 18px 0" }}>
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
@@ -5430,8 +6077,8 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
         {!loading && tab !== "prestataires" && filtered.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune mission</div>
-            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première mission depuis un secteur.</div>
+            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune prestation</div>
+            <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première prestation depuis un secteur.</div>
           </div>
         )}
         {tab === "prestataires" && (
@@ -5440,30 +6087,32 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>👤</div>
                 <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucun prestataire</div>
-                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières missions terminées.</div>
+                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières prestations terminées.</div>
               </div>
             )}
             {prestaHistoire.map((ph) => {
+              if (!ph?.prestataire_id) return null;
               const fullProv = providers.find(fp => fp.id === ph.prestataire_id);
-              const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name, prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
+              const navProv  = fullProv || { id: ph.prestataire_id, name: ph.name || "Prestataire", prenom: ph.prenom || "", nom: ph.nom || "", avatar:"👷", color:C.violet };
               const photoUrl = fullProv?.photo_url || null;
-              const metier   = fullProv?.jobTitle || ph.missions[0]?.metier || "";
-              const sortedM  = [...ph.missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
+              const missions = Array.isArray(ph.missions) ? ph.missions : [];
+              const metier   = fullProv?.jobTitle || missions[0]?.metier || "";
+              const sortedM  = [...missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
               const lastDate = sortedM[0]?.date || "—";
-              const nbMissions = ph.missions.length;
+              const nbMissions = missions.length;
               return (
               <div key={ph.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                   <div
                     onClick={() => onNavigate("profile", navProv)}
                     style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
-                    {photoUrl ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
+                    {photoUrl ? <img src={photoUrl} alt={`Photo de profil de ${ph.name || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
                   </div>
                   <div style={{ flex:1, minWidth:0 }} onClick={() => onNavigate("profile", navProv)} >
                     <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{ph.name}</div>
                     {metier && <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>{metier}</div>}
                     <div style={{ color:C.textMuted, fontSize:12, marginTop:2 }}>
-                      {nbMissions} mission{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
+                      {nbMissions} prestation{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
                     </div>
                     <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>Voir le profil →</div>
                   </div>
@@ -5505,7 +6154,7 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
               <div style={{ padding:"13px 14px", display:"flex", gap:12, alignItems:"flex-start" }}>
                 <div style={{ width:46, height:46, borderRadius:13, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Mission"}</div>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Prestation"}</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                     {m.date && (
                       <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
@@ -5535,10 +6184,80 @@ export function MissionHistoryScreen({ onNavigate, onBack }) {
                 </div>
                 <div style={{ color:C.textMuted, fontSize:18, alignSelf:"center", paddingLeft:4 }}>›</div>
               </div>
+              {m.status === "completed" && !disputeSuccess[m.id] && (() => {
+                const mDate = m.date ? new Date(m.date) : null;
+                const daysElapsed = mDate ? (Date.now() - mDate.getTime()) / 86400000 : 999;
+                if (daysElapsed > 7) return null;
+                return (
+                  <div style={{ padding:"0 14px 12px" }} onClick={e => e.stopPropagation()}>
+                    <button
+                      disabled={disputingId === m.id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const motif = await showPrompt("Décrivez le problème rencontré :", "Décrivez le problème...");
+                        if (!motif || !motif.trim()) return;
+                        setDisputingId(m.id);
+                        try {
+                          const { data: sd } = await supabase.auth.getSession();
+                          const tok = sd?.session?.access_token;
+                          const res = await fetch("/api/missions", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...(tok ? { "Authorization": `Bearer ${tok}` } : {}) },
+                            body: JSON.stringify({ action: "raise_dispute", mission_id: m.id, reason: motif.trim() }),
+                          });
+                          const j = await res.json();
+                          if (j.ok) {
+                            setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
+                          } else {
+                            showToast(j.error || "Erreur lors de l'envoi du signalement.");
+                          }
+                        } catch { showToast("Erreur réseau, réessayez."); }
+                        setDisputingId(null);
+                      }}
+                      style={{ background:"transparent", border:"1px solid rgba(242,94,94,0.3)", color:"#F25E5E", fontSize:12, padding:"8px", borderRadius:10, width:"100%", marginTop:6, cursor:"pointer", fontFamily:"inherit", opacity: disputingId === m.id ? 0.6 : 1 }}
+                    >
+                      {disputingId === m.id ? "Envoi…" : "⚠️ Signaler un problème"}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
       </div>
+
+      {showDisputeModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+          <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:480 }}>
+            <div style={{ fontWeight:800, color:"#F25E5E", fontSize:16, marginBottom:6 }}>⚠️ Signaler un problème</div>
+            <div style={{ color:C.textSub, fontSize:12, marginBottom:16, lineHeight:1.5 }}>Décrivez le problème rencontré. ALANE examinera votre dossier sous 72h ouvrées et vous contactera.</div>
+            <textarea value={disputeMsg} onChange={e=>setDisputeMsg(e.target.value)} placeholder="Ex : Le prestataire n'a pas respecté les termes convenus, travail incomplet..." style={{ width:"100%", minHeight:100, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:10, color:C.text, fontSize:13, padding:"10px 12px", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }} />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={()=>{setShowDisputeModal(null);setDisputeMsg("");}} style={{ flex:1, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+              <button disabled={disputing || !disputeMsg.trim()} onClick={async()=>{
+                setDisputing(true);
+                try {
+                  const { data:sd } = await supabase.auth.getSession();
+                  const tok = sd?.session?.access_token;
+                  const res = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"dispute", mission_id: showDisputeModal, message: disputeMsg.trim() }) });
+                  const j = await res.json();
+                  if (j.ok) {
+                    setShowDisputeModal(null); setDisputeMsg("");
+                    setMissions(ms => ms.map(m => m.id === showDisputeModal ? { ...m, status:"disputed" } : m));
+                    if (selected?.id === showDisputeModal) setSelected(s => s ? { ...s, status:"disputed" } : s);
+                    showToast("Votre signalement a été transmis. Nous vous répondons sous 72h ouvrées.", "success");
+                  } else {
+                    showToast(j.error || "Erreur lors de l'envoi du signalement.");
+                  }
+                } catch { showToast("Erreur réseau, réessayez."); }
+                setDisputing(false);
+              }} style={{ flex:2, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:disputing||!disputeMsg.trim()?0.5:1 }}>
+                {disputing ? "Envoi…" : "Envoyer le signalement"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5571,7 +6290,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           const rate = getCashbackTier(profile?.missions_completed_month || 0).rate;
           const cashback = Math.round(montant * rate * 100) / 100;
           return {
-            mission: m.metier || sector?.label || "Mission",
+            prestation: m.metier || sector?.label || "Prestation",
             date: m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "—",
             amount: montant,
             cashback,
@@ -5630,7 +6349,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
             { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
-            { label:"Ce mois",       value:`${w.missionsThisMonth} mission${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
+            { label:"Ce mois",       value:`${w.missionsThisMonth} prestation${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:`${s.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17 }}>{s.icon}</div>
@@ -5656,7 +6375,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
           {nextTier ? (
             <p style={{ color:C.textSub, fontSize:12 }}>
-              Encore <strong style={{ color:C.text }}>{missionsToNext} mission{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
+              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
               <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({(nextTier.rate*100).toFixed(0)}%)</strong>
             </p>
           ) : (
@@ -5684,7 +6403,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         {!wLoading && history.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:r, padding:"24px", textAlign:"center", marginBottom:12 }}>
             <div style={{ fontSize:28, marginBottom:8 }}>💸</div>
-            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première mission pour gagner du cashback.</div>
+            <div style={{ color:C.textSub, fontSize:13 }}>Validez votre première prestation pour gagner du cashback.</div>
           </div>
         )}
         {history.map((h,i)=>(
@@ -5693,8 +6412,8 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
               {h.status==="disponible"?"💰":h.status==="utilisé"?"✓":"⌛"}
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.mission}</div>
-              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Mission {h.amount} €</div>
+              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {h.amount} €</div>
             </div>
             <div style={{ textAlign:"right", flexShrink:0 }}>
               <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
@@ -5709,15 +6428,15 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
         {/* Info expiration */}
         <div style={{ background:"#162547", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque mission. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
+          ℹ️ Le cashback est crédité <strong style={{ color:C.text }}>24h après validation</strong> de chaque prestation. Il expire <strong style={{ color:C.text }}>6 mois</strong> après son crédit. Montant minimum d'utilisation : <strong style={{ color:C.text }}>10 €</strong>.
         </div>
       </div>
     </div>
   );
 }
 
-export const NOTIF_ICONS = { payment:"💶", mission:"📋", urgent:"🚨", cashback:"💰", rating:"⭐", reminder:"⏰", contract:"✍️", system:"🔔" };
-export const NOTIF_COLORS = { payment:C.success, mission:C.violet, urgent:C.accent, cashback:C.accentGold, rating:C.accentGold, reminder:C.textSub, contract:C.violet, system:C.textMuted };
+export const NOTIF_ICONS = { payment:"💶", prestation:"📋", urgent:"🚨", cashback:"💰", rating:"⭐", reminder:"⏰", contract:"✍️", system:"🔔" };
+export const NOTIF_COLORS = { payment:C.success, prestation:C.violet, urgent:C.accent, cashback:C.accentGold, rating:C.accentGold, reminder:C.textSub, contract:C.violet, system:C.textMuted };
 
 export function timeAgo(ts) {
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
@@ -5774,13 +6493,14 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
     if (n.type === "system" && n.ref_id) {
       // Notification chat → ouvrir directement la conversation
       if (isPresta) {
-        // Le prestataire voit un message du client : ref_id = client_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Client", avatar: "👤", color: "#4F46E5", clientId: n.ref_id });
       } else {
-        // Le client voit un message du prestataire : ref_id = prestataire_id
         onNavigate("chat", { id: n.ref_id, name: n.title?.replace("💬 Nouveau message de ", "") || "Prestataire", avatar: "👤", color: "#4F46E5" });
       }
     } else if (n.type === "mission") {
+      // Mission acceptée, assignée, en cours, terminée → aller directement à l'écran missions
+      onNavigate(isPresta ? "p_missions" : "mission_history", n.ref_id ? { openMissionId: n.ref_id } : undefined);
+    } else if (n.type === "prestation") {
       onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
       onNavigate(isPresta ? "p_missions" : "search_filters");
@@ -5842,7 +6562,7 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
 
 export function MissionTimeline({ status="in_progress" }) {
   const steps = [
-    { id:"booked",    label:"Réservé",       icon:"📋", desc:"Mission confirmée"          },
+    { id:"booked",    label:"Réservé",       icon:"📋", desc:"Prestation confirmée"          },
     { id:"signed",    label:"Contrat signé", icon:"✍️", desc:"Les deux parties ont signé" },
     { id:"enroute",   label:"En route",      icon:"🚗", desc:"Le prestataire arrive"       },
     { id:"in_progress",label:"En cours",    icon:"🔄", desc:"Mission en cours"            },
@@ -5914,7 +6634,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Noter la mission</h2>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Noter la prestation</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Votre avis aide la communauté ALANE</p>
       </div>
 
@@ -5930,7 +6650,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
 
         {/* Étoiles géantes */}
         <div style={{ textAlign:"center", marginBottom:24 }}>
-          <p style={{ color:C.textSub, fontSize:13, marginBottom:14, letterSpacing:0.3 }}>Comment s'est passée la mission ?</p>
+          <p style={{ color:C.textSub, fontSize:13, marginBottom:14, letterSpacing:0.3 }}>Comment s'est passée la prestation ?</p>
           <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:10 }}>
             {[1,2,3,4,5].map(i => (
               <span key={i}
@@ -5990,7 +6710,7 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
               const { data: mCheck } = await supabase.from("missions")
                 .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
               if(!mCheck?.length) {
-                setRatingError("Vous ne pouvez noter un prestataire qu'après une mission complétée ensemble.");
+                setRatingError("Vous ne pouvez noter un prestataire qu'après une prestation complétée ensemble.");
                 setSaving(false); return;
               }
             }
@@ -6029,7 +6749,7 @@ export function DocUploadScreen({ onBack }) {
     { id:"cni",      label:"Pièce d’identité",             icon:"🪪", required:true  },
     { id:"domicile", label:"Justificatif de domicile",     icon:"🏠", required:true  },
     { id:"rib",      label:"RIB / IBAN",                   icon:"💳", required:true  },
-    { id:"rc_pro",   label:"Attestation RC Pro",           icon:"🛡️", required:false },
+    { id:"rc_pro",   label:"Attestation RC Pro",           icon:"🛡️", required:true  },
     { id:"diplomes", label:"Diplômes & Certifications",    icon:"🎓", required:false },
   ];
 
@@ -6059,7 +6779,7 @@ export function DocUploadScreen({ onBack }) {
     const allowedImages = ["image/jpeg","image/png","image/webp"];
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
-    if(!allowed.includes(file.type)){ alert(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
@@ -6145,6 +6865,102 @@ export function DocUploadScreen({ onBack }) {
   );
 }
 
+export function ClientProDocScreen({ onBack }) {
+  const DOC_DEFS = DOCS_REQUIS_CLIENT_PRO;
+
+  const [userId, setUserId]   = useState(null);
+  const [dbDocs, setDbDocs]   = useState([]);
+  const [uploading, setUploading] = useState(null);
+  const [uploadOk, setUploadOk]   = useState(null);
+  const fileRefs = useRef({});
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user; if(!u) return;
+      setUserId(u.id);
+      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
+      setDbDocs(rows || []);
+    });
+  }, []);
+
+  const handleUpload = (docId) => { const input = fileRefs.current[docId]; if(input) input.click(); };
+
+  const handleFileChange = async (docId, e) => {
+    const file = e.target.files?.[0]; if(!file||!userId) return;
+    const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
+    if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    setUploading(docId); setUploadOk(null);
+    const ext = file.name.split(".").pop();
+    const path = `${userId}/${docId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+    if(!error) {
+      await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:path, created_at:new Date().toISOString() }]);
+      setUploadOk(docId);
+      setTimeout(()=>setUploadOk(null), 3000);
+    }
+    setUploading(null);
+    e.target.value = "";
+  };
+
+  const docs = DOC_DEFS.map(def => {
+    const saved = dbDocs.find(d=>d.type===def.id);
+    return { ...def, status:saved?"valid":"missing", info:saved?`Envoyé le ${new Date(saved.created_at).toLocaleDateString("fr-FR")}`:def.info };
+  });
+
+  const valid = docs.filter(d=>d.status==="valid").length;
+  const pct   = Math.round((valid/docs.length)*100);
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
+      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
+        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
+        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:0, fontFamily:font.display }}>Documents entreprise</h2>
+        <p style={{ color:C.textSub, fontSize:13, margin:"6px 0 0" }}>Documents requis pour les clients professionnels</p>
+      </div>
+
+      <div style={{ padding:"20px 18px" }}>
+        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
+            <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Dossier complet</span>
+            <span style={{ fontWeight:800, color:pct===100?C.success:C.accentGold, fontSize:14 }}>{pct}%</span>
+          </div>
+          <div style={{ height:6, background:C.bgSurface||"#162547", borderRadius:3, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${C.violet},${C.success})`, borderRadius:3, transition:"width 0.5s" }} />
+          </div>
+          <p style={{ color:C.textMuted, fontSize:11, marginTop:8 }}>{valid}/{docs.length} documents fournis</p>
+        </div>
+
+        {DOC_DEFS.map(def => (
+          <input key={def.id} type="file" accept=".pdf,.jpg,.jpeg,.png" ref={el=>fileRefs.current[def.id]=el}
+            onChange={e=>handleFileChange(def.id,e)} style={{ display:"none" }} />
+        ))}
+
+        {docs.map(d => (
+          <div key={d.id} style={{ background:"#0D1B3E", border:`1px solid ${d.status==="valid"?C.border:"#F0B42940"}`, borderRadius:r, padding:"14px 15px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
+            <div style={{ width:42, height:42, borderRadius:12, background:d.status==="valid"?"rgba(34,197,94,0.15)":"rgba(240,180,41,0.12)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{d.icon}</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{d.label}</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{d.info}</div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+              <Badge color={d.status==="valid"?C.success:C.accentGold} small>{uploadOk===d.id?"✅ Envoyé !":d.status==="valid"?"✓ Envoyé":"Manquant"}</Badge>
+              <button onClick={()=>handleUpload(d.id)} disabled={uploading===d.id}
+                style={{ background:d.status==="valid"?"rgba(255,255,255,0.08)":C.violet, border:"none", borderRadius:8, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:uploading===d.id?0.6:1 }}>
+                {uploading===d.id?"⏳…":d.status==="valid"?"🔄 Remplacer":"📤 Charger"}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>24h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AbonnementPrestaScreen({ onBack }) {
   const [current,setCurrent]=useState("free");
   const [billing,setBilling]=useState("monthly");
@@ -6156,6 +6972,8 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [planLimits,setPlanLimits]=useState(null);
   const [subPrices,setSubPrices]=useState(null);
   const [launchActive,setLaunchActive]=useState(isLaunchPhase());
+  const [hasStripeCustomer,setHasStripeCustomer]=useState(false);
+  const [portalLoading,setPortalLoading]=useState(false);
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -6168,6 +6986,9 @@ export function AbonnementPrestaScreen({ onBack }) {
       supabase.from("missions").select("id",{count:"exact",head:true})
         .eq("prestataire_id",u.id).gte("created_at",startOfMonth)
         .then(({count})=>{ if(count!=null) setMissionsUsed(count); });
+      // Check if user has a Stripe customer (to show billing portal button)
+      supabase.from("profiles").select("stripe_customer_id").eq("id",u.id).single()
+        .then(({data:pd})=>{ if(pd?.stripe_customer_id) setHasStripeCustomer(true); });
     });
     supabase.from("platform_settings").select("value").eq("key","plan_limits").single()
       .then(({data})=>{ if(data?.value) setPlanLimits(data.value); });
@@ -6177,21 +6998,38 @@ export function AbonnementPrestaScreen({ onBack }) {
       .then(({data})=>{ if(data?.value != null) setLaunchActive(Boolean(data.value)); });
   },[]);
 
+  const handleBillingPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/stripe-intent", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ action: "billing_portal" }),
+      });
+      const d = await r.json();
+      if(d.url) { window.location.href = d.url; return; }
+      showToast(d.error || "Erreur lors de l'ouverture du portail");
+    } catch { showToast("Erreur réseau"); }
+    setPortalLoading(false);
+  };
+
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
     const limit = planLimits?.[p.id];
     const monthlyPrice = subPrices?.[p.id]?.monthly;
     const features = [...p.features];
     if (limit != null) {
       if (p.id === "elite") {
-        features[0] = limit >= 999 ? "Missions illimitées" : `${limit} missions/mois`;
+        features[0] = limit >= 999 ? "Prestations illimitées" : `${limit} prestations/mois`;
       } else {
         const launchSuffix = p.id === "free" && launchActive ? " (10 pendant le lancement)" : "";
-        features[0] = `${limit} mission${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
+        features[0] = `${limit} prestation${limit > 1 ? "s" : ""}/mois${launchSuffix}`;
       }
     }
     return {
       ...p,
-      ...(limit != null ? { missions: limit } : {}),
+      ...(limit != null ? { prestations: limit } : {}),
       ...(monthlyPrice != null ? { price: monthlyPrice } : {}),
       features,
     };
@@ -6224,10 +7062,9 @@ export function AbonnementPrestaScreen({ onBack }) {
         window.location.href = d.url;
         return;
       }
-      // Fallback if Stripe prices not configured
-      alert(d.error || "Erreur Stripe");
+      showToast(d.error || "Erreur Stripe");
     } catch(e) {
-      alert("Erreur lors de la redirection vers Stripe");
+      showToast("Erreur lors de la redirection vers Stripe");
     }
     setSaving(false);
     setPendingPlan(null);
@@ -6253,12 +7090,24 @@ export function AbonnementPrestaScreen({ onBack }) {
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>Mon abonnement</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Tarif transparent · prix affiché = prix réel</p>
         {endDate && current !== "free" && (
-          <div style={{ marginTop:10, display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
-            <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
-              {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
-              {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
-            </span>
+          <div style={{ marginTop:10, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+            <div style={{ display:"inline-flex", alignItems:"center", gap:6, background: new Date(endDate)<new Date() ? "rgba(242,94,94,0.15)" : "rgba(76,201,155,0.12)", border:`1px solid ${new Date(endDate)<new Date()?"#F25E5E44":"#4CC99B44"}`, borderRadius:8, padding:"5px 12px" }}>
+              <span style={{ fontSize:11, color: new Date(endDate)<new Date() ? "#F25E5E" : C.success, fontWeight:600 }}>
+                {new Date(endDate)<new Date() ? "⚠️ Expiré le " : "✓ Valide jusqu'au "}
+                {new Date(endDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}
+              </span>
+            </div>
+            {hasStripeCustomer && new Date(endDate)>=new Date() && (
+              <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:8, padding:"5px 10px" }}>
+                <span style={{ fontSize:11, color:C.violetLight, fontWeight:600 }}>🔄 Renouvellement automatique</span>
+              </div>
+            )}
           </div>
+        )}
+        {hasStripeCustomer && (
+          <button onClick={handleBillingPortal} disabled={portalLoading} style={{ marginTop:12, display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 14px", color:C.textSub, fontSize:12, fontWeight:600, cursor:portalLoading?"not-allowed":"pointer", fontFamily:"inherit" }}>
+            {portalLoading ? "…" : "⚙️ Gérer mon abonnement / Annuler"}
+          </button>
         )}
       </div>
       <div style={{ padding:"20px 18px" }}>
@@ -6268,7 +7117,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 missions/mois gratuites</strong>.<br/>Plan Gratuit : 2 missions/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 prestations/mois gratuites</strong>.<br/>Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
               </div>
             </div>
           </div>
@@ -6306,11 +7155,11 @@ export function AbonnementPrestaScreen({ onBack }) {
                 <div style={{ marginTop:10, background:plan.color+"10", border:`1px solid ${plan.color}30`, borderRadius:10, padding:"9px 12px" }}>
                   <div style={{ fontSize:11, color:C.textSub, marginBottom:4 }}>💡 Rentabilité estimée</div>
                   <div style={{ fontSize:12, color:C.text, lineHeight:1.6 }}>
-                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère mission</strong><br/>
+                    Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère prestation</strong><br/>
                     <span style={{ color:C.textSub, fontSize:11 }}>
                       {plan.id==="premium"
-                        ? `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€`
-                        : `1 mission ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès mission 1 : +${96-price}€ · Position #1 + Manager dédié`
+                        ? `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€`
+                        : `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€ · Position #1 + Manager dédié`
                       }
                     </span>
                   </div>
@@ -6319,7 +7168,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               {plan.missions < 999 && active && (
                 <div style={{ marginTop:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub, marginBottom:4 }}>
-                    <span>Missions ce mois</span>
+                    <span>Prestations ce mois</span>
                     <span style={{ color: missionsUsed >= plan.missions ? C.danger : C.success }}>{missionsUsed} / {plan.missions}</span>
                   </div>
                   <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:4 }}>
@@ -6358,7 +7207,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const mission = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
+    const prestation = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -6369,11 +7218,11 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           heure_debut: startTime || null,
           recurrence: recurrence || null,
         }).select().single();
-        if(data) mission.id = data.id;
+        if(data) prestation.id = data.id;
       }
-    } catch(e){ console.error("mission insert error", e); }
+    } catch(e){ console.error("prestation insert error", e); }
     setSending(false);
-    onSubmit(mission);
+    onSubmit(prestation);
   };
 
   return (
@@ -6381,7 +7230,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
       <div style={{ background:`linear-gradient(135deg,#0A1628,#162547)`, padding:"52px 22px 24px", borderBottom:`1px solid ${C.border}` }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:32, marginBottom:6 }}>{s.icon||"📢"}</div>
-        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Commander une mission</h2>
+        <h2 style={{ color:C.text, fontSize:20, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Commander une prestation</h2>
         <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{s.label}{preselectedJob ? ` · ${preselectedJob}` : ""} · {matchCount} prestataire{matchCount>1?"s":""} disponible{matchCount>1?"s":""}</p>
       </div>
 
@@ -6426,7 +7275,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         )}
 
-        <Input label="Date de la mission *" type="date" placeholder="AAAA-MM-JJ" value={date} onChange={e=>setDate(e.target.value)} />
+        <Input label="Date de la prestation *" type="date" placeholder="AAAA-MM-JJ" value={date} onChange={e=>setDate(e.target.value)} />
         <Input label="Heure de début *" type="time" placeholder="HH:MM" value={startTime} onChange={e=>setStartTime(e.target.value)} />
 
         <div style={{ marginBottom:16 }}>
@@ -6455,11 +7304,11 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         </div>
 
-        <AddressAutocomplete label="Adresse de la mission *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
+        <AddressAutocomplete label="Adresse de la prestation *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
         <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
 
         <div style={{ marginBottom:20 }}>
-          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Description de la mission <span style={{ fontWeight:400 }}>(optionnel)</span></label>
+          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:6 }}>Description de la prestation <span style={{ fontWeight:400 }}>(optionnel)</span></label>
           <textarea placeholder="Tâches attendues, matériel fourni, accès, consignes…" value={description} onChange={e=>setDesc(e.target.value)}
             style={{ width:"100%", padding:"13px", borderRadius:12, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:90, boxSizing:"border-box", outline:"none", color:C.text, background:"#0D1B3E" }} />
         </div>
@@ -6472,8 +7321,8 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   );
 }
 
-export function MissionBroadcastScreen({ mission, onChoose, onCancel }) {
-  const m = mission || {};
+export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
+  const m = prestation || {};
   const { providers } = useProviders();
   const [notifiedCount, setNotifiedCount] = useState(0);
   const [candidatures, setCandidatures]   = useState([]);
@@ -6647,16 +7496,16 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
 
   const clientSteps = [
     { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
-    { icon:"📋", title:"Publiez votre mission", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
-    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la mission. Zéro risque.", color:C.success },
-    { icon:"⭐", title:"Validez et notez", desc:"Une fois la mission terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
+    { icon:"📋", title:"Publiez votre prestation", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la prestation. Zéro risque.", color:C.success },
+    { icon:"⭐", title:"Validez et notez", desc:"Une fois la prestation terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
   const prestaSteps = [
-    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de missions.", color:C.violet },
+    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de prestations.", color:C.violet },
     { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
-    { icon:"📦", title:"Recevez des missions", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque mission proposée. Votre plan définit votre quota mensuel.", color:C.success },
-    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les missions proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
+    { icon:"📦", title:"Recevez des prestations", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque prestation proposée. Votre plan définit votre quota mensuel.", color:C.success },
+    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les prestations proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;

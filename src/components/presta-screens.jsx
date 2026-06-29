@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, CASHBACK_TIERS, getCashbackTier, calcCashback, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, CV_DATA, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 
 function ContractModal({ title, contractText, onSign, onClose }) {
@@ -203,6 +203,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
+  const [cguAccepted,setCguAccepted]=useState(false);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=8;
@@ -294,7 +295,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           <Select label="Pays" options={["France","Belgique","Suisse","Luxembourg"]} value={adresse.pays} onChange={e=>setAdresse({...adresse,pays:e.target.value})} />
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:4 }}>🗺️ Rayon d'intervention</div>
-            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Distance max pour une mission</p>
+            <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Distance max pour une prestation</p>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {["5","10","20","30","50","100"].map(km=><button key={km} onClick={()=>setAdresse({...adresse,rayon:km})} style={{ padding:"9px 16px", borderRadius:20, border:"none", cursor:"pointer", background:adresse.rayon===km?C.violet:C.grayLight, color:adresse.rayon===km?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>{km} km</button>)}
             </div>
@@ -517,9 +518,9 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                     const charges = Math.round(net * 0.22 * 100) / 100;
                     const netApres = Math.round((net - charges) * 100) / 100;
                     const scenarios = [
-                      { label:"Mission 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
-                      { label:"Mission 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
-                      { label:"4 missions/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
+                      { label:"Prestation 4h",      gain: Math.round(netApres * 4 * 10) / 10 },
+                      { label:"Prestation 8h",      gain: Math.round(netApres * 8 * 10) / 10 },
+                      { label:"4 prestations/mois", gain: Math.round(netApres * 8 * 4 * 10) / 10 },
                     ];
                     return (
                       <div style={{ background:"rgba(16,217,143,0.06)", border:`1px solid ${C.success}25`, borderRadius:12, padding:"13px 14px", marginTop:12 }}>
@@ -622,11 +623,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             })}
           </div>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <p style={{ fontWeight:800, color:C.text, fontSize:14, margin:"0 0 14px" }}>⚙️ Préférences de mission</p>
+            <p style={{ fontWeight:800, color:C.text, fontSize:14, margin:"0 0 14px" }}>⚙️ Préférences de prestation</p>
             <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de missions souhaitées</label>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:8, fontWeight:600, letterSpacing:0.8, textTransform:"uppercase" }}>Type de prestations souhaitées</label>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                {["Journée complète","Demi-journée","Semaine complète","Missions urgentes","Week-end"].map(type=>(
+                {["Journée complète","Demi-journée","Semaine complète","Prestations urgentes","Week-end"].map(type=>(
                   <button key={type} onClick={()=>setPrefs(p=>({ ...p, contrat:p.contrat===type?"":type }))} style={{ padding:"9px 14px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:prefs.contrat===type?700:500, background:prefs.contrat===type?C.violet:"rgba(255,255,255,0.06)", color:prefs.contrat===type?C.white:C.textSub, transition:"all 0.2s" }}>
                     {type}
                   </button>
@@ -662,13 +663,13 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           ))}
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}>
-              <input type="checkbox" style={{ marginTop:2, accentColor:C.violet }} />
+              <input type="checkbox" checked={cguAccepted} onChange={e=>setCguAccepted(e.target.checked)} style={{ marginTop:2, accentColor:C.violet }} />
               <span style={{ fontSize:13, color:C.textSub, lineHeight:1.5 }}>J'accepte les <strong style={{ color:C.violet }}>CGU</strong> et la <strong style={{ color:C.violet }}>Politique de confidentialité</strong> de ALANE</span>
             </label>
           </div>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
           {submitError && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{submitError}</div>}
-          <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
+          <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting||!cguAccepted} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
         </>}
         {step<TOTAL && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
       </div>
@@ -739,7 +740,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {meta && !meta.secteur && (
         <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}35`, borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
           <div style={{ fontWeight:700, color:C.accentGold, fontSize:13, marginBottom:6 }}>⚠️ Profil incomplet</div>
-          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Complétez votre profil pour apparaître dans les résultats et recevoir des missions.</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>Complétez votre profil pour apparaître dans les résultats et recevoir des prestations.</div>
           <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:C.accentGold, border:"none", borderRadius:10, padding:"9px 16px", color:"#000", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Compléter mon profil →</button>
         </div>
       )}
@@ -959,7 +960,7 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Photo max 5 Mo"); return; }
+    if (file.size > 5 * 1024 * 1024) { showToast("Photo max 5 Mo"); return; }
     setPhotoUploading(true);
     const { data: authData } = await supabase.auth.getUser();
     if (!authData?.user) { setPhotoUploading(false); return; }
@@ -1035,7 +1036,7 @@ export function PrestaProfileEditScreen({ onBack }) {
           <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:`${color}22`, border:`2px solid ${color}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0 }}>
               {photoUrl
-                ? <img src={photoUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                ? <img src={photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                 : "📷"}
             </div>
             <div>
@@ -1187,7 +1188,7 @@ export function PrestaProfileEditScreen({ onBack }) {
 }
 
 export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Mission introuvable.</div>;
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestation introuvable.</div>;
   const p = provider;
   const expectedCode = genMissionCode(p.id, type);
   const isIn = type === "in";
@@ -1232,7 +1233,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
       <div style={{ fontSize:72, marginBottom:16 }}>{isIn ? "✅" : "🏁"}</div>
       <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>{isIn ? "Arrivée confirmée !" : "Départ confirmé !"}</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto" }}>
-        {isIn ? "Votre présence est enregistrée. Bonne mission !" : "Mission terminée. En attente de validation."}
+        {isIn ? "Votre présence est enregistrée. Bonne prestation !" : "Prestation terminée. En attente de validation."}
       </p>
     </div>
   );
@@ -1257,7 +1258,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
               <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Vérification GPS</div>
               <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>
                 {gpsStatus==="loading" && "Localisation en cours…"}
-                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de mission)`}
+                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de prestation)`}
                 {gpsStatus==="warning" && `Vous semblez éloigné du lieu (${gpsDistance} km). Vérifiez votre position.`}
                 {gpsStatus==="error" && "GPS indisponible. Continuez avec le code client."}
               </div>
@@ -1359,16 +1360,71 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
   );
 }
 
+export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
+  const [checking, setChecking] = useState(false);
+  const handleRetry = async () => {
+    setChecking(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setChecking(false); return; }
+      // Appel backend : vérifie Stripe + guérit DB si plan payant
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "refresh_plan" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.trial_exhausted || (data.plan && data.plan !== "free")) {
+          onUnblocked?.();
+          return;
+        }
+      }
+    } catch {}
+    setChecking(false);
+  };
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
+      <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
+      <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"inherit" }}>Accès suspendu</h2>
+      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
+        Votre offre gratuite a été entièrement utilisée ce mois-ci.
+      </p>
+      <p style={{ color:"rgba(255,255,255,0.35)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
+        Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite. Le quota gratuit se réinitialise le 1er de chaque mois.
+      </p>
+      <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 }}>
+        <button onClick={onUpgrade} style={{ padding:"16px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C6FE0,#5B4FCF)", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 20px rgba(124,111,224,0.4)" }}>
+          💎 Voir les abonnements
+        </button>
+        <button onClick={handleRetry} disabled={checking} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(16,217,143,0.3)", background:"rgba(16,217,143,0.06)", color:"#10D98F", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:checking?0.6:1 }}>
+          {checking ? "Vérification…" : "🔄 Vérifier mon accès"}
+        </button>
+        <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.4)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function UpgradeNudge({ onNavigate }) {
   const [plan, setPlan] = useState(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setPlan(data?.user?.user_metadata?.plan_abonnement || "free");
       const uid = data?.user?.id;
+      const metaPlan = data?.user?.user_metadata?.plan_abonnement || "free";
       if (uid) {
-        supabase.from("profiles").select("trial_exhausted").eq("id", uid).single()
-          .then(({ data: p }) => { if (p?.trial_exhausted) setTrialExhausted(true); });
+        supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", uid).single()
+          .then(({ data: p }) => {
+            const resolvedPlan = p?.plan_abonnement || metaPlan;
+            setPlan(resolvedPlan);
+            if (resolvedPlan !== "free") setTrialExhausted(false);
+            else if (p?.trial_exhausted) setTrialExhausted(true);
+          });
+      } else {
+        setPlan(metaPlan);
       }
     });
   }, []);
@@ -1378,8 +1434,8 @@ export function UpgradeNudge({ onNavigate }) {
     return (
       <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,rgba(242,94,94,0.12),rgba(240,180,41,0.08))`, border:`1px solid rgba(242,94,94,0.4)`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div>
-          <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Missions gratuites épuisées</div>
-          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux missions.</div>
+          <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Prestations gratuites épuisées</div>
+          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux prestations.</div>
         </div>
         <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
       </div>
@@ -1396,6 +1452,62 @@ export function UpgradeNudge({ onNavigate }) {
   );
 }
 
+function DeadlineCountdown({ deadline }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (!deadline) return null;
+  const secs = Math.floor((new Date(deadline).getTime() - now) / 1000);
+  const label = secs <= 0 ? "Délai dépassé" : (() => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return h > 0 ? `${h}h ${String(m).padStart(2,"0")}min restant` : `${String(m).padStart(2,"0")}min restant`;
+  })();
+  const expired = secs <= 0;
+  return (
+    <div style={{ textAlign:"right", flexShrink:0 }}>
+      <span style={{ fontSize:11, color:expired?C.textMuted:C.accentGold, fontWeight:700 }}>⏱ {label}</span>
+    </div>
+  );
+}
+
+function ElapsedTimer({ startedAt, maxMs, onEnd }) {
+  const [now, setNow] = useState(Date.now());
+  const onEndFiredRef = useRef(false);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.min(now - new Date(startedAt).getTime(), maxMs);
+  const done = elapsed >= maxMs;
+  useEffect(() => {
+    if (done && !onEndFiredRef.current) {
+      onEndFiredRef.current = true;
+      onEnd?.();
+    }
+  }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
+  const s = Math.floor(elapsed / 1000);
+  const ph = Math.floor(s / 3600);
+  const pm = Math.floor((s % 3600) / 60);
+  const ps = s % 60;
+  const timerStr = ph > 0 ? `${ph}h${String(pm).padStart(2,"0")}` : `${String(pm).padStart(2,"0")}:${String(ps).padStart(2,"0")}`;
+  const col = done ? "#F0B429" : C.success;
+  return (
+    <div style={{ background:`${col}12`, border:`1px solid ${col}40`, borderRadius:10, padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <div>
+        <div style={{ color:col, fontWeight:700, fontSize:12 }}>{done ? "✓ Temps écoulé" : "🚀 Prestation en cours"}</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Démarrée à {new Date(startedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+      </div>
+      <div style={{ textAlign:"right" }}>
+        <div style={{ color:col, fontWeight:800, fontSize:18, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>
+        <div style={{ color:C.textMuted, fontSize:10 }}>{done ? "durée totale" : "écoulé"}</div>
+      </div>
+    </div>
+  );
+}
+
 export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [pendingMissions, setPendingMissions] = useState([]);
   const [assignedMissions, setAssignedMissions] = useState([]);
@@ -1404,12 +1516,50 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   const [userName, setUserName]   = useState("");
   const [actioning, setActioning] = useState(null);
   const [confirmRefuse, setConfirmRefuse] = useState(null);
-  const [now, setNow] = useState(Date.now());
   const [expandedDetail, setExpandedDetail] = useState(null);
   const [contractMission, setContractMission] = useState(null);
   const [contractSignedAt, setContractSignedAt] = useState({});
   const [contractAcceptMission, setContractAcceptMission] = useState(null);
   const [validatingMission, setValidatingMission] = useState(null);
+  const [sharingLocation, setSharingLocation] = useState({});
+  const trackingRefsMap = useRef({});
+  const [checkingInId, setCheckingInId] = useState(null);
+  const [arrivedAtMap, setArrivedAtMap] = useState({});
+  const [checkInGeoError, setCheckInGeoError] = useState({});
+  const [startedAtMap, setStartedAtMap] = useState({});
+  const [startingMission, setStartingMission] = useState(null);
+  const [missionCoordCache, setMissionCoordCache] = useState({});
+  const arrivedAtMapRef = useRef({});
+  const autoCheckinLockRef = useRef(new Set());
+  const geocodedRef = useRef(new Set());
+  const geoWatchRef = useRef(null);
+  const [trialExhausted, setTrialExhausted] = useState(false);
+  const [userPlan, setUserPlan] = useState("free");
+
+  const toggleTracking = async (missionId) => {
+    if (sharingLocation[missionId]) {
+      const refs = trackingRefsMap.current[missionId] || {};
+      if (refs.watchId != null) navigator.geolocation.clearWatch(refs.watchId);
+      if (refs.intervalId != null) clearInterval(refs.intervalId);
+      delete trackingRefsMap.current[missionId];
+      setSharingLocation(s => ({ ...s, [missionId]: false }));
+      return;
+    }
+    if (!navigator.geolocation) { showToast("Géolocalisation non supportée par votre navigateur."); return; }
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    const sendPos = (lat, lng) => fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+      body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
+    }).catch(() => {});
+    let last = null;
+    const watchId = navigator.geolocation.watchPosition(p => { last = p.coords; }, null, { enableHighAccuracy: true });
+    const intervalId = setInterval(() => { if (last) sendPos(last.latitude, last.longitude); }, 15000);
+    trackingRefsMap.current[missionId] = { watchId, intervalId };
+    setSharingLocation(s => ({ ...s, [missionId]: true }));
+    navigator.geolocation.getCurrentPosition(p => sendPos(p.coords.latitude, p.coords.longitude), () => {});
+  };
 
   const loadPending = async () => {
     const { data: sd } = await supabase.auth.getSession();
@@ -1423,7 +1573,16 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       });
       const data = await r.json();
       setPendingMissions(Array.isArray(data.pending)  ? data.pending.filter(m => m.status !== "cancelled")  : []);
-      setAssignedMissions(Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : []);
+      const assigned = Array.isArray(data.assigned) ? data.assigned.filter(m => m.status !== "cancelled") : [];
+      setAssignedMissions(assigned);
+      const arrivedMap = {};
+      const startedMap = {};
+      assigned.forEach(m => {
+        if (m.arrived_at) arrivedMap[m.id] = m.arrived_at;
+        if (m.started_at) startedMap[m.id] = m.started_at;
+      });
+      setArrivedAtMap(prev => { const n = { ...prev, ...arrivedMap }; arrivedAtMapRef.current = n; return n; });
+      setStartedAtMap(prev => ({ ...prev, ...startedMap }));
     } catch {}
   };
 
@@ -1436,6 +1595,14 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
         setUserId(u.id);
         const meta = u.user_metadata || {};
         setUserName([meta.prenom, meta.nom].filter(Boolean).join(" ") || "");
+        supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id", u.id).single()
+          .then(({ data: pr }) => {
+            const plan = pr?.plan_abonnement || meta.plan_abonnement || "free";
+            setUserPlan(plan);
+            // Invariant : plan payant → jamais trial_exhausted
+            if (plan !== "free") setTrialExhausted(false);
+            else if (pr?.trial_exhausted) setTrialExhausted(true);
+          });
         await loadPending();
       } catch (e) {
         console.error("[PMissionsTab] load error:", e);
@@ -1446,14 +1613,119 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60000);
+    const t = setInterval(loadPending, 30000);
     return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
-    const t = setInterval(loadPending, 30000);
-    return () => clearInterval(t);
-  }, []);
+    if (!userId) return;
+    const channel = supabase
+      .channel(`pmissions_${userId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "missions" }, () => loadPending())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => loadPending())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
+
+  // Sync arrivedAtMap to ref so GPS callbacks always see fresh value
+  useEffect(() => { arrivedAtMapRef.current = arrivedAtMap; }, [arrivedAtMap]);
+
+  // Auto-démarrage : si arrivé depuis > 10 min et prestation pas encore démarrée → start_mission automatique
+  useEffect(() => {
+    const AUTO_START_MS = 10 * 60 * 1000;
+    const timers = [];
+    for (const m of assignedMissions) {
+      const arrivedAt = arrivedAtMap[m.id];
+      if (!arrivedAt || startedAtMap[m.id]) continue;
+      const delay = AUTO_START_MS - (Date.now() - new Date(arrivedAt).getTime());
+      const t = setTimeout(async () => {
+        if (startedAtMap[m.id]) return; // already started manually
+        const { data: sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
+          body: JSON.stringify({ action: "start_mission", mission_id: m.id, auto_start: true }),
+        }).catch(() => null);
+        const d = r?.ok ? await r.json().catch(() => null) : null;
+        if (d?.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+      }, Math.max(0, delay));
+      timers.push(t);
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [assignedMissions, arrivedAtMap, startedAtMap]);
+
+  // Geocode mission addresses for auto-checkin detection
+  useEffect(() => {
+    for (const m of assignedMissions) {
+      if (geocodedRef.current.has(m.id)) continue;
+      if (arrivedAtMap[m.id]) { geocodedRef.current.add(m.id); continue; }
+      const addr = [m.adresse, m.ville].filter(Boolean).join(" ");
+      if (!addr) { geocodedRef.current.add(m.id); setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })); continue; }
+      geocodedRef.current.add(m.id);
+      setMissionCoordCache(prev => ({ ...prev, [m.id]: "loading" }));
+      fetch(`https://api-adresse.data.gouv.fr/search/?${new URLSearchParams({ q: addr, limit: "1" })}`)
+        .then(r => r.json())
+        .then(d => {
+          const feat = d.features?.[0];
+          if (feat) {
+            const [lng, lat] = feat.geometry.coordinates;
+            setMissionCoordCache(prev => ({ ...prev, [m.id]: { lat, lng } }));
+          } else {
+            setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" }));
+          }
+        })
+        .catch(() => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
+    }
+  }, [assignedMissions]);
+
+  // GPS watch for automatic check-in (< 150m)
+  useEffect(() => {
+    const now = Date.now(); // snapshot local à cet effet seulement
+    const watchable = assignedMissions.filter(m => {
+      const c = missionCoordCache[m.id];
+      if (!c || typeof c !== "object" || arrivedAtMap[m.id]) return false;
+      // N'activer la détection que si la mission commence dans moins de 30 min ou a déjà commencé
+      if (m.date && m.heure_debut) {
+        try {
+          const [yr, mo, dy] = m.date.split("-").map(Number);
+          const [hh, mm] = m.heure_debut.split(":").map(Number);
+          const missionStart = new Date(yr, mo - 1, dy, hh, mm).getTime();
+          if (now < missionStart - 30 * 60 * 1000) return false;
+        } catch {}
+      }
+      return true;
+    });
+
+    if (geoWatchRef.current != null) { navigator.geolocation?.clearWatch(geoWatchRef.current); geoWatchRef.current = null; }
+    if (!watchable.length || !navigator.geolocation) return;
+
+    geoWatchRef.current = navigator.geolocation.watchPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      for (const m of watchable) {
+        const coords = missionCoordCache[m.id];
+        if (!coords || typeof coords !== "object") continue;
+        if (arrivedAtMapRef.current[m.id]) continue;
+        if (autoCheckinLockRef.current.has(m.id)) continue;
+        if (haversineKm(latitude, longitude, coords.lat, coords.lng) > 0.15) continue;
+        autoCheckinLockRef.current.add(m.id);
+        try {
+          const { data: sd } = await supabase.auth.getSession();
+          const token = sd?.session?.access_token;
+          const r = await fetch("/api/missions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` }, body: JSON.stringify({ action: "checkin_mission", mission_id: m.id }) });
+          const d = await r.json();
+          if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+        } catch {}
+        autoCheckinLockRef.current.delete(m.id);
+      }
+    }, (err) => {
+      console.log("[auto-checkin] GPS error:", err.code);
+      // GPS denied/unavailable → mark all as error so fallback button shows
+      watchable.forEach(m => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
+    }, { enableHighAccuracy: true, maximumAge: 20000 });
+
+    return () => { if (geoWatchRef.current != null) { navigator.geolocation.clearWatch(geoWatchRef.current); geoWatchRef.current = null; } };
+  }, [assignedMissions, missionCoordCache, arrivedAtMap]);
 
   const handleAccept = async (m) => {
     setActioning(m.id + "_acc");
@@ -1489,15 +1761,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     setActioning(null);
   };
 
-  const formatDeadline = (deadline) => {
-    if (!deadline) return null;
-    const secs = Math.floor((new Date(deadline).getTime() - now) / 1000);
-    if (secs <= 0) return "Délai dépassé";
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    if (h > 0) return `${h}h ${String(m).padStart(2,"0")}min restant`;
-    return `${String(m).padStart(2,"0")}min restant`;
-  };
+
 
   const computeEndTime = (heureDebut, hours) => {
     if (!heureDebut) return null;
@@ -1506,31 +1770,52 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
     return `${String(Math.floor(endMin / 60) % 24).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
   };
 
+  // Retourne HH:MM depuis un timestamp ISO
+  const isoToHHMM = (iso) => {
+    if (!iso) return null;
+    return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+  };
+
+  // Horaires affichés pour une mission avec démarrage réel
+  // start = toujours l'heure réelle si started_at, sinon heure_debut
+  // end   = décalé seulement si delay_status==="approved", sinon heure_debut + hours
+  const computeMissionTimes = (m) => {
+    const startedAt = startedAtMap[m.id];
+    const displayStart = startedAt ? isoToHHMM(startedAt) : m.heure_debut;
+    let displayEnd;
+    if (startedAt && m.delay_status === "approved") {
+      displayEnd = computeEndTime(displayStart, m.hours);
+    } else {
+      displayEnd = computeEndTime(m.heure_debut, m.hours);
+    }
+    return { displayStart, displayEnd };
+  };
+
 
   if (loading) return <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>;
 
   return (
     <div>
       {/* Contrat électronique prestataire */}
-      {/* Contrat de prestation — acceptation mission */}
+      {/* Contrat de prestation — acceptation prestation */}
       {contractAcceptMission && (
         <ContractModal
           title="Contrat de prestation de service"
           contractText={`CONTRAT DE PRESTATION DE SERVICE
 
-Mission :
+Prestation :
 Métier : ${contractAcceptMission.metier || contractAcceptMission.sector || ""}
 Date : ${contractAcceptMission.date || ""}
 Durée : ${contractAcceptMission.hours || ""} heure(s)
 Tarif horaire : ${contractAcceptMission.tarif_horaire || ""} €/h
 
-En signant ce contrat, je m'engage à réaliser la mission dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
+En signant ce contrat, je m'engage à réaliser la prestation dans les conditions convenues, à respecter les délais et à me conformer aux conditions générales de la plateforme ALANE.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={async () => {
-            const mission = contractAcceptMission;
+            const prestation = contractAcceptMission;
             setContractAcceptMission(null);
-            await handleAccept(mission);
+            await handleAccept(prestation);
           }}
           onClose={() => setContractAcceptMission(null)}
         />
@@ -1538,31 +1823,32 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
       {contractMission && (
         <ContractModal
-          title="Attestation de réalisation de mission"
+          title="Attestation de réalisation de prestation"
           contractText={`ATTESTATION DE RÉALISATION DE MISSION
 
-Mission :
+Prestation :
 Métier : ${contractMission.metier || contractMission.sector || ""}
 Date : ${contractMission.date || ""}
 Durée : ${contractMission.hours || ""} heure(s)
 Tarif horaire : ${contractMission.tarif_horaire || ""} €/h
 
-En signant cette attestation, je certifie avoir réalisé la mission conformément aux termes convenus et autorise le déblocage du paiement.
+En signant cette attestation, je certifie avoir réalisé la prestation conformément aux termes convenus et autorise le déblocage du paiement.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={async (ts) => {
             setContractSignedAt(prev => ({ ...prev, [contractMission.id]: ts }));
-            const mission = contractMission;
+            const prestation = contractMission;
             setContractMission(null);
             const { data:{ session } } = await supabase.auth.getSession();
-            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:mission.id, contrat_presta_signe_at: ts }) });
-            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===mission.id?{...x,validation_prestataire:true}:x)); }
+            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
+            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
+            else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
           }}
           onClose={() => setContractMission(null)}
         />
       )}
 
-      {/* Missions en attente de confirmation */}
+      {/* Prestations en attente de confirmation */}
       {pendingMissions.length > 0 && (
         <div style={{ marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
@@ -1571,24 +1857,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
           {pendingMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
-            const deadlineLabel = formatDeadline(m.acceptance_deadline);
-            const expired = deadlineLabel === "Délai dépassé";
+            const expired = m.acceptance_deadline && new Date(m.acceptance_deadline).getTime() < Date.now();
             const isAct = actioning === m.id+"_acc" || actioning === m.id+"_ref";
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${expired ? C.textMuted : C.accent}55` }}>
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
                   </div>
-                  {deadlineLabel && (
-                    <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <span style={{ fontSize:11, color:expired?C.textMuted:C.accentGold, fontWeight:700 }}>⏱ {deadlineLabel}</span>
-                    </div>
-                  )}
+                  {m.acceptance_deadline && <DeadlineCountdown deadline={m.acceptance_deadline} />}
                 </div>
                 {(m.ville || m.adresse || m.description) && (
                   <div style={{ marginBottom:8 }}>
@@ -1605,7 +1886,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                 )}
                 {expired ? (
-                  <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette mission a été annulée automatiquement</div>
+                  <div style={{ padding:"9px", borderRadius:10, background:"rgba(255,255,255,0.04)", color:C.textMuted, fontSize:12, textAlign:"center" }}>Délai dépassé — cette prestation a été annulée automatiquement</div>
                 ) : (
                   <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
                     {confirmRefuse === m.id ? (
@@ -1617,11 +1898,23 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         </div>
                       </div>
                     ) : (
-                      <div style={{ display:"flex", gap:8 }}>
-                        <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
-                        <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                          {actioning===m.id+"_acc" ? "…" : "✅ Accepter la mission"}
-                        </button>
+                      <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
+                        {trialExhausted && userPlan === "free" ? (
+                          <div style={{ background:`rgba(242,94,94,0.1)`, border:`1px solid rgba(242,94,94,0.35)`, borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
+                            <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>⛔ Quota épuisé — acceptation impossible</div>
+                            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
+                            <button onClick={()=>onNavigate&&onNavigate("abonnement_presta")} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                              💎 Passer Premium — 29€/mois
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={()=>setConfirmRefuse(m.id)} disabled={isAct} style={{ flex:1, padding:"11px", border:`1px solid ${C.accent}44`, borderRadius:10, background:C.accent+"10", color:C.accent, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✗ Refuser</button>
+                            <button onClick={()=>{ if(!isAct) setContractAcceptMission(m); }} disabled={isAct} style={{ flex:2, padding:"11px", border:"none", borderRadius:10, background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                              {actioning===m.id+"_acc" ? "…" : "✅ Accepter la prestation"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1632,12 +1925,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </div>
       )}
 
-      {/* Missions en cours (assignées) */}
+      {/* Prestations en cours (assignées) */}
       {assignedMissions.length > 0 && (
         <div style={{ marginBottom:18 }}>
           <p style={{ fontWeight:800, color:C.success, fontSize:13, margin:"0 0 10px", display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ width:8, height:8, borderRadius:"50%", background:C.success, display:"inline-block" }} />
-            Mission{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
+            Prestation{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
@@ -1646,13 +1939,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime()
                   : new Date(m.date + 'T00:00:00').getTime())
               : 0;
+            const effectiveHours = m.actual_hours ?? m.hours ?? 1;
             const missionEnd = m.date
               ? (m.heure_debut
-                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
+                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
-            const isStarted = missionStart > 0 && missionStart < now;
-            const isPast = missionEnd > 0 && missionEnd < now;
+            const renderNow = Date.now();
+            const isStarted = missionStart > 0 && missionStart < renderNow;
+            const isPast = missionEnd > 0 && missionEnd < renderNow;
             const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
             const badgeLabel = isPast ? "À valider" : isStarted ? "En cours" : "À venir";
             const borderColor = isPast ? C.accentGold+"88" : isStarted ? C.success+"44" : C.violet+"44";
@@ -1661,14 +1956,46 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {isPast && (
                   <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", gap:8, alignItems:"center" }}>
                     <span style={{ fontSize:16 }}>⚠️</span>
-                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Mission terminée — pensez à valider !</span>
+                    <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Prestation terminée — pensez à valider !</span>
+                  </div>
+                )}
+                {/* Demande d'heures supplémentaires en attente */}
+                {m.extra_hours_status === "pending" && m.extra_hours_requested > 0 && (
+                  <div style={{ background:"rgba(124,111,224,0.1)", border:`1px solid ${C.violet}44`, borderRadius:12, padding:"14px", marginBottom:10 }}>
+                    <div style={{ fontWeight:700, color:C.violet, fontSize:13, marginBottom:4 }}>⏱ Demande de prolongation</div>
+                    <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>
+                      Le client souhaite prolonger la prestation de <strong style={{ color:C.text }}>{m.extra_hours_requested}h supplémentaire{m.extra_hours_requested > 1 ? "s" : ""}</strong>.
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const token = sd?.session?.access_token;
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"refuse" }) });
+                        if (r.ok) setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"refused", extra_hours_requested:null} : x));
+                      }} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        ✗ Refuser
+                      </button>
+                      <button onClick={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const token = sd?.session?.access_token;
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept" }) });
+                        if (r.ok) {
+                          const d = await r.json();
+                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, hours: d.newHours||x.hours, extra_hours_status:"accepted", extra_hours_requested:null} : x));
+                        }
+                      }} style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        ✅ Accepter +{m.extra_hours_requested}h
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:10 }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${sector?.color||C.success}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{sector?.icon||"✅"}</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Mission"}</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{m.heure_debut ? ` · ${m.heure_debut}${computeEndTime(m.heure_debut,m.hours) ? ` – ${computeEndTime(m.heure_debut,m.hours)}` : ""}` : ` · ${m.hours}h`}</div>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || sector?.label || "Prestation"}</div>
+                    {(() => { const {displayStart,displayEnd} = computeMissionTimes(m); return (
+                      <div style={{ color:C.textSub, fontSize:12 }}>📅 {m.date}{displayStart ? ` · ${displayStart}${displayEnd ? ` – ${displayEnd}` : ""}` : ` · ${m.hours}h`}</div>
+                    ); })()}
                     {m.heure_debut && <div style={{ color:C.textSub, fontSize:12 }}>⏱ {m.hours}h de travail</div>}
                     {m.ville && <div style={{ color:C.textSub, fontSize:12 }}>📍 {m.ville}{m.adresse ? `, ${m.adresse}` : ""}</div>}
                     {m.tarif_horaire > 0 && <div style={{ color:C.success, fontSize:12, fontWeight:700 }}>💶 {Number(m.tarif_horaire).toFixed(2).replace(".",",")} € HT/h</div>}
@@ -1676,6 +2003,132 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                   <span style={{ background:`${badgeColor}20`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"3px 9px", color:badgeColor, fontSize:10, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                 </div>
+                {/* Timer / Checkin / Start */}
+                {startedAtMap[m.id] ? (
+                    <ElapsedTimer
+                      startedAt={startedAtMap[m.id]}
+                      maxMs={(m.actual_hours ?? m.hours ?? 1) * 3600 * 1000}
+                      onEnd={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const tok = sd?.session?.access_token;
+                        if (!tok) return;
+                        fetch("/api/missions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+                          body: JSON.stringify({ action: "notify_end", mission_id: m.id }),
+                        }).catch(() => {});
+                      }}
+                    />
+                  ) : arrivedAtMap[m.id] ? (
+                  // ── Sur place, pas encore démarré : bouton "Je commence" ──
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"8px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontSize:14 }}>✅</span>
+                      <div>
+                        <div style={{ color:C.success, fontWeight:700, fontSize:12 }}>Arrivé(e) sur place — client notifié</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>Arrivé(e) à {new Date(arrivedAtMap[m.id]).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                    </div>
+                    <button disabled={startingMission === m.id} onClick={async () => {
+                      setStartingMission(m.id);
+                      const { data: sd } = await supabase.auth.getSession();
+                      const token = sd?.session?.access_token;
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"start_mission", mission_id:m.id }) });
+                      const d = await r.json();
+                      if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
+                      setStartingMission(null);
+                    }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:15, cursor:startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                      {startingMission===m.id ? "Démarrage…" : "🚀 Je commence la prestation"}
+                    </button>
+                  </div>
+                ) : !isPast && (
+                  // ── Pas encore arrivé : détection GPS ou fallback manuel ──
+                  <div style={{ marginBottom:10 }}>
+                    {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (() => {
+                      let tooEarly = false;
+                      let missionStarted = true;
+                      if (m.date && m.heure_debut) {
+                        try {
+                          const [yr,mo,dy] = m.date.split("-").map(Number);
+                          const [hh,mm] = m.heure_debut.split(":").map(Number);
+                          const missionStartMs = new Date(yr, mo-1, dy, hh, mm).getTime();
+                          tooEarly = Date.now() < missionStartMs - 30*60*1000;
+                          missionStarted = Date.now() >= missionStartMs;
+                        } catch {}
+                      }
+                      const checkinBtn = (
+                        <button disabled={checkingInId === m.id} onClick={async () => {
+                          setCheckingInId(m.id);
+                          setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+                          const { data: sd } = await supabase.auth.getSession();
+                          const token = sd?.session?.access_token;
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                          const d = await r.json();
+                          if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                          setCheckingInId(null);
+                        }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                          {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                        </button>
+                      );
+                      return tooEarly ? (
+                        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                          <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                          <div>
+                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 30 min avant le début de la mission.</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          <div style={{ background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}`, flexShrink:0, animation:"pulse 1.5s ease-in-out infinite" }} />
+                            <div>
+                              <div style={{ color:C.violet, fontWeight:700, fontSize:12 }}>Détection de présence active</div>
+                              <div style={{ color:C.textSub, fontSize:11 }}>Vous recevrez automatiquement la confirmation d'arrivée dès que vous serez à moins de 150m.</div>
+                            </div>
+                          </div>
+                          {missionStarted && checkinBtn}
+                        </div>
+                      );
+                    })() : (
+                      // Fallback : GPS refusé ou adresse non géocodable → bouton manuel à l'heure de début
+                      (() => {
+                        let missionStarted = true;
+                        if (m.date && m.heure_debut) {
+                          try {
+                            const [yr,mo,dy] = m.date.split("-").map(Number);
+                            const [hh,mm] = m.heure_debut.split(":").map(Number);
+                            missionStarted = Date.now() >= new Date(yr, mo-1, dy, hh, mm).getTime();
+                          } catch {}
+                        }
+                        return missionStarted ? (
+                          <button disabled={checkingInId === m.id} onClick={async () => {
+                            setCheckingInId(m.id);
+                            setCheckInGeoError(prev => ({ ...prev, [m.id]: null }));
+                            const { data: sd } = await supabase.auth.getSession();
+                            const token = sd?.session?.access_token;
+                            const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"checkin_mission", mission_id:m.id }) });
+                            const d = await r.json();
+                            if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
+                            setCheckingInId(null);
+                          }} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:checkingInId===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:"#fff", fontWeight:800, fontSize:14, cursor:checkingInId===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
+                            {checkingInId===m.id ? "Enregistrement…" : "📍 Je suis sur place"}
+                          </button>
+                        ) : (
+                          <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
+                            <div style={{ color:C.textMuted, fontSize:12 }}>Le bouton de présence sera disponible à l'heure de début de la mission.</div>
+                          </div>
+                        );
+                      })()
+                    )}
+                    {checkInGeoError[m.id] && (
+                      <div style={{ marginTop:8, background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"10px 13px", fontSize:12, color:"#F25E5E", lineHeight:1.5 }}>
+                        {checkInGeoError[m.id]}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
                   {/* Bouton "Je suis là" — visible si mission démarrée, pas encore validée, pas encore checké */}
                   {isStarted && !isPast && !m.arrived_at && (
@@ -1706,11 +2159,12 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           const { data:{ session } } = await supabase.auth.getSession();
                           const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                          else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
                           setValidatingMission(null);
                         }
                       }}
                         style={{ flex:1, padding:"9px", borderRadius:10, border:"none", background:validatingMission===m.id?"rgba(240,180,41,0.5)":C.accentGold, color:"#fff", fontWeight:700, fontSize:12, cursor:validatingMission===m.id?"default":"pointer", fontFamily:"inherit" }}>
-                        {validatingMission === m.id ? "Validation…" : "✅ Valider la mission"}
+                        {validatingMission === m.id ? "Validation…" : "✅ Valider la prestation"}
                       </button>
                     )}
                     {isPast && m.validation_prestataire && (
@@ -1725,6 +2179,18 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       💬 Chat avec le client
                     </button>
                   )}
+                  <button onClick={() => toggleTracking(m.id)}
+                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
+                  </button>
+                  <button onClick={async()=>{
+                    if(!await showConfirm("Annuler cette mission ?")) return;
+                    const { data:{ session } } = await supabase.auth.getSession();
+                    await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"presta_cancel", mission_id:m.id }) });
+                    setAssignedMissions(prev => prev.filter(x => x.id !== m.id));
+                  }} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                    ✕ Annuler la mission
+                  </button>
                 </div>
               </div>
             );
@@ -1736,8 +2202,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
       {assignedMissions.length === 0 && pendingMissions.length === 0 && (
         <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
           <div style={{ fontSize:36, marginBottom:8 }}>🔔</div>
-          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune mission en cours</div>
-          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une mission.</div>
+          <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:4 }}>Aucune prestation en cours</div>
+          <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une prestation.</div>
         </div>
       )}
     </div>
@@ -1761,19 +2227,19 @@ const PRESTA_TOUR_STEPS = [
   {
     icon:"🔔",
     title:"2. Recevez des demandes",
-    desc:"Un client vous choisit directement et vous envoie une demande de mission. Vous recevez une notification immédiate sur votre téléphone.",
+    desc:"Un client vous choisit directement et vous envoie une demande de prestation. Vous recevez une notification immédiate sur votre téléphone.",
     color:"#F0B429",
   },
   {
     icon:"⏱️",
     title:"3. Acceptez ou refusez",
-    desc:"Vous avez 1 heure (mission du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la mission est automatiquement annulée.",
+    desc:"Vous avez 1 heure (prestation du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la prestation est automatiquement annulée.",
     color:"#F06292",
   },
   {
     icon:"💶",
     title:"4. Réalisez & soyez payé",
-    desc:"Effectuez la mission, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
+    desc:"Effectuez la prestation, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
     color:"#81C784",
   },
 ];
@@ -1821,10 +2287,10 @@ export function PrestaClientsTab() {
     setBlocked(blockedList);
     supabase.auth.getUser().then(async ({data})=>{
       const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
-      const {data:missions} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
-      if(!missions){ setLoading(false); return; }
+      const {data:prestations} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
+      if(!prestations){ setLoading(false); return; }
       const seen = new Map();
-      for(const m of missions){
+      for(const m of prestations){
         if(!seen.has(m.client_id)) seen.set(m.client_id, { clientId:m.client_id, lastDate:m.date, sector:m.sector, metier:m.metier, missionCount:0, total:0 });
         const c = seen.get(m.client_id);
         c.missionCount++;
@@ -1856,7 +2322,7 @@ export function PrestaClientsTab() {
   return (
     <div>
       <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginBottom:16, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-        👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses missions.
+        👥 Historique de vos clients. Bloquez un client pour ne plus recevoir ses prestations.
       </div>
       {clients.length === 0 ? (
         <div style={{ textAlign:"center", padding:"28px 16px", color:C.textSub, fontSize:13 }}>
@@ -1874,10 +2340,10 @@ export function PrestaClientsTab() {
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:isBlocked?C.accent:C.text, fontSize:14 }}>{c.name||"Client"}</div>
               <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
-                {c.missionCount} mission{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
+                {c.missionCount} prestation{c.missionCount>1?"s":""} · {sector?.label||c.sector||""}
                 {c.total>0 && ` · ${c.total.toFixed(0)} €`}
               </div>
-              {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière mission : {c.lastDate}</div>}
+              {c.lastDate && <div style={{ color:C.textMuted, fontSize:10, marginTop:1 }}>Dernière prestation : {c.lastDate}</div>}
             </div>
             <button onClick={()=>toggleBlock(c.clientId)} style={{ padding:"7px 11px", borderRadius:9, border:`1px solid ${isBlocked?"rgba(242,94,94,0.5)":C.border}`, background:isBlocked?"rgba(242,94,94,0.12)":"rgba(255,255,255,0.05)", color:isBlocked?C.accent:C.textSub, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
               {isBlocked?"Débloquer":"Bloquer"}
@@ -1890,7 +2356,7 @@ export function PrestaClientsTab() {
 }
 
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
-  const [tab,setTab]=useState("missions");
+  const [tab,setTab]=useState("prestations");
   const [userRib,setUserRib]=useState(null);
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
@@ -1900,12 +2366,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [missionsEnabled,setMissionsEnabled]=useState(false);
   const [dispoRapide,setDispoRapide]=useState(true);
   const [showTour,setShowTour]=useState(false);
-  const [statsData,setStatsData]=useState({missions:0,revenuMois:0,note:null,taux:null});
+  const [statsData,setStatsData]=useState({prestations:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [historyMissions,setHistoryMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [ratingTarget, setRatingTarget] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [recapCard, setRecapCard] = useState(null);
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
   const [ratingLoading, setRatingLoading] = useState(false);
@@ -1915,7 +2383,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
-    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("missions");
+    else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
   },[activeScreen]);
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -1931,12 +2399,18 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
       if(!prestaTourDone) setShowTour(true);
       const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,nb_heures,date,sector,metier,titre,status,heure_debut").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
+        supabase.from("profiles").select("status,missions_enabled,plan_abonnement,trial_exhausted").eq("id",u.id).single(),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
       ]);
-      if(prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
-      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+      if(prof) {
+        setUserStatus(prof.status);
+        setMissionsEnabled(prof.missions_enabled === true);
+        // profiles est la source de vérité — priorité sur user_metadata
+        const resolvedPlan = prof.plan_abonnement || u.user_metadata?.plan_abonnement || "free";
+        setPlanActuel(resolvedPlan);
+      }
+      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
       const refused=allM.filter(m=>m.status==="refused");
@@ -1947,9 +2421,27 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const avgNote=rList.length?(rList.reduce((a,b)=>a+b,0)/rList.length):null;
       const totalR=done.length+refused.length;
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
-      setStatsData({missions:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
+      setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
       setHistoryMissions([...done, ...allM.filter(m => m.status === "cancelled" || m.status === "refused")].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+
+      // Streak: consecutive calendar days with ≥1 completed mission, backwards from yesterday
+      const missionDays = new Set(done.map(m => m.date?.slice(0,10)).filter(Boolean));
+      let s = 0;
+      const ref = new Date(); ref.setDate(ref.getDate() - 1); // start from yesterday
+      for (let i = 0; i < 365; i++) {
+        const key = ref.toISOString().slice(0,10);
+        if (missionDays.has(key)) { s++; ref.setDate(ref.getDate() - 1); }
+        else break;
+      }
+      setStreak(s);
+
+      // Recap card: show for newest completed mission not yet seen
+      const seenKey = `alane_presta_recap_seen_${u.id}`;
+      let seenIds; try { seenIds = new Set(JSON.parse(localStorage.getItem(seenKey)||"[]")); } catch(e) { seenIds = new Set(); }
+      const unseen = done.filter(m => !seenIds.has(m.id)).sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
+      if (unseen.length > 0) setRecapCard(unseen[0]);
+
       const { data: myRatings } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", u.id);
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
@@ -1985,14 +2477,66 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch(e) {} }
   };
 
+  const dismissRecap = async () => {
+    if (!recapCard) return;
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id; if (!uid) { setRecapCard(null); return; }
+    const seenKey = `alane_presta_recap_seen_${uid}`;
+    let seenIds; try { seenIds = new Set(JSON.parse(localStorage.getItem(seenKey)||"[]")); } catch(e) { seenIds = new Set(); }
+    seenIds.add(recapCard.id);
+    // Cap à 500 pour éviter un localStorage illimité — on garde les plus récents
+    const seenArr = [...seenIds];
+    const capped = seenArr.length > 500 ? seenArr.slice(seenArr.length - 500) : seenArr;
+    try { localStorage.setItem(seenKey, JSON.stringify(capped)); } catch(e) {}
+    setRecapCard(null);
+  };
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
+      {/* ── Recap Card ── */}
+      {recapCard && (() => {
+        const getAmt = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+        const amt = getAmt(recapCard);
+        const sector = SECTORS.find(s => s.id === recapCard.sector);
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
+            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"28px 24px 48px", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center" }}>
+              <div style={{ width:40, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 24px" }} />
+              {/* Confetti ring */}
+              <div style={{ width:88, height:88, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"3px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px", boxShadow:"0 0 40px rgba(16,217,143,0.3)" }}>
+                {sector?.icon || "✅"}
+              </div>
+              <h2 style={{ color:"#10D98F", fontSize:22, fontWeight:900, margin:"0 0 6px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
+              <p style={{ color:C.textSub, fontSize:13, margin:"0 0 24px" }}>{recapCard.metier || sector?.label || "Prestation"} · {recapCard.date || ""}</p>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
+                <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:14, padding:"16px 12px" }}>
+                  <div style={{ fontSize:24, fontWeight:900, color:"#10D98F" }}>{amt > 0 ? `${amt.toFixed(2).replace(".",",")} €` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Montant gagné</div>
+                </div>
+                <div style={{ background:"rgba(162,155,254,0.08)", border:"1px solid rgba(162,155,254,0.2)", borderRadius:14, padding:"16px 12px" }}>
+                  <div style={{ fontSize:24, fontWeight:900, color:C.violet }}>{recapCard.hours ? `${recapCard.hours}h` : "—"}</div>
+                  <div style={{ fontSize:11, color:C.textSub, marginTop:4 }}>Durée réalisée</div>
+                </div>
+              </div>
+              {streak >= 2 && (
+                <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:12, padding:"10px 16px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <span style={{ fontSize:20 }}>🔥</span>
+                  <span style={{ color:C.accentGold, fontWeight:700, fontSize:13 }}>{streak} jours de suite — continuez comme ça !</span>
+                </div>
+              )}
+              <button onClick={dismissRecap} style={{ width:"100%", padding:"14px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#10D98F,#0ABF7A)", color:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+                Super ! 🚀
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       {ratingTarget && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:500, backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
           <div style={{ background:"#0D1B3E", borderRadius:"22px 22px 0 0", padding:"28px 22px 40px", width:"100%", maxWidth:480, border:`1px solid ${C.border}`, borderBottom:"none" }}>
             <div style={{ width:40, height:4, background:C.border, borderRadius:2, margin:"0 auto 20px" }} />
             <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 4px", textAlign:"center" }}>⭐ Noter le client</h3>
-            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", margin:"0 0 20px" }}>Mission du {ratingTarget.date} — {ratingTarget.metier || ratingTarget.sector}</p>
+            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", margin:"0 0 20px" }}>Prestation du {ratingTarget.date} — {ratingTarget.metier || ratingTarget.sector}</p>
             <div style={{ display:"flex", justifyContent:"center", gap:10, marginBottom:20 }}>
               {[1,2,3,4,5].map(s => (
                 <button key={s} onClick={()=>setRatingValue(s)}
@@ -2059,9 +2603,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </button>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[{l:"Missions",v:String(statsData.missions),i:"✅"},{l:"Ce mois",v:statsData.revenuMois>0?statsData.revenuMois+"€":"—",i:"💶"},{l:"Note",v:statsData.note?statsData.note+"★":"—",i:"⭐"},{l:"Taux",v:statsData.taux||"—",i:"📈"}].map(s=>(
-            <div key={s.l} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center" }}>
-              <div style={{ fontSize:16 }}>{s.i}</div><div style={{ color:C.white, fontWeight:800, fontSize:12 }}>{s.v}</div><div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
+          {[
+            {l:"Prestations",v:String(statsData.prestations||0),i:"✅"},
+            {l:"Ce mois",v:statsData.revenuMois>0?(statsData.revenuMois+"€"):"—",i:"💶"},
+            {l:"Note",v:statsData.note?(statsData.note+"★"):"—",i:"⭐"},
+            {l:"Streak",v:streak>0?`🔥${streak}j`:"—",i:"",highlight:streak>=3},
+          ].map(s=>(
+            <div key={s.l} style={{ background:s.highlight?"linear-gradient(135deg,rgba(240,180,41,0.2),rgba(240,120,41,0.12))":"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center", border:s.highlight?"1px solid rgba(240,180,41,0.4)":"none" }}>
+              {s.i && <div style={{ fontSize:16 }}>{s.i}</div>}
+              <div style={{ color:s.highlight?C.accentGold:C.white, fontWeight:800, fontSize:s.highlight?13:12 }}>{s.v}</div>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -2110,54 +2661,54 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       <div style={{ padding:"18px 18px 0" }}>
         {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-          {[{id:"missions",l:"Missions"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"historique",l:"Historique"},{id:"clients",l:"Clients"}].map(t=>(
+          {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"historique",l:"Historique"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>
           ))}
         </div>
-        {tab==="missions" && <>
+        {tab==="prestations" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           <UpgradeNudge onNavigate={onNavigate} />
           {(planActuel==="premium"||planActuel==="elite") && (
             <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:16 }}>💎</span>
               <div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Missions urgentes activées</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les missions urgentes de votre secteur.</div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Prestations urgentes activées</div>
+                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les prestations urgentes de votre secteur.</div>
               </div>
             </div>
           )}
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
-              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une mission.
+              🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
             </div>
           )}
           {(() => {
             const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
-            const limit = plan.missions === 999 ? null : plan.missions;
+            const limit = plan.prestations === 999 ? null : plan.missions;
             if(!limit) return null;
             const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
             const remaining = Math.max(0, limit - missionsUsedMonth);
             return (
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${remaining===0?"#F25E5E44":C.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:12, color:C.textSub }}>Missions ce mois</span>
+                  <span style={{ fontSize:12, color:C.textSub }}>Prestations ce mois</span>
                   <span style={{ fontSize:12, fontWeight:700, color:remaining===0?"#F25E5E":C.text }}>{missionsUsedMonth}/{limit}</span>
                 </div>
                 <div style={{ height:5, borderRadius:99, background:"rgba(255,255,255,0.1)", overflow:"hidden" }}>
                   <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:remaining===0?"#F25E5E":C.violet, transition:"width .3s" }} />
                 </div>
                 {remaining===0 && <div style={{ marginTop:6, fontSize:11, color:"#F25E5E" }}>Limite atteinte — passez en {planActuel==="free"?"Premium":"Elite"} pour continuer</div>}
-                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} mission{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
+                {remaining>0 && remaining<=2 && <div style={{ marginTop:6, fontSize:11, color:C.accentGold }}>Plus que {remaining} prestation{remaining>1?"s":""} disponible{remaining>1?"s":""}</div>}
               </div>
             );
           })()}
-          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes missions" : "🔔 Missions disponibles"}</p>
+          <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>{activeScreen==="p_home" ? "📋 Mes prestations" : "🔔 Prestations disponibles"}</p>
           {!missionsEnabled ? (
             <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid rgba(240,180,41,0.35)`, borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
-              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux missions en attente</div>
+              <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:8 }}>Accès aux prestations en attente</div>
               <p style={{ color:C.textSub, fontSize:13, margin:"0 0 12px", lineHeight:1.6 }}>
-                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux missions.<br/>
+                L'équipe ALANE doit valider votre dossier avant de vous donner accès aux prestations.<br/>
                 Assurez-vous d'avoir uploadé tous vos documents dans l'onglet <strong>Docs</strong>.
               </p>
               <button onClick={()=>{ onNavigate("doc_upload"); }} style={{ background:"rgba(240,180,41,0.2)", border:`1px solid rgba(240,180,41,0.5)`, borderRadius:r, padding:"10px 18px", color:C.accentGold, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
@@ -2192,17 +2743,17 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         {tab==="historique" && (()=>{
           const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée" };
           const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted };
+          const getAmtH = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
           return historyMissions.length === 0 ? (
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center" }}>
               <div style={{ fontSize:36, marginBottom:10 }}>📂</div>
-              <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune mission dans l'historique</div>
-              <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos missions passées (terminées, annulées, refusées) apparaîtront ici.</div>
+              <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucune prestation dans l'historique</div>
+              <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos prestations passées (terminées, annulées, refusées) apparaîtront ici.</div>
             </div>
           ) : <>
             {historyMissions.map(m => {
               const sector = SECTORS.find(s => s.id === m.sector);
-              const getAmt = x => Number(x.montant_total||(x.tarif_horaire&&x.nb_heures?Number(x.tarif_horaire)*Number(x.nb_heures):0));
-              const amt = getAmt(m);
+              const amt = getAmtH(m);
               const statusColor = statusColors[m.status] || C.textMuted;
               const statusLabel = statusLabels[m.status] || m.status;
               return (
@@ -2210,9 +2761,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   <div style={{ display:"flex", gap:12, alignItems:"center" }}>
                     <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
+                      <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Prestation"}</div>
                       <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.heure_debut?` · ${m.heure_debut}`:""}
-                        {m.nb_heures ? ` · ${m.nb_heures}h` : ""}
+                        {m.hours ? ` · ${m.hours}h` : ""}
                       </div>
                     </div>
                     <div style={{ textAlign:"right", flexShrink:0 }}>
@@ -2239,14 +2790,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </>;
         })()}
         {tab==="revenus" && (()=>{
-          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
+          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           return <>
             {completedMissions.length===0 ? (
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
                 <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:6 }}>Aucun revenu pour le moment</div>
-                <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières missions complétées.</div>
+                <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières prestations complétées.</div>
               </div>
             ) : <>
               <div style={{ background:`linear-gradient(135deg,${C.success}22,${C.success}10)`, border:`1px solid ${C.success}44`, borderRadius:16, padding:"16px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -2255,10 +2806,48 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   <div style={{ color:C.success, fontWeight:800, fontSize:22 }}>{total.toFixed(2).replace(".",",")} €</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Missions</div>
+                  <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Prestations</div>
                   <div style={{ color:C.text, fontWeight:800, fontSize:18 }}>{completedMissions.length}</div>
                 </div>
               </div>
+              {/* ── Graphe mensuel ── */}
+              {(() => {
+                const now = new Date();
+                const months = Array.from({length:4}, (_,i) => {
+                  const d = new Date(now.getFullYear(), now.getMonth() - (3-i), 1);
+                  return { year:d.getFullYear(), month:d.getMonth(), label:["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"][d.getMonth()] };
+                });
+                const getAmt2 = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const byMonth = months.map(({year,month,label}) => {
+                  const rev = completedMissions.filter(m => {
+                    if (!m.date) return false;
+                    const d = new Date(m.date);
+                    return d.getFullYear()===year && d.getMonth()===month;
+                  }).reduce((s,m) => s+getAmt2(m), 0);
+                  return {label, rev};
+                });
+                const maxRev = Math.max(...byMonth.map(m=>m.rev), 1);
+                return (
+                  <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:14, padding:"16px 14px", marginBottom:14 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.textSub, marginBottom:14 }}>📊 Revenus par mois</div>
+                    <div style={{ display:"flex", gap:8, alignItems:"flex-end", height:72 }}>
+                      {byMonth.map(({label,rev},i) => {
+                        const pct = Math.max(4, Math.round((rev/maxRev)*100));
+                        const isCurrentMonth = i === 3;
+                        return (
+                          <div key={label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                            <div style={{ fontSize:10, color:rev>0?C.success:C.textMuted, fontWeight:700 }}>{rev>0?rev.toFixed(0)+"€":""}</div>
+                            <div style={{ width:"100%", height:60, display:"flex", alignItems:"flex-end" }}>
+                              <div style={{ width:"100%", height:`${pct}%`, borderRadius:"6px 6px 3px 3px", background:isCurrentMonth?`linear-gradient(180deg,${C.success},${C.success}88)`:"rgba(16,217,143,0.3)", transition:"height .4s" }} />
+                            </div>
+                            <div style={{ fontSize:10, color:isCurrentMonth?C.text:C.textSub, fontWeight:isCurrentMonth?700:400 }}>{label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {completedMissions.map(m=>{
                 const sector=SECTORS.find(s=>s.id===m.sector);
                 const amt=getAmt(m);
@@ -2267,8 +2856,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     <div style={{ display:"flex", gap:12, alignItems:"center" }}>
                       <div style={{ width:40, height:40, borderRadius:11, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon||"📋"}</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Mission"}</div>
-                        <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.nb_heures?` · ${m.nb_heures}h`:""}</div>
+                        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||sector?.label||"Prestation"}</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.hours?` · ${m.hours}h`:""}</div>
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
                         <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
@@ -2291,7 +2880,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               })}
             </>}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
-              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque mission.
+              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque prestation.
             </div>
             <div style={{ background:"rgba(239,68,68,0.10)", border:"1px solid rgba(239,68,68,0.35)", borderRadius:12, padding:"12px 14px", fontSize:12, color:C.text, marginBottom:12, lineHeight:1.6 }}>
               <span style={{ fontWeight:700 }}>⚠️ Plafond auto-entrepreneur</span><br/>
@@ -2299,8 +2888,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             </div>
             {completedMissions.length > 0 && (
               <button onClick={()=>{
-                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.nb_heures?Number(m.tarif_horaire)*Number(m.nb_heures):0));
-                const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.nb_heures||"",getAmt(m).toFixed(2),m.status||""])];
+                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.hours||"",getAmt(m).toFixed(2),m.status||""])];
                 const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
                 const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
                 const url=URL.createObjectURL(blob);

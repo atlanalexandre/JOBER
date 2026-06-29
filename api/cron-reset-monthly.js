@@ -46,7 +46,8 @@ export default async function handler(req, res) {
   const cronSecret  = process.env.CRON_SECRET;
   const boSecret    = process.env.BO_SESSION_SECRET;
 
-  const isCron = !cronSecret || authHeader === `Bearer ${cronSecret}`;
+  // CRON_SECRET required — if not set, only BO tokens accepted (Vercel crons need CRON_SECRET configured)
+  const isCron = cronSecret ? authHeader === `Bearer ${cronSecret}` : false;
   const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
   if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
 
@@ -59,6 +60,35 @@ export default async function handler(req, res) {
     "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
     "Content-Type":  "application/json",
   };
+
+  // ── Expiry des pending_acceptance zombies (toutes routes) ───────
+  {
+    const nowIso = new Date().toISOString();
+    try {
+      const zRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre`,
+        { headers }
+      );
+      const zombies = await zRes.json().catch(() => []);
+      if (Array.isArray(zombies) && zombies.length) {
+        await Promise.all(zombies.map(async z => {
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "open", prestataire_id: null }),
+          }).catch(() => {});
+          if (z.client_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ user_id: z.client_id, type: "mission", title: "Prestataire non disponible", body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre mission"}". Elle est remise en recherche.`, read: false }),
+            }).catch(() => {});
+          }
+        }));
+        console.log(`[cron] expired ${zombies.length} pending_acceptance zombie(s)`);
+      }
+    } catch (e) { console.error("[cron] zombie expiry error:", e); }
+  }
 
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
@@ -178,15 +208,23 @@ ${(() => {
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut,validation_prestataire,validation_client`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
         const now = Date.now();
+        const TWELVE_HOURS_MS = 2 * 60 * 60 * 1000; // relance toutes les 2h
         const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
           if (!m.heure_debut) return true;
-          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(m.hours || 0) * 3600000);
-          return endMs < now;
+          const effectiveH = m.actual_hours ?? m.hours ?? 0;
+          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(effectiveH) * 3600000);
+          if (endMs >= now) return false;
+          // N-05: skip missions that already got a reminder less than 12h ago
+          if (m.last_validation_reminder_at) {
+            const lastReminderMs = new Date(m.last_validation_reminder_at).getTime();
+            if (!isNaN(lastReminderMs) && now - lastReminderMs < TWELVE_HOURS_MS) return false;
+          }
+          return true;
         }) : [];
         if (pastMissions.length && RESEND_API_KEY) {
           await Promise.all(pastMissions.map(async (m) => {
@@ -254,11 +292,19 @@ ${(() => {
             }
             await Promise.all(vSends);
             validationSent += vSends.length;
+            // N-05: stamp last_validation_reminder_at to prevent duplicate sends within 12h
+            if (vSends.length > 0) {
+              fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
+              }).catch(() => {});
+            }
           }));
         }
       } catch (e) { console.error("cron validation reminders error:", e); }
 
-      // ── 3. Auto-validation après 24h si le prestataire a validé ─────
+      // ── 3. Auto-validation après 24h — que le prestataire ait confirmé ou non ─────
       let autoValidated = 0;
       try {
         // DST-safe : soustraire 1 jour calendaire plutôt que 86400000ms
@@ -266,8 +312,10 @@ ${(() => {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
+        // On récupère toutes les missions assignées (peu importe validation_prestataire)
+        // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&validation_prestataire=eq.true&validation_client=eq.false&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,tarif_horaire,metier,sector,date,heure_debut`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,heure_debut,validation_prestataire,cashback_credited`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -297,7 +345,13 @@ ${(() => {
           // Traitement séquentiel pour éviter les écritures concurrentes sur le même client
           for (const m of autoMissions) {
             try {
-              const hours = m.hours || 0;
+              // B-05: skip if cashback was already credited (idempotence)
+              if (m.cashback_credited) {
+                console.log(`cron auto-validate: cashback already credited for mission ${m.id}, skipping`);
+                continue;
+              }
+              // B-02: use actual_hours (validated by prestataire) if available, fallback to planned hours
+              const hours = m.actual_hours ?? m.hours ?? 0;
               const tarif = m.tarif_horaire || 0;
               const montantTotal = Math.round(hours * tarif * 100) / 100;
               const mLabel = esc(m.metier || m.sector || "Mission");
@@ -312,10 +366,10 @@ ${(() => {
               const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
-              // Marquer la mission complétée
+              // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard)
               const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ status: "completed", validation_client: true, montant_total: montantTotal }),
+                body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal, cashback_credited: true }),
               });
               if (!patchRes.ok) {
                 console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());
@@ -453,10 +507,12 @@ ${(() => {
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?missions_completed_month=gt.0`, {
+    // Reset mensuel : remet missions_completed_month à 0 ET débloque trial_exhausted pour TOUS les profils.
+    // Le quota free (2 missions/mois) est mensuel — trial_exhausted doit se réinitialiser chaque 1er du mois.
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,trial_exhausted.is.true)`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ missions_completed_month: 0 }),
+      body: JSON.stringify({ missions_completed_month: 0, trial_exhausted: false }),
     });
 
     if (!r.ok) {
@@ -465,25 +521,31 @@ ${(() => {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    // Downgrade des abonnements expirés
+    // Downgrade des abonnements expirés — traité par batch de 50 pour éviter le rate limiting Supabase Auth
     let downgrades = 0;
     try {
       const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
       const usersData = await usersRes.json();
-      const users = usersData.users || [];
+      const allUsers = usersData.users || [];
       const now = new Date();
-      await Promise.all(users.map(async u => {
+      const toDowngrade = allUsers.filter(u => {
         const meta = u.user_metadata || {};
-        if (meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date) {
-          if (new Date(meta.subscription_end_date) < now) {
-            await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
-              method: "PUT", headers,
-              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
-            }).catch(() => {});
-            downgrades++;
-          }
-        }
-      }));
+        return meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date
+          && new Date(meta.subscription_end_date) < now;
+      });
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < toDowngrade.length; i += BATCH_SIZE) {
+        const batch = toDowngrade.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async u => {
+          const meta = u.user_metadata || {};
+          await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
+            method: "PUT", headers,
+            body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
+          }).catch(() => {});
+          downgrades++;
+        }));
+        if (i + BATCH_SIZE < toDowngrade.length) await new Promise(r => setTimeout(r, 500));
+      }
     } catch (e) { console.error("cron downgrade error:", e); }
 
     console.log(`cron-reset-monthly: missions reset, ${downgrades} abonnements expirés downgradés`);

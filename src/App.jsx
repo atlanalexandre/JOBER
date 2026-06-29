@@ -3,13 +3,13 @@ import { supabase } from "./lib/supabase.js";
 import { C, font, r, shadow } from "./constants/colors.js";
 import { IS_LAUNCH, isLaunchPhase, MARGES, FRAIS_MER, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, CASHBACK_TIERS, getCashbackTier, calcCashback } from "./constants/plans.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Stars, Badge, Btn, Input, AddressAutocomplete, formatPhone, checkIban, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Card, SectionHeader, Divider, MiniBar, DonutChart } from "./components/ui.jsx";
+import { Stars, Badge, Btn, Input, AddressAutocomplete, formatPhone, checkIban, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Card, SectionHeader, Divider, MiniBar, DonutChart, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
 import { CP_COORDS, cpToCoords, genMissionCode, SECTORS, METIERS_TARIFS, METIERS, CV_DATA, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, PROVIDERS_CACHE_TTL, FR_CITY_COORDS, SECTOR_LABELS } from "./constants/data.js";
 import { PrestaRegisterFlow, ClientRegisterFlow, AuthScreen } from "./components/auth.jsx";
-import { boFetch, useBoData, BackofficeLogin, BOComptes, BOSupport, BOModerationTab, BOExportCSV, BOExportMissions, BOExportPDF, EmailTestButton, BOTest, BOLogs, BOSettingsTab, BOResetMonthly, BOReminders, BOMissions, BORefundSection, BackofficeDashboard } from "./components/backoffice.jsx";
+import { boFetch, useBoData, BackofficeLogin, BOComptes, BOSupport, BOModerationTab, BOExportCSV, BOExportMissions, BOExportPDF, EmailTestButton, BOTest, BOLogs, BOSettingsTab, BOResetMonthly, BOReminders, BOMissions, BODocuments, BORefundSection, BORatings, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen } from "./components/payment.jsx";
-import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfileEditScreen, PrestaPointageScreen, PrestaOnboardingChecklist, UpgradeNudge, PMissionsTab, PrestaTour, PrestaClientsTab, PrestaDashboard, MicroEntrepriseScreen, TrialExhaustedPaywall } from "./components/presta-screens.jsx";
-import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, ClientTour, HomeScreen, CatalogueScreen, useProviders, loadLeaflet, cityCoords, LeafletMap, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, MissionTimeline, RatingScreen, DocUploadScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, NOTIF_ICONS, NOTIF_COLORS, timeAgo, TOUR_STEPS, haversineKm, travelTimeStr, OnboardingScreen } from "./components/client-screens.jsx";
+import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfileEditScreen, PrestaPointageScreen, PrestaOnboardingChecklist, UpgradeNudge, PMissionsTab, PrestaTour, PrestaClientsTab, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, ClientTour, HomeScreen, CatalogueScreen, useProviders, loadLeaflet, cityCoords, LeafletMap, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, MissionTimeline, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, NOTIF_ICONS, NOTIF_COLORS, timeAgo, TOUR_STEPS, haversineKm, travelTimeStr, OnboardingScreen } from "./components/client-screens.jsx";
 
 export class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -24,10 +24,10 @@ export class ErrorBoundary extends Component {
         <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, maxWidth:300, lineHeight:1.7, margin:"0 auto 24px" }}>
           Une erreur inattendue s'est produite. Nos équipes sont notifiées. Essayez de recharger la page.
         </p>
-        <button onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
+        <button aria-label="Recharger la page" onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
           &#128260; Recharger la page
         </button>
-        <button onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        <button aria-label="Réessayer sans recharger la page" onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
           Réessayer sans recharger
         </button>
       </div>
@@ -106,8 +106,7 @@ function SplashScreen({ onNext, onBackoffice }) {
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
-    supabase.from("profiles").select("*",{count:"exact",head:true}).eq("role","prestataire")
-      .then(({count})=>{ if(count!=null) setPrestaCount(count); });
+    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
@@ -156,7 +155,7 @@ function SplashScreen({ onNext, onBackoffice }) {
         </h1>
 
         <p style={{ color:C.textSub, fontSize:15, lineHeight:1.7, marginBottom:48, maxWidth:300 }}>
-          Trouvez des prestataires qualifiés et vérifiés pour vos missions ponctuelles — en quelques minutes.
+          Trouvez des prestataires qualifiés et vérifiés pour vos prestations ponctuelles — en quelques minutes.
         </p>
 
         {/* Stats pills */}
@@ -189,7 +188,7 @@ function SplashScreen({ onNext, onBackoffice }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>
-                10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
+                10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
               </div>
             </div>
           </div>
@@ -211,8 +210,7 @@ function RoleScreen({ onSelect }) {
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{
-    supabase.from("profiles").select("*",{count:"exact",head:true}).eq("role","prestataire")
-      .then(({count})=>{ if(count!=null) setPrestaCount(count); });
+    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
   },[]);
   const MAX_LAUNCH = 100;
   const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
@@ -278,7 +276,7 @@ function RoleScreen({ onSelect }) {
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
             <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>
-              10 missions gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
+              10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
             </div>
           </div>
         </div>
@@ -287,6 +285,11 @@ function RoleScreen({ onSelect }) {
       <p style={{ color:C.textMuted, fontSize:11, textAlign:"center", marginTop:16 }}>
         En continuant, vous acceptez nos <span onClick={()=>setShowCGU(true)} style={{ color:C.violet, cursor:"pointer", textDecoration:"underline" }}>CGU</span>
       </p>
+      <div style={{ textAlign:"center", marginTop:12 }}>
+        <button onClick={()=>onSelect("contact")} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline" }}>
+          📩 Nous contacter sans créer de compte
+        </button>
+      </div>
       {showCGU && (
         <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
@@ -297,9 +300,9 @@ function RoleScreen({ onSelect }) {
             {[
               { title:"1. Objet", text:"ALANE est une plateforme de mise en relation entre clients professionnels et prestataires qualifiés. L'utilisation de la plateforme implique l'acceptation des présentes conditions." },
               { title:"2. Inscription", text:"L'accès aux services nécessite la création d'un compte. Les informations fournies doivent être exactes et à jour. ALANE se réserve le droit de refuser ou suspendre tout compte." },
-              { title:"3. Missions", text:"Les missions sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
-              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la mission. Toute contestation doit être soumise sous 48h en contactant le support." },
-              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des missions. Chaque prestataire est couvert par sa propre RC Professionnelle." },
+              { title:"3. Prestations", text:"Les prestations sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
+              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la prestation. Toute contestation doit être soumise sous 48h en contactant le support." },
+              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des prestations. Chaque prestataire est couvert par sa propre RC Professionnelle." },
               { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : direction@alane.fr" },
             ].map((s,i)=>(
               <div key={i} style={{ marginBottom:14 }}>
@@ -316,7 +319,124 @@ function RoleScreen({ onSelect }) {
 
 
 
-// ── CONTACT SUPPORT ───────────────────────────────────────────────
+// ── CONTACT PUBLIC (sans compte) ──────────────────────────────────
+function PublicContactScreen({ onBack }) {
+  const [name, setName]       = useState("");
+  const [email, setEmail]     = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState("");
+
+  const SUBJECTS = ["Question générale","Problème technique","Question commerciale","Partenariat","Presse / Médias","Autre"];
+
+  const handleSend = async () => {
+    if (!name.trim())    { setError("Votre nom est requis"); return; }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Adresse email invalide"); return; }
+    if (!subject)        { setError("Choisissez un sujet"); return; }
+    if (!message.trim() || message.length < 20) { setError("Message trop court (20 caractères minimum)"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), userId: "", _hp: "" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(()=>({}));
+        throw new Error(d.error || "Erreur serveur");
+      }
+      setSent(true);
+    } catch(e) {
+      setError(e.message || "Envoi échoué. Réessayez dans quelques instants.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20 0%, #0A1628 60%, #162547 100%)`, display:"flex", flexDirection:"column" }}>
+      <div style={{ padding:"52px 22px 24px", borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+        <button onClick={onBack} aria-label="Retour à l'accueil" style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:16, fontFamily:"inherit" }}>
+          ← Retour
+        </button>
+        <div style={{ marginBottom:14 }}><ALANELogo size="sm" /></div>
+        <h1 style={{ color:C.text, fontSize:24, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Nous contacter</h1>
+        <p style={{ color:C.textSub, fontSize:13, margin:0, lineHeight:1.6 }}>Pas besoin de compte — notre équipe répond sous 24h ouvrées.</p>
+      </div>
+
+      <div style={{ flex:1, padding:"28px 22px 60px", overflowY:"auto" }}>
+        {sent ? (
+          <div style={{ textAlign:"center", paddingTop:48 }}>
+            <div aria-hidden="true" style={{ fontSize:64, marginBottom:20 }}>✅</div>
+            <h2 style={{ color:C.text, fontSize:22, fontWeight:800, margin:"0 0 10px" }}>Message envoyé !</h2>
+            <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 32px" }}>
+              Nous vous répondrons à <strong style={{ color:C.white }}>{email}</strong> sous 24h ouvrées.
+            </p>
+            <button onClick={onBack} style={{ background:C.violet, color:"#fff", border:"none", borderRadius:r, padding:"14px 28px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              ← Retour à l'accueil
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"13px 15px", marginBottom:24, display:"flex", gap:10 }}>
+              <span aria-hidden="true" style={{ fontSize:18 }}>💬</span>
+              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Question, partenariat, problème technique… remplissez le formulaire et nous vous répondrons par email.</p>
+            </div>
+
+            {/* Champ honeypot anti-spam — invisible pour les humains */}
+            <input aria-hidden="true" tabIndex={-1} name="_hp" style={{ position:"absolute", left:"-9999px", width:1, height:1, overflow:"hidden" }} />
+
+            <div style={{ marginBottom:16 }}>
+              <label htmlFor="pc-name" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:0.8 }}>Votre nom *</label>
+              <input id="pc-name" type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Prénom Nom" autoComplete="name"
+                style={{ width:"100%", padding:"13px 16px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", boxSizing:"border-box", outline:"none" }} />
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <label htmlFor="pc-email" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:0.8 }}>Votre email *</label>
+              <input id="pc-email" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="vous@exemple.com" autoComplete="email"
+                style={{ width:"100%", padding:"13px 16px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", boxSizing:"border-box", outline:"none" }} />
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Sujet *</label>
+              <div role="group" aria-label="Choix du sujet" style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {SUBJECTS.map(s=>(
+                  <button key={s} onClick={()=>setSubject(s)} aria-pressed={subject===s}
+                    style={{ padding:"9px 14px", borderRadius:20, border:`2px solid ${subject===s?C.violet:C.border}`, background:subject===s?`${C.violet}20`:"transparent", color:subject===s?C.violet:C.textSub, fontWeight:subject===s?700:500, fontSize:12, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:24 }}>
+              <label htmlFor="pc-msg" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Votre message *</label>
+              <textarea id="pc-msg" value={message} onChange={e=>setMessage(e.target.value)}
+                placeholder="Décrivez votre demande en détail…"
+                style={{ width:"100%", padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:140, boxSizing:"border-box", outline:"none", color:C.text, background:"#112240", lineHeight:1.6 }}
+              />
+              <div style={{ textAlign:"right", color:C.textMuted, fontSize:11, marginTop:4 }}>{message.length} / 5000</div>
+            </div>
+
+            {error && <div role="alert" style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:16, color:"#F25E5E", fontSize:13 }}>{error}</div>}
+
+            <button onClick={handleSend} disabled={loading} aria-busy={loading}
+              style={{ width:"100%", background:loading?"rgba(124,111,224,0.5)":C.violet, color:"#fff", border:"none", borderRadius:r, padding:"16px", fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", fontFamily:"inherit", boxShadow:loading?"none":`0 8px 24px ${C.violet}44`, transition:"all 0.2s" }}>
+              {loading ? "Envoi en cours…" : "📤 Envoyer mon message"}
+            </button>
+
+            <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20, lineHeight:1.7 }}>
+              Vos données sont utilisées uniquement pour répondre à votre demande et ne sont pas partagées.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── EN ATTENTE DE VALIDATION ──────────────────────────────────────
 function PendingApprovalScreen({ onLogout, onApproved }) {
   const [userEmail, setUserEmail] = useState("");
@@ -454,13 +574,13 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
 function ClientNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"home",            icon:"🏠", label:"Accueil" },
-    {id:"mission_history", icon:"📋", label:"Missions"},
+    {id:"mission_history", icon:"📋", label:"Prestations"},
     {id:"search_filters",  icon:"🔍", label:"Chercher"},
     {id:"dashboard",       icon:"👤", label:"Compte"  },
     {id:"settings",        icon:"⚙️", label:"Réglages"},
   ];
   return (
-    <div style={{
+    <nav aria-label="Navigation client" style={{
       position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
       width:"100%", maxWidth:430,
       background:"#0D1B3E",
@@ -472,20 +592,24 @@ function ClientNav({ active, onNavigate, unreadCount }) {
     }}>
       {tabs.map(t=>{
         const active2 = active===t.id;
+        const badgeCount = t.id==="mission_history" && unreadCount > 0 ? unreadCount : 0;
         return (
-          <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+          <button key={t.id} onClick={()=>onNavigate(t.id)}
+            aria-current={active2 ? "page" : undefined}
+            aria-label={badgeCount > 0 ? `${t.label} (${badgeCount > 9 ? "9+" : badgeCount} non lu${badgeCount > 1 ? "s" : ""})` : t.label}
+            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0", fontFamily:"inherit" }}>
+            <span aria-hidden="true" style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
               {t.icon}
-              {t.id==="mission_history" && unreadCount > 0 && (
-                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              {badgeCount > 0 && (
+                <div aria-hidden="true" style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{badgeCount > 9 ? "9+" : badgeCount}</div>
               )}
             </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.violet:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
-            {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
+            {active2 && <div aria-hidden="true" style={{ width:20, height:2, borderRadius:1, background:C.violet, marginTop:1 }} />}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
@@ -498,7 +622,7 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
     {id:"settings",        icon:"⚙️", label:"Réglages"  },
   ];
   return (
-    <div style={{
+    <nav aria-label="Navigation prestataire" style={{
       position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
       width:"100%", maxWidth:430,
       background:"#0D1B3E",
@@ -508,20 +632,24 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
     }}>
       {tabs.map(t=>{
         const active2 = active===t.id;
+        const badgeCount = t.id==="p_missions" && unreadCount > 0 ? unreadCount : 0;
         return (
-          <button key={t.id} onClick={()=>onNavigate(t.id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0" }}>
-            <span style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
+          <button key={t.id} onClick={()=>onNavigate(t.id)}
+            aria-current={active2 ? "page" : undefined}
+            aria-label={badgeCount > 0 ? `${t.label} (${badgeCount > 9 ? "9+" : badgeCount} non lu${badgeCount > 1 ? "s" : ""})` : t.label}
+            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", padding:"2px 0", fontFamily:"inherit" }}>
+            <span aria-hidden="true" style={{ fontSize:20, opacity:active2?1:0.35, transition:"opacity 0.2s", position:"relative" }}>
               {t.icon}
-              {t.id==="p_missions" && unreadCount > 0 && (
-                <div style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              {badgeCount > 0 && (
+                <div aria-hidden="true" style={{ position:"absolute", top:-2, right:-2, background:"#E74C3C", borderRadius:"50%", width:16, height:16, fontSize:9, fontWeight:900, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{badgeCount > 9 ? "9+" : badgeCount}</div>
               )}
             </span>
             <span style={{ fontSize:9, fontWeight:active2?700:400, color:active2?C.accent:C.textMuted, letterSpacing:0.4, textTransform:"uppercase", transition:"color 0.2s" }}>{t.label}</span>
-            {active2 && <div style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
+            {active2 && <div aria-hidden="true" style={{ width:20, height:2, borderRadius:1, background:C.accent, marginTop:1 }} />}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
@@ -595,7 +723,7 @@ function OnlineStatusWidget({ online, onToggle }) {
     <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:10, background: online?`${C.success}18`:`${C.gray}15`, border:`2px solid ${online?C.success:C.grayLight}`, borderRadius:r, padding:"12px 16px", cursor:"pointer", transition:"all 0.3s", marginBottom:14 }}>
       <div style={{ width:14, height:14, borderRadius:"50%", background:online?C.success:C.gray, boxShadow:online?`0 0 8px ${C.success}`:"none", transition:"all 0.3s" }} />
       <div style={{ flex:1 }}>
-        <div style={{ fontWeight:800, color:online?C.success:C.gray, fontSize:14 }}>{online?"En ligne — Je reçois des missions":"Hors ligne — Je ne reçois pas de missions"}</div>
+        <div style={{ fontWeight:800, color:online?C.success:C.gray, fontSize:14 }}>{online?"En ligne — Je reçois des prestations":"Hors ligne — Je ne reçois pas de prestations"}</div>
         <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{online?"Vous apparaissez dans les recherches clients":"Activez pour recevoir des propositions"}</div>
       </div>
       <div style={{ width:44, height:24, borderRadius:12, background:online?C.success:C.grayLight, position:"relative", transition:"background 0.3s" }}>
@@ -622,7 +750,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
 
   const clientNav = [
     { id:"home",           icon:"🏠", label:"Accueil"         },
-    { id:"mission_history",icon:"📋", label:"Mes missions"    },
+    { id:"mission_history",icon:"📋", label:"Mes prestations"    },
     { id:"search_filters", icon:"🔍", label:"Rechercher"      },
     { id:"team_booking",   icon:"👥", label:"Équipe"          },
     { id:"favorites",      icon:"❤️", label:"Favoris"         },
@@ -632,7 +760,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
   ];
   const prestaNav = [
     { id:"p_home",     icon:"🏠", label:"Accueil"      },
-    { id:"p_missions", icon:"📋", label:"Missions"     },
+    { id:"p_missions", icon:"📋", label:"Prestations"     },
     { id:"calendar",   icon:"📅", label:"Planning"     },
     { id:"notifications",icon:"🔔",label:"Notifications"},
     { id:"p_dashboard",icon:"👤", label:"Mon profil"   },
@@ -641,7 +769,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
   const accentColor = role === "prestataire" ? C.accent : C.violet;
 
   return (
-    <div style={{
+    <nav aria-label="Navigation principale" style={{
       width: 240, flexShrink: 0,
       background: `linear-gradient(180deg, ${C.navy} 0%, ${C.navyMid} 100%)`,
       height: "100vh", display: "flex", flexDirection: "column",
@@ -650,9 +778,9 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
     }}>
       {/* Logo */}
       <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer", display:"inline-flex" }}>
+        <button onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} aria-label="Aller à l'accueil" style={{ cursor:"pointer", display:"inline-flex", background:"none", border:"none", padding:0 }}>
           <ALANELogo size="sm" />
-        </div>
+        </button>
         {role && (
           <div style={{ marginTop:12, background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
@@ -665,61 +793,68 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
       </div>
 
       {/* Navigation */}
-      <div style={{ flex:1, padding:"16px 12px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+      <ul role="list" style={{ flex:1, padding:"16px 12px", overflowY:"auto", WebkitOverflowScrolling:"touch", margin:0, listStyle:"none" }}>
         {nav.map(item => {
           const active = screen === item.id;
           return (
-            <div key={item.id} onClick={() => onNavigate(item.id)}
-              style={{
-                display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
-                borderRadius:12, marginBottom:4, cursor:"pointer",
-                background: active ? `${accentColor}22` : "transparent",
-                border: `1px solid ${active ? accentColor+"44" : "transparent"}`,
-                transition:"all 0.18s",
-              }}
-              onMouseEnter={e=>{ if(!active) e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}
-              onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}
-            >
-              <span style={{ fontSize:17 }}>{item.icon}</span>
-              <span style={{ fontSize:13, fontWeight:active?700:400, color:active?C.white:"rgba(255,255,255,0.55)", transition:"color 0.18s" }}>{item.label}</span>
-              {active && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
-            </div>
+            <li key={item.id}>
+              <button
+                onClick={() => onNavigate(item.id)}
+                aria-current={active ? "page" : undefined}
+                aria-label={item.label}
+                style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
+                  borderRadius:12, marginBottom:4, cursor:"pointer",
+                  background: active ? `${accentColor}22` : "transparent",
+                  border: `1px solid ${active ? accentColor+"44" : "transparent"}`,
+                  transition:"all 0.18s", fontFamily:"inherit",
+                }}
+                onMouseEnter={e=>{ if(!active) e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}
+              >
+                <span aria-hidden="true" style={{ fontSize:17 }}>{item.icon}</span>
+                <span style={{ fontSize:13, fontWeight:active?700:400, color:active?C.white:"rgba(255,255,255,0.55)", transition:"color 0.18s" }}>{item.label}</span>
+                {active && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
       {/* Bottom actions */}
       <div style={{ padding:"12px", borderTop:"1px solid rgba(255,255,255,0.07)" }}>
         {role==="prestataire" && (
-          <div onClick={onToggleOnline} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:12, cursor:"pointer", background:onlineStatus?`${C.success}22`:"rgba(255,255,255,0.05)", border:`1px solid ${onlineStatus?C.success+"44":"rgba(255,255,255,0.1)"}`, marginBottom:8, transition:"all 0.2s" }}>
+          <button onClick={onToggleOnline} aria-pressed={onlineStatus} aria-label={onlineStatus ? "Passer hors ligne" : "Passer en ligne"} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:12, cursor:"pointer", background:onlineStatus?`${C.success}22`:"rgba(255,255,255,0.05)", border:`1px solid ${onlineStatus?C.success+"44":"rgba(255,255,255,0.1)"}`, marginBottom:8, transition:"all 0.2s", fontFamily:"inherit" }}>
             <div style={{ width:9, height:9, borderRadius:"50%", background:onlineStatus?C.success:C.gray, boxShadow:onlineStatus?`0 0 6px ${C.success}`:"none" }} />
             <span style={{ fontSize:12, color:onlineStatus?C.success:"rgba(255,255,255,0.4)", fontWeight:600 }}>{onlineStatus?"En ligne":"Hors ligne"}</span>
-            <div style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:onlineStatus?C.success:C.gray, position:"relative", transition:"all 0.3s" }}>
+            <div aria-hidden="true" style={{ marginLeft:"auto", width:32, height:18, borderRadius:9, background:onlineStatus?C.success:C.gray, position:"relative", transition:"all 0.3s" }}>
               <div style={{ width:14, height:14, borderRadius:"50%", background:"#0D1B3E", position:"absolute", top:2, left:onlineStatus?16:2, transition:"left 0.3s" }} />
             </div>
-          </div>
+          </button>
         )}
-        <div onClick={()=>onNavigate("settings")}
-          style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, cursor:"pointer", marginBottom:6,
+        <button onClick={()=>onNavigate("settings")}
+          aria-current={screen==="settings" ? "page" : undefined}
+          aria-label="Réglages"
+          style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, cursor:"pointer", marginBottom:6,
             background: screen==="settings" ? `${accentColor}22` : "rgba(255,255,255,0.05)",
             border: `1px solid ${screen==="settings" ? accentColor+"55" : "rgba(255,255,255,0.1)"}`,
-            transition:"all 0.18s" }}
+            transition:"all 0.18s", fontFamily:"inherit" }}
           onMouseEnter={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.1)"; }}
           onMouseLeave={e=>{ if(screen!=="settings") e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
         >
-          <span style={{ fontSize:16 }}>⚙️</span>
+          <span aria-hidden="true" style={{ fontSize:16 }}>⚙️</span>
           <span style={{ fontSize:13, fontWeight: screen==="settings"?700:500, color: screen==="settings"?C.white:"rgba(255,255,255,0.75)" }}>Réglages</span>
           {screen==="settings" && <div style={{ marginLeft:"auto", width:5, height:5, borderRadius:"50%", background:accentColor }} />}
-        </div>
-        <div onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)" }}
+        </button>
+        <button onClick={async()=>{ await supabase.auth.signOut(); onNavigate("role"); }} aria-label="Se déconnecter" style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"9px 14px", borderRadius:10, cursor:"pointer", background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.2)", fontFamily:"inherit" }}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(242,94,94,0.18)"}
           onMouseLeave={e=>e.currentTarget.style.background="rgba(242,94,94,0.08)"}
         >
-          <span style={{ fontSize:14 }}>🚪</span>
+          <span aria-hidden="true" style={{ fontSize:14 }}>🚪</span>
           <span style={{ fontSize:11, color:"#F25E5E", fontWeight:600 }}>Se déconnecter</span>
-        </div>
+        </button>
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -772,9 +907,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         {hybridBanner}
         {(showClientNav || showPrestaNav) && (
           <div style={{ flexShrink:0, padding:"10px 18px", borderBottom:`1px solid rgba(255,255,255,0.06)`, display:"flex", alignItems:"center", background:"#050E20" }}>
-            <div onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} style={{ cursor:"pointer" }}>
+            <button onClick={()=>onNavigate(role==="prestataire"?"p_home":"home")} aria-label="Aller à l'accueil" style={{ cursor:"pointer", background:"none", border:"none", padding:0 }}>
               <ALANELogo size="sm" />
-            </div>
+            </button>
           </div>
         )}
         <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", WebkitOverflowScrolling:"touch" }}>
@@ -819,7 +954,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
               <span style={{ color:C.accentGold }}>au bon moment.</span>
             </h1>
             <p style={{ color:"rgba(255,255,255,0.6)", fontSize:15, lineHeight:1.7, margin:"0 0 36px", maxWidth:320 }}>
-              Trouvez des prestataires qualifiés et vérifiés pour vos missions ponctuelles — en quelques minutes.
+              Trouvez des prestataires qualifiés et vérifiés pour vos prestations ponctuelles — en quelques minutes.
             </p>
             {/* Value props */}
             {[
@@ -905,14 +1040,17 @@ export default function App() {
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [trialExhausted,setTrialExhausted]=useState(false);
+  const [profileLoaded,setProfileLoaded]=useState(false);
   const [prestaPlan,setPrestaPlan]=useState("free");
   const [selectedProvider,setSelectedProvider]=useState(null);
   const [pendingProvider,setPendingProvider]=useState(null);
   const [selectedSector,setSelectedSector]=useState(null);
   const [selectedMissionId,setSelectedMissionId]=useState(null);
+  const [notifOpenMissionId,setNotifOpenMissionId]=useState(null);
   const [chatClientId,setChatClientId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
+  const [paymentIsUrgent,setPaymentIsUrgent]=useState(false);
   const [paymentDate,setPaymentDate]=useState("");
   const [paymentDescription,setPaymentDescription]=useState("");
   const [paymentAdresse,setPaymentAdresse]=useState("");
@@ -974,19 +1112,42 @@ export default function App() {
     const subSuccess = params.get("sub_success");
     const plan = params.get("plan");
     if(subSuccess === "1" && plan) {
-      supabase.auth.refreshSession().then(async({data:{session}})=>{
-        window.history.replaceState({}, "", window.location.pathname);
-        if(session?.user){
-          const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
-          setTrialExhausted(!!pr?.trial_exhausted);
-          setPrestaPlan(pr?.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
-        }
-      });
+      window.history.replaceState({}, "", window.location.pathname);
+      // Petit délai pour laisser le webhook Stripe mettre à jour user_metadata avant getUser()
+      setTimeout(async()=>{
+        try {
+          const { data:{ user } } = await supabase.auth.getUser();
+          if(user){
+            const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single();
+            const _plan = pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free";
+            setPrestaPlan(_plan);
+            // Invariant : plan payant → jamais trial_exhausted
+            setTrialExhausted(_plan !== "free" ? false : !!pr?.trial_exhausted);
+          }
+        } catch {}
+      }, 2000);
     }
     if(params.get("sub_cancel") === "1") {
       window.history.replaceState({}, "", window.location.pathname);
     }
   },[]);
+
+  // Recharge le plan prestataire via getUser() — appel réseau garanti, jamais en cache
+  useEffect(()=>{
+    if(!supaUser || role!=="prestataire") return;
+    (async()=>{
+      try {
+        const { data:{ user } } = await supabase.auth.getUser();
+        // profiles est la source de vérité pour plan_abonnement (le webhook Stripe y écrit en priorité)
+        const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
+        const plan = pr?.plan_abonnement || user?.user_metadata?.plan_abonnement || "free";
+        setPrestaPlan(plan);
+        // Invariant : plan payant → jamais trial_exhausted
+        setTrialExhausted(plan !== "free" ? false : !!pr?.trial_exhausted);
+        setProfileLoaded(true);
+      } catch {}
+    })();
+  },[supaUser, role]);
 
   // Tracking visiteur — une seule fois par session
   useEffect(()=>{
@@ -1014,40 +1175,44 @@ export default function App() {
     }
   },[]);
 
-  // Tracking GPS prestataire — envoie la position toutes les 60s quand mission assignée
+  // Tracking GPS prestataire — envoie la position toutes les 60s quand prestation assignée
   useEffect(()=>{
     if(!supaUser || role !== "prestataire" || !navigator.geolocation) return;
     const consentKey = `alane_gps_consent_${supaUser.id}`;
     let hasConsent = false; try { hasConsent = !!localStorage.getItem(consentKey); } catch(e) {}
-    if(!hasConsent) {
-      const ok = window.confirm("ALANE utilise votre position GPS uniquement pendant une mission assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une mission active.\n\nAutoriser la géolocalisation ?");
-      if(!ok) return;
-      try { localStorage.setItem(consentKey, "1"); } catch(e) {}
-    }
     let watchId = null;
-    let currentPos = null;
-    watchId = navigator.geolocation.watchPosition(
-      pos=>{ currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude }; },
-      ()=>{}, { enableHighAccuracy:true }
-    );
-    const sendPos = async () => {
-      if(!currentPos) return;
-      try {
-        const { data:ms } = await supabase.from("missions")
-          .select("id").eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1);
-        if(!Array.isArray(ms) || !ms.length) return;
-        const { data:sd } = await supabase.auth.getSession();
-        const token = sd?.session?.access_token;
-        fetch("/api/missions", {
-          method:"POST",
-          headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
-          body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
-        }).catch(()=>{});
-      } catch {}
+    let iv = null;
+    const startGps = () => {
+      let currentPos = null;
+      watchId = navigator.geolocation.watchPosition(
+        pos=>{ currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude }; },
+        ()=>{}, { enableHighAccuracy:true }
+      );
+      const sendPos = async () => {
+        if(!currentPos) return;
+        try {
+          const { data:ms } = await supabase.from("missions")
+            .select("id").eq("prestataire_id", supaUser.id).eq("status","assigned").limit(1);
+          if(!Array.isArray(ms) || !ms.length) return;
+          const { data:sd } = await supabase.auth.getSession();
+          const token = sd?.session?.access_token;
+          fetch("/api/missions", {
+            method:"POST",
+            headers:{"Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{})},
+            body: JSON.stringify({ action:"update_position", mission_id:ms[0].id, lat:currentPos.lat, lng:currentPos.lng }),
+          }).catch(()=>{});
+        } catch {}
+      };
+      iv = setInterval(sendPos, 30000);
+      sendPos();
     };
-    const iv = setInterval(sendPos, 60000);
-    sendPos();
-    return ()=>{ navigator.geolocation.clearWatch(watchId); clearInterval(iv); };
+    if(hasConsent) {
+      startGps();
+    } else {
+      showConfirm("ALANE utilise votre position GPS uniquement pendant une prestation assignée, pour permettre au client de suivre votre arrivée en temps réel. Votre position n'est jamais partagée en dehors d'une prestation active.\n\nAutoriser la géolocalisation ?")
+        .then(ok => { if(!ok) return; try { localStorage.setItem(consentKey, "1"); } catch(e) {} startGps(); });
+    }
+    return ()=>{ if(watchId!==null) navigator.geolocation.clearWatch(watchId); if(iv!==null) clearInterval(iv); };
   },[supaUser, role]);
 
   // Poll messages non lus toutes les 10 secondes
@@ -1126,6 +1291,8 @@ export default function App() {
         try { sessionStorage.removeItem("alane_session_active"); sessionStorage.removeItem("bo_token"); } catch(e) {}
         setBoUnlocked(false);
         setBoTestMode(false);
+        setProfileLoaded(false);
+        setTrialExhausted(false);
         setClientCashback(null);
         setRole(null);
         setSelectedProvider(null);
@@ -1181,8 +1348,21 @@ export default function App() {
   const handleSplashNext = async () => {
     const { data:{ session } } = await supabase.auth.getSession();
     if(session){
-      let stayLoggedIn; try { stayLoggedIn = localStorage.getItem("alane_stay_logged_in"); } catch(e) {}
-      let sessionActive; try { sessionActive = sessionStorage.getItem("alane_session_active"); } catch(e) {}
+      let stayLoggedIn; try {
+        stayLoggedIn = localStorage.getItem("alane_stay_logged_in");
+        // Migration one-time depuis l'ancienne clé "jober_*" (renommée "alane_*")
+        if (!stayLoggedIn) {
+          const legacy = localStorage.getItem("jober_stay_logged_in");
+          if (legacy) { localStorage.setItem("alane_stay_logged_in", legacy); localStorage.removeItem("jober_stay_logged_in"); stayLoggedIn = legacy; }
+        }
+      } catch(e) {}
+      let sessionActive; try {
+        sessionActive = sessionStorage.getItem("alane_session_active");
+        if (!sessionActive) {
+          const legacy = sessionStorage.getItem("jober_session_active");
+          if (legacy) { sessionStorage.setItem("alane_session_active", legacy); sessionStorage.removeItem("jober_session_active"); sessionActive = legacy; }
+        }
+      } catch(e) {}
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
         await supabase.auth.signOut();
@@ -1194,11 +1374,14 @@ export default function App() {
       if(profile?.role){
         setRole(profile.role);
         if(profile.role==="prestataire"){
-          setTrialExhausted(!!profile.trial_exhausted);
-          setPrestaPlan(profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free");
+          const _planLogin = profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free";
+          setPrestaPlan(_planLogin);
+          // Invariant : plan payant → jamais trial_exhausted
+          setTrialExhausted(_planLogin !== "free" ? false : !!profile.trial_exhausted);
+          setProfileLoaded(true);
         }
         if(!profile.status || profile.status === "pending"){ setScreen("pending_approval"); return; }
-        if(profile.status === "rejected"){ setScreen("role"); return; }
+        if(profile.status === "rejected" || profile.status === "suspended"){ await supabase.auth.signOut(); setScreen("role"); return; }
         setScreen(profile.role==="prestataire"?"p_home":"home");
         return;
       }
@@ -1212,15 +1395,17 @@ export default function App() {
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
     if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage"||to==="rating") setSelectedProvider(data?.provider||data);
+    if(to==="tracking" && data?._missionId) setSelectedMissionId(data._missionId);
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
-    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
+    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
     if(to==="invoice") setInvoiceMission(data);
+    if(to==="mission_history" || to==="p_missions") setNotifOpenMissionId(data?.openMissionId||null);
     setScreen(to);
   };
 
@@ -1231,6 +1416,10 @@ export default function App() {
 
   return (
     <>
+    {/* Région aria-live pour les annonces dynamiques (screen readers) */}
+    <div aria-live="polite" aria-atomic="true" style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0 0 0 0)", whiteSpace:"nowrap" }}>
+      {notifCount > 0 ? `${notifCount} nouvelle${notifCount > 1 ? "s" : ""} notification${notifCount > 1 ? "s" : ""}` : ""}
+    </div>
     {showOnboarding && supaUser && (
       <OnboardingScreen
         role={role}
@@ -1277,7 +1466,8 @@ export default function App() {
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
-      {screen==="role"              && <RoleScreen onSelect={r=>{ setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
+      {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
+      {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
@@ -1285,7 +1475,7 @@ export default function App() {
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); setTrialExhausted(!!pr?.trial_exhausted); setPrestaPlan(pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free"); } }}
+          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); const _pl=pr?.plan_abonnement||user.user_metadata?.plan_abonnement||"free"; setPrestaPlan(_pl); setTrialExhausted(_pl!=="free"?false:!!pr?.trial_exhausted); setProfileLoaded(true); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
@@ -1300,11 +1490,11 @@ export default function App() {
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="mission_request"   && <MissionRequestScreen sector={selectedSector} onBack={()=>setScreen("sector_detail")} onSubmit={(m)=>{ if(m?.id) setSelectedMissionId(m.id); setScreen("mission_broadcast"); setPendingMission(m); }} />}
-      {screen==="mission_broadcast" && <MissionBroadcastScreen mission={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
+      {screen==="mission_broadcast" && <MissionBroadcastScreen prestation={pendingMission} onCancel={()=>setScreen("mission_request")} onChoose={p=>{ setSelectedProvider(p); setBookingSource("mission_broadcast"); setScreen("booking"); }} />}
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
@@ -1316,13 +1506,13 @@ export default function App() {
             const today=new Date().toDateString();
             const mDay=paymentDate?new Date(paymentDate).toDateString():null;
             const isSameDay=!mDay||mDay===today;
-            const deadline=new Date(Date.now()+(isSameDay?1:4)*3600000).toISOString();
+            const deadline=new Date(Date.now()+(paymentIsUrgent?20:isSameDay?60:240)*60000).toISOString();
             let missionId = selectedMissionId;
             if(missionId){
               const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
-              if(updateErr) throw new Error("Erreur lors de l'affectation de la mission.");
+              if(updateErr) throw new Error("Erreur lors de l'affectation de la prestation.");
             } else {
-              const newMissionId = (crypto.randomUUID || (() => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16))))();
+              const newMissionId = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
               const { error:insertErr } = await supabase.from("missions").insert({
                 id: newMissionId,
                 client_id:userId, prestataire_id:selectedProvider.id,
@@ -1336,14 +1526,14 @@ export default function App() {
                 status:"pending_acceptance", acceptance_deadline:deadline,
                 ...(intentId ? { stripe_payment_intent: intentId } : {}),
               });
-              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la mission.");
+              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la prestation.");
               missionId=newMissionId; setSelectedMissionId(newMissionId);
             }
-            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"mission", title:"Nouvelle demande de mission", body:`Un client vous propose une mission. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"prestation", title:"Nouvelle demande de prestation", body:`Un client vous propose une prestation. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
             const { data:sessionData } = await supabase.auth.getSession();
             fetch("/api/missions", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null }),
+              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null }),
             }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json"},
@@ -1382,12 +1572,12 @@ export default function App() {
         onBack={()=>setScreen("home")}
       />}
       {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("home")} />}
-      {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} />}
+      {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
-      {screen==="invoice"           && <InvoiceScreen mission={invoiceMission} onBack={()=>setScreen("mission_history")} />}
+      {screen==="invoice"           && <InvoiceScreen prestation={invoiceMission} onBack={()=>setScreen("mission_history")} />}
       {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
-      {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} />}
+      {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("dashboard")} openMissionId={notifOpenMissionId} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}
       {screen==="notifications"     && <NotificationsScreen onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onNavigate={navigate} role={role} />}
       {screen==="favorites"         && <FavoritesScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
@@ -1395,18 +1585,18 @@ export default function App() {
       {screen==="abonnement_presta" && <AbonnementPrestaScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="cashback"          && <CashbackWalletScreen onBack={()=>setScreen("dashboard")} onNavigate={navigate} />}
       {screen==="rating"            && <RatingScreen provider={selectedProvider} missionId={selectedProvider?._missionId} onSubmit={()=>setScreen("home")} onBack={()=>setScreen(selectedProvider?._fromHistory?"mission_history":"validation")} />}
+      {screen==="client_pro_docs"       && <ClientProDocScreen onBack={()=>setScreen("settings")} />}
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
-      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} mission={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
+      {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} prestation={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
-      {role==="prestataire" && trialExhausted && prestaPlan==="free" && screen!=="abonnement_presta" && screen!=="settings" && screen!=="bo_dashboard" && (
-        <TrialExhaustedPaywall onUpgrade={()=>setScreen("abonnement_presta")} />
-      )}
+      {/* Quota épuisé : pas d'overlay global — restriction inline dans PMissionsTab uniquement */}
+
       {boTestMode && screen!=="bo_dashboard" && (
         <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:9999, background:C.violet, borderRadius:30, padding:"10px 20px", display:"flex", alignItems:"center", gap:8, boxShadow:"0 4px 20px rgba(124,111,224,0.5)", cursor:"pointer", whiteSpace:"nowrap" }}
           onClick={()=>{ setBoTestMode(false); setRole(null); setScreen("bo_dashboard"); }}>
@@ -1439,7 +1629,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque mission
+                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
@@ -1451,7 +1641,7 @@ export default function App() {
             {/* Actions rapides */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
               {[
-                { icon:"📋", label:"Mes missions",   color:C.violet,     action:"mission_history" },
+                { icon:"📋", label:"Mes prestations",   color:C.violet,     action:"mission_history" },
                 { icon:"❤️", label:"Mes favoris",    color:"#F25E5E",    action:"favorites"       },
                 { icon:"👥", label:"Équipe",         color:C.accentGold, action:"team_booking"    },
                 { icon:"🔔", label:"Notifications",  color:C.success,    action:"notifications"   },
@@ -1467,7 +1657,7 @@ export default function App() {
             {/* Menu secondaire */}
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12, letterSpacing:0.3 }}>Gestion</div>
             {[
-              { icon:"📄", label:"Mes factures",      sub:"Voir mes missions et justificatifs", action:"mission_history" },
+              { icon:"📄", label:"Mes factures",      sub:"Voir mes prestations et justificatifs", action:"mission_history" },
               { icon:"🎁", label:"Parrainage",         sub:"3 filleuls Premium = 1 mois offert", action:"referral"      },
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },
@@ -1534,6 +1724,9 @@ export default function App() {
         </div>
       )}
     </ResponsiveLayout>
+    <ToastContainer />
+    <ConfirmModal />
+    <PromptModal />
     </>
   );
 }

@@ -2,6 +2,11 @@ import crypto from "crypto";
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
 
+// Alerte critique au démarrage si BO_SESSION_SECRET n'est pas défini
+if (!process.env.BO_SESSION_SECRET) {
+  console.error("[bo-action] CRITIQUE: BO_SESSION_SECRET n'est pas défini — le backoffice est inaccessible. Configurez cette variable dans Vercel.");
+}
+
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
@@ -54,16 +59,36 @@ async function sendEmail({ to, subject, html }) {
   const key  = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
   if (!key) return;
-  try {
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html }),
-    });
-    if (!r.ok) { const body = await r.text(); console.error("Resend bo-action error:", r.status, body); }
-  } catch (e) {
-    console.error("sendEmail error:", e);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to: [to], subject, html }),
+      });
+      if (r.ok) return;
+      const body = await r.text();
+      console.error(`Resend bo-action error (attempt ${attempt + 1}):`, r.status, body);
+      if (r.status < 500) return; // Erreur client — ne pas retenter
+      if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
+    } catch (e) {
+      console.error(`sendEmail error (attempt ${attempt + 1}):`, e);
+      if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
+    }
   }
+}
+
+// Validation SIRET : 14 chiffres + algorithme de Luhn
+function validateSiret(raw) {
+  const s = String(raw || "").replace(/\s/g, "");
+  if (!/^\d{14}$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 14; i++) {
+    let n = parseInt(s[i], 10);
+    if (i % 2 === 0) { n *= 2; if (n > 9) n -= 9; }
+    sum += n;
+  }
+  return sum % 10 === 0;
 }
 
 export default async function handler(req, res) {
@@ -75,6 +100,7 @@ export default async function handler(req, res) {
   }
 
   const { action, profileId, ...payload } = req.body;
+  const body = req.body; // alias so named-action blocks can destructure fields directly
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -91,7 +117,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,trial_exhausted,missions_completed_month,created_at&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
@@ -111,11 +137,14 @@ export default async function handler(req, res) {
     if (action === "approve" || action === "reject") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const status = action === "approve" ? "approved" : "rejected";
+      const profilePatch = action === "approve"
+        ? { status, trial_exhausted: false, missions_completed_month: 0 }
+        : { status };
       const [patchRes, userRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify(profilePatch),
         }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
       ]);
@@ -124,33 +153,105 @@ export default async function handler(req, res) {
       const userData = await userRes.json();
       const userEmail = userData.email;
 
+      // Validation SIRET serveur pour les prestataires professionnels
+      if (action === "approve") {
+        const metaForSiret = userData.user_metadata || {};
+        const rawSiret = metaForSiret.kbis ? String(metaForSiret.kbis).replace(/\s/g, "") : null;
+        if (rawSiret && rawSiret.length > 0 && !validateSiret(rawSiret)) {
+          console.warn(`[approve] SIRET invalide — profileId=${profileId} siret=${rawSiret}`);
+          return res.status(400).json({ error: "SIRET invalide (algorithme de Luhn)" });
+        }
+      }
+
       // Anti-abus à l'approbation : vérifier si les identifiants du nouveau compte
       // correspondent à un compte précédemment supprimé
       if (action === "approve") {
         const meta2 = userData.user_metadata || {};
-        const tel2  = meta2.telephone || null;
-        const iban2 = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
-        const siret2 = meta2.kbis || null;
+        const tel2   = meta2.telephone || null;
+        const iban2  = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
+        const siret2 = meta2.kbis ? String(meta2.kbis).replace(/\s/g, "") : null;
+
+        // Vérification dans les deux sens :
+        // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
         const orFilters = [];
         if (userEmail) orFilters.push(`email.eq.${encodeURIComponent(userEmail)}`);
-        if (tel2)     orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
-        if (iban2)    orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
-        if (siret2)   orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
-        if (orFilters.length > 0) {
-          const blRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/account_blacklist?or=(${orFilters.join(",")})&select=id&limit=1`,
-            { headers }
-          );
-          const blData = await blRes.json();
-          if (Array.isArray(blData) && blData.length > 0) {
-            // Match trouvé : marquer le profil comme trial épuisé
+        if (tel2)      orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
+        if (iban2)     orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
+        if (siret2)    orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+
+        // 2. Même si email différent, chercher un IBAN ou SIRET identique dans blacklist
+        //    (cas : re-inscription avec nouvel email mais même compte bancaire)
+        const strictFilters = [];
+        if (iban2)  strictFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
+        if (siret2) strictFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+
+        const allFilters = [...new Set([...orFilters, ...strictFilters])];
+
+        if (allFilters.length > 0) {
+          try {
+            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,email,reason", limit: "1" });
+            const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
+            const blData = await blRes.json();
+            if (Array.isArray(blData) && blData.length > 0) {
+              // Match trouvé : marquer trial épuisé + logguer le vecteur de match
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ trial_exhausted: true }),
+              }).catch(() => {});
+              console.warn(`[approve] Blacklist match — profileId=${profileId} email=${userEmail} iban=${iban2 ? "***" : "none"} siret=${siret2 ? "***" : "none"} matched entry: ${JSON.stringify(blData[0])}`);
+            }
+          } catch(blErr) {
+            console.error("[approve] blacklist check error:", blErr.message);
+          }
+        }
+      }
+
+      // Stripe Connect — créer un compte Express pour les prestataires
+      let connectOnboardingUrl = null;
+      const role = userData.user_metadata?.role;
+      const STRIPE_SK = process.env.STRIPE_SECRET_KEY;
+      const APP_URL_CONNECT = process.env.APP_URL || "https://www.alane.fr";
+      if (action === "approve" && role === "prestataire" && STRIPE_SK) {
+        try {
+          const meta = userData.user_metadata || {};
+          const acctParams = new URLSearchParams({
+            type: "express",
+            country: "FR",
+            email: userEmail || "",
+            "capabilities[transfers][requested]": "true",
+            business_type: "individual",
+            "individual[first_name]": meta.prenom || "",
+            "individual[last_name]": meta.nom || "",
+          });
+          const acctRes = await fetch("https://api.stripe.com/v1/accounts", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: acctParams.toString(),
+          });
+          if (acctRes.ok) {
+            const acctData = await acctRes.json();
             await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
               method: "PATCH",
               headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ trial_exhausted: true }),
-            }).catch(() => {});
+              body: JSON.stringify({ stripe_account_id: acctData.id, stripe_account_status: "pending" }),
+            });
+            const linkParams = new URLSearchParams({
+              account: acctData.id,
+              refresh_url: APP_URL_CONNECT,
+              return_url: APP_URL_CONNECT,
+              type: "account_onboarding",
+            });
+            const linkRes = await fetch("https://api.stripe.com/v1/account_links", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
+              body: linkParams.toString(),
+            });
+            if (linkRes.ok) { const ld = await linkRes.json(); connectOnboardingUrl = ld.url; }
+          } else {
+            console.error("[approve] Stripe Connect failed:", (await acctRes.json().catch(()=>({}))).error?.message);
           }
-        }
+        } catch (ce) { console.error("[approve] Stripe Connect error:", ce.message); }
       }
 
       if (userEmail) {
@@ -162,8 +263,12 @@ export default async function handler(req, res) {
             html: emailHtml(`
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
-              <p>Nous sommes ravis de vous accueillir sur la plateforme. Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
-              <p>Si vous avez la moindre question ou besoin d'aide pour démarrer, n'hésitez pas à contacter notre support directement depuis l'application — nous sommes là pour vous accompagner.</p>
+              ${connectOnboardingUrl ? `
+              <p style="margin-top:20px;">Pour recevoir vos paiements automatiquement après chaque mission validée, configurez votre compte de virement en 2 minutes :</p>
+              <p style="text-align:center;margin:24px 0;"><a href='${connectOnboardingUrl}' style="background:#10D98F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Configurer mes virements →</a></p>
+              <p style="color:#888;font-size:13px;margin-bottom:20px;">Ce lien est valable 24h. Il vous suffit de renseigner votre IBAN et signer les conditions générales Stripe (2 min). Sans cette étape, vos paiements ne pourront pas être versés automatiquement.</p>
+              ` : ""}
+              <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
@@ -320,6 +425,64 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    if (action === "suspend") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const reason = req.body.reason || "";
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"suspended" }) });
+      if (userEmail) {
+        const reasonBlock = reason ? `<p><strong>Raison :</strong> ${esc(reason)}</p>` : "";
+        await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été suspendu", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été temporairement suspendu par notre équipe d'administration.</p>${reasonBlock}<p>Pour plus d'informations, contactez notre support depuis l'application.</p>`) });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "unsuspend") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const userData = await userRes.json();
+      const userEmail = userData.email;
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"approved" }) });
+      if (userEmail) {
+        await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été réactivé", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été réactivé. Vous pouvez à nouveau vous connecter normalement.</p>`) });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"unsuspend", target_id:profileId, target_email:userEmail||null }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "reset_trial") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ trial_exhausted: false, missions_completed_month: 0 }),
+      });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "reset_trial", target_id: profileId }),
+      }).catch(() => {});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "set_subscription") {
+      const { plan, end_date } = body;
+      if (!profileId || !plan) return res.status(400).json({ error: "profileId + plan requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ plan_abonnement:plan, subscription_end_date:end_date||null }) }).catch(()=>{});
+      const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const existingUser = getR.ok ? await getR.json() : {};
+      const existingMeta = existingUser.user_metadata || {};
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata:{ ...existingMeta, plan_abonnement:plan, subscription_end_date:end_date||null } }) }).catch(()=>{});
+      const planLabels = { free:"Gratuit", premium:"Premium", elite:"Elite" };
+      const planLabel = planLabels[plan] || plan;
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:profileId, type:"system", title:`Abonnement mis à jour → ${planLabel}`, body:end_date?`Votre abonnement ${planLabel} est actif jusqu'au ${new Date(end_date).toLocaleDateString("fr-FR")}.`:`Votre abonnement a été mis à jour vers ${planLabel}.`, read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"set_subscription", target_id:profileId, details:{ plan, end_date } }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "stats") {
       const [profilesRes, missionsRes, ticketsRes, recentRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?select=role,status,created_at`, { headers }),
@@ -424,13 +587,74 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(data) ? data : []);
     }
 
+    if (action === "list_disputes") {
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,dispute_reason,stripe_payment_intent&order=created_at.desc`, { headers });
+      const missions = await missionsRes.json();
+      if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
+
+      // Récupérer les emails des clients et prestataires depuis auth.users
+      const userIds = [...new Set([
+        ...missions.map(m => m.client_id).filter(Boolean),
+        ...missions.map(m => m.prestataire_id).filter(Boolean),
+      ])];
+      let emailMap = {};
+      if (userIds.length > 0) {
+        try {
+          const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+          const authData = await authRes.json();
+          (authData.users || []).forEach(u => { emailMap[u.id] = u.email; });
+        } catch {}
+      }
+
+      const enriched = missions.map(m => ({
+        ...m,
+        client_email: emailMap[m.client_id] || null,
+        presta_email: m.prestataire_id ? (emailMap[m.prestataire_id] || null) : null,
+      }));
+      return res.status(200).json(enriched);
+    }
+
+    if (action === "resolve_dispute") {
+      const { mission_id, resolution } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!["refunded", "rejected"].includes(resolution)) return res.status(400).json({ error: "resolution invalide (refunded|rejected)" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      // "refunded" → closed, "rejected" → completed (prestation validée malgré le litige)
+      const newStatus = resolution === "refunded" ? "closed" : "completed";
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (resolution === "rejected") {
+        // Litige rejeté — notifier le client et le prestataire
+        if (m.client_id) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige clôturé ℹ️", body:"Après examen de votre dossier, le litige a été clôturé en faveur du prestataire. La prestation a été validée.", read:false }) }).catch(()=>{});
+        }
+        if (m.prestataire_id) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Litige résolu en votre faveur ✅", body:"Le litige a été examiné et clôturé en votre faveur. La prestation est validée.", read:false }) }).catch(()=>{});
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"resolve_dispute", target_id:mission_id, details:{ resolution } }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "close_ticket") {
       if (!profileId) return res.status(400).json({ error: "ticketId requis" });
-      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?id=eq.${profileId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "closed" }),
       });
+      if (!r.ok) return res.status(500).json({ error: "Erreur fermeture ticket" });
       return res.status(200).json({ success: true });
     }
 
@@ -535,6 +759,48 @@ export default async function handler(req, res) {
       return res.status(200).json(withUrls);
     }
 
+    if (action === "list_all_docs") {
+      // Récupère tous les documents + infos prestataire
+      const docsRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?select=*&order=created_at.desc`, { headers });
+      const allDocs = await docsRes.json();
+      if (!Array.isArray(allDocs)) return res.status(200).json([]);
+
+      // Récupère les profils pour les noms
+      const ids = [...new Set(allDocs.map(d => d.prestataire_id))];
+      let profileMap = {};
+      if (ids.length) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`, { headers });
+        const profs = await pr.json();
+        if (Array.isArray(profs)) profs.forEach(p => { profileMap[p.id] = p; });
+      }
+
+      // Récupère les emails depuis auth.users
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers: { ...headers, "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
+      const usersData = await usersRes.json();
+      let emailMap = {};
+      if (usersData?.users) usersData.users.forEach(u => { emailMap[u.id] = u.email; });
+
+      // Génère les signed URLs
+      const withUrls = await Promise.all(allDocs.map(async (doc) => {
+        let signedUrl = null;
+        try {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/documents/${doc.storage_path}`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ expiresIn: 3600 }),
+          });
+          const sj = await sr.json();
+          signedUrl = sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null;
+        } catch {}
+        const prof = profileMap[doc.prestataire_id] || {};
+        const meta = usersData?.users?.find(u => u.id === doc.prestataire_id)?.user_metadata || {};
+        const prenom = prof.prenom || meta.prenom || "";
+        const nom = prof.nom || meta.nom || "";
+        return { ...doc, signedUrl, prenom, nom, email: emailMap[doc.prestataire_id] || "" };
+      }));
+      return res.status(200).json(withUrls);
+    }
+
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
       // Vérifier que le document appartient bien au profil demandé
@@ -592,7 +858,10 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_missions") {
-      const statusFilter = req.body.status && req.body.status !== "all" ? `&status=eq.${req.body.status}` : "";
+      // S-11: whitelist status values to prevent injection via the status param
+      const VALID_STATUSES = ["open","pending_acceptance","assigned","completed","closed","rejected","refused","cancelled"];
+      const rawStatus = req.body.status;
+      const statusFilter = rawStatus && rawStatus !== "all" && VALID_STATUSES.includes(rawStatus) ? `&status=eq.${rawStatus}` : "";
       const [missionsRes, authRes, profilesRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,validation_prestataire,validation_client,ville,recurrence${statusFilter}&order=created_at.desc&limit=300`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
@@ -654,6 +923,193 @@ export default async function handler(req, res) {
       return res.status(200).json({ success:true, montantTotal, cashback });
     }
 
+    if (action === "release_dispute") {
+      const { mission_id } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const missions = await mr.json();
+      const m = Array.isArray(missions) && missions[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+
+      // Notification client
+      if (m.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige résolu ✅", body:"ALANE a examiné votre dossier et a validé la prestation. Merci pour votre retour.", read:false }) }).catch(()=>{});
+      }
+      // Notification prestataire
+      if (m.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Fonds libérés ✅", body:"Suite à l'examen du litige, votre prestation a été validée et les fonds libérés.", read:false }) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"release_dispute", target_id:mission_id }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "refund_dispute") {
+      const { mission_id } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
+      const missions = await mr.json();
+      const m = Array.isArray(missions) && missions[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      // Remboursement Stripe si un PaymentIntent existe
+      if (m.stripe_payment_intent) {
+        const stripeRes = await fetch(`https://api.stripe.com/v1/refunds`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: `payment_intent=${m.stripe_payment_intent}`,
+        });
+        if (!stripeRes.ok) {
+          const stripeErr = await stripeRes.json().catch(() => ({}));
+          return res.status(500).json({ error: stripeErr?.error?.message || "Erreur Stripe lors du remboursement" });
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "closed" }),
+      });
+
+      // Notification client
+      if (m.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Remboursement en cours 💰", body:"Votre litige a été accepté. Le remboursement sera crédité sous 5 à 10 jours ouvrés.", read:false }) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"refund_dispute", target_id:mission_id }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "manual_refund") {
+      const { mission_id, reason } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.stripe_payment_intent) {
+        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: `payment_intent=${m.stripe_payment_intent}`,
+        });
+        if (!stripeRes.ok) {
+          const err = await stripeRes.json().catch(() => ({}));
+          return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" });
+        }
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"closed" }) });
+      if (m.client_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés.", read:false }) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"manual_refund", target_id:mission_id, details:{ reason } }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "cancel_mission") {
+      const { mission_id, refund, reason } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (refund && m.stripe_payment_intent) {
+        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${process.env.STRIPE_SECRET_KEY}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
+        if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"cancelled" }) });
+      const notifs = [];
+      if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:reason||(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Un remboursement sera effectué sous 5-10 jours ouvrés.":"Votre prestation a été annulée par ALANE."), read:false });
+      if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:reason||"Une prestation vous a été retirée par ALANE.", read:false });
+      if (notifs.length) await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"cancel_mission", target_id:mission_id, details:{ reason, refund } }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "reassign_mission") {
+      const { mission_id, new_presta_email, reason } = body;
+      if (!mission_id || !new_presta_email) return res.status(400).json({ error: "mission_id + new_presta_email requis" });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      // Trouver le nouveau prestataire par email
+      const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+      const authData = await authRes.json();
+      const newUser = (authData.users||[]).find(u => u.email === new_presta_email.trim());
+      if (!newUser) return res.status(404).json({ error: "Prestataire introuvable avec cet email" });
+      const old_presta = m.prestataire_id;
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }) });
+      if (old_presta && old_presta !== newUser.id) await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire.", read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE.", read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"reassign_mission", target_id:mission_id, details:{ old_presta, new_presta:newUser.id, reason } }) }).catch(()=>{});
+      return res.status(200).json({ success: true, new_presta_name:`${newUser.user_metadata?.prenom||""} ${newUser.user_metadata?.nom||""}`.trim()||new_presta_email });
+    }
+
+    if (action === "update_mission") {
+      const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      const updates = {};
+      if (date !== undefined && date !== "") updates.date = date;
+      if (hours !== undefined && hours !== "") updates.hours = Number(hours);
+      if (tarif_horaire !== undefined && tarif_horaire !== "") updates.tarif_horaire = Number(tarif_horaire);
+      if (ville !== undefined && ville !== "") updates.ville = ville;
+      if (metier !== undefined && metier !== "") updates.metier = metier;
+      if (!Object.keys(updates).length) return res.status(400).json({ error: "Aucun champ à modifier" });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(updates) });
+      if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"update_mission", target_id:mission_id, details:updates }) }).catch(()=>{});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "adjust_cashback") {
+      const { profileId, delta, reason } = body;
+      if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${Math.abs(Number(delta)).toFixed(2)} €` : `Cashback ajusté ${Number(delta).toFixed(2)} €`, body: reason || "Ajustement par l'administration ALANE.", read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(()=>{});
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === "broadcast_notification") {
+      const { title, body: notifBody, target } = body;
+      if (!title || !notifBody) return res.status(400).json({ error: "title + body requis" });
+      const roleFilter = target === "clients" ? "&role=eq.client" : target === "prestataires" ? "&role=eq.prestataire" : "";
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id${roleFilter}&status=eq.approved`, { headers });
+      const profs = await pr.json();
+      if (!Array.isArray(profs) || profs.length === 0) return res.status(200).json({ ok:true, sent:0 });
+      const notifs = profs.map(p => ({ user_id:p.id, type:"system", title, body:notifBody, read:false }));
+      for (let i = 0; i < notifs.length; i += 100) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs.slice(i, i+100)) }).catch(()=>{});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"broadcast_notification", details:{ title, target, count:notifs.length } }) }).catch(()=>{});
+      return res.status(200).json({ ok:true, sent:notifs.length });
+    }
+
+    if (action === "list_ratings") {
+      const rr = await fetch(`${SUPABASE_URL}/rest/v1/ratings?select=id,rating,comment,created_at,reviewer_id,reviewee_id&order=created_at.desc&limit=200`, { headers });
+      const ratings = await rr.json();
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
+      const profs = await pr.json();
+      const nameMap = {};
+      (Array.isArray(profs) ? profs : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
+      return res.status(200).json((Array.isArray(ratings) ? ratings : []).map(r => ({ ...r, reviewer_name: nameMap[r.reviewer_id]||"Inconnu", reviewee_name: nameMap[r.reviewee_id]||"Inconnu" })));
+    }
+
+    if (action === "delete_rating") {
+      const { ratingId } = body;
+      if (!ratingId) return res.status(400).json({ error: "ratingId requis" });
+      await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${ratingId}`, { method:"DELETE", headers:{...headers,"Prefer":"return=minimal"} });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(()=>{});
+      return res.status(200).json({ ok:true });
+    }
+
     if (action === "list_missions_export") {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?select=id,status,sector,metier,date,hours,tarif_horaire,montant_total,created_at,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`,
@@ -676,8 +1132,7 @@ export default async function handler(req, res) {
 
       const PROFILE_COLS = ["prenom", "nom", "status"];
       const VALID_STATUSES = ["pending", "approved", "rejected"];
-      // Whitelist des clés metadata autorisées (interdit plan_abonnement, subscription_end_date, trial_exhausted)
-      const META_WHITELIST = ["secteur","metier","niveau","tarif_net","langues","dispon_jours","dispon_jours_creneaux","dispo_immediat","code_postal","ville","telephone","cv","zone_km","statut_pro","experience_ans","competences"];
+      const META_WHITELIST = ["secteur","metier","niveau","tarif_net","langues","dispon_jours","dispon_jours_creneaux","dispo_immediat","code_postal","ville","telephone","cv","zone_km","statut_pro","experience_ans","competences","plan_abonnement","subscription_end_date"];
       const profileFields = {};
       const metaFields = {};
       for (const [k, v] of Object.entries(payload)) {

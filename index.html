@@ -2,7 +2,8 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=2" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- SEO primary -->
@@ -34,7 +35,7 @@
       "@type": "Organization",
       "name": "ALANE",
       "url": "https://www.alane.fr",
-      "logo": "https://www.alane.fr/favicon.svg",
+      "logo": "https://www.alane.fr/icon-512.png",
       "description": "Plateforme française mettant en relation entreprises et auto-entrepreneurs pour des missions en propreté, logistique, restauration, hôtellerie et commerce.",
       "address": {
         "@type": "PostalAddress",
@@ -85,7 +86,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ALANE" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com"/>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -127,7 +128,10 @@
       </address>
     </div>
 
-    <div id="root"></div>
+    <!-- Skip link accessibilité clavier -->
+    <a href="#root" class="skip-link">Aller au contenu principal</a>
+
+    <div id="root" role="main"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
