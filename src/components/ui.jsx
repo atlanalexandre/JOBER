@@ -92,7 +92,7 @@ export const Btn = ({ children, onClick, variant="primary", full, disabled, styl
   );
 };
 
-export const Input = ({ label, type="text", placeholder, icon, value, onChange, hint, disabled=false, autoComplete, name, inputMode }) => (
+export const Input = ({ label, type="text", placeholder, icon, value, onChange, onBlur, hint, disabled=false, autoComplete, name, inputMode }) => (
   <div style={{ marginBottom:16, minWidth:0 }}>
     {label && (
       <label style={{
@@ -113,6 +113,7 @@ export const Input = ({ label, type="text", placeholder, icon, value, onChange, 
         placeholder={placeholder}
         value={value||""}
         onChange={onChange}
+        onBlur={onBlur}
         disabled={disabled}
         autoComplete={autoComplete}
         name={name}

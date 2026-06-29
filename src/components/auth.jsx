@@ -36,6 +36,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [acreEnabled, setAcreEnabled] = useState(false);
   const [showAcreInfo, setShowAcreInfo] = useState(false);
   const [boPlans, setBoPlans] = useState(null);
+  const [siretNum, setSiretNum] = useState("");
+  const [siretInfo, setSiretInfo] = useState(null);
+  const [siretChecking, setSiretChecking] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -75,6 +78,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!Object.values(dispos).some(cr => cr?.length > 0)) return "Sélectionnez au moins un créneau";
     }
     if (step === 5) {
+      const siretClean = siretNum.replace(/[\s.]/g,"");
+      if (!siretClean) return "Numéro SIRET obligatoire";
+      if (!/^\d{9}(\d{5})?$/.test(siretClean)) return "SIRET invalide — 9 chiffres (SIREN) ou 14 chiffres (SIRET)";
       if (ribIban.trim()) {
         const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
@@ -111,7 +117,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
         niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
-        statut_pro: statutPro, rib: ribIban.replace(/\s/g,"") || null,
+        statut_pro: statutPro, siret: siretNum.replace(/[\s.]/g,"") || null, rib: ribIban.replace(/\s/g,"") || null,
         plan_abonnement: planChoisi,
       }},
     });
@@ -147,6 +153,28 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     setLoading(false);
     onRegister();
+  };
+
+  const verifySiret = async (val) => {
+    const clean = val.replace(/[\s.]/g, "");
+    setSiretInfo(null);
+    if (clean.length < 9) return;
+    setSiretChecking(true);
+    try {
+      const res = await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(clean)}&page=1&per_page=1`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      const found = json.results?.[0];
+      if (found) {
+        setSiretInfo({ nom: found.nom_complet, actif: found.etat_administratif === "A" });
+      } else {
+        setSiretInfo({ error: true });
+      }
+    } catch {
+      setSiretInfo(null);
+    } finally {
+      setSiretChecking(false);
+    }
   };
 
   const addMetier = () => {
@@ -465,6 +493,30 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
+          <Input
+            label="N° SIRET *"
+            placeholder="123 456 789 00010"
+            icon="📄"
+            value={siretNum}
+            onChange={e => { setSiretNum(e.target.value); setSiretInfo(null); }}
+            onBlur={() => verifySiret(siretNum)}
+            inputMode="numeric"
+          />
+          {siretChecking && (
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:-12, marginBottom:12, paddingLeft:4 }}>Vérification en cours…</div>
+          )}
+          {siretInfo && !siretInfo.error && (
+            <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"10px 14px", marginTop:-12, marginBottom:14, display:"flex", gap:8, alignItems:"center" }}>
+              <span style={{ fontSize:15, flexShrink:0 }}>✅</span>
+              <div>
+                <div style={{ color:"#10D98F", fontWeight:700, fontSize:13 }}>{siretInfo.nom}</div>
+                {!siretInfo.actif && <div style={{ color:"#F0B429", fontSize:11, marginTop:2 }}>⚠️ Entreprise inactive — vérifiez votre numéro</div>}
+              </div>
+            </div>
+          )}
+          {siretInfo?.error && (
+            <div style={{ fontSize:12, color:"#F25E5E", marginTop:-12, marginBottom:14, paddingLeft:4 }}>Numéro introuvable — vérifiez votre SIRET</div>
+          )}
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 

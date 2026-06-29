@@ -2360,6 +2360,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [ribMissionError,setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
   const [planActuel,setPlanActuel]=useState("free");
+  const [planLoaded,setPlanLoaded]=useState(false);
   const [userName,setUserName]=useState("");
   const [userStatus,setUserStatus]=useState(null);
   const [missionsEnabled,setMissionsEnabled]=useState(false);
@@ -2416,9 +2417,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         if (sess?.access_token) {
           fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
             .then(r => r.ok ? r.json() : null)
-            .then(d => { if (d?.plan) setPlanActuel(d.plan); })
-            .catch(() => {});
+            .then(d => { if (d?.plan) setPlanActuel(d.plan); setPlanLoaded(true); })
+            .catch(() => { setPlanLoaded(true); });
+        } else {
+          setPlanLoaded(true);
         }
+      } else {
+        setPlanLoaded(true);
       }
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
@@ -2702,7 +2707,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         </div>
         {tab==="prestations" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
-          <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />
+          {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
           {(planActuel==="premium"||planActuel==="elite") && (
             <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:16 }}>💎</span>
@@ -2717,7 +2722,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
             </div>
           )}
-          {(() => {
+          {planLoaded && (() => {
             const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
             const limit = plan.missions >= 999 ? null : plan.missions;
             if(!limit) return null;
