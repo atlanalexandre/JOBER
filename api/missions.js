@@ -2623,14 +2623,22 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ error: "Mission introuvable ou non assignée" });
       if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
 
-      // Reject if called more than 10 min before scheduled start
+      // Only allow start within [H-10min … H+2h] — rejects stale auto-start calls
       if (m.date && m.heure_debut) {
         try {
           const missionStart = new Date(`${m.date}T${m.heure_debut}:00`).getTime();
-          if (missionStart - Date.now() > 10 * 60 * 1000) {
+          const now = Date.now();
+          if (now < missionStart - 10 * 60 * 1000) {
             return res.status(400).json({ error: "Trop tôt pour démarrer la mission" });
           }
+          if (now > missionStart + 2 * 60 * 60 * 1000) {
+            return res.status(400).json({ error: "Fenêtre de démarrage expirée" });
+          }
         } catch(e) { /* date parse failed — allow */ }
+      }
+      // Require prestataire to have checked in first
+      if (!m.arrived_at) {
+        return res.status(400).json({ error: "Vous devez d'abord confirmer votre arrivée sur place" });
       }
 
       const startedAt = new Date().toISOString();
