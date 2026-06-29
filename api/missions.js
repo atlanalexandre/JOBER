@@ -2716,7 +2716,6 @@ export default async function handler(req, res) {
       if (m.status !== "assigned") return res.status(400).json({ error: "Mission non en cours" });
       if (!m.started_at) return res.status(400).json({ error: "Mission non démarrée" });
 
-      // Vérifier que la mission est bien terminée (started_at + actual_hours dans le passé)
       const effectiveHours = m.actual_hours ?? m.hours ?? 1;
       const endMs = new Date(m.started_at).getTime() + Number(effectiveHours) * 3600000;
       if (endMs > Date.now() + 30000) return res.status(400).json({ error: "Mission pas encore terminée" });
@@ -2742,7 +2741,6 @@ export default async function handler(req, res) {
         );
       }
       await Promise.all(notifs.map(p => p.catch(() => {})));
-
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" },
         body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
