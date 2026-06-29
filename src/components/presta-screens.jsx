@@ -1408,7 +1408,7 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
   );
 }
 
-export function UpgradeNudge({ onNavigate }) {
+export function UpgradeNudge({ onNavigate, plan: planProp }) {
   const [plan, setPlan] = useState(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   useEffect(() => {
@@ -1430,8 +1430,10 @@ export function UpgradeNudge({ onNavigate }) {
       }
     });
   }, []);
-  if (plan === null) return null;
-  if (plan !== "free") return null;
+  // planProp (from parent PrestaDashboard) overrides internal state — ensures refresh_plan result is reflected
+  const effectivePlan = planProp !== undefined ? planProp : plan;
+  if (effectivePlan === null) return null;
+  if (effectivePlan !== "free") return null;
   if (trialExhausted) {
     return (
       <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,rgba(242,94,94,0.12),rgba(240,180,41,0.08))`, border:`1px solid rgba(242,94,94,0.4)`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -2408,15 +2410,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         const mp = u.user_metadata?.plan_abonnement || "free";
         const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
         setPlanActuel(resolvedPlan);
-        // Si le plan local semble "free", vérifier côté serveur (bypass cache JWT)
-        if (resolvedPlan === "free") {
-          const { data:{ session:sess } } = await supabase.auth.getSession();
-          if (sess?.access_token) {
-            fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
-              .then(r => r.ok ? r.json() : null)
-              .then(d => { if (d?.plan && d.plan !== "free") setPlanActuel(d.plan); })
-              .catch(() => {});
-          }
+        // Toujours vérifier le plan côté serveur pour bypasser le cache JWT
+        const { data:{ session:sess } } = await supabase.auth.getSession();
+        if (sess?.access_token) {
+          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.plan) setPlanActuel(d.plan); })
+            .catch(() => {});
         }
       }
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
@@ -2683,7 +2683,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         </div>
         {tab==="prestations" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
-          <UpgradeNudge onNavigate={onNavigate} />
+          <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />
           {(planActuel==="premium"||planActuel==="elite") && (
             <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:16 }}>💎</span>
