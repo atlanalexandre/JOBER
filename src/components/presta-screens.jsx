@@ -1940,11 +1940,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   : new Date(m.date + 'T00:00:00').getTime())
               : 0;
             const effectiveHours = m.actual_hours ?? m.hours ?? 1;
-            const missionEnd = m.date
-              ? (m.heure_debut
-                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
-                  : new Date(m.date + 'T23:59:00').getTime())
-              : 0;
+            const missionEnd = startedAtMap[m.id]
+              ? new Date(startedAtMap[m.id]).getTime() + (Number(effectiveHours) * 3600000)
+              : m.date
+                ? (m.heure_debut
+                    ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
+                    : new Date(m.date + 'T23:59:00').getTime())
+                : 0;
             const renderNow = Date.now();
             const isStarted = missionStart > 0 && missionStart < renderNow;
             const isPast = missionEnd > 0 && missionEnd < renderNow;
@@ -2684,7 +2686,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           )}
           {(() => {
             const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
-            const limit = plan.prestations === 999 ? null : plan.missions;
+            const limit = plan.missions >= 999 ? null : plan.missions;
             if(!limit) return null;
             const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
             const remaining = Math.max(0, limit - missionsUsedMonth);
