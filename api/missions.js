@@ -1039,14 +1039,16 @@ export default async function handler(req, res) {
           : null;
         const hoursUntilMission = missionStartUTC ? (missionStartUTC - new Date()) / 3600000 : 999;
         if (hoursUntilMission < 2) {
-          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted`, { headers });
+          const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
           const prData = await prRes.json();
           const prProfile = Array.isArray(prData) && prData[0];
+          const cancelPlan = prProfile?.plan_abonnement || "free";
           const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
           const newCount = current + 1;
           const planLimit = 2; // missions gratuites par mois
           const patchBody = { missions_completed_month: newCount };
-          if (newCount >= planLimit) patchBody.trial_exhausted = true;
+          // Ne jamais marquer trial_exhausted pour un prestataire sur plan payant
+          if (newCount >= planLimit && cancelPlan === "free") patchBody.trial_exhausted = true;
           await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
@@ -2698,6 +2700,71 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true });
+    }
+
+    // Vérifie et répare le plan + trial_exhausted en interrogeant Stripe
+    if (action === "refresh_plan") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=plan_abonnement,trial_exhausted,stripe_subscription_id,stripe_customer_id`, { headers });
+      const prData = await prRes.json();
+      const profile = Array.isArray(prData) && prData[0];
+      if (!profile) return res.status(404).json({ error: "Profil introuvable" });
+
+      let plan = profile.plan_abonnement || "free";
+      let trialExhausted = !!profile.trial_exhausted;
+
+      // Vérification Stripe directe si un abonnement existe
+      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      if (STRIPE_KEY && profile.stripe_subscription_id) {
+        try {
+          const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${profile.stripe_subscription_id}`, {
+            headers: { "Authorization": `Bearer ${STRIPE_KEY}` },
+          });
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            const isActive = sub.status === "active" || sub.status === "trialing";
+            if (isActive) {
+              const metaPlan = sub.metadata?.plan || sub.items?.data?.[0]?.price?.metadata?.plan;
+              if (metaPlan && metaPlan !== "free") plan = metaPlan;
+            } else if (sub.status === "canceled" || sub.status === "unpaid") {
+              plan = "free";
+            }
+          }
+        } catch (stripeErr) {
+          console.error("[refresh_plan] Stripe check failed:", stripeErr.message);
+        }
+      }
+
+      // Invariant : plan payant → jamais trial_exhausted
+      const patchBody = { plan_abonnement: plan };
+      if (plan !== "free") {
+        patchBody.trial_exhausted = false;
+        trialExhausted = false;
+      }
+
+      // Mise à jour DB (profiles + user_metadata)
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(patchBody),
+      }).catch(e => console.error("[refresh_plan] profile patch failed:", e.message));
+
+      if (plan !== "free") {
+        // Sync user_metadata — GET d'abord pour ne pas écraser les autres champs
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).catch(() => null);
+        if (uRes?.ok) {
+          const uData = await uRes.json();
+          await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ user_metadata: { ...(uData.user_metadata || {}), plan_abonnement: plan } }),
+          }).catch(e => console.error("[refresh_plan] user_metadata patch failed:", e.message));
+        }
+      }
+
+      return res.status(200).json({ plan, trial_exhausted: trialExhausted });
     }
 
     return res.status(400).json({ error: "Action invalide" });
