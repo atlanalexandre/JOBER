@@ -1468,7 +1468,7 @@ export default async function handler(req, res) {
               try {
                 const missionStart = new Date(`${mission.date}T${mission.heure_debut}:00`);
                 const msUntilStart = missionStart.getTime() - Date.now();
-                withinWindow = msUntilStart <= 5 * 60 * 1000;
+                withinWindow = msUntilStart <= 60 * 60 * 1000;
               } catch(e) { /* date parse failed — allow notification */ }
             }
             if (withinWindow) {
