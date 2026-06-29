@@ -1473,14 +1473,21 @@ function DeadlineCountdown({ deadline }) {
   );
 }
 
-function ElapsedTimer({ startedAt, maxMs }) {
+function ElapsedTimer({ startedAt, maxMs, onEnd }) {
   const [now, setNow] = useState(Date.now());
+  const onEndFiredRef = useRef(false);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   const elapsed = Math.min(now - new Date(startedAt).getTime(), maxMs);
   const done = elapsed >= maxMs;
+  useEffect(() => {
+    if (done && !onEndFiredRef.current) {
+      onEndFiredRef.current = true;
+      onEnd?.();
+    }
+  }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
   const s = Math.floor(elapsed / 1000);
   const ph = Math.floor(s / 3600);
   const pm = Math.floor((s % 3600) / 60);
@@ -1932,9 +1939,10 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime()
                   : new Date(m.date + 'T00:00:00').getTime())
               : 0;
+            const effectiveHours = m.actual_hours ?? m.hours ?? 1;
             const missionEnd = m.date
               ? (m.heure_debut
-                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(m.hours || 1) * 3600000)
+                  ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
                   : new Date(m.date + 'T23:59:00').getTime())
               : 0;
             const renderNow = Date.now();
@@ -1997,7 +2005,20 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 </div>
                 {/* Timer / Checkin / Start */}
                 {startedAtMap[m.id] ? (
-                    <ElapsedTimer startedAt={startedAtMap[m.id]} maxMs={(m.hours || 1) * 3600 * 1000} />
+                    <ElapsedTimer
+                      startedAt={startedAtMap[m.id]}
+                      maxMs={(m.actual_hours ?? m.hours ?? 1) * 3600 * 1000}
+                      onEnd={async () => {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const tok = sd?.session?.access_token;
+                        if (!tok) return;
+                        fetch("/api/missions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+                          body: JSON.stringify({ action: "notify_end", mission_id: m.id }),
+                        }).catch(() => {});
+                      }}
+                    />
                   ) : arrivedAtMap[m.id] ? (
                   // ── Sur place, pas encore démarré : bouton "Je commence" ──
                   <div style={{ marginBottom:10 }}>

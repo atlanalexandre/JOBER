@@ -2022,7 +2022,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -2700,6 +2700,53 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true });
+    }
+
+    // Notifie les deux parties quand le timer de mission atteint zéro, puis toutes les 2h
+    if (action === "notify_end") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,metier,sector,date,hours,actual_hours,started_at,validation_prestataire,validation_client,last_validation_reminder_at`, { headers });
+      const mData = await mr.json();
+      const m = Array.isArray(mData) && mData[0];
+      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.status !== "assigned") return res.status(400).json({ error: "Mission non en cours" });
+      if (!m.started_at) return res.status(400).json({ error: "Mission non démarrée" });
+
+      const effectiveHours = m.actual_hours ?? m.hours ?? 1;
+      const endMs = new Date(m.started_at).getTime() + Number(effectiveHours) * 3600000;
+      if (endMs > Date.now() + 30000) return res.status(400).json({ error: "Mission pas encore terminée" });
+
+      // Dedup : pas plus d'une notification toutes les 2h
+      if (m.last_validation_reminder_at) {
+        const lastMs = new Date(m.last_validation_reminder_at).getTime();
+        if (Date.now() - lastMs < 2 * 3600000) return res.status(200).json({ skipped: true });
+      }
+
+      const label = m.metier || m.sector || "la prestation";
+      const notifs = [];
+      if (!m.validation_prestataire && m.prestataire_id) {
+        notifs.push(
+          fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ user_id: m.prestataire_id, type:"mission", title:"⏱ Prestation terminée — confirmez !", body:`Votre mission « ${label} » du ${m.date} est terminée. Confirmez pour recevoir votre paiement.`, read:false }) }),
+          sendPushToUser(m.prestataire_id, { title:"⏱ Prestation terminée — confirmez !", body:`« ${label} » du ${m.date} — confirmez pour être payé(e).`, url:"/" }, SUPABASE_URL, headers)
+        );
+      }
+      if (!m.validation_client && m.client_id) {
+        notifs.push(
+          fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ user_id: m.client_id, type:"mission", title:"✅ Mission terminée — validez !", body:`Votre mission « ${label} » du ${m.date} est terminée. Validez pour créditer votre cashback.`, read:false }) }),
+          sendPushToUser(m.client_id, { title:"✅ Mission terminée — validez !", body:`« ${label} » du ${m.date} — validez pour votre cashback.`, url:"/" }, SUPABASE_URL, headers)
+        );
+      }
+      await Promise.all(notifs.map(p => p.catch(() => {})));
+      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" },
+        body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
+      }).catch(() => {});
+
+      return res.status(200).json({ notified: notifs.length });
     }
 
     // Vérifie et répare le plan + trial_exhausted en interrogeant Stripe
