@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
@@ -727,7 +727,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
-    fetch("/api/prestataires?action=count").then(r => r.json()).then(d => { if (d.count != null) setPrestaCount(d.count); }).catch(() => {});
+    fetchPrestaCount().then(c => { if (c != null) setPrestaCount(c); });
   }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -4292,7 +4292,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     ]).then(([l, p, lp]) => {
       setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
     });
-    fetch("/api/prestataires?action=count").then(r => r.json()).then(d => { if (d.count != null) setPrestaCountHIW(d.count); }).catch(() => {});
+    fetchPrestaCount().then(c => { if (c != null) setPrestaCountHIW(c); });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
@@ -5425,7 +5425,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "assigned", prestataire_id: c.prestataire_id } : m));
       setCandidatures(cs => cs.map(x => ({ ...x, status: x.id === c.id ? "accepted" : "rejected" })));
       setSelected(s => s ? { ...s, status: "assigned" } : s);
-    } catch { alert("Erreur lors de l'acceptation. Réessayez."); }
+    } catch { showToast("Erreur lors de l'acceptation. Réessayez."); }
     setActioning(null);
   };
 
@@ -5446,9 +5446,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         setSelected(s => s ? { ...s, status: "completed" } : s);
         setCompletedResult(data);
       } else {
-        alert(data.error || "Erreur lors de la validation. Réessayez.");
+        showToast(data.error || "Erreur lors de la validation. Réessayez.");
       }
-    } catch { alert("Erreur lors de la validation. Réessayez."); }
+    } catch { showToast("Erreur lors de la validation. Réessayez."); }
     setCompleting(false);
   };
 
@@ -5464,7 +5464,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       });
       if (!res.ok) throw new Error();
       setCandidatures(cs => cs.map(x => x.id === c.id ? { ...x, status: "rejected" } : x));
-    } catch { alert("Erreur lors du refus. Réessayez."); }
+    } catch { showToast("Erreur lors du refus. Réessayez."); }
     setActioning(null);
   };
 
@@ -5479,7 +5479,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       });
       if (!res.ok) throw new Error();
       setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
-    } catch { alert("Erreur lors de la fermeture. Réessayez."); }
+    } catch { showToast("Erreur lors de la fermeture. Réessayez."); }
   };
 
   const handleCancel = async () => {
@@ -5501,7 +5501,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
       setSelected(null);
       setShowCancelConfirm(false);
-    } catch(e) { alert(e.message || "Erreur lors de l'annulation. Réessayez."); }
+    } catch(e) { showToast(e.message || "Erreur lors de l'annulation. Réessayez."); }
     setCancelling(false);
   };
 
@@ -5521,7 +5521,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
       setSelected(null);
       setShowStopConfirm(false);
-    } catch(e) { alert(e.message || "Erreur lors de l'arrêt. Réessayez."); }
+    } catch(e) { showToast(e.message || "Erreur lors de l'arrêt. Réessayez."); }
     setStopping(false);
   };
 
@@ -6096,7 +6096,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       disabled={disputingId === m.id}
                       onClick={async (e) => {
                         e.stopPropagation();
-                        const motif = window.prompt("Décrivez le problème...");
+                        const motif = await showPrompt("Décrivez le problème rencontré :", "Décrivez le problème...");
                         if (!motif || !motif.trim()) return;
                         setDisputingId(m.id);
                         try {
@@ -6111,9 +6111,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                           if (j.ok) {
                             setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
                           } else {
-                            alert(j.error || "Erreur lors de l'envoi du signalement.");
+                            showToast(j.error || "Erreur lors de l'envoi du signalement.");
                           }
-                        } catch { alert("Erreur réseau, réessayez."); }
+                        } catch { showToast("Erreur réseau, réessayez."); }
                         setDisputingId(null);
                       }}
                       style={{ background:"transparent", border:"1px solid rgba(242,94,94,0.3)", color:"#F25E5E", fontSize:12, padding:"8px", borderRadius:10, width:"100%", marginTop:6, cursor:"pointer", fontFamily:"inherit", opacity: disputingId === m.id ? 0.6 : 1 }}
@@ -6147,11 +6147,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     setShowDisputeModal(null); setDisputeMsg("");
                     setMissions(ms => ms.map(m => m.id === showDisputeModal ? { ...m, status:"disputed" } : m));
                     if (selected?.id === showDisputeModal) setSelected(s => s ? { ...s, status:"disputed" } : s);
-                    alert("Votre signalement a été transmis à ALANE. Vous serez contacté sous 72h ouvrées.");
+                    showToast("Votre signalement a été transmis. Nous vous répondons sous 72h ouvrées.", "success");
                   } else {
-                    alert(j.error || "Erreur lors de l'envoi du signalement.");
+                    showToast(j.error || "Erreur lors de l'envoi du signalement.");
                   }
-                } catch { alert("Erreur réseau, réessayez."); }
+                } catch { showToast("Erreur réseau, réessayez."); }
                 setDisputing(false);
               }} style={{ flex:2, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:disputing||!disputeMsg.trim()?0.5:1 }}>
                 {disputing ? "Envoi…" : "Envoyer le signalement"}
@@ -6681,7 +6681,7 @@ export function DocUploadScreen({ onBack }) {
     const allowedImages = ["image/jpeg","image/png","image/webp"];
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
-    if(!allowed.includes(file.type)){ alert(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
@@ -6790,7 +6790,7 @@ export function ClientProDocScreen({ onBack }) {
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
     const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
-    if(!allowedAll.includes(file.type)){ alert("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
@@ -6912,8 +6912,8 @@ export function AbonnementPrestaScreen({ onBack }) {
       });
       const d = await r.json();
       if(d.url) { window.location.href = d.url; return; }
-      alert(d.error || "Erreur lors de l'ouverture du portail");
-    } catch { alert("Erreur réseau"); }
+      showToast(d.error || "Erreur lors de l'ouverture du portail");
+    } catch { showToast("Erreur réseau"); }
     setPortalLoading(false);
   };
 
@@ -6964,10 +6964,9 @@ export function AbonnementPrestaScreen({ onBack }) {
         window.location.href = d.url;
         return;
       }
-      // Fallback if Stripe prices not configured
-      alert(d.error || "Erreur Stripe");
+      showToast(d.error || "Erreur Stripe");
     } catch(e) {
-      alert("Erreur lors de la redirection vers Stripe");
+      showToast("Erreur lors de la redirection vers Stripe");
     }
     setSaving(false);
     setPendingPlan(null);

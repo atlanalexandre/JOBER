@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
 import { MARGES } from "../constants/plans.js";
-import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars } from "./ui.jsx";
+import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
@@ -714,17 +714,17 @@ export function BOComptes() {
               </button>
             </>}
             {p.status==="approved" && (
-              <button onClick={async()=>{ const reason=window.prompt("Motif de suspension (optionnel) :"); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ const reason=await showPrompt("Motif de suspension (optionnel) :","Motif..."); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"suspend"?"…":"🔒 Suspendre"}
               </button>
             )}
             {p.role==="prestataire" && p.trial_exhausted && (
-              <button onClick={async()=>{ if(!window.confirm(`Réinitialiser le quota missions de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ if(!await showConfirm(`Réinitialiser le quota missions de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"reset_trial"?"…":"🔓 Débloquer quota"}
               </button>
             )}
             {p.status==="suspended" && (
-              <button onClick={async()=>{ if(!window.confirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); await boFetch({ action:"unsuspend", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ if(!await showConfirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); await boFetch({ action:"unsuspend", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"unsuspend"?"…":"🔓 Réactiver"}
               </button>
             )}
@@ -1022,34 +1022,34 @@ export function BOLitiges() {
   useEffect(() => { load(); }, []);
 
   const handleRefund = async (m) => {
-    if (!window.confirm(`Rembourser ${m.montant_total || 0} € au client pour la mission "${m.titre || m.metier}" ?`)) return;
+    if (!await showConfirm(`Rembourser ${m.montant_total || 0} € au client pour la mission "${m.titre || m.metier}" ?`)) return;
     setProcessingId(m.id);
     try {
       const r = await boFetch({ action: "refund_dispute", mission_id: m.id });
       const d = await r.json();
       if (d.success) {
-        alert("Remboursement effectué ✅");
+        showToast("Remboursement effectué ✅", "success");
         load();
       } else {
-        alert(d.error || "Erreur lors du remboursement");
+        showToast(d.error || "Erreur lors du remboursement");
       }
-    } catch { alert("Erreur réseau"); }
+    } catch { showToast("Erreur réseau"); }
     setProcessingId(null);
   };
 
   const handleReject = async (m) => {
-    if (!window.confirm(`Rejeter le litige pour "${m.titre || m.metier}" ? Le client ne sera pas remboursé.`)) return;
+    if (!await showConfirm(`Rejeter le litige pour "${m.titre || m.metier}" ? Le client ne sera pas remboursé.`)) return;
     setProcessingId(m.id);
     try {
       const r = await boFetch({ action: "resolve_dispute", mission_id: m.id, resolution: "rejected" });
       const d = await r.json();
       if (d.success) {
-        alert("Litige rejeté ✅");
+        showToast("Litige rejeté ✅", "success");
         load();
       } else {
-        alert(d.error || "Erreur lors du rejet");
+        showToast(d.error || "Erreur lors du rejet");
       }
-    } catch { alert("Erreur réseau"); }
+    } catch { showToast("Erreur réseau"); }
     setProcessingId(null);
   };
 
@@ -1139,7 +1139,7 @@ export function BORatings() {
     boFetch({ action:"list_ratings" }).then(r=>r.json()).then(d=>{ setRatings(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
   }, []);
   const handleDelete = async (id) => {
-    if (!window.confirm("Supprimer cet avis définitivement ?")) return;
+    if (!await showConfirm("Supprimer cet avis définitivement ?")) return;
     setDeleting(id);
     await boFetch({ action:"delete_rating", ratingId:id });
     setRatings(rs => rs.filter(r=>r.id!==id));
@@ -1648,7 +1648,7 @@ export function BOSettingsTab() {
     const j = await r.json();
     setSaving(p => ({ ...p, [key]: false }));
     if (j.ok) { setSaved(p => ({ ...p, [key]: true })); setTimeout(() => setSaved(p => ({ ...p, [key]: false })), 2000); }
-    else alert("Erreur : " + (j.error || "inconnue"));
+    else showToast("Erreur : " + (j.error || "inconnue"));
   };
 
   const SectionTitle = ({ children }) => (
@@ -1833,7 +1833,7 @@ export function BOResetMonthly() {
   const [result, setResult]   = useState(null);
 
   const handleReset = async () => {
-    if (!window.confirm("Remettre les compteurs de prestations à 0 pour tous les prestataires ?")) return;
+    if (!await showConfirm("Remettre les compteurs de prestations à 0 pour tous les prestataires ?")) return;
     setLoading(true); setResult(null);
     try {
       let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -2048,7 +2048,7 @@ export function BOMissions() {
   useEffect(() => { load(filter); }, [filter]);
 
   const handleValidate = async (missionId) => {
-    if (!window.confirm("Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
+    if (!await showConfirm("Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
     setValidating(missionId);
     try {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
@@ -2064,7 +2064,7 @@ export function BOMissions() {
   };
 
   const handleRelease = async (missionId) => {
-    if (!window.confirm("Libérer les fonds au prestataire ? Le litige sera clos.")) return;
+    if (!await showConfirm("Libérer les fonds au prestataire ? Le litige sera clos.")) return;
     setDisputing(missionId + "_release");
     try {
       const res = await boFetch({ action:"release_dispute", mission_id: missionId });
@@ -2080,7 +2080,7 @@ export function BOMissions() {
   };
 
   const handleCancel = async (missionId, withRefund) => {
-    const reason = window.prompt("Motif d'annulation (optionnel) :"); if (reason === null) return;
+    const reason = await showPrompt("Motif d'annulation (optionnel) :","Motif..."); if (reason === null) return;
     setDisputing(missionId + "_cancel");
     try {
       const res = await boFetch({ action:"cancel_mission", mission_id:missionId, refund:withRefund, reason });
@@ -2115,7 +2115,7 @@ export function BOMissions() {
   };
 
   const handleRefund = async (missionId) => {
-    if (!window.confirm("Rembourser le client ? Cette action est irréversible.")) return;
+    if (!await showConfirm("Rembourser le client ? Cette action est irréversible.")) return;
     setDisputing(missionId + "_refund");
     try {
       const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
@@ -2194,7 +2194,7 @@ export function BOMissions() {
             {["completed","closed"].includes(m.status) && !result[m.id] && (
               <div style={{ marginTop:8 }}>
                 <button onClick={async()=>{
-                  const reason = window.prompt("Motif du remboursement (optionnel) :");
+                  const reason = await showPrompt("Motif du remboursement (optionnel) :","Motif...");
                   if (reason === null) return;
                   setDisputing(m.id+"_manual");
                   const res = await boFetch({ action:"manual_refund", mission_id:m.id, reason });
@@ -2220,7 +2220,7 @@ export function BOMissions() {
             {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
             {!["cancelled","closed","completed"].includes(m.status) && !result[m.id] && (
               <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
-                <button onClick={()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=window.confirm("Cette mission a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                <button onClick={async()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=await showConfirm("Cette mission a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                   {disputing===m.id+"_cancel"?"…":"🚫 Annuler"}
                 </button>
                 <button onClick={()=>{ setReassignId(reassignId===m.id?null:m.id); setReassignEmail(""); setReassignReason(""); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(162,155,254,0.3)", background:"rgba(162,155,254,0.08)", color:C.violet, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
@@ -2280,7 +2280,7 @@ export function BORefundSection() {
   }, []);
 
   const handleRefund = async (m) => {
-    if (!window.confirm(`Rembourser ${m.montant_total} € pour la prestation ${m.id.slice(0,8)} ?`)) return;
+    if (!await showConfirm(`Rembourser ${m.montant_total} € pour la prestation ${m.id.slice(0,8)} ?`)) return;
     setRefunding(m.id);
     let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     const r = await fetch("/api/stripe-refund", {
@@ -2291,7 +2291,7 @@ export function BORefundSection() {
     const j = await r.json();
     setRefunding(null);
     if (j.ok) setDone(prev => ({ ...prev, [m.id]: true }));
-    else alert(`Erreur : ${j.error}`);
+    else showToast(`Erreur : ${j.error}`);
   };
 
   if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"12px 0" }}>Chargement remboursements…</div>;
@@ -2457,7 +2457,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>👁️ Visiteurs</div>
               <button onClick={async ()=>{
-                if(!window.confirm("Remettre le compteur de visites à 0 ?")) return;
+                if(!await showConfirm("Remettre le compteur de visites à 0 ?")) return;
                 await boFetch({ action:"reset_visits" }).catch(()=>{});
                 window.location.reload();
               }} style={{ background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.3)", color:"#E74C3C", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>

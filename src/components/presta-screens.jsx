@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, CASHBACK_TIERS, getCashbackTier, calcCashback, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, CV_DATA, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 
 function ContractModal({ title, contractText, onSign, onClose }) {
@@ -203,6 +203,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
+  const [cguAccepted,setCguAccepted]=useState(false);
   const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=8;
@@ -662,13 +663,13 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           ))}
           <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}>
-              <input type="checkbox" style={{ marginTop:2, accentColor:C.violet }} />
+              <input type="checkbox" checked={cguAccepted} onChange={e=>setCguAccepted(e.target.checked)} style={{ marginTop:2, accentColor:C.violet }} />
               <span style={{ fontSize:13, color:C.textSub, lineHeight:1.5 }}>J'accepte les <strong style={{ color:C.violet }}>CGU</strong> et la <strong style={{ color:C.violet }}>Politique de confidentialité</strong> de ALANE</span>
             </label>
           </div>
           <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:18, fontSize:12, color:C.text }}>⏱️ Délai de validation : <strong>24 à 48h ouvrées</strong></div>
           {submitError && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{submitError}</div>}
-          <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
+          <Btn full variant="success" onClick={handleSubmitDossier} disabled={submitting||!cguAccepted} style={{ fontSize:16, padding:"18px" }}>{submitting?"Envoi en cours…":"✅ Envoyer mon dossier"}</Btn>
         </>}
         {step<TOTAL && <div style={{ marginTop:18 }}><Btn full onClick={()=>setStep(s=>s+1)} disabled={!stepValid()} style={{ fontSize:16, padding:"17px" }}>Continuer →</Btn></div>}
       </div>
@@ -959,7 +960,7 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Photo max 5 Mo"); return; }
+    if (file.size > 5 * 1024 * 1024) { showToast("Photo max 5 Mo"); return; }
     setPhotoUploading(true);
     const { data: authData } = await supabase.auth.getUser();
     if (!authData?.user) { setPhotoUploading(false); return; }
@@ -1523,7 +1524,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       setSharingLocation(s => ({ ...s, [missionId]: false }));
       return;
     }
-    if (!navigator.geolocation) { alert("Géolocalisation non supportée par votre navigateur."); return; }
+    if (!navigator.geolocation) { showToast("Géolocalisation non supportée par votre navigateur."); return; }
     const { data: sd } = await supabase.auth.getSession();
     const token = sd?.session?.access_token;
     const sendPos = (lat, lng) => fetch("/api/missions", {
@@ -1794,7 +1795,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             const { data:{ session } } = await supabase.auth.getSession();
             const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
             if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
-            else { const e = await r.json().catch(()=>({})); alert(e.error || "Erreur lors de la validation — réessayez."); }
+            else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
           }}
           onClose={() => setContractMission(null)}
         />
@@ -2076,7 +2077,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           const { data:{ session } } = await supabase.auth.getSession();
                           const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
                           if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
-                          else { const e = await r.json().catch(()=>({})); alert(e.error || "Erreur lors de la validation — réessayez."); }
+                          else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
                           setValidatingMission(null);
                         }
                       }}
@@ -2101,7 +2102,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
                   </button>
                   <button onClick={async()=>{
-                    if(!window.confirm("Annuler cette mission ?")) return;
+                    if(!await showConfirm("Annuler cette mission ?")) return;
                     const { data:{ session } } = await supabase.auth.getSession();
                     await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"presta_cancel", mission_id:m.id }) });
                     setAssignedMissions(prev => prev.filter(x => x.id !== m.id));

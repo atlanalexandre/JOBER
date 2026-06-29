@@ -1724,13 +1724,11 @@ export default async function handler(req, res) {
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "La mission n'est pas en cours" });
+      if (!mission.heure_debut) return res.status(400).json({ error: "Heure de début non définie sur cette mission" });
 
       // Calcul du prorata arrondi à l'heure supérieure
-      // Note: on ne vérifie pas côté serveur si la mission a démarré car
-      // le serveur Vercel est en UTC et interprète heure_debut sans timezone —
-      // le garde côté client (bouton caché si !isStarted) est suffisant.
       const missionStartNaive = mission.date
-        ? new Date(`${mission.date}T${mission.heure_debut || "00:00"}`)
+        ? new Date(`${mission.date}T${mission.heure_debut}`)
         : null;
       const missionStart = missionStartNaive
         ? new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive))
@@ -1938,7 +1936,8 @@ export default async function handler(req, res) {
       let delayMinutes = 0;
       if (m.heure_debut && m.date) {
         const [h, mn] = m.heure_debut.split(":").map(Number);
-        const scheduledMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime() - 7200000;
+        const scheduledNaive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
+        const scheduledMs = scheduledNaive.getTime() + frenchOffsetMs(scheduledNaive);
         delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
       }
       const hasDelay = delayMinutes > 5;
