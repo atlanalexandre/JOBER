@@ -819,7 +819,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           const now = Date.now();
           const active = ms.filter(m => {
             const start = m.date ? new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime() : 0;
-            const end   = start  ? start + Number(m.hours || 1) * 3600000 : 0;
+            const end   = start  ? start + Number(m.actual_hours ?? m.hours ?? 1) * 3600000 : 0;
             return start > 0 && start < now && end > now;
           });
           setMissionsInProgress(active);
@@ -911,7 +911,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             </div>
             {missionsInProgress.map((m, idx) => {
               const mStart = new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime();
-              const mEnd   = mStart + Number(m.hours || 1) * 3600000;
+              const mEnd   = mStart + Number(m.actual_hours ?? m.hours ?? 1) * 3600000;
               const now2   = inProgressTick;
               const elapsed = Math.max(0, now2 - mStart);
               const remaining = Math.max(0, mEnd - now2);
@@ -5160,6 +5160,32 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [clientCoords, setClientCoords] = useState(null);
   const trackingPollRef = useRef(null);
   const approachNotifSentRef = useRef(new Set());
+  const endNotifSentRef = useRef(new Set());
+
+  // Notification de fin de mission dès que le timer s'arrête (côté client)
+  useEffect(() => {
+    if (!selected?.started_at || selected.status !== "assigned") return;
+    const maxMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
+    const endAt = new Date(selected.started_at).getTime() + maxMs;
+    const delay = endAt - Date.now();
+    if (endNotifSentRef.current.has(selected.id)) return;
+    const fire = () => {
+      if (endNotifSentRef.current.has(selected.id)) return;
+      endNotifSentRef.current.add(selected.id);
+      supabase.auth.getSession().then(({ data: sd }) => {
+        const tok = sd?.session?.access_token;
+        if (!tok) return;
+        fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+          body: JSON.stringify({ action: "notify_end", mission_id: selected.id }),
+        }).catch(() => {});
+      });
+    };
+    if (delay <= 0) { fire(); return; }
+    const t = setTimeout(fire, delay);
+    return () => clearTimeout(t);
+  }, [selected?.id, selected?.started_at, selected?.actual_hours, selected?.hours, selected?.status]);
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>{ if(data?.user) setUserId(data.user.id); }); }, []);
 
@@ -5746,7 +5772,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             );
           })()}
           {selected.status === "assigned" && !completedResult && selected.started_at && (() => {
-            const maxMs = (selected.hours || 1) * 3600 * 1000;
+            const maxMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
             const elapsed = Math.min(Date.now() - new Date(selected.started_at).getTime(), maxMs);
             const done = elapsed >= maxMs;
             const s = Math.floor(elapsed / 1000);

@@ -208,15 +208,16 @@ ${(() => {
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
         const now = Date.now();
-        const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+        const TWELVE_HOURS_MS = 2 * 60 * 60 * 1000; // relance toutes les 2h
         const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
           if (!m.heure_debut) return true;
-          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(m.hours || 0) * 3600000);
+          const effectiveH = m.actual_hours ?? m.hours ?? 0;
+          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(effectiveH) * 3600000);
           if (endMs >= now) return false;
           // N-05: skip missions that already got a reminder less than 12h ago
           if (m.last_validation_reminder_at) {
