@@ -1132,12 +1132,23 @@ export default async function handler(req, res) {
 
       const PROFILE_COLS = ["prenom", "nom", "status"];
       const VALID_STATUSES = ["pending", "approved", "rejected"];
+      const VALID_PLANS = ["free", "premium", "elite"];
       const META_WHITELIST = ["secteur","metier","niveau","tarif_net","langues","dispon_jours","dispon_jours_creneaux","dispo_immediat","code_postal","ville","telephone","cv","zone_km","statut_pro","experience_ans","competences","plan_abonnement","subscription_end_date"];
+      // plan_abonnement doit être mis à jour dans les deux tables
+      const BOTH_COLS = ["plan_abonnement"];
       const profileFields = {};
       const metaFields = {};
       for (const [k, v] of Object.entries(payload)) {
-        if (PROFILE_COLS.includes(k)) profileFields[k] = v;
+        if (BOTH_COLS.includes(k)) { profileFields[k] = v; metaFields[k] = v; }
+        else if (PROFILE_COLS.includes(k)) profileFields[k] = v;
         else if (META_WHITELIST.includes(k)) metaFields[k] = v;
+      }
+      if (profileFields.plan_abonnement !== undefined && !VALID_PLANS.includes(profileFields.plan_abonnement)) {
+        return res.status(400).json({ error: "Plan invalide" });
+      }
+      // Réinitialiser trial_exhausted quand on passe sur un plan payant
+      if (profileFields.plan_abonnement && profileFields.plan_abonnement !== "free") {
+        profileFields.trial_exhausted = false;
       }
       if (profileFields.status !== undefined && !VALID_STATUSES.includes(profileFields.status)) {
         return res.status(400).json({ error: "Statut invalide" });
