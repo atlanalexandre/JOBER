@@ -2471,10 +2471,28 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   useEffect(() => {
     const refresh = async () => {
       if (document.visibilityState !== "visible") return;
+      // Forcer un nouveau JWT pour récupérer les user_metadata à jour (plan BO)
+      await supabase.auth.refreshSession().catch(() => null);
       const { data } = await supabase.auth.getUser();
       const u = data?.user; if (!u) return;
-      const { data: prof } = await supabase.from("profiles").select("status,missions_enabled").eq("id", u.id).single();
-      if (prof) { setUserStatus(prof.status); setMissionsEnabled(prof.missions_enabled === true); }
+      const { data: prof } = await supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single();
+      if (prof) {
+        setUserStatus(prof.status);
+        setMissionsEnabled(prof.missions_enabled === true);
+        const RANK = { free:0, premium:1, elite:2 };
+        const pp = prof.plan_abonnement || "free";
+        const mp = u.user_metadata?.plan_abonnement || "free";
+        const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
+        setPlanActuel(resolvedPlan);
+      }
+      // refresh_plan serveur comme source de vérité finale
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      if (sess?.access_token) {
+        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d?.plan) setPlanActuel(d.plan); })
+          .catch(() => {});
+      }
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
