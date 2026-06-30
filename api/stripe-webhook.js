@@ -154,6 +154,7 @@ export default async function handler(req, res) {
         endDate = new Date(Date.now() + daysToAdd * 86400000).toISOString();
       }
 
+      let existingUser;
       try {
         // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
         const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: hdrs });
@@ -161,7 +162,7 @@ export default async function handler(req, res) {
           console.error("stripe-webhook: GET user failed before PUT, aborting to avoid metadata loss", getR.status);
           return res.status(500).json({ error: "User fetch failed" });
         }
-        const existingUser = await getR.json();
+        existingUser = await getR.json();
         const existingMeta = existingUser.user_metadata || {};
         const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
           method: "PUT",

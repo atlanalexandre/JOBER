@@ -1,3 +1,4 @@
+/* eslint-disable no-irregular-whitespace */
 // /api/invoice.js — Serverless function that returns a printable HTML invoice
 // Auth: token éphémère signé HMAC-SHA256 (via /api/missions action generate_invoice_token)
 //       Valide 30 min — jamais le JWT Supabase en clair dans l'URL

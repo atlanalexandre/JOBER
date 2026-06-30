@@ -1,15 +1,14 @@
-import { useState, useEffect, useRef, Component } from "react";
+import { useState, useEffect, Component } from "react";
 import { supabase } from "./lib/supabase.js";
-import { C, font, r, shadow } from "./constants/colors.js";
-import { IS_LAUNCH, isLaunchPhase, MARGES, FRAIS_MER, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, CASHBACK_TIERS, getCashbackTier, calcCashback } from "./constants/plans.js";
+import { C, font, r } from "./constants/colors.js";
+import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Stars, Badge, Btn, Input, AddressAutocomplete, formatPhone, checkIban, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Card, SectionHeader, Divider, MiniBar, DonutChart, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
-import { CP_COORDS, cpToCoords, genMissionCode, SECTORS, METIERS_TARIFS, METIERS, CV_DATA, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, PROVIDERS_CACHE_TTL, FR_CITY_COORDS, SECTOR_LABELS } from "./constants/data.js";
-import { PrestaRegisterFlow, ClientRegisterFlow, AuthScreen } from "./components/auth.jsx";
-import { boFetch, useBoData, BackofficeLogin, BOComptes, BOSupport, BOModerationTab, BOExportCSV, BOExportMissions, BOExportPDF, EmailTestButton, BOTest, BOLogs, BOSettingsTab, BOResetMonthly, BOReminders, BOMissions, BODocuments, BORefundSection, BORatings, BackofficeDashboard } from "./components/backoffice.jsx";
+import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
+import { AuthScreen } from "./components/auth.jsx";
+import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen } from "./components/payment.jsx";
-import { DocUploadCard, PrestaOnboarding, PrestaProfilTab, CvEditor, PrestaProfileEditScreen, PrestaPointageScreen, PrestaOnboardingChecklist, UpgradeNudge, PMissionsTab, PrestaTour, PrestaClientsTab, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
-import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, ClientTour, HomeScreen, CatalogueScreen, useProviders, loadLeaflet, cityCoords, LeafletMap, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, MissionTimeline, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, NOTIF_ICONS, NOTIF_COLORS, timeAgo, TOUR_STEPS, haversineKm, travelTimeStr, OnboardingScreen } from "./components/client-screens.jsx";
+import { PrestaOnboarding, PrestaProfileEditScreen, PrestaPointageScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen } from "./components/client-screens.jsx";
 
 export class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }

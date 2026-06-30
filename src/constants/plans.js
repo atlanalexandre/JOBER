@@ -22,7 +22,7 @@ export const ABONNEMENTS_PRESTA = [
     note:"La position #1 est attribuée parmi les membres Elite selon la note moyenne et les avis clients." },
 ];
 
-export const prixClient = (tarifNet, _sector) => tarifNet;
+export const prixClient = (tarifNet) => tarifNet;
 export const tarifInterim = (t) => Math.round(t * 2.2 * 100) / 100;
 export const economiePct  = (t) => Math.round(((tarifInterim(t) - t) / tarifInterim(t)) * 100);
 export const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";

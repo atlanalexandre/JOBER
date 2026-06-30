@@ -474,7 +474,6 @@ export default async function handler(req, res) {
       // (si deux requêtes accept arrivent simultanément, une seule réussira)
       const missionPatch = { status: "assigned" };
       if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
       const assignRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
@@ -495,20 +494,6 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
       });
-      const missionPatch = { status: "assigned" };
-      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      const missionPatchRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`,
-        {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
-          body: JSON.stringify(missionPatch),
-        }
-      );
-      const missionPatchData = await missionPatchRes.json().catch(() => []);
-      if (!Array.isArray(missionPatchData) || missionPatchData.length === 0) {
-        return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
-      }
 
       // Notification au prestataire
       if (verified_prestataire_id) {

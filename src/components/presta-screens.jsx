@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
-import { C, font, r, shadow } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, CASHBACK_TIERS, getCashbackTier, calcCashback, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, CV_DATA, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, IbanInput, Divider, MiniBar, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
-import { useResponsive } from "../hooks/useResponsive.js";
+import { C, font, r } from "../constants/colors.js";
+import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 
 function ContractModal({ title, contractText, onSign, onClose }) {
   const [accepted, setAccepted] = useState(false);
@@ -199,7 +198,6 @@ export function PrestaOnboarding({ onComplete, onBack }) {
     clearTimeout(justAddedRef.current);
     justAddedRef.current=setTimeout(()=>setJustAdded(false),1500);
   };
-  const toggleDoc=(id)=>setDocs(prev=>({...prev,[id]:!prev[id]}));
   const toggleLangue=(l)=>setLangues(prev=>prev.includes(l)?prev.filter(x=>x!==l):[...prev,l]);
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
@@ -992,7 +990,6 @@ export function PrestaProfileEditScreen({ onBack }) {
 
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta?.secteur) : null;
   const color = secteurInfo?.color || C.accentGold;
-  const tarifInfo = meta?.secteur && meta?.metier ? METIERS_TARIFS[meta.secteur]?.[meta.metier] : null;
   const sliderMin = 1;
   const sliderMax = 100;
   const compListe = COMPETENCES_PAR_METIER[meta?.metier] || COMPETENCES_PAR_SECTEUR[meta?.secteur] || [];
@@ -1188,9 +1185,8 @@ export function PrestaProfileEditScreen({ onBack }) {
 }
 
 export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestation introuvable.</div>;
-  const p = provider;
-  const expectedCode = genMissionCode(p.id, type);
+  const p = provider || {};
+  const expectedCode = provider ? genMissionCode(p.id, type) : "";
   const isIn = type === "in";
 
   const [gpsStatus, setGpsStatus] = useState("loading"); // loading | ok | warning | error
@@ -1200,7 +1196,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (!navigator.geolocation) { setGpsStatus("error"); return; }
+    if (!provider || !navigator.geolocation) { setGpsStatus("error"); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const missionCoords = cpToCoords(p.code_postal || "75");
@@ -1217,6 +1213,8 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
     );
   }, []);
 
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestation introuvable.</div>;
+
   const handleValidate = () => {
     if (code.trim() !== expectedCode) {
       setCodeError("Code incorrect. Vérifiez avec le client.");
@@ -1224,7 +1222,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
     }
     setDone(true);
     const key = `alane_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
-    try { localStorage.setItem(key, isIn ? "checkin" : "checkout"); } catch(e) {}
+    try { localStorage.setItem(key, isIn ? "checkin" : "checkout"); } catch { /* ignore */ }
     setTimeout(() => onSuccess && onSuccess(), 2000);
   };
 
@@ -1310,7 +1308,7 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
 
 export function PrestaOnboardingChecklist({ onNavigate }) {
   const [meta, setMeta] = useState(null);
-  const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem("alane_presta_checklist_dismissed") === "1"; } catch(e) { return false; } });
+  const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem("alane_presta_checklist_dismissed") === "1"; } catch { return false; } });
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMeta(data?.user?.user_metadata || {}));
@@ -1337,7 +1335,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
           <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Premiers pas</div>
           <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doneCount}/{items.length} étapes complétées</div>
         </div>
-        <button onClick={() => { try { localStorage.setItem("alane_presta_checklist_dismissed","1"); } catch(e) {} setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
+        <button onClick={() => { try { localStorage.setItem("alane_presta_checklist_dismissed","1"); } catch { /* ignore */ } setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
       </div>
       <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, marginBottom:14, overflow:"hidden" }}>
         <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.5s" }} />
@@ -1380,7 +1378,7 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
           return;
         }
       }
-    } catch {}
+    } catch { /* ignore */ }
     setChecking(false);
   };
   return (
@@ -1513,7 +1511,7 @@ function ElapsedTimer({ startedAt, maxMs, onEnd }) {
   );
 }
 
-export function PMissionsTab({ onNavigate, homeMode = false }) {
+export function PMissionsTab({ onNavigate }) {
   const [pendingMissions, setPendingMissions] = useState([]);
   const [assignedMissions, setAssignedMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -1588,7 +1586,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
       });
       setArrivedAtMap(prev => { const n = { ...prev, ...arrivedMap }; arrivedAtMapRef.current = n; return n; });
       setStartedAtMap(prev => ({ ...prev, ...startedMap }));
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -1675,7 +1673,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
           const [hh, mm] = m.heure_debut.split(":").map(Number);
           const missionStart = new Date(yr, mo - 1, dy, hh, mm).getTime();
           if (now < missionStart - 30 * 60 * 1000) return false;
-        } catch {}
+        } catch { /* ignore */ }
       }
       return true;
     });
@@ -1698,7 +1696,7 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
           const r = await fetch("/api/missions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` }, body: JSON.stringify({ action: "checkin_mission", mission_id: m.id }) });
           const d = await r.json();
           if (d.arrived_at) setArrivedAtMap(prev => { const n = { ...prev, [m.id]: d.arrived_at }; arrivedAtMapRef.current = n; return n; });
-        } catch {}
+        } catch { /* ignore */ }
         autoCheckinLockRef.current.delete(m.id);
       }
     }, (err) => {
@@ -2011,7 +2009,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     </div>
                     {(() => {
                       const hd = (m.heure_debut || "").slice(0, 5); // normalize "HH:MM:SS" → "HH:MM"
-                      const missionStartDt = (() => { try { return m.date && hd.length === 5 ? new Date(`${m.date}T${hd}:00`) : null; } catch(e) { return null; } })();
+                      const missionStartDt = (() => { try { return m.date && hd.length === 5 ? new Date(`${m.date}T${hd}:00`) : null; } catch { return null; } })();
                       const msUntilUnlock = missionStartDt ? (missionStartDt.getTime() - 5*60*1000) - Date.now() : 0;
                       const tooEarly = msUntilUnlock > 0;
                       const unlockTime = missionStartDt ? new Date(missionStartDt.getTime() - 5*60*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : null;
@@ -2050,7 +2048,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           const missionStartMs = new Date(yr, mo-1, dy, hh, mm).getTime();
                           tooEarly = Date.now() < missionStartMs - 30*60*1000;
                           missionStarted = Date.now() >= missionStartMs;
-                        } catch {}
+                        } catch { /* ignore */ }
                       }
                       const checkinBtn = (
                         <button disabled={checkingInId === m.id} onClick={async () => {
@@ -2095,7 +2093,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                             const [yr,mo,dy] = m.date.split("-").map(Number);
                             const [hh,mm] = m.heure_debut.split(":").map(Number);
                             missionStarted = Date.now() >= new Date(yr, mo-1, dy, hh, mm).getTime();
-                          } catch {}
+                          } catch { /* ignore */ }
                         }
                         return missionStarted ? (
                           <button disabled={checkingInId === m.id} onClick={async () => {
@@ -2279,7 +2277,7 @@ export function PrestaClientsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
-    let blockedList = []; try { blockedList = JSON.parse(localStorage.getItem("alane_blocked_clients")||"[]"); } catch(e) {}
+    let blockedList = []; try { blockedList = JSON.parse(localStorage.getItem("alane_blocked_clients")||"[]"); } catch { /* ignore */ }
     setBlocked(blockedList);
     supabase.auth.getUser().then(async ({data})=>{
       const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
@@ -2308,7 +2306,7 @@ export function PrestaClientsTab() {
   const toggleBlock = (clientId) => {
     setBlocked(prev=>{
       const next = prev.includes(clientId) ? prev.filter(id=>id!==clientId) : [...prev, clientId];
-      try { localStorage.setItem("alane_blocked_clients", JSON.stringify(next)); } catch(e) {}
+      try { localStorage.setItem("alane_blocked_clients", JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   };
@@ -2353,8 +2351,8 @@ export function PrestaClientsTab() {
 
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
   const [tab,setTab]=useState("prestations");
-  const [userRib,setUserRib]=useState(null);
-  const [ribMissionError,setRibMissionError]=useState(false);
+  const [_userRib,setUserRib]=useState(null);
+  const [ribMissionError,_setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
   const [planActuel,setPlanActuel]=useState("free");
   const [planLoaded,setPlanLoaded]=useState(false);
@@ -2375,7 +2373,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [ratingComment, setRatingComment] = useState("");
   const [ratingLoading, setRatingLoading] = useState(false);
   const [profilPct,setProfilPct]=useState(0);
-  const [missingDocs,setMissingDocs]=useState([]);
+  const [_missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   useEffect(()=>{
@@ -2392,7 +2390,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
       const tourKey=`alane_presta_tour_done_${u.id}`;
-      let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
+      let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch { /* ignore */ }
       if(!prestaTourDone) setShowTour(true);
       // refresh_plan utilise service role key côté serveur — lit + écrit plan en DB
       const sess = await supabase.auth.getSession();
@@ -2486,7 +2484,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     setShowTour(false);
     const {data} = await supabase.auth.getUser();
     const u = data?.user;
-    if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch(e) {} }
+    if(u) { try { localStorage.setItem(`alane_presta_tour_done_${u.id}`,"1"); } catch { /* ignore */ } }
   };
 
   const dismissRecap = async () => {
@@ -2499,7 +2497,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     // Cap à 500 pour éviter un localStorage illimité — on garde les plus récents
     const seenArr = [...seenIds];
     const capped = seenArr.length > 500 ? seenArr.slice(seenArr.length - 500) : seenArr;
-    try { localStorage.setItem(seenKey, JSON.stringify(capped)); } catch(e) {}
+    try { localStorage.setItem(seenKey, JSON.stringify(capped)); } catch { /* ignore */ }
     setRecapCard(null);
   };
 
