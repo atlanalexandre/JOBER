@@ -505,9 +505,15 @@ export function BOComptes() {
                         {[["free","Gratuit","#8B8FA8"],["premium","Premium","#7C6FE0"],["elite","Élite","#F0B429"]].map(([plan,label,color])=>(
                           <button key={plan} disabled={planRepairSaving===p.id} onClick={async()=>{
                             setPlanRepairSaving(p.id);
-                            await boFetch({ action:"repair_plan", profileId:p.id, plan });
+                            const r = await boFetch({ action:"repair_plan", profileId:p.id, plan });
+                            const result = await r.json().catch(()=>null);
                             await load();
                             setPlanRepairSaving(null);
+                            if (r.ok && result?.success) {
+                              showToast(`Plan "${plan}" appliqué ✓ — profiles + user_metadata mis à jour`);
+                            } else {
+                              showToast(`Erreur repair_plan: ${result?.error||"inconnu"} — ${result?.detail||""}`);
+                            }
                           }} style={{ flex:1, padding:"7px 4px", borderRadius:8, border:`1.5px solid ${color}55`, background:`${color}18`, color, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:planRepairSaving===p.id?0.5:1 }}>
                             {planRepairSaving===p.id?"…":label}
                           </button>
