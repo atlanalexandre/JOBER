@@ -2398,14 +2398,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const tourKey=`alane_presta_tour_done_${u.id}`;
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
       if(!prestaTourDone) setShowTour(true);
-      // /api/get-plan utilise service role key — bypasse RLS + JWT cache
+      // refresh_plan utilise service role key côté serveur — lit + écrit plan en DB
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
       const [{data:prof},{data:mData},{data:rData},planJson]=await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
-        fetch("/api/get-plan",{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>null),
+        fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
       if(prof) {
         setUserStatus(prof.status);
@@ -2470,7 +2470,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const token = sess.data?.session?.access_token || "";
       const [profRes, planJson] = await Promise.all([
         supabase.from("profiles").select("status,missions_enabled").eq("id", u.id).single(),
-        fetch("/api/get-plan",{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>null),
+        fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
       if (profRes.data) {
         setUserStatus(profRes.data.status);
