@@ -2825,9 +2825,9 @@ export default async function handler(req, res) {
             if (isActive) {
               const metaPlan = sub.metadata?.plan || sub.items?.data?.[0]?.price?.metadata?.plan;
               if (metaPlan && metaPlan !== "free") plan = metaPlan;
-            } else if (sub.status === "canceled" || sub.status === "unpaid") {
-              plan = "free";
             }
+            // Ne pas dégrader sur annulation Stripe — le webhook gère la rétrogradation.
+            // Un plan défini manuellement via BO doit primer sur un abonnement Stripe annulé.
           }
         } catch (stripeErr) {
           console.error("[refresh_plan] Stripe check failed:", stripeErr.message);
