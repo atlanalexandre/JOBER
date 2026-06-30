@@ -2625,15 +2625,17 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ error: "Mission introuvable ou non assignée" });
       if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
 
-      // Only allow start within [H-10min … H+2h] — rejects stale auto-start calls
+      // Only allow start within [H-5min … H+2h] — rejects stale auto-start calls
       if (m.date && m.heure_debut) {
         try {
-          const missionStart = new Date(`${m.date}T${m.heure_debut}:00`).getTime();
+          const [h2, mn2] = m.heure_debut.split(":").map(Number);
+          const missionStartNaive2 = new Date(`${m.date}T${String(h2).padStart(2,"0")}:${String(mn2||0).padStart(2,"0")}:00`);
+          const missionStartUTC2 = new Date(missionStartNaive2.getTime() + frenchOffsetMs(missionStartNaive2));
           const now = Date.now();
-          if (now < missionStart - 10 * 60 * 1000) {
-            return res.status(400).json({ error: "Trop tôt pour démarrer la mission" });
+          if (now < missionStartUTC2.getTime() - 5 * 60 * 1000) {
+            return res.status(400).json({ error: "Trop tôt pour démarrer la mission (disponible 5 minutes avant l'heure prévue)" });
           }
-          if (now > missionStart + 2 * 60 * 60 * 1000) {
+          if (now > missionStartUTC2.getTime() + 2 * 60 * 60 * 1000) {
             return res.status(400).json({ error: "Fenêtre de démarrage expirée" });
           }
         } catch(e) { /* date parse failed — allow */ }

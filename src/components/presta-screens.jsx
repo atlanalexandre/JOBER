@@ -2015,7 +2015,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       </div>
                     </div>
                     {(() => {
-                      const missionStartDt = (() => { try { return m.date && m.heure_debut ? new Date(`${m.date}T${m.heure_debut}:00`) : null; } catch(e) { return null; } })();
+                      const hd = (m.heure_debut || "").slice(0, 5); // normalize "HH:MM:SS" → "HH:MM"
+                      const missionStartDt = (() => { try { return m.date && hd.length === 5 ? new Date(`${m.date}T${hd}:00`) : null; } catch(e) { return null; } })();
                       const msUntilUnlock = missionStartDt ? (missionStartDt.getTime() - 5*60*1000) - Date.now() : 0;
                       const tooEarly = msUntilUnlock > 0;
                       const unlockTime = missionStartDt ? new Date(missionStartDt.getTime() - 5*60*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : null;
