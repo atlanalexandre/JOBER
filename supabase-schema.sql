@@ -413,7 +413,7 @@ CREATE POLICY "settings_read" ON platform_settings FOR SELECT USING (true);
 INSERT INTO platform_settings (key, value) VALUES
   ('plan_limits',          '{"free": 2, "premium": 8, "elite": 999}'::jsonb),
   ('subscription_prices',  '{"premium": {"monthly": 29, "yearly": 290}, "elite": {"monthly": 79, "yearly": 790}}'::jsonb),
-  ('commission_rate',      '0.20'::jsonb),
+  ('commission_rate',      '0'::jsonb),
   ('urgency_surcharge',    '5'::jsonb),
   ('frais_service',        '{"single": 4.90, "range": 2.90, "urgent": 9.90}'::jsonb),
   ('launch_phase',         'true'::jsonb),
