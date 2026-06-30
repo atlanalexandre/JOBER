@@ -2,6 +2,11 @@ import crypto from "crypto";
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
 
+function hashPii(value) {
+  if (value == null) return null;
+  return crypto.createHash("sha256").update(String(value).trim().toLowerCase()).digest("hex");
+}
+
 // Alerte critique au démarrage si BO_SESSION_SECRET n'est pas défini
 if (!process.env.BO_SESSION_SECRET) {
   console.error("[bo-action] CRITIQUE: BO_SESSION_SECRET n'est pas défini — le backoffice est inaccessible. Configurez cette variable dans Vercel.");
@@ -174,22 +179,16 @@ export default async function handler(req, res) {
         // Vérification dans les deux sens :
         // 1. Les identifiants du nouveau compte matchent-ils une entrée blacklist ?
         const orFilters = [];
-        if (userEmail) orFilters.push(`email.eq.${encodeURIComponent(userEmail)}`);
-        if (tel2)      orFilters.push(`telephone.eq.${encodeURIComponent(tel2)}`);
-        if (iban2)     orFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
-        if (siret2)    orFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
+        if (userEmail) orFilters.push(`email_hash.eq.${hashPii(userEmail)}`);
+        if (tel2)      orFilters.push(`telephone_hash.eq.${hashPii(tel2)}`);
+        if (iban2)     orFilters.push(`iban_hash.eq.${hashPii(iban2)}`);
+        if (siret2)    orFilters.push(`siret_hash.eq.${hashPii(siret2)}`);
 
-        // 2. Même si email différent, chercher un IBAN ou SIRET identique dans blacklist
-        //    (cas : re-inscription avec nouvel email mais même compte bancaire)
-        const strictFilters = [];
-        if (iban2)  strictFilters.push(`iban.eq.${encodeURIComponent(iban2)}`);
-        if (siret2) strictFilters.push(`siret.eq.${encodeURIComponent(siret2)}`);
-
-        const allFilters = [...new Set([...orFilters, ...strictFilters])];
+        const allFilters = [...new Set(orFilters)];
 
         if (allFilters.length > 0) {
           try {
-            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,email,reason", limit: "1" });
+            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,reason", limit: "1" });
             const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
             const blData = await blRes.json();
             if (Array.isArray(blData) && blData.length > 0) {
@@ -382,11 +381,11 @@ export default async function handler(req, res) {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
-            email:     userEmail || null,
-            telephone: telephone,
-            iban:      iban,
-            siret:     siret,
-            reason:    reason ? `account_deleted: ${reason}` : "account_deleted",
+            email_hash:     hashPii(userEmail),
+            telephone_hash: hashPii(telephone),
+            iban_hash:      hashPii(iban),
+            siret_hash:     hashPii(siret),
+            reason:         reason ? `account_deleted: ${reason}` : "account_deleted",
           }),
         }).catch(() => {});
       }
