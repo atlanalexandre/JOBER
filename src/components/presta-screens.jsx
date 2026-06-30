@@ -2390,7 +2390,6 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     supabase.auth.getUser().then(async ({data})=>{
       const u=data?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
-      setPlanActuel(u.user_metadata?.plan_abonnement||"free");
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       const m=u.user_metadata||{};
@@ -2407,12 +2406,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
-        // RANK : prend le plan le plus élevé entre user_metadata (JWT cache) et profiles
-        const RANK = { free:0, premium:1, elite:2 };
-        const pp = prof.plan_abonnement || "free";
-        const mp = u.user_metadata?.plan_abonnement || "free";
-        const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
-        setPlanActuel(resolvedPlan);
+        // profiles est la source de vérité — pas de dépendance au JWT user_metadata
+        setPlanActuel(prof.plan_abonnement || "free");
       }
       setPlanLoaded(true);
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
@@ -2472,11 +2467,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
-        const RANK = { free:0, premium:1, elite:2 };
-        const pp = prof.plan_abonnement || "free";
-        const mp = u.user_metadata?.plan_abonnement || "free";
-        const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
-        setPlanActuel(resolvedPlan);
+        setPlanActuel(prof.plan_abonnement || "free");
       }
     };
     document.addEventListener("visibilitychange", refresh);
@@ -2664,7 +2655,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               background:C.white, transition:"left 0.2s" }} />
           </button>
         </div>
-        {(() => {
+        {planLoaded && (() => {
           const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
           return (
             <div onClick={()=>onNavigate("abonnement_presta")} style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"8px 14px", cursor:"pointer" }}>
