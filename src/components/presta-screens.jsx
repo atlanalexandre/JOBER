@@ -2407,24 +2407,15 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
+        // refreshSession() appelé en amont → JWT frais → user_metadata à jour
+        // RANK : prend le plan le plus élevé entre user_metadata et profiles
         const RANK = { free:0, premium:1, elite:2 };
         const pp = prof.plan_abonnement || "free";
         const mp = u.user_metadata?.plan_abonnement || "free";
         const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
         setPlanActuel(resolvedPlan);
-        // Toujours vérifier le plan côté serveur pour bypasser le cache JWT
-        const { data:{ session:sess } } = await supabase.auth.getSession();
-        if (sess?.access_token) {
-          fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
-            .then(r => r.ok ? r.json() : null)
-            .then(d => { if (d?.plan) setPlanActuel(d.plan); setPlanLoaded(true); })
-            .catch(() => { setPlanLoaded(true); });
-        } else {
-          setPlanLoaded(true);
-        }
-      } else {
-        setPlanLoaded(true);
       }
+      setPlanLoaded(true);
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
@@ -2489,14 +2480,6 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         const mp = u.user_metadata?.plan_abonnement || "free";
         const resolvedPlan = (RANK[mp]||0) > (RANK[pp]||0) ? mp : pp;
         setPlanActuel(resolvedPlan);
-      }
-      // refresh_plan serveur comme source de vérité finale
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      if (sess?.access_token) {
-        fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sess.access_token}`}, body: JSON.stringify({ action:"refresh_plan" }) })
-          .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d?.plan) setPlanActuel(d.plan); })
-          .catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", refresh);

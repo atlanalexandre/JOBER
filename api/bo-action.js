@@ -1184,6 +1184,27 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Force-écrase plan dans profiles + user_metadata, ignore Stripe
+    if (action === "repair_plan") {
+      if (!profileId || !body.plan) return res.status(400).json({ error: "profileId + plan requis" });
+      const plan = body.plan;
+      if (!["free","premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ plan_abonnement: plan, trial_exhausted: plan !== "free" ? false : undefined }),
+      });
+      const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      if (uRes.ok) {
+        const uData = await uRes.json();
+        await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
+          method: "PUT", headers,
+          body: JSON.stringify({ user_metadata: { ...(uData.user_metadata || {}), plan_abonnement: plan } }),
+        });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"repair_plan", target_id:profileId, details:{ plan } }) }).catch(()=>{});
+      return res.status(200).json({ success: true, plan });
+    }
+
     if (action === "list_logs") {
       const logsRes = await fetch(
         `${SUPABASE_URL}/rest/v1/bo_logs?order=created_at.desc&limit=200`,
