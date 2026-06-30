@@ -1,3 +1,5 @@
+import { esc, emailHtml, sendEmail, hashPii } from "./_email.js";
+
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
 function checkContactRateLimit(ip) {
@@ -22,38 +24,6 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
   } catch { return null; }
 }
 
-function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
-
-function emailHtml(content) {
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,Helvetica Neue,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
-        <tr>
-          <td style="background:#050E20;padding:28px 36px;text-align:center;">
-            <span style="font-size:28px;font-weight:800;letter-spacing:2px;">
-              <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
-            </span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
-            ${content}
-          </td>
-        </tr>
-        <tr>
-          <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
-            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-}
-
 export default async function handler(req, res) {
   // ICS calendar file generation
   if (req.method === "GET" && req.query.ics === "1") {
@@ -71,9 +41,7 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const RESEND_API_KEY = process.env.RESEND_API_KEY;
-  const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
-  const RESEND_FROM    = process.env.RESEND_FROM || "onboarding@resend.dev";
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
   // ── welcome: send welcome email after registration ────────────────
   if (req.body?.action === "welcome") {
@@ -106,10 +74,10 @@ export default async function handler(req, res) {
           const iban3  = meta3.rib ? String(meta3.rib).replace(/\s/g, "").toUpperCase() : null;
           const siret3 = meta3.kbis || null;
           const orFilters3 = [];
-          if (email)   orFilters3.push(`email.eq.${email}`);
-          if (tel3)    orFilters3.push(`telephone.eq.${tel3}`);
-          if (iban3)   orFilters3.push(`iban.eq.${iban3}`);
-          if (siret3)  orFilters3.push(`siret.eq.${siret3}`);
+          if (email)   orFilters3.push(`email_hash.eq.${hashPii(email)}`);
+          if (tel3)    orFilters3.push(`telephone_hash.eq.${hashPii(tel3)}`);
+          if (iban3)   orFilters3.push(`iban_hash.eq.${hashPii(iban3)}`);
+          if (siret3)  orFilters3.push(`siret_hash.eq.${hashPii(siret3)}`);
           if (orFilters3.length > 0) {
             const blParams3 = new URLSearchParams({ or: `(${orFilters3.join(",")})`, select: "id", limit: "1" });
             const blRes3 = await fetch(`${SUPABASE_URL2}/rest/v1/account_blacklist?${blParams3}`, { headers: svcHeaders });
@@ -129,37 +97,14 @@ export default async function handler(req, res) {
       }
     }
 
-    if (RESEND_API_KEY) {
-      const isPresta = role === "prestataire";
-      const welcomeHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,Helvetica Neue,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 0;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
-        <tr><td style="background:#050E20;padding:28px 36px;text-align:center;">
-          <span style="font-size:28px;font-weight:800;letter-spacing:2px;">
-            <span style="color:#7C6FE0;">A</span><span style="color:#ffffff;">LAN</span><span style="color:#F0B429;">E</span>
-          </span>
-        </td></tr>
-        <tr><td style="padding:36px;color:#1a1a2e;font-size:15px;line-height:1.7;">
-          <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
-          <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverrons un email dès validation de votre compte (généralement sous 24h)." : "Notre équipe va valider votre compte et vous enverrons un email dès approbation."}</p>
-          <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
-          <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
-        </td></tr>
-        <tr><td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
-          <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href="${process.env.APP_URL||"https://www.alane.fr"}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: RESEND_FROM, to: [email], subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml }),
-      }).catch(() => {});
-    }
+    const isPresta = role === "prestataire";
+    const welcomeHtml = emailHtml(`
+      <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
+      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverrons un email dès validation de votre compte (généralement sous 24h)." : "Notre équipe va valider votre compte et vous enverrons un email dès approbation."}</p>
+      <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
+      <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
+    `);
+    await sendEmail({ to: email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
     return res.status(200).json({ ok: true });
   }
 
@@ -169,8 +114,7 @@ export default async function handler(req, res) {
     if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
     const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
     if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
-    if (RESEND_API_KEY) {
-      const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
+    const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:'DM Sans',system-ui,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.10);">
@@ -188,12 +132,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 <div style="text-align:center;margin-top:20px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>
 </td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `✅ Réservation confirmée — ${esc(job)||"Mission"} · ALANE`, html: bookingHtml }),
-      }).catch(() => {});
-    }
+    await sendEmail({ to: clientEmail, subject: `✅ Réservation confirmée — ${esc(job)||"Mission"} · ALANE`, html: bookingHtml });
     return res.status(200).json({ ok: true });
   }
 
@@ -204,7 +143,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     const { prenom, nom, email, role } = req.body;
     if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
 
-    if (!RESEND_API_KEY || !ADMIN_EMAIL || !RESEND_FROM) {
+    if (!ADMIN_EMAIL) {
       return res.status(200).json({ ok: true, warning: "email skipped, missing env vars" });
     }
 
@@ -219,13 +158,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       <p style="text-align:center;margin:24px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}?bo=1' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
     `);
 
-    try {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: RESEND_FROM, to: [ADMIN_EMAIL], subject: `Nouvelle inscription ${roleLabel} — ${prenom} ${nom}`, html }),
-      });
-    } catch {}
+    await sendEmail({ to: ADMIN_EMAIL, subject: `Nouvelle inscription ${roleLabel} — ${prenom} ${nom}`, html });
     return res.status(200).json({ ok: true });
   }
 
@@ -383,26 +316,19 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       return res.status(500).json({ error: "Impossible d'enregistrer le ticket" });
     }
 
-    if (RESEND_API_KEY && ADMIN_EMAIL) {
-      try {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: RESEND_FROM,
-            to: [ADMIN_EMAIL],
-            subject: `[Support] ${subject}`,
-            html: emailHtml(`
-              <p>Nouveau ticket support reçu.</p>
-              <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-                <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;width:120px;">De</td><td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600;">${esc(userName)||"Inconnu"} (${esc(userEmail)||"email inconnu"})</td></tr>
-                <tr><td style="padding:8px 0;color:#888;">Sujet</td><td style="padding:8px 0;font-weight:600;">${esc(subject)}</td></tr>
-              </table>
-              <div style="background:#f8f8fb;border-left:3px solid #7C6FE0;padding:14px 16px;border-radius:0 8px 8px 0;margin-top:16px;white-space:pre-wrap;">${esc(message)}</div>
-            `),
-          }),
-        });
-      } catch {}
+    if (ADMIN_EMAIL) {
+      await sendEmail({
+        to: ADMIN_EMAIL,
+        subject: `[Support] ${subject}`,
+        html: emailHtml(`
+          <p>Nouveau ticket support reçu.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;width:120px;">De</td><td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600;">${esc(userName)||"Inconnu"} (${esc(userEmail)||"email inconnu"})</td></tr>
+            <tr><td style="padding:8px 0;color:#888;">Sujet</td><td style="padding:8px 0;font-weight:600;">${esc(subject)}</td></tr>
+          </table>
+          <div style="background:#f8f8fb;border-left:3px solid #7C6FE0;padding:14px 16px;border-radius:0 8px 8px 0;margin-top:16px;white-space:pre-wrap;">${esc(message)}</div>
+        `),
+      });
     }
 
     return res.status(200).json({ success: true });
