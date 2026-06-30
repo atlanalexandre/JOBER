@@ -553,3 +553,68 @@ CREATE INDEX IF NOT EXISTS idx_candidatures_mission_status    ON candidatures(mi
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread      ON notifications(user_id, read) WHERE read = false;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created     ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user        ON push_subscriptions(user_id);
+
+-- ── Sécurité : messages_select — LIKE remplacé par split_part exact ───────
+-- Le LIKE '%' || uid || '%' pouvait matcher des conversation_key non liées
+-- à l'utilisateur. split_part compare exactement l'UUID en position 1 ou 2.
+DROP POLICY IF EXISTS "messages_select" ON messages;
+CREATE POLICY "messages_select" ON messages
+  FOR SELECT USING (
+    sender_id = auth.uid() OR
+    split_part(conversation_key, '_', 1) = auth.uid()::text OR
+    split_part(conversation_key, '_', 2) = auth.uid()::text
+  );
+
+-- ── Sécurité : protection colonne-niveau sur missions ─────────────────────
+-- Un utilisateur authentifié (anon key) ne peut pas modifier directement
+-- les colonnes sensibles. auth.uid() = NULL pour le service_role → autorisé.
+CREATE OR REPLACE FUNCTION prevent_missions_field_tampering()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF (NEW.client_id              IS DISTINCT FROM OLD.client_id)              OR
+     (NEW.prestataire_id         IS DISTINCT FROM OLD.prestataire_id)         OR
+     (NEW.montant_total          IS DISTINCT FROM OLD.montant_total)          OR
+     (NEW.stripe_payment_intent  IS DISTINCT FROM OLD.stripe_payment_intent)  OR
+     (NEW.status                 IS DISTINCT FROM OLD.status)                 OR
+     (NEW.cashback_credited      IS DISTINCT FROM OLD.cashback_credited)      OR
+     (NEW.validation_client      IS DISTINCT FROM OLD.validation_client)      OR
+     (NEW.validation_prestataire IS DISTINCT FROM OLD.validation_prestataire) THEN
+    RAISE EXCEPTION 'Modification directe de colonnes protégées interdite — passez par l''API';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS missions_field_tamper_guard ON missions;
+CREATE TRIGGER missions_field_tamper_guard
+  BEFORE UPDATE ON missions
+  FOR EACH ROW EXECUTE FUNCTION prevent_missions_field_tampering();
+
+-- ── Sécurité : account_blacklist — hachage SHA-256 des données PII ────────
+-- Les colonnes claires (email, telephone, iban, siret) sont remplacées
+-- par des hashes — seul le service_role (BO) peut accéder à cette table.
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS email_hash     text;
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS telephone_hash text;
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS iban_hash      text;
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS siret_hash     text;
+
+DROP INDEX IF EXISTS idx_blacklist_email;
+DROP INDEX IF EXISTS idx_blacklist_telephone;
+DROP INDEX IF EXISTS idx_blacklist_iban;
+DROP INDEX IF EXISTS idx_blacklist_siret;
+
+CREATE INDEX IF NOT EXISTS idx_blacklist_email_hash     ON account_blacklist(email_hash)     WHERE email_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_telephone_hash ON account_blacklist(telephone_hash) WHERE telephone_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_iban_hash      ON account_blacklist(iban_hash)      WHERE iban_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_blacklist_siret_hash     ON account_blacklist(siret_hash)     WHERE siret_hash IS NOT NULL;
+
+-- ── Sécurité : rate-limit persistant backoffice ───────────────────────────
+-- Remplace le Map in-memory de bo-verify-pin.js qui se réinitialise
+-- à chaque cold start Vercel. RLS activé sans policy → accès service_role seul.
+CREATE TABLE IF NOT EXISTS bo_rate_limits (
+  ip       text PRIMARY KEY,
+  attempts integer DEFAULT 1,
+  reset_at timestamptz NOT NULL DEFAULT (now() + interval '5 minutes')
+);
+ALTER TABLE bo_rate_limits ENABLE ROW LEVEL SECURITY;
