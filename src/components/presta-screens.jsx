@@ -2402,7 +2402,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
       const [{data:prof},{data:mData},{data:rData},planJson]=await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
+        supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id",u.id).single(),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
@@ -2411,7 +2411,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
       }
-      setPlanActuel(planJson?.plan || "free");
+      const _PR={free:0,premium:1,elite:2};
+      const _bp=(...ps)=>ps.reduce((b,p)=>(_PR[p]||0)>(_PR[b]||0)?p:b,"free");
+      setPlanActuel(_bp(prof?.plan_abonnement,u.user_metadata?.plan_abonnement,planJson?.plan));
       setPlanLoaded(true);
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
@@ -2469,14 +2471,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
       const [profRes, planJson] = await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled").eq("id", u.id).single(),
+        supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single(),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
       if (profRes.data) {
         setUserStatus(profRes.data.status);
         setMissionsEnabled(profRes.data.missions_enabled === true);
       }
-      if (planJson?.plan) setPlanActuel(planJson.plan);
+      const _PR2={free:0,premium:1,elite:2};
+      const _bp2=(...ps)=>ps.reduce((b,p)=>(_PR2[p]||0)>(_PR2[b]||0)?p:b,"free");
+      setPlanActuel(_bp2(profRes.data?.plan_abonnement,u.user_metadata?.plan_abonnement,planJson?.plan));
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);

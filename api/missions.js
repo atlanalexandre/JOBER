@@ -2796,12 +2796,12 @@ export default async function handler(req, res) {
     // Vérifie et répare le plan + trial_exhausted en interrogeant Stripe
     if (action === "refresh_plan") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      if (!caller) { console.error("[refresh_plan] verifyUser failed — token invalide ou absent"); return res.status(401).json({ error: "Non authentifié" }); }
 
       const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=plan_abonnement,trial_exhausted,stripe_subscription_id,stripe_customer_id`, { headers });
       const prData = await prRes.json();
       const profile = Array.isArray(prData) && prData[0];
-      if (!profile) return res.status(404).json({ error: "Profil introuvable" });
+      if (!profile) { console.error("[refresh_plan] profil introuvable pour", caller.id, "prData:", JSON.stringify(prData)); return res.status(404).json({ error: "Profil introuvable" }); }
 
       // Lire user_metadata côté serveur (service role) — non affecté par le cache JWT client
       const PLAN_RANK = { free:0, premium:1, elite:2 };
@@ -2810,6 +2810,7 @@ export default async function handler(req, res) {
       const metaPlan2 = uData2?.user_metadata?.plan_abonnement || "free";
       const profilePlan2 = profile.plan_abonnement || "free";
       let plan = (PLAN_RANK[metaPlan2]||0) > (PLAN_RANK[profilePlan2]||0) ? metaPlan2 : profilePlan2;
+      console.log(`[refresh_plan] user=${caller.id} meta=${metaPlan2} profile=${profilePlan2} → plan=${plan}`);
       let trialExhausted = !!profile.trial_exhausted;
 
       // Vérification Stripe directe si un abonnement existe
