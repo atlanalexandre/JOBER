@@ -1189,17 +1189,26 @@ export default async function handler(req, res) {
       if (!profileId || !body.plan) return res.status(400).json({ error: "profileId + plan requis" });
       const plan = body.plan;
       if (!["free","premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ plan_abonnement: plan, trial_exhausted: plan !== "free" ? false : undefined }),
       });
+      if (!patchRes.ok) {
+        const patchErr = await patchRes.text().catch(()=>"");
+        console.error("[repair_plan] PATCH profiles failed:", patchRes.status, patchErr);
+        return res.status(500).json({ error: "Échec mise à jour profiles", detail: patchErr });
+      }
       const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       if (uRes.ok) {
         const uData = await uRes.json();
-        await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
+        const uPutRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
           method: "PUT", headers,
           body: JSON.stringify({ user_metadata: { ...(uData.user_metadata || {}), plan_abonnement: plan } }),
         });
+        if (!uPutRes.ok) {
+          const uPutErr = await uPutRes.text().catch(()=>"");
+          console.error("[repair_plan] PUT user_metadata failed:", uPutRes.status, uPutErr);
+        }
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"repair_plan", target_id:profileId, details:{ plan } }) }).catch(()=>{});
       return res.status(200).json({ success: true, plan });
