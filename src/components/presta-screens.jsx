@@ -2386,8 +2386,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
   },[activeScreen]);
   useEffect(()=>{
-    // refreshSession force un nouveau JWT avec les user_metadata à jour (BO peut avoir changé le plan)
-    supabase.auth.refreshSession().catch(()=>null).then(()=>supabase.auth.getUser()).then(async ({data})=>{
+    supabase.auth.getUser().then(async ({data})=>{
       const u=data?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setPlanActuel(u.user_metadata?.plan_abonnement||"free");
@@ -2467,8 +2466,6 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   useEffect(() => {
     const refresh = async () => {
       if (document.visibilityState !== "visible") return;
-      // Forcer un nouveau JWT pour récupérer les user_metadata à jour (plan BO)
-      await supabase.auth.refreshSession().catch(() => null);
       const { data } = await supabase.auth.getUser();
       const u = data?.user; if (!u) return;
       const { data: prof } = await supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single();
