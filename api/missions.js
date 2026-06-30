@@ -2865,6 +2865,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ plan, trial_exhausted: trialExhausted });
     }
 
+    // ── Annuler l'abonnement Stripe (fin de période) ─────────────────────────
+    if (action === "cancel_subscription") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=stripe_subscription_id,stripe_customer_id,plan_abonnement`, { headers });
+      const prData = await prRes.json();
+      const profile = Array.isArray(prData) && prData[0];
+      if (!profile) return res.status(404).json({ error: "Profil introuvable" });
+      if (!profile.stripe_subscription_id) return res.status(400).json({ error: "Aucun abonnement actif trouvé" });
+
+      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      if (!STRIPE_KEY) return res.status(500).json({ error: "Configuration Stripe manquante" });
+
+      const cancelRes = await fetch(`https://api.stripe.com/v1/subscriptions/${profile.stripe_subscription_id}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${STRIPE_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: "cancel_at_period_end=true",
+      });
+      if (!cancelRes.ok) {
+        const err = await cancelRes.json().catch(() => ({}));
+        return res.status(500).json({ error: err?.error?.message || "Erreur Stripe lors de l'annulation" });
+      }
+      const sub = await cancelRes.json();
+      const endDate = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+      return res.status(200).json({ success: true, cancel_at_period_end: true, current_period_end: endDate });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("missions error:", e);

@@ -7025,6 +7025,8 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [launchActive,setLaunchActive]=useState(isLaunchPhase());
   const [hasStripeCustomer,setHasStripeCustomer]=useState(false);
   const [portalLoading,setPortalLoading]=useState(false);
+  const [cancelLoading,setCancelLoading]=useState(false);
+  const [cancelDone,setCancelDone]=useState(null); // ISO date fin de période
 
   useEffect(()=>{
     supabase.auth.getUser().then(async ({data})=>{
@@ -7064,6 +7066,29 @@ export function AbonnementPrestaScreen({ onBack }) {
       showToast(d.error || "Erreur lors de l'ouverture du portail");
     } catch { showToast("Erreur réseau"); }
     setPortalLoading(false);
+  };
+
+  const handleCancelSubscription = async () => {
+    const confirmed = await showConfirm("Annuler l'abonnement ?", "Vous garderez l'accès jusqu'à la fin de la période payée. Aucun remboursement ne sera effectué. Confirmer l'annulation ?");
+    if (!confirmed) return;
+    setCancelLoading(true);
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const r = await fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", ...(token?{"Authorization":`Bearer ${token}`}:{}) },
+        body: JSON.stringify({ action:"cancel_subscription" }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setCancelDone(d.current_period_end);
+        showToast("Abonnement annulé — accès conservé jusqu'à la fin de la période");
+      } else {
+        showToast(d.error || "Erreur lors de l'annulation");
+      }
+    } catch { showToast("Erreur réseau"); }
+    setCancelLoading(false);
   };
 
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
@@ -7157,8 +7182,18 @@ export function AbonnementPrestaScreen({ onBack }) {
         )}
         {hasStripeCustomer && (
           <button onClick={handleBillingPortal} disabled={portalLoading} style={{ marginTop:12, display:"inline-flex", alignItems:"center", gap:6, background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 14px", color:C.textSub, fontSize:12, fontWeight:600, cursor:portalLoading?"not-allowed":"pointer", fontFamily:"inherit" }}>
-            {portalLoading ? "…" : "⚙️ Gérer mon abonnement / Annuler"}
+            {portalLoading ? "…" : "⚙️ Gérer la facturation"}
           </button>
+        )}
+        {hasStripeCustomer && current !== "free" && !cancelDone && (
+          <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:6, background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"8px 14px", color:"#F25E5E", fontSize:12, fontWeight:600, cursor:cancelLoading?"not-allowed":"pointer", fontFamily:"inherit" }}>
+            {cancelLoading ? "…" : "✕ Annuler mon abonnement"}
+          </button>
+        )}
+        {cancelDone && (
+          <div style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:6, background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:10, padding:"8px 14px" }}>
+            <span style={{ fontSize:12, color:"#F25E5E", fontWeight:600 }}>✓ Annulation programmée — accès jusqu'au {new Date(cancelDone).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})}</span>
+          </div>
         )}
       </div>
       <div style={{ padding:"20px 18px" }}>
