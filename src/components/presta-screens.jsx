@@ -2398,17 +2398,20 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const tourKey=`alane_presta_tour_done_${u.id}`;
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch(e) {}
       if(!prestaTourDone) setShowTour(true);
-      const [{data:prof},{data:mData},{data:rData}]=await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled,plan_abonnement,trial_exhausted").eq("id",u.id).single(),
+      // /api/get-plan utilise service role key — bypasse RLS + JWT cache
+      const sess = await supabase.auth.getSession();
+      const token = sess.data?.session?.access_token || "";
+      const [{data:prof},{data:mData},{data:rData},planJson]=await Promise.all([
+        supabase.from("profiles").select("status,missions_enabled").eq("id",u.id).single(),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
+        fetch("/api/get-plan",{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>null),
       ]);
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
-        // profiles est la source de vérité — pas de dépendance au JWT user_metadata
-        setPlanActuel(prof.plan_abonnement || "free");
       }
+      setPlanActuel(planJson?.plan || "free");
       setPlanLoaded(true);
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
@@ -2463,12 +2466,17 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (document.visibilityState !== "visible") return;
       const { data } = await supabase.auth.getUser();
       const u = data?.user; if (!u) return;
-      const { data: prof } = await supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single();
-      if (prof) {
-        setUserStatus(prof.status);
-        setMissionsEnabled(prof.missions_enabled === true);
-        setPlanActuel(prof.plan_abonnement || "free");
+      const sess = await supabase.auth.getSession();
+      const token = sess.data?.session?.access_token || "";
+      const [profRes, planJson] = await Promise.all([
+        supabase.from("profiles").select("status,missions_enabled").eq("id", u.id).single(),
+        fetch("/api/get-plan",{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>null),
+      ]);
+      if (profRes.data) {
+        setUserStatus(profRes.data.status);
+        setMissionsEnabled(profRes.data.missions_enabled === true);
       }
+      if (planJson?.plan) setPlanActuel(planJson.plan);
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
