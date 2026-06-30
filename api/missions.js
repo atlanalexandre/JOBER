@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 // Returns the UTC offset in ms for a given date in France (CEST = -7200000, CET = -3600000)
 function frenchOffsetMs(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -2891,6 +2893,34 @@ export default async function handler(req, res) {
       const sub = await cancelRes.json();
       const endDate = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
       return res.status(200).json({ success: true, cancel_at_period_end: true, current_period_end: endDate });
+    }
+
+    // ── Générer un token éphémère signé pour la facture (30 min) ─────────────
+    // Évite d'exposer le JWT Supabase en query string (logs Vercel, historique browser, Referer)
+    if (action === "generate_invoice_token") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const { mission_id } = payload;
+      if (!mission_id || !/^[0-9a-f-]{36}$/i.test(mission_id)) {
+        return res.status(400).json({ error: "mission_id invalide" });
+      }
+
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id`, { headers });
+      const mData = await mRes.json();
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== caller.id && mission.prestataire_id !== caller.id) {
+        return res.status(403).json({ error: "Accès interdit" });
+      }
+
+      const secret = process.env.BO_SESSION_SECRET;
+      if (!secret) return res.status(500).json({ error: "Configuration serveur manquante (BO_SESSION_SECRET)" });
+
+      const exp = Math.floor(Date.now() / 1000) + 1800; // 30 min
+      const data2sign = `${caller.id}.${mission_id}.${exp}`;
+      const sig = crypto.createHmac("sha256", secret).update(data2sign).digest("hex");
+      return res.status(200).json({ token: `${data2sign}.${sig}`, exp });
     }
 
     return res.status(400).json({ error: "Action invalide" });

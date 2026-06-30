@@ -5895,15 +5895,17 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
               <button
                 onClick={async () => {
-                  let tok = accessToken;
-                  if (!tok) {
-                    const { data: sd } = await supabase.auth.getSession();
-                    tok = sd?.session?.access_token;
-                    if (tok) setAccessToken(tok);
-                  }
-                  if (tok) {
-                    window.open(`/api/invoice?mission_id=${encodeURIComponent(selected.id)}&token=${encodeURIComponent(tok)}`, "_blank");
-                  }
+                  const { data: sd } = await supabase.auth.getSession();
+                  const jwt = sd?.session?.access_token;
+                  if (!jwt) { showToast("Session expirée — reconnectez-vous"); return; }
+                  const r = await fetch("/api/missions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+                    body: JSON.stringify({ action: "generate_invoice_token", mission_id: selected.id }),
+                  }).catch(() => null);
+                  const d = r ? await r.json().catch(() => null) : null;
+                  if (!d?.token) { showToast(d?.error || "Impossible de générer le lien facture"); return; }
+                  window.open(`/api/invoice?mission_id=${encodeURIComponent(selected.id)}&token=${encodeURIComponent(d.token)}`, "_blank");
                 }}
                 style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}
               >
