@@ -1,5 +1,8 @@
 // /api/invoice.js — Serverless function that returns a printable HTML invoice
-// Auth: token passed as query param (Bearer token from Supabase session)
+// Auth: token éphémère signé HMAC-SHA256 (via /api/missions action generate_invoice_token)
+//       Valide 30 min — jamais le JWT Supabase en clair dans l'URL
+
+import crypto from "crypto";
 
 function escHtml(str) {
   return String(str || "")
@@ -10,22 +13,28 @@ function escHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
-async function verifyUser(token, supabaseUrl, serviceRoleKey) {
-  if (!token) return null;
+function verifyInvoiceToken(token, missionId, secret) {
+  if (!token || !secret) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4) return null;
+  const [userId, tokenMissionId, expStr, sig] = parts;
+  if (tokenMissionId !== missionId) return null;
+  const exp = parseInt(expStr, 10);
+  if (isNaN(exp) || Math.floor(Date.now() / 1000) > exp) return null;
+  const data2sign = `${userId}.${tokenMissionId}.${expStr}`;
+  const expected = crypto.createHmac("sha256", secret).update(data2sign).digest("hex");
   try {
-    const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) return null;
-    return await r.json();
+    if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"))) return null;
   } catch { return null; }
+  return userId;
 }
 
 export default async function handler(req, res) {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const boSecret = process.env.BO_SESSION_SECRET;
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey || !boSecret) {
     return res.status(500).send("<h1>Configuration serveur manquante</h1>");
   }
 
@@ -35,10 +44,10 @@ export default async function handler(req, res) {
     return res.status(400).send("<h1>mission_id invalide</h1>");
   }
 
-  // Verify auth
-  const user = await verifyUser(token, supabaseUrl, serviceRoleKey);
-  if (!user) {
-    return res.status(401).send("<h1>Non autorisé</h1>");
+  // Verify signed ephemeral token (not the raw JWT — never put JWTs in URLs)
+  const userId = verifyInvoiceToken(token, mission_id, boSecret);
+  if (!userId) {
+    return res.status(401).send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0"><h2>Lien expiré ou invalide</h2><p>Le lien de facture est valable 30 minutes. <a href="/" style="color:#7C6FE0">Retourner à l'application</a> pour en générer un nouveau.</p></body></html>`);
   }
 
   // Fetch mission from Supabase
@@ -62,8 +71,8 @@ export default async function handler(req, res) {
     return res.status(404).send("<h1>Mission introuvable</h1>");
   }
 
-  // Verify user is client or prestataire of this mission
-  if (mission.client_id !== user.id && mission.prestataire_id !== user.id) {
+  // Double-check ownership (userId extracted from signed token)
+  if (mission.client_id !== userId && mission.prestataire_id !== userId) {
     return res.status(403).send("<h1>Accès interdit</h1>");
   }
 

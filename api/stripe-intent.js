@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     "Content-Type": "application/x-www-form-urlencoded",
   };
 
-  const { action, amount, currency = "eur", description, metadata = {}, customerId: existingCustomerId, paymentMethodId } = req.body || {};
+  const { action, amount: clientAmount, currency = "eur", description, metadata = {}, customerId: existingCustomerId, paymentMethodId, mission_id: intentMissionId } = req.body || {};
 
   // ── Enregistrer une carte (SetupIntent) ───────────────────────────
   if (action === "setup_card") {
@@ -109,18 +109,37 @@ export default async function handler(req, res) {
   const SERVICE_ROLE_PI = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const callerPi = await verifyUser(req, SUPABASE_URL_PI, SERVICE_ROLE_PI);
   if (!callerPi) return res.status(401).json({ error: "Non authentifié" });
+  if (description !== undefined && (typeof description !== "string" || description.length > 500)) return res.status(400).json({ error: "La description ne doit pas dépasser 500 caractères" });
+
+  // Calcul du montant : toujours côté serveur quand mission_id fourni (source fiable)
+  let amount = clientAmount;
+  let missionMetaId = metadata.mission || "";
+  if (intentMissionId && /^[0-9a-f-]{36}$/i.test(intentMissionId)) {
+    const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
+    const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,tarif_horaire,hours,montant_total,status`, { headers: hdrsPI });
+    const mData = await mRes.json();
+    const mission = Array.isArray(mData) && mData[0];
+    if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+    if (mission.client_id !== callerPi.id) return res.status(403).json({ error: "Accès interdit — vous n'êtes pas le client de cette mission" });
+    const computed = mission.montant_total
+      ? Number(mission.montant_total)
+      : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
+    if (!computed || computed <= 0) return res.status(400).json({ error: "Montant de la mission invalide ou non défini" });
+    amount = computed;
+    missionMetaId = intentMissionId;
+  }
+
   if (!amount || typeof amount !== "number" || amount <= 0) return res.status(400).json({ error: "Montant invalide — doit être un nombre positif" });
   if (amount < 1) return res.status(400).json({ error: "Montant invalide (min 1€)" });
   if (amount > 50000) return res.status(400).json({ error: "Montant invalide (max 50 000€)" });
-  if (description !== undefined && (typeof description !== "string" || description.length > 500)) return res.status(400).json({ error: "La description ne doit pas dépasser 500 caractères" });
 
   try {
     const params = {
       amount: String(Math.round(amount * 100)),
       currency,
       "payment_method_types[]": "card",
-      "metadata[mission]":     metadata.mission     || "",
-      "metadata[client]":      metadata.client      || "",
+      "metadata[mission]":     missionMetaId,
+      "metadata[client]":      metadata.client      || callerPi.id || "",
       "metadata[prestataire]": metadata.prestataire || "",
     };
     if (existingCustomerId) params.customer = existingCustomerId;
