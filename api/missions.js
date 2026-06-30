@@ -335,10 +335,29 @@ export default async function handler(req, res) {
           } catch {}
         }));
       }
+      // Notes moyennes par prestataire
+      const ratingMap = {};
+      if (prestaIds.length > 0) {
+        try {
+          const rRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings?reviewee_provider_id=in.(${prestaIds.join(",")})&select=reviewee_provider_id,rating`, { headers });
+          const rData = await rRes.json().catch(() => []);
+          if (Array.isArray(rData)) {
+            const grouped = {};
+            rData.forEach(r => { if (!grouped[r.reviewee_provider_id]) grouped[r.reviewee_provider_id] = []; grouped[r.reviewee_provider_id].push(r.rating); });
+            Object.keys(grouped).forEach(id => {
+              const rats = grouped[id];
+              ratingMap[id] = { avg: Math.round(rats.reduce((s, v) => s + v, 0) / rats.length * 10) / 10, count: rats.length };
+            });
+          }
+        } catch {}
+      }
+
       const enriched = candidatures.map(c => ({
         ...c,
-        prenom: nameMap[c.prestataire_id]?.prenom || "",
-        nom:    nameMap[c.prestataire_id]?.nom    || "",
+        prenom:  nameMap[c.prestataire_id]?.prenom || "",
+        nom:     nameMap[c.prestataire_id]?.nom    || "",
+        rating:  ratingMap[c.prestataire_id]?.avg  || 0,
+        reviews: ratingMap[c.prestataire_id]?.count || 0,
       }));
       return res.status(200).json(enriched);
     }
@@ -432,13 +451,38 @@ export default async function handler(req, res) {
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       // Refus si déjà assignée : évite la création de double PaymentIntent en cas de requêtes concurrentes
       if (missionCheck && ["assigned","completed","closed","cancelled"].includes(missionCheck.status)) {
         return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
+      }
+
+      // Si un PaymentIntent existe déjà, vérifier son statut avant d'en créer un nouveau
+      if (missionCheck && missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
+        try {
+          const piCheckRes = await fetch(`https://api.stripe.com/v1/payment_intents/${missionCheck.stripe_payment_intent}`, {
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+          });
+          const piData = await piCheckRes.json();
+          if (piData.status === "succeeded") {
+            return res.status(409).json({ error: "Paiement déjà confirmé — la mission sera bientôt assignée automatiquement" });
+          }
+          if (piData.client_secret && ["requires_payment_method", "requires_confirmation", "requires_action"].includes(piData.status)) {
+            // Réutiliser le PI existant — le client peut réessayer le paiement
+            return res.status(200).json({ payment_required: true, client_secret: piData.client_secret, amount: piData.amount / 100 });
+          }
+          // PI annulé ou invalide — réinitialiser pour créer un nouveau
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ stripe_payment_intent: null }),
+          }).catch(() => {});
+          missionCheck.stripe_payment_intent = null;
+        } catch (piErr) {
+          console.error("[accept] PI status check failed:", piErr.message);
+        }
       }
 
       if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
@@ -510,6 +554,36 @@ export default async function handler(req, res) {
         });
         sendPushToUser(verified_prestataire_id, { title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
+
+      // Email de confirmation au client
+      const RESEND_API_KEY_AC = process.env.RESEND_API_KEY;
+      const RESEND_FROM_AC    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (RESEND_API_KEY_AC && missionCheck?.client_id) {
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${missionCheck.client_id}`, { headers })
+          .then(r => r.json()).then(clientAuth => {
+            const clientEmail = clientAuth?.email;
+            if (!clientEmail) return;
+            const clientPrenom = clientAuth?.user_metadata?.prenom || "";
+            const mLabel = esc(missionCheck.titre || missionCheck.metier || "votre mission");
+            return fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY_AC}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: RESEND_FROM_AC,
+                to: clientEmail,
+                subject: `✅ Un prestataire a été assigné à votre mission — ALANE`,
+                html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px">
+  <h2 style="color:#10D98F;margin:0 0 16px">Prestataire assigné ✅</h2>
+  <p style="color:rgba(255,255,255,0.85);line-height:1.6;margin-bottom:12px">Bonjour${clientPrenom ? " " + esc(clientPrenom) : ""},</p>
+  <p style="color:rgba(255,255,255,0.85);line-height:1.6">Un prestataire a été assigné à <strong style="color:#F0B429">${mLabel}</strong>. Vous serez notifié(e) lorsque la mission sera terminée et validée.</p>
+  <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:20px">Suivez l'avancement depuis votre espace ALANE.</p>
+  <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p>
+</div>`,
+              }),
+            });
+          }).catch(e => console.error("[accept] email client failed:", e.message));
+      }
+
       return res.status(200).json({ success: true });
     }
 

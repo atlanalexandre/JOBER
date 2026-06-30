@@ -115,22 +115,30 @@ export default async function handler(req, res) {
   let prestaName = "";
   let prestaCompany = "";
   let prestaSiret = "";
+  let prestaStatutPro = "auto-entrepreneur";
 
   if (mission.prestataire_id) {
-    const prestaRes = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret`,
-      {
+    const [prestaProfileRes, prestaAuthRes] = await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret`, {
         headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" },
-      }
-    );
-    if (prestaRes.ok) {
-      const profiles = await prestaRes.json();
+      }),
+      fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(mission.prestataire_id)}`, {
+        headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}` },
+      }),
+    ]);
+    if (prestaProfileRes.ok) {
+      const profiles = await prestaProfileRes.json();
       const p = profiles[0];
       if (p) {
         prestaName = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
         prestaCompany = p.societe_nom || "";
         prestaSiret = p.siret || "";
       }
+    }
+    if (prestaAuthRes.ok) {
+      const prestaAuth = await prestaAuthRes.json();
+      const sp = prestaAuth?.user_metadata?.statut_pro || "auto-entrepreneur";
+      prestaStatutPro = sp;
     }
   }
 
@@ -166,6 +174,20 @@ export default async function handler(req, res) {
   const htCalc = Math.round(hours * tarifHoraire * 100) / 100;
   const ht = htCalc > 0 ? htCalc : Number(mission.montant_total || 0);
   const htFormatted = ht.toFixed(2).replace(".", ",");
+
+  // TVA : 0% pour auto-entrepreneur (art. 293 B CGI), 20% pour les autres statuts
+  const isAutoEntrepreneur = prestaStatutPro.toLowerCase().includes("auto");
+  const tvaRate = isAutoEntrepreneur ? 0 : 0.20;
+  const tvaAmount = Math.round(ht * tvaRate * 100) / 100;
+  const ttc = Math.round((ht + tvaAmount) * 100) / 100;
+  const tvaFormatted = tvaAmount.toFixed(2).replace(".", ",");
+  const ttcFormatted = ttc.toFixed(2).replace(".", ",");
+  const tvaLabel = isAutoEntrepreneur
+    ? "TVA (0 % — auto-entrepreneur, art. 293 B CGI)"
+    : "TVA (20 %)";
+  const legalTvaNote = isAutoEntrepreneur
+    ? "TVA non applicable — article 293 B du CGI (auto-entrepreneur)."
+    : `TVA de 20 % applicable. SIRET : ${escHtml(prestaSiret || "—")}. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.`;
 
   const missionDate = mission.date || "";
   const heureDebut = mission.heure_debut || "";
@@ -456,12 +478,12 @@ export default async function handler(req, res) {
           <span class="total-row-value">${escHtml(htFormatted)} €</span>
         </div>
         <div class="total-row">
-          <span class="total-row-label">TVA (0 % — auto-entrepreneur, art. 293 B CGI)</span>
-          <span class="total-row-value">0,00 €</span>
+          <span class="total-row-label">${escHtml(tvaLabel)}</span>
+          <span class="total-row-value">${escHtml(tvaFormatted)} €</span>
         </div>
         <div class="total-row total-ttc">
           <span class="total-row-label">Total TTC</span>
-          <span class="total-row-value">${escHtml(htFormatted)} €</span>
+          <span class="total-row-value">${escHtml(ttcFormatted)} €</span>
         </div>
       </div>
     </div>
@@ -475,7 +497,7 @@ export default async function handler(req, res) {
         </div>
       </div>
       <div class="legal">
-        TVA non applicable — article 293 B du CGI (auto-entrepreneur). En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.
+        ${escHtml(legalTvaNote)}
         ALANE — Plateforme de mise en relation de services à la demande. Ce document tient lieu de facture acquittée.
       </div>
     </div>

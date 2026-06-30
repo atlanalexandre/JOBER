@@ -403,7 +403,7 @@ export default async function handler(req, res) {
       }).catch(e => console.error("profile status update failed:", e));
 
       if (STRIPE_SECRET_KEY) {
-        const COMMISSION2 = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
+        const COMMISSION2 = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0.20");
         const profRes2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_account_id=eq.${account.id}&select=id`, {
           headers: hdrs2,
         }).catch(() => null);
