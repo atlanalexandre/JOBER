@@ -146,6 +146,7 @@ export function BOComptes() {
   const [search, setSearch] = useState("");
   const [cashbackAdj, setCashbackAdj] = useState({});
   const [cashbackSaving, setCashbackSaving] = useState(null);
+  const [planRepairSaving, setPlanRepairSaving] = useState(null);
 
   const handleVerify = async (p) => {
     setVerifying(p.id);
@@ -497,6 +498,23 @@ export function BOComptes() {
                     <InfoRow icon="💳" label="Plan" value={p.plan_abonnement || "free"} />
                     <InfoRow icon="📅" label="Fin abonnement" value={p.subscription_end_date ? new Date(p.subscription_end_date).toLocaleDateString("fr-FR") : null} />
                   </div>
+                  {p.role === "prestataire" && (
+                    <div style={{ marginTop:10, background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ color:"#F0B429", fontWeight:700, fontSize:12, marginBottom:8 }}>🔧 Forcer le plan (profiles + user_metadata)</div>
+                      <div style={{ display:"flex", gap:6 }}>
+                        {[["free","Gratuit","#8B8FA8"],["premium","Premium","#7C6FE0"],["elite","Élite","#F0B429"]].map(([plan,label,color])=>(
+                          <button key={plan} disabled={planRepairSaving===p.id} onClick={async()=>{
+                            setPlanRepairSaving(p.id);
+                            await boFetch({ action:"repair_plan", profileId:p.id, plan });
+                            await load();
+                            setPlanRepairSaving(null);
+                          }} style={{ flex:1, padding:"7px 4px", borderRadius:8, border:`1.5px solid ${color}55`, background:`${color}18`, color, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit", opacity:planRepairSaving===p.id?0.5:1 }}>
+                            {planRepairSaving===p.id?"…":label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {p.role === "client" && (
                     <div style={{ marginTop:10, background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:10, padding:"10px 12px" }}>
                       <div style={{ color:C.success, fontWeight:700, fontSize:12, marginBottom:8 }}>💰 Cashback client</div>
