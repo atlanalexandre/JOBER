@@ -1761,16 +1761,11 @@ export function PMissionsTab({ onNavigate, homeMode = false }) {
 
   // Horaires affichés pour une mission avec démarrage réel
   // start = toujours l'heure réelle si started_at, sinon heure_debut
-  // end   = décalé seulement si delay_status==="approved", sinon heure_debut + hours
+  // end   = started_at + hours si started_at connu, sinon heure_debut + hours
   const computeMissionTimes = (m) => {
     const startedAt = startedAtMap[m.id];
     const displayStart = startedAt ? isoToHHMM(startedAt) : m.heure_debut;
-    let displayEnd;
-    if (startedAt && m.delay_status === "approved") {
-      displayEnd = computeEndTime(displayStart, m.hours);
-    } else {
-      displayEnd = computeEndTime(m.heure_debut, m.hours);
-    }
+    const displayEnd = computeEndTime(displayStart, m.hours);
     return { displayStart, displayEnd };
   };
 
