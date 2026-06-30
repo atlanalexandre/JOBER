@@ -521,7 +521,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -533,11 +533,16 @@ export default async function handler(req, res) {
       const tarifHoraire = mission.tarif_horaire || 0;
       const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
 
+      // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
+      const missionDayCount = (mission.date_debut && mission.date_fin)
+        ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
+        : 1;
+
       // Récupérer le palier cashback du client (missions_completed_month)
       const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
       const profiles = await pr.json();
       const profile = Array.isArray(profiles) && profiles[0];
-      const missionsThisMonth = (profile?.missions_completed_month || 0) + 1;
+      const missionsThisMonth = (profile?.missions_completed_month || 0) + missionDayCount;
 
       // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
       let CASHBACK_TIERS = [
@@ -566,11 +571,11 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Mission déjà validée" });
       }
 
-      // Mise à jour atomique du cashback via RPC pour éviter les race conditions (double-crédit)
+      // Mise à jour atomique du cashback via RPC — p_missions = nombre de jours (multi-dates)
       let rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
       });
       // Retry une fois si échec réseau (503/504)
       if (!rpcRes.ok && [503, 504].includes(rpcRes.status)) {
@@ -578,7 +583,7 @@ export default async function handler(req, res) {
         rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+          body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
         }).catch(() => ({ ok: false, status: 0 }));
       }
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
@@ -1047,9 +1052,15 @@ export default async function handler(req, res) {
           const prData = await prRes.json();
           const prProfile = Array.isArray(prData) && prData[0];
           const cancelPlan = prProfile?.plan_abonnement || "free";
+          let planLimits = { free: 2, premium: 10, elite: 999 };
+          try {
+            const plRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+            const plData = await plRes.json();
+            if (Array.isArray(plData) && plData[0]?.value) planLimits = { ...planLimits, ...plData[0].value };
+          } catch {}
           const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
           const newCount = current + 1;
-          const planLimit = 2; // missions gratuites par mois
+          const planLimit = planLimits[cancelPlan] ?? planLimits.free;
           const patchBody = { missions_completed_month: newCount };
           // Ne jamais marquer trial_exhausted pour un prestataire sur plan payant
           if (newCount >= planLimit && cancelPlan === "free") patchBody.trial_exhausted = true;

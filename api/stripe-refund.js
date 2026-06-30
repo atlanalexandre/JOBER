@@ -7,7 +7,10 @@ function verifyBoToken(token, secret) {
   const ts = parseInt(tsStr, 10);
   if (Date.now() / 1000 - ts > 86400) return false;
   const expected = crypto.createHmac("sha256", secret).update(tsStr).digest("hex");
-  return expected === sig;
+  const expBuf = Buffer.from(expected, "hex");
+  const sigBuf = Buffer.from(sig, "hex");
+  if (expBuf.length !== sigBuf.length) return false;
+  return crypto.timingSafeEqual(expBuf, sigBuf);
 }
 
 export default async function handler(req, res) {
@@ -44,6 +47,19 @@ export default async function handler(req, res) {
     }
   }
 
+  // Fetch stripe_transfer_id before refunding so we can reverse the payout to the prestataire
+  let stripeTransferId = null;
+  if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+    const trRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_transfer_id`,
+      { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
+    ).catch(() => null);
+    if (trRes?.ok) {
+      const trData = await trRes.json().catch(() => []);
+      stripeTransferId = Array.isArray(trData) && trData[0]?.stripe_transfer_id || null;
+    }
+  }
+
   try {
     // Create refund via Stripe API
     const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
@@ -63,7 +79,27 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: refundData.error?.message || "Erreur Stripe" });
     }
 
-    // Update mission status to "refunded" if missionId provided
+    // Reverse the Connect transfer to the prestataire if one was made
+    let transferReversalId = null;
+    if (stripeTransferId) {
+      try {
+        const revRes = await fetch(`https://api.stripe.com/v1/transfers/${stripeTransferId}/reversals`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+        });
+        const revData = await revRes.json();
+        if (revRes.ok) {
+          transferReversalId = revData.id;
+          console.log(`[stripe-refund] Transfer ${stripeTransferId} reversed → ${transferReversalId}`);
+        } else {
+          console.error("[stripe-refund] Transfer reversal failed:", revData.error?.message);
+        }
+      } catch (revErr) {
+        console.error("[stripe-refund] Transfer reversal error:", revErr.message);
+      }
+    }
+
+    // Update mission status to closed
     if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
         method: "PATCH",
@@ -77,7 +113,7 @@ export default async function handler(req, res) {
       }).catch(() => {});
     }
 
-    return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount });
+    return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount, transferReversalId });
   } catch (e) {
     console.error("stripe-refund error:", e);
     return res.status(500).json({ error: "Erreur serveur" });

@@ -7,7 +7,10 @@ function verifyBoToken(token, secret) {
   const ts = parseInt(tsStr, 10);
   if (Date.now() / 1000 - ts > 86400) return false;
   const expected = crypto.createHmac("sha256", secret).update(tsStr).digest("hex");
-  return expected === sig;
+  const expBuf = Buffer.from(expected, "hex");
+  const sigBuf = Buffer.from(sig, "hex");
+  if (expBuf.length !== sigBuf.length) return false;
+  return crypto.timingSafeEqual(expBuf, sigBuf);
 }
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -99,14 +102,18 @@ export default async function handler(req, res) {
     const smsEnabled = !!BREVO_API_KEY;
 
     try {
-      // Charger tous les utilisateurs et profils une seule fois — utilisé par toutes les sections
-      const [usersRes, profilesRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers }),
-      ]);
-      const usersData = await usersRes.json();
-      const userMap   = {};
-      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+      // Charger tous les utilisateurs (paginé) et profils une seule fois
+      const userMap = {};
+      let usersPage = 1;
+      while (true) {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${usersPage}`, { headers });
+        const uData = await uRes.json();
+        const batch = uData.users || [];
+        batch.forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+        if (batch.length < 1000) break;
+        usersPage++;
+      }
+      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
       const profiles  = await profilesRes.json();
       const nameMap   = {};
       (Array.isArray(profiles) ? profiles : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
@@ -532,12 +539,19 @@ ${(() => {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    // Downgrade des abonnements expirés — traité par batch de 50 pour éviter le rate limiting Supabase Auth
+    // Downgrade des abonnements expirés — traité par batch de 50, paginé sur tous les utilisateurs
     let downgrades = 0;
     try {
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
-      const usersData = await usersRes.json();
-      const allUsers = usersData.users || [];
+      const allUsers = [];
+      let downgradePage = 1;
+      while (true) {
+        const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${downgradePage}`, { headers });
+        const usersData = await usersRes.json();
+        const batch = usersData.users || [];
+        allUsers.push(...batch);
+        if (batch.length < 1000) break;
+        downgradePage++;
+      }
       const now = new Date();
       const toDowngrade = allUsers.filter(u => {
         const meta = u.user_metadata || {};

@@ -111,7 +111,11 @@ export default async function handler(req, res) {
   if (!callerPi) return res.status(401).json({ error: "Non authentifié" });
   if (description !== undefined && (typeof description !== "string" || description.length > 500)) return res.status(400).json({ error: "La description ne doit pas dépasser 500 caractères" });
 
-  // Calcul du montant : toujours côté serveur quand mission_id fourni (source fiable)
+  // mission_id obligatoire pour la création d'un PaymentIntent (montant toujours calculé serveur)
+  if (!intentMissionId || !/^[0-9a-f-]{36}$/i.test(intentMissionId)) {
+    return res.status(400).json({ error: "mission_id requis et doit être un UUID valide" });
+  }
+
   let amount = clientAmount;
   let missionMetaId = metadata.mission || "";
   if (intentMissionId && /^[0-9a-f-]{36}$/i.test(intentMissionId)) {

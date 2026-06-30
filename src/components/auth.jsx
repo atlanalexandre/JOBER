@@ -818,7 +818,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (data?.user) {
       await supabase.from("profiles").upsert({
-        id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+        id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "approved",
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
       });
@@ -1119,7 +1119,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.auth.signOut();
       return;
     }
-    if (!profile?.status || profile.status === "pending") {
+    if (role === "prestataire" && (!profile?.status || profile.status === "pending")) {
       setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
       await supabase.auth.signOut();
       return;

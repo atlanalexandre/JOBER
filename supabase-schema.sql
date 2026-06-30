@@ -419,7 +419,8 @@ INSERT INTO platform_settings (key, value) VALUES
   ('launch_phase',         'true'::jsonb),
   ('disabled_sectors',     '[]'::jsonb),
   ('cashback_rates',       '[{"id":"standard","min":0,"max":2,"rate":0.005},{"id":"silver","min":3,"max":5,"rate":0.0075},{"id":"gold","min":6,"max":9,"rate":0.01},{"id":"platinum","min":10,"max":999,"rate":0.015}]'::jsonb),
-  ('sector_min_prestataires', '20'::jsonb)
+  ('sector_min_prestataires', '20'::jsonb),
+  ('invoice_sequence',        '0'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- ── WEB PUSH SUBSCRIPTIONS ─────────────────────────────────────────

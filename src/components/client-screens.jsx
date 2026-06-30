@@ -987,7 +987,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             )}
           </button>
           <button onClick={()=>onNavigate("favorites")} style={{ width:38, height:38, borderRadius:12, background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, cursor:"pointer", color:C.text }}>❤️</button>
-          <button onClick={()=>onNavigate("bo_login")} style={{ width:30, height:30, borderRadius:8, background:"transparent", border:"none", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, cursor:"pointer", opacity:0.25, marginTop:4 }}>⚙️</button>
         </div>
       </div>
 

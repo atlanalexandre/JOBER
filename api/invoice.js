@@ -134,8 +134,30 @@ export default async function handler(req, res) {
     }
   }
 
-  // Compute invoice data
-  const invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
+  // Numérotation séquentielle via platform_settings (optimistic lock, 3 tentatives)
+  let invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
+  try {
+    const hdrsDB = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const seqRes = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&select=value`, { headers: hdrsDB });
+      const seqData = await seqRes.json();
+      const currentVal = Array.isArray(seqData) && seqData[0] ? Number(seqData[0].value) : 0;
+      const nextVal = currentVal + 1;
+      const patchRes = await fetch(
+        `${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&value=eq.${currentVal}`,
+        { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ value: nextVal, updated_at: new Date().toISOString() }) }
+      );
+      const patched = await patchRes.json().catch(() => []);
+      if (Array.isArray(patched) && patched.length > 0) {
+        const year = new Date().getFullYear();
+        invoiceNum = `FAC-${year}-${String(nextVal).padStart(6, "0")}`;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+    }
+  } catch (seqErr) {
+    console.error("[invoice] sequence fetch error, fallback to uuid-based:", seqErr.message);
+  }
   const today = new Date();
   const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 

@@ -868,9 +868,9 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
     </div>
   );
 
-  const showAdminBtn = !["bo_login","bo_dashboard"].includes(screen);
+  const showAdminBtn = screen === "splash";
 
-  // Admin button — top-right, all screens
+  // Admin button — splash screen only
   const adminBtn = showAdminBtn && (
     <button
       onClick={() => onNavigate("bo_login")}
