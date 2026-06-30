@@ -1412,7 +1412,9 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
   const [plan, setPlan] = useState(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   useEffect(() => {
-    supabase.auth.refreshSession().catch(()=>null).then(()=>supabase.auth.getUser()).then(({ data }) => {
+    // N'effectue la requête que si le parent n'a pas fourni de plan
+    if (planProp !== undefined) return;
+    supabase.auth.getUser().then(({ data }) => {
       const uid = data?.user?.id;
       const metaPlan = data?.user?.user_metadata?.plan_abonnement || "free";
       if (uid) {
@@ -1429,8 +1431,7 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
         setPlan(metaPlan);
       }
     });
-  }, []);
-  // planProp (from parent PrestaDashboard) overrides internal state — ensures refresh_plan result is reflected
+  }, [planProp]);
   const effectivePlan = planProp !== undefined ? planProp : plan;
   if (effectivePlan === null) return null;
   if (effectivePlan !== "free") return null;
@@ -2406,8 +2407,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
-        // refreshSession() appelé en amont → JWT frais → user_metadata à jour
-        // RANK : prend le plan le plus élevé entre user_metadata et profiles
+        // RANK : prend le plan le plus élevé entre user_metadata (JWT cache) et profiles
         const RANK = { free:0, premium:1, elite:2 };
         const pp = prof.plan_abonnement || "free";
         const mp = u.user_metadata?.plan_abonnement || "free";
