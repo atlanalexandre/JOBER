@@ -2114,9 +2114,11 @@ export default async function handler(req, res) {
       const actualHours = response === "rejected"
         ? Math.max(0, Math.round(((m2.hours || 0) - delayMins / 60) * 100) / 100)
         : m2.hours;
+      // Mettre à jour hours (source de vérité du timer) + réinitialiser actual_hours
+      // actual_hours est réservé aux missions terminées (facture) — pas au timer en cours
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ delay_status: response, actual_hours: actualHours }),
+        body: JSON.stringify({ delay_status: response, hours: actualHours, actual_hours: null }),
       });
       if (m2.prestataire_id) {
         const label = m2.titre || m2.metier || "la prestation";

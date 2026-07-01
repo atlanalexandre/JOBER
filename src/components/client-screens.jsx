@@ -5307,7 +5307,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
         // "Arrive bientôt" notification quand distance < 500m (Notification API, fonctionne onglet arrière-plan)
         setClientCoords(prev => {
-          if (prev && !approachNotifSentRef.current.has(selected.id)) {
+          // Ne pas envoyer si prestataire déjà arrivé ou mission déjà démarrée
+          const alreadyOnSite = selected.arrived_at || selected.started_at;
+          if (prev && !alreadyOnSite && !approachNotifSentRef.current.has(selected.id)) {
             const dLat = (d.lat - prev.lat) * Math.PI / 180;
             const dLon = (d.lng - prev.lng) * Math.PI / 180;
             const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(d.lat*Math.PI/180)*Math.sin(dLon/2)**2;
