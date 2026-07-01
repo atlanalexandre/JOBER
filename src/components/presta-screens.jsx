@@ -1964,7 +1964,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   ? new Date(`${m.date}T${m.heure_debut}`).getTime()
                   : new Date(m.date + 'T00:00:00').getTime())
               : 0;
-            const effectiveHours = m.actual_hours ?? m.hours ?? 1;
+            // Pour les missions en cours, toujours utiliser hours (actual_hours est réservé aux missions terminées)
+            const effectiveHours = m.hours ?? 1;
             const missionEnd = startedAtMap[m.id]
               ? new Date(startedAtMap[m.id]).getTime() + (Number(effectiveHours) * 3600000)
               : m.date
@@ -2033,9 +2034,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {/* Timer / Checkin / Start */}
                 {startedAtMap[m.id] ? (
                     <ElapsedTimer
-                      key={`${m.id}-${m.actual_hours ?? m.hours ?? 1}`}
+                      key={`${m.id}-${m.hours ?? 1}`}
                       startedAt={startedAtMap[m.id]}
-                      maxMs={(m.actual_hours ?? m.hours ?? 1) * 3600 * 1000}
+                      maxMs={(m.hours ?? 1) * 3600 * 1000}
                       onEnd={async () => {
                         const { data: sd } = await supabase.auth.getSession();
                         const tok = sd?.session?.access_token;
