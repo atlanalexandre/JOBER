@@ -466,6 +466,11 @@ export default async function handler(req, res) {
           const piCheckRes = await fetch(`https://api.stripe.com/v1/payment_intents/${missionCheck.stripe_payment_intent}`, {
             headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
           });
+          // Si Stripe retourne une erreur HTTP, bloquer — ne jamais assigner sans paiement
+          if (!piCheckRes.ok) {
+            console.error("[accept] Stripe PI check HTTP error:", piCheckRes.status);
+            return res.status(503).json({ error: "Impossible de vérifier le paiement — réessayez dans quelques secondes" });
+          }
           const piData = await piCheckRes.json();
           if (piData.status === "succeeded") {
             return res.status(409).json({ error: "Paiement déjà confirmé — la mission sera bientôt assignée automatiquement" });
@@ -481,7 +486,9 @@ export default async function handler(req, res) {
           }).catch(() => {});
           missionCheck.stripe_payment_intent = null;
         } catch (piErr) {
+          // Erreur réseau → bloquer — ne pas assigner la mission sans vérifier le paiement
           console.error("[accept] PI status check failed:", piErr.message);
+          return res.status(503).json({ error: "Impossible de vérifier le paiement — réessayez dans quelques secondes" });
         }
       }
 
