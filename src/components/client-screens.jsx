@@ -5810,7 +5810,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
-          {selected.status === "assigned" && selected.started_at && !completedResult && (
+          {selected.status === "assigned" && (selected.started_at || selected.arrived_at) && !completedResult && (
             <div style={{ marginTop:12 }}>
               {selected.extra_hours_status === "pending" ? (
                 <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>
