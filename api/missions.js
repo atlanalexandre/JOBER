@@ -2593,7 +2593,7 @@ export default async function handler(req, res) {
         await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ hours: newHours, extra_hours_status: "accepted", extra_hours_requested: null }),
+          body: JSON.stringify({ hours: newHours, actual_hours: null, extra_hours_status: "accepted", extra_hours_requested: null }),
         });
       } else {
         // Refus : effacer la demande

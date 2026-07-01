@@ -1479,10 +1479,18 @@ function DeadlineCountdown({ deadline }) {
 function ElapsedTimer({ startedAt, maxMs, onEnd }) {
   const [now, setNow] = useState(Date.now());
   const onEndFiredRef = useRef(false);
+  const prevMaxMsRef = useRef(maxMs);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+  // Reset fired flag when maxMs increases (extra hours accepted)
+  useEffect(() => {
+    if (maxMs > prevMaxMsRef.current) {
+      onEndFiredRef.current = false;
+    }
+    prevMaxMsRef.current = maxMs;
+  }, [maxMs]);
   const elapsed = Math.min(now - new Date(startedAt).getTime(), maxMs);
   const done = elapsed >= maxMs;
   useEffect(() => {
@@ -1515,6 +1523,7 @@ export function PMissionsTab({ onNavigate }) {
   const [pendingMissions, setPendingMissions] = useState([]);
   const [assignedMissions, setAssignedMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
+  const [renderTick, setRenderTick] = useState(0);
   const [userId, setUserId]       = useState(null);
   const [userName, setUserName]   = useState("");
   const [actioning, setActioning] = useState(null);
@@ -1620,6 +1629,12 @@ export function PMissionsTab({ onNavigate }) {
 
   useEffect(() => {
     const t = setInterval(loadPending, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Ticker 30s pour recalculer isPast / badge sans attendre un refresh
+  useEffect(() => {
+    const t = setInterval(() => setRenderTick(n => n + 1), 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -1957,7 +1972,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
                     : new Date(m.date + 'T23:59:00').getTime())
                 : 0;
-            const renderNow = Date.now();
+            const renderNow = Date.now() + renderTick * 0;
             const isStarted = missionStart > 0 && missionStart < renderNow;
             const isPast = missionEnd > 0 && missionEnd < renderNow;
             const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
@@ -1993,7 +2008,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept" }) });
                         if (r.ok) {
                           const d = await r.json();
-                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, hours: d.newHours||x.hours, extra_hours_status:"accepted", extra_hours_requested:null} : x));
+                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, hours: d.newHours||x.hours, actual_hours: null, extra_hours_status:"accepted", extra_hours_requested:null} : x));
                         }
                       }} style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                         ✅ Accepter +{m.extra_hours_requested}h
@@ -2018,6 +2033,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 {/* Timer / Checkin / Start */}
                 {startedAtMap[m.id] ? (
                     <ElapsedTimer
+                      key={`${m.id}-${m.actual_hours ?? m.hours ?? 1}`}
                       startedAt={startedAtMap[m.id]}
                       maxMs={(m.actual_hours ?? m.hours ?? 1) * 3600 * 1000}
                       onEnd={async () => {
