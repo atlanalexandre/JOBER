@@ -335,10 +335,29 @@ export default async function handler(req, res) {
           } catch {}
         }));
       }
+      // Notes moyennes par prestataire
+      const ratingMap = {};
+      if (prestaIds.length > 0) {
+        try {
+          const rRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings?reviewee_provider_id=in.(${prestaIds.join(",")})&select=reviewee_provider_id,rating`, { headers });
+          const rData = await rRes.json().catch(() => []);
+          if (Array.isArray(rData)) {
+            const grouped = {};
+            rData.forEach(r => { if (!grouped[r.reviewee_provider_id]) grouped[r.reviewee_provider_id] = []; grouped[r.reviewee_provider_id].push(r.rating); });
+            Object.keys(grouped).forEach(id => {
+              const rats = grouped[id];
+              ratingMap[id] = { avg: Math.round(rats.reduce((s, v) => s + v, 0) / rats.length * 10) / 10, count: rats.length };
+            });
+          }
+        } catch {}
+      }
+
       const enriched = candidatures.map(c => ({
         ...c,
-        prenom: nameMap[c.prestataire_id]?.prenom || "",
-        nom:    nameMap[c.prestataire_id]?.nom    || "",
+        prenom:  nameMap[c.prestataire_id]?.prenom || "",
+        nom:     nameMap[c.prestataire_id]?.nom    || "",
+        rating:  ratingMap[c.prestataire_id]?.avg  || 0,
+        reviews: ratingMap[c.prestataire_id]?.count || 0,
       }));
       return res.status(200).json(enriched);
     }
@@ -432,13 +451,45 @@ export default async function handler(req, res) {
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       // Refus si déjà assignée : évite la création de double PaymentIntent en cas de requêtes concurrentes
       if (missionCheck && ["assigned","completed","closed","cancelled"].includes(missionCheck.status)) {
         return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
+      }
+
+      // Si un PaymentIntent existe déjà, vérifier son statut avant d'en créer un nouveau
+      if (missionCheck && missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
+        try {
+          const piCheckRes = await fetch(`https://api.stripe.com/v1/payment_intents/${missionCheck.stripe_payment_intent}`, {
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+          });
+          // Si Stripe retourne une erreur HTTP, bloquer — ne jamais assigner sans paiement
+          if (!piCheckRes.ok) {
+            console.error("[accept] Stripe PI check HTTP error:", piCheckRes.status);
+            return res.status(503).json({ error: "Impossible de vérifier le paiement — réessayez dans quelques secondes" });
+          }
+          const piData = await piCheckRes.json();
+          if (piData.status === "succeeded") {
+            return res.status(409).json({ error: "Paiement déjà confirmé — la mission sera bientôt assignée automatiquement" });
+          }
+          if (piData.client_secret && ["requires_payment_method", "requires_confirmation", "requires_action"].includes(piData.status)) {
+            // Réutiliser le PI existant — le client peut réessayer le paiement
+            return res.status(200).json({ payment_required: true, client_secret: piData.client_secret, amount: piData.amount / 100 });
+          }
+          // PI annulé ou invalide — réinitialiser pour créer un nouveau
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ stripe_payment_intent: null }),
+          }).catch(() => {});
+          missionCheck.stripe_payment_intent = null;
+        } catch (piErr) {
+          // Erreur réseau → bloquer — ne pas assigner la mission sans vérifier le paiement
+          console.error("[accept] PI status check failed:", piErr.message);
+          return res.status(503).json({ error: "Impossible de vérifier le paiement — réessayez dans quelques secondes" });
+        }
       }
 
       if (missionCheck && !missionCheck.stripe_payment_intent && STRIPE_SECRET_KEY) {
@@ -474,7 +525,6 @@ export default async function handler(req, res) {
       // (si deux requêtes accept arrivent simultanément, une seule réussira)
       const missionPatch = { status: "assigned" };
       if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      if (tarifHoraire)            missionPatch.tarif_horaire  = tarifHoraire;
       const assignRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
@@ -495,20 +545,6 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "rejected" }),
       });
-      const missionPatch = { status: "assigned" };
-      if (verified_prestataire_id) missionPatch.prestataire_id = verified_prestataire_id;
-      const missionPatchRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=not.in.(assigned,completed,closed,cancelled)`,
-        {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
-          body: JSON.stringify(missionPatch),
-        }
-      );
-      const missionPatchData = await missionPatchRes.json().catch(() => []);
-      if (!Array.isArray(missionPatchData) || missionPatchData.length === 0) {
-        return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
-      }
 
       // Notification au prestataire
       if (verified_prestataire_id) {
@@ -525,6 +561,36 @@ export default async function handler(req, res) {
         });
         sendPushToUser(verified_prestataire_id, { title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
+
+      // Email de confirmation au client
+      const RESEND_API_KEY_AC = process.env.RESEND_API_KEY;
+      const RESEND_FROM_AC    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (RESEND_API_KEY_AC && missionCheck?.client_id) {
+        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${missionCheck.client_id}`, { headers })
+          .then(r => r.json()).then(clientAuth => {
+            const clientEmail = clientAuth?.email;
+            if (!clientEmail) return;
+            const clientPrenom = clientAuth?.user_metadata?.prenom || "";
+            const mLabel = esc(missionCheck.titre || missionCheck.metier || "votre mission");
+            return fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY_AC}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: RESEND_FROM_AC,
+                to: clientEmail,
+                subject: `✅ Un prestataire a été assigné à votre mission — ALANE`,
+                html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px">
+  <h2 style="color:#10D98F;margin:0 0 16px">Prestataire assigné ✅</h2>
+  <p style="color:rgba(255,255,255,0.85);line-height:1.6;margin-bottom:12px">Bonjour${clientPrenom ? " " + esc(clientPrenom) : ""},</p>
+  <p style="color:rgba(255,255,255,0.85);line-height:1.6">Un prestataire a été assigné à <strong style="color:#F0B429">${mLabel}</strong>. Vous serez notifié(e) lorsque la mission sera terminée et validée.</p>
+  <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:20px">Suivez l'avancement depuis votre espace ALANE.</p>
+  <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p>
+</div>`,
+              }),
+            });
+          }).catch(e => console.error("[accept] email client failed:", e.message));
+      }
+
       return res.status(200).json({ success: true });
     }
 
@@ -536,7 +602,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
@@ -548,11 +614,16 @@ export default async function handler(req, res) {
       const tarifHoraire = mission.tarif_horaire || 0;
       const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
 
+      // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
+      const missionDayCount = (mission.date_debut && mission.date_fin)
+        ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
+        : 1;
+
       // Récupérer le palier cashback du client (missions_completed_month)
       const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
       const profiles = await pr.json();
       const profile = Array.isArray(profiles) && profiles[0];
-      const missionsThisMonth = (profile?.missions_completed_month || 0) + 1;
+      const missionsThisMonth = (profile?.missions_completed_month || 0) + missionDayCount;
 
       // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
       let CASHBACK_TIERS = [
@@ -581,11 +652,11 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Mission déjà validée" });
       }
 
-      // Mise à jour atomique du cashback via RPC pour éviter les race conditions (double-crédit)
+      // Mise à jour atomique du cashback via RPC — p_missions = nombre de jours (multi-dates)
       let rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+        body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
       });
       // Retry une fois si échec réseau (503/504)
       if (!rpcRes.ok && [503, 504].includes(rpcRes.status)) {
@@ -593,7 +664,7 @@ export default async function handler(req, res) {
         rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=representation" },
-          body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: 1 }),
+          body: JSON.stringify({ p_user_id: client_id, p_delta: cashbackEarned, p_missions: missionDayCount }),
         }).catch(() => ({ ok: false, status: 0 }));
       }
       const rpcData = rpcRes.ok ? await rpcRes.json().catch(() => null) : null;
@@ -806,7 +877,7 @@ export default async function handler(req, res) {
           const prPlan = await prPlanRes.json();
           const prProfile = Array.isArray(prMonthData) && prMonthData[0];
           if (prProfile && !prProfile.trial_exhausted) {
-            const newCount = (prProfile.missions_completed_month || 0) + 1;
+            const newCount = (prProfile.missions_completed_month || 0) + missionDayCount;
             // profiles.plan_abonnement a priorité sur user_metadata (écrit en premier par le webhook Stripe)
             const plan = prProfile?.plan_abonnement || prPlan?.user_metadata?.plan_abonnement || "free";
 
@@ -930,6 +1001,19 @@ export default async function handler(req, res) {
           type: "mission",
           title: "Mission à valider ✅",
           body: `Le prestataire a confirmé la fin de mission "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
+          read: false,
+        }),
+      }).catch(() => {});
+
+      // Notification de confirmation au prestataire
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.prestataire_id,
+          type: "mission",
+          title: "Prestation confirmée 👍",
+          body: `Votre fin de mission "${mission.metier || mission.sector || ""}" a bien été enregistrée. En attente de validation client pour déclencher votre paiement.`,
           read: false,
         }),
       }).catch(() => {});
@@ -1062,9 +1146,15 @@ export default async function handler(req, res) {
           const prData = await prRes.json();
           const prProfile = Array.isArray(prData) && prData[0];
           const cancelPlan = prProfile?.plan_abonnement || "free";
+          let planLimits = { free: 2, premium: 10, elite: 999 };
+          try {
+            const plRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+            const plData = await plRes.json();
+            if (Array.isArray(plData) && plData[0]?.value) planLimits = { ...planLimits, ...plData[0].value };
+          } catch {}
           const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
           const newCount = current + 1;
-          const planLimit = 2; // missions gratuites par mois
+          const planLimit = planLimits[cancelPlan] ?? planLimits.free;
           const patchBody = { missions_completed_month: newCount };
           // Ne jamais marquer trial_exhausted pour un prestataire sur plan payant
           if (newCount >= planLimit && cancelPlan === "free") patchBody.trial_exhausted = true;
@@ -2050,7 +2140,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];

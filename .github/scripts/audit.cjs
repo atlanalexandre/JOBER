@@ -35,13 +35,9 @@ function readAllFiles(dir, ext = [".jsx", ".js"]) {
   return results;
 }
 
-// ── 1. Limite Vercel Hobby : max 12 fonctions serverless ─────────────────────
+// ── 1. Fonctions serverless (Vercel Pro — pas de limite fixe) ─────────────────
 const apiFiles = fs.readdirSync(API_DIR).filter(f => f.endsWith(".js"));
-if (apiFiles.length > 12) {
-  err(`Trop de fonctions serverless : ${apiFiles.length}/12 (Vercel Hobby limit)\n   Fichiers: ${apiFiles.join(", ")}`);
-} else {
-  pass(`Fonctions serverless : ${apiFiles.length}/12`);
-}
+pass(`Fonctions serverless : ${apiFiles.length} (Vercel Pro)`);
 
 // ── 2. Routes API appelées dans le frontend ──────────────────────────────────
 const srcFiles  = readAllFiles(SRC);

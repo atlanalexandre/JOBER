@@ -1,3 +1,4 @@
+/* eslint-disable no-irregular-whitespace */
 // /api/invoice.js — Serverless function that returns a printable HTML invoice
 // Auth: token éphémère signé HMAC-SHA256 (via /api/missions action generate_invoice_token)
 //       Valide 30 min — jamais le JWT Supabase en clair dans l'URL
@@ -114,16 +115,19 @@ export default async function handler(req, res) {
   let prestaName = "";
   let prestaCompany = "";
   let prestaSiret = "";
+  let prestaStatutPro = "auto-entrepreneur";
 
   if (mission.prestataire_id) {
-    const prestaRes = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret`,
-      {
+    const [prestaProfileRes, prestaAuthRes] = await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret`, {
         headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" },
-      }
-    );
-    if (prestaRes.ok) {
-      const profiles = await prestaRes.json();
+      }),
+      fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(mission.prestataire_id)}`, {
+        headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}` },
+      }),
+    ]);
+    if (prestaProfileRes.ok) {
+      const profiles = await prestaProfileRes.json();
       const p = profiles[0];
       if (p) {
         prestaName = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
@@ -131,18 +135,59 @@ export default async function handler(req, res) {
         prestaSiret = p.siret || "";
       }
     }
+    if (prestaAuthRes.ok) {
+      const prestaAuth = await prestaAuthRes.json();
+      const sp = prestaAuth?.user_metadata?.statut_pro || "auto-entrepreneur";
+      prestaStatutPro = sp;
+    }
   }
 
-  // Compute invoice data
-  const invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
+  // Numérotation séquentielle via platform_settings (optimistic lock, 3 tentatives)
+  let invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
+  try {
+    const hdrsDB = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const seqRes = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&select=value`, { headers: hdrsDB });
+      const seqData = await seqRes.json();
+      const currentVal = Array.isArray(seqData) && seqData[0] ? Number(seqData[0].value) : 0;
+      const nextVal = currentVal + 1;
+      const patchRes = await fetch(
+        `${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&value=eq.${currentVal}`,
+        { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ value: nextVal, updated_at: new Date().toISOString() }) }
+      );
+      const patched = await patchRes.json().catch(() => []);
+      if (Array.isArray(patched) && patched.length > 0) {
+        const year = new Date().getFullYear();
+        invoiceNum = `FAC-${year}-${String(nextVal).padStart(6, "0")}`;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+    }
+  } catch (seqErr) {
+    console.error("[invoice] sequence fetch error, fallback to uuid-based:", seqErr.message);
+  }
   const today = new Date();
   const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-  const hours = Number(mission.hours || 0);
+  const hours = Number(mission.actual_hours ?? mission.hours ?? 0);
   const tarifHoraire = Number(mission.tarif_horaire || 0);
   const htCalc = Math.round(hours * tarifHoraire * 100) / 100;
   const ht = htCalc > 0 ? htCalc : Number(mission.montant_total || 0);
   const htFormatted = ht.toFixed(2).replace(".", ",");
+
+  // TVA : 0% pour auto-entrepreneur (art. 293 B CGI), 20% pour les autres statuts
+  const isAutoEntrepreneur = prestaStatutPro.toLowerCase().includes("auto");
+  const tvaRate = isAutoEntrepreneur ? 0 : 0.20;
+  const tvaAmount = Math.round(ht * tvaRate * 100) / 100;
+  const ttc = Math.round((ht + tvaAmount) * 100) / 100;
+  const tvaFormatted = tvaAmount.toFixed(2).replace(".", ",");
+  const ttcFormatted = ttc.toFixed(2).replace(".", ",");
+  const tvaLabel = isAutoEntrepreneur
+    ? "TVA (0 % — auto-entrepreneur, art. 293 B CGI)"
+    : "TVA (20 %)";
+  const legalTvaNote = isAutoEntrepreneur
+    ? "TVA non applicable — article 293 B du CGI (auto-entrepreneur)."
+    : `TVA de 20 % applicable. SIRET : ${escHtml(prestaSiret || "—")}. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.`;
 
   const missionDate = mission.date || "";
   const heureDebut = mission.heure_debut || "";
@@ -433,12 +478,12 @@ export default async function handler(req, res) {
           <span class="total-row-value">${escHtml(htFormatted)} €</span>
         </div>
         <div class="total-row">
-          <span class="total-row-label">TVA (0 % — auto-entrepreneur, art. 293 B CGI)</span>
-          <span class="total-row-value">0,00 €</span>
+          <span class="total-row-label">${escHtml(tvaLabel)}</span>
+          <span class="total-row-value">${escHtml(tvaFormatted)} €</span>
         </div>
         <div class="total-row total-ttc">
           <span class="total-row-label">Total TTC</span>
-          <span class="total-row-value">${escHtml(htFormatted)} €</span>
+          <span class="total-row-value">${escHtml(ttcFormatted)} €</span>
         </div>
       </div>
     </div>
@@ -452,7 +497,7 @@ export default async function handler(req, res) {
         </div>
       </div>
       <div class="legal">
-        TVA non applicable — article 293 B du CGI (auto-entrepreneur). En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.
+        ${escHtml(legalTvaNote)}
         ALANE — Plateforme de mise en relation de services à la demande. Ce document tient lieu de facture acquittée.
       </div>
     </div>

@@ -86,20 +86,11 @@ export default async function handler(req, res) {
       const profilePatch = action === "approve"
         ? { status, trial_exhausted: false, missions_completed_month: 0 }
         : { status };
-      const [patchRes, userRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify(profilePatch),
-        }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
-      ]);
-      if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
-
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const userData = await userRes.json();
       const userEmail = userData.email;
 
-      // Validation SIRET serveur pour les prestataires professionnels
+      // Validation SIRET avant le PATCH pour éviter d'approuver un compte avec SIRET invalide
       if (action === "approve") {
         const metaForSiret = userData.user_metadata || {};
         const rawSiret = metaForSiret.kbis ? String(metaForSiret.kbis).replace(/\s/g, "") : null;
@@ -108,6 +99,13 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: "SIRET invalide (algorithme de Luhn)" });
         }
       }
+
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(profilePatch),
+      });
+      if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
 
       // Anti-abus à l'approbation : vérifier si les identifiants du nouveau compte
       // correspondent à un compte précédemment supprimé
@@ -859,6 +857,17 @@ export default async function handler(req, res) {
       }
       // Notification client
       await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
+      // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
+      if (m.prestataire_id) {
+        const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
+        const prD = prQ?.ok ? await prQ.json().catch(() => []) : [];
+        const currentMC = Array.isArray(prD) && prD[0] ? (prD[0].missions_completed_month || 0) : 0;
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ missions_completed_month: currentMC + 1 }),
+        }).catch(() => {});
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(()=>{});
       return res.status(200).json({ success:true, montantTotal, cashback });
     }

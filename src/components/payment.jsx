@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
@@ -22,8 +23,7 @@ export function setUseProviders(fn) { _useProviders = fn; }
 
 // ── MISSION PENDING SCREEN ────────────────────────────────────────
 export function MissionPendingScreen({ provider, amount, hours, missionId, onAccepted, onCancelled, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
-  const p = provider;
+  const p = provider || {};
   const { providers: allProviders } = _useProviders();
   const [secsLeft, setSecsLeft]     = useState(3600);
   const [totalSecs, setTotalSecs]   = useState(3600);
@@ -91,6 +91,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
     }
   }, [loaded, secsLeft, phase, missionId, clientId]);
 
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
   const formatTimer = (secs) => {
     if (secs <= 0) return "0s";
@@ -669,14 +670,14 @@ export function InvoiceScreen({ prestation, onBack }) {
   const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [loading,     setLoading]     = useState(true);
 
-  const billedHours  = mission?.actual_hours ?? mission?.hours ?? 0;
-  const missionDate  = mission?.created_at ? new Date(mission.created_at) : new Date();
-  const invoiceNum   = mission
-    ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${mission.id.slice(-6).toUpperCase()}`
+  const billedHours  = prestation?.actual_hours ?? prestation?.hours ?? 0;
+  const missionDate  = prestation?.created_at ? new Date(prestation.created_at) : new Date();
+  const invoiceNum   = prestation
+    ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${prestation.id.slice(-6).toUpperCase()}`
     : "ALA-000000";
   const emittedDate  = missionDate.toLocaleDateString("fr-FR");
-  const htCalc       = Math.round(billedHours * Number(mission?.tarif_horaire||0) * 100) / 100;
-  const ht           = htCalc > 0 ? htCalc : (Number(mission?.montant_total||0));
+  const htCalc       = Math.round(billedHours * Number(prestation?.tarif_horaire||0) * 100) / 100;
+  const ht           = htCalc > 0 ? htCalc : (Number(prestation?.montant_total||0));
   const htFormatted  = ht.toFixed(2).replace(".",",");
 
   useEffect(() => {
@@ -685,7 +686,7 @@ export function InvoiceScreen({ prestation, onBack }) {
       try {
         const [{ data: cu }, { data: cp }] = await Promise.all([
           supabase.auth.getUser(),
-          supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", mission.client_id).single(),
+          supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", prestation.client_id).single(),
         ]);
         const clientMeta = cu?.user?.user_metadata || {};
         setClientInfo({
@@ -696,8 +697,8 @@ export function InvoiceScreen({ prestation, onBack }) {
           cp:      cp?.code_postal || clientMeta.code_postal || "",
           ville:   cp?.ville || clientMeta.ville || "",
         });
-        if (mission.prestataire_id) {
-          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", mission.prestataire_id).single();
+        if (prestation.prestataire_id) {
+          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", prestation.prestataire_id).single();
           setPrestaInfo({
             name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
             company: pp?.societe_nom || "",
@@ -711,7 +712,7 @@ export function InvoiceScreen({ prestation, onBack }) {
         setLoading(false);
       }
     })();
-  }, [mission?.id]);
+  }, [prestation?.id]);
 
   if (!prestation) return (
     <div style={{ padding:40, textAlign:"center", color:C.textSub }}>
@@ -779,19 +780,19 @@ export function InvoiceScreen({ prestation, onBack }) {
               </div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{mission.metier || "Prestation de service"}</div>
-                  {mission.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {mission.sector}</div>}
-                  {mission.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {mission.date}</div>}
-                  {mission.started_at
-                    ? <div style={{ color:C.textSub, fontSize:11 }}>Début réel : {new Date(mission.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
-                    : mission.heure_debut && <div style={{ color:C.textSub, fontSize:11 }}>Début : {mission.heure_debut}</div>}
-                  {mission.delay_status === "rejected" && mission.actual_hours && (
-                    <div style={{ color:"#F59E0B", fontSize:11 }}>Décalage refusé — {mission.actual_hours}h facturées</div>
+                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{prestation.metier || "Prestation de service"}</div>
+                  {prestation.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {prestation.sector}</div>}
+                  {prestation.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {prestation.date}</div>}
+                  {prestation.started_at
+                    ? <div style={{ color:C.textSub, fontSize:11 }}>Début réel : {new Date(prestation.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                    : prestation.heure_debut && <div style={{ color:C.textSub, fontSize:11 }}>Début : {prestation.heure_debut}</div>}
+                  {prestation.delay_status === "rejected" && prestation.actual_hours && (
+                    <div style={{ color:"#F59E0B", fontSize:11 }}>Décalage refusé — {prestation.actual_hours}h facturées</div>
                   )}
-                  {mission.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {mission.ville}</div>}
+                  {prestation.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {prestation.ville}</div>}
                   {htCalc > 0 && (
                     <div style={{ color:C.textSub, fontSize:11 }}>
-                      {billedHours}h × {Number(mission.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
+                      {billedHours}h × {Number(prestation.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
                     </div>
                   )}
                 </div>
@@ -840,14 +841,15 @@ export function InvoiceScreen({ prestation, onBack }) {
 
 // ── GESTION DES ANNULATIONS ───────────────────────────────────────
 export function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestation introuvable.</div>;
-  const p = provider;
+  const p = provider || {};
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done
   const [reason, setReason] = useState("");
   const [chosen, setChosen] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const { providers: allProviders } = _useProviders();
   const replacements = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0, 4);
+
+  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestation introuvable.</div>;
 
   // Calcul réel du délai avant prestation + pénalité
   const missionTs = missionDate ? new Date(missionDate).getTime() : Date.now() + 18*3600000;
@@ -964,7 +966,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
                   }),
                 });
               }
-            } catch {}
+            } catch { /* ignore */ }
             setCancelling(false);
             setStep("replacement");
           }} style={{ flex:2, padding:"13px", fontSize:13 }}>

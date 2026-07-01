@@ -987,7 +987,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             )}
           </button>
           <button onClick={()=>onNavigate("favorites")} style={{ width:38, height:38, borderRadius:12, background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, cursor:"pointer", color:C.text }}>❤️</button>
-          <button onClick={()=>onNavigate("bo_login")} style={{ width:30, height:30, borderRadius:8, background:"transparent", border:"none", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, cursor:"pointer", opacity:0.25, marginTop:4 }}>⚙️</button>
         </div>
       </div>
 
@@ -5712,7 +5711,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:c.message?8:0 }}>
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{c.prenom} {c.nom}</div>
-                  <div style={{ color:C.textMuted, fontSize:11 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+                  {c.rating > 0 && (
+                    <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
+                      <Stars rating={c.rating} size={10}/>
+                      <span style={{ color:C.textMuted, fontSize:11 }}>{c.rating.toFixed(1)} ({c.reviews} avis)</span>
+                    </div>
+                  )}
+                  <div style={{ color:C.textMuted, fontSize:11, marginTop:c.rating>0?2:0 }}>{new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
                 </div>
                 {c.status === "accepted" && <span style={{ color:C.success, fontWeight:700, fontSize:12 }}>✅ Accepté</span>}
                 {c.status === "rejected" && <span style={{ color:"#F25E5E", fontWeight:700, fontSize:12 }}>❌ Refusé</span>}

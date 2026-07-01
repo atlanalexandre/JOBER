@@ -7,7 +7,10 @@ function verifyBoToken(token, secret) {
   const ts = parseInt(tsStr, 10);
   if (Date.now() / 1000 - ts > 86400) return false;
   const expected = crypto.createHmac("sha256", secret).update(tsStr).digest("hex");
-  return expected === sig;
+  const expBuf = Buffer.from(expected, "hex");
+  const sigBuf = Buffer.from(sig, "hex");
+  if (expBuf.length !== sigBuf.length) return false;
+  return crypto.timingSafeEqual(expBuf, sigBuf);
 }
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -99,14 +102,18 @@ export default async function handler(req, res) {
     const smsEnabled = !!BREVO_API_KEY;
 
     try {
-      // Charger tous les utilisateurs et profils une seule fois — utilisé par toutes les sections
-      const [usersRes, profilesRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers }),
-      ]);
-      const usersData = await usersRes.json();
-      const userMap   = {};
-      (usersData.users || []).forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+      // Charger tous les utilisateurs (paginé) et profils une seule fois
+      const userMap = {};
+      let usersPage = 1;
+      while (true) {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${usersPage}`, { headers });
+        const uData = await uRes.json();
+        const batch = uData.users || [];
+        batch.forEach(u => { userMap[u.id] = { email: u.email, meta: u.user_metadata || {} }; });
+        if (batch.length < 1000) break;
+        usersPage++;
+      }
+      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
       const profiles  = await profilesRes.json();
       const nameMap   = {};
       (Array.isArray(profiles) ? profiles : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
@@ -453,8 +460,18 @@ ${(() => {
               const prestaName2  = nameMap[m.prestataire_id] || "Prestataire";
               const clientName2  = nameMap[m.client_id] || "Client";
               const sends2 = [];
+              // In-app notification prestataire
+              if (m.prestataire_id)
+                sends2.push(fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Confirmez la fin de votre mission ✅", body: `Votre mission "${mLabel}" est terminée. Confirmez depuis votre espace pour déclencher votre paiement.`, read: false }),
+                }).catch(() => {}));
               if (RESEND_API_KEY && prestaEmail2)
                 sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Mission terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre mission <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+              if (smsEnabled && m.prestataire_id) {
+                const prestaPhone2 = userMap[m.prestataire_id]?.meta?.telephone;
+                if (prestaPhone2) sends2.push(sendSms(BREVO_API_KEY, prestaPhone2, `✅ ALANE - Votre mission ${mLabel} est terminée. Confirmez depuis l'app pour recevoir votre paiement. — alane.fr`));
+              }
               if (RESEND_API_KEY && clientEmail2)
                 sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Mission terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Mission terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La mission <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
               await Promise.all(sends2);
@@ -522,12 +539,19 @@ ${(() => {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    // Downgrade des abonnements expirés — traité par batch de 50 pour éviter le rate limiting Supabase Auth
+    // Downgrade des abonnements expirés — traité par batch de 50, paginé sur tous les utilisateurs
     let downgrades = 0;
     try {
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers });
-      const usersData = await usersRes.json();
-      const allUsers = usersData.users || [];
+      const allUsers = [];
+      let downgradePage = 1;
+      while (true) {
+        const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${downgradePage}`, { headers });
+        const usersData = await usersRes.json();
+        const batch = usersData.users || [];
+        allUsers.push(...batch);
+        if (batch.length < 1000) break;
+        downgradePage++;
+      }
       const now = new Date();
       const toDowngrade = allUsers.filter(u => {
         const meta = u.user_metadata || {};

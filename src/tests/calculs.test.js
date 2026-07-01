@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { prixClient, tarifInterim, economiePct, calcCashback, getCashbackTier, CASHBACK_TIERS } from "../constants/plans.js";
+import { prixClient, tarifInterim, economiePct, calcCashback, getCashbackTier } from "../constants/plans.js";
 
 // ── Calcul du tarif client ────────────────────────────────────────
 describe("prixClient", () => {

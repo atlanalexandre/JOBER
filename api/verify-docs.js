@@ -1,5 +1,5 @@
 function validateIBAN(iban) {
-  const clean = iban.replace(/[\s\-]/g, "").toUpperCase();
+  const clean = iban.replace(/[\s-]/g, "").toUpperCase();
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(clean))
     return { valid: false, error: "Format invalide (ex: FR76 3000...)" };
   if (clean.length < 15 || clean.length > 34)
@@ -21,7 +21,7 @@ function validateIBAN(iban) {
 }
 
 function validateSIRET(siret) {
-  const clean = siret.replace(/[\s\-\.]/g, "");
+  const clean = siret.replace(/[\s-.]/g, "");
   if (!/^\d{9}$/.test(clean) && !/^\d{14}$/.test(clean))
     return { valid: false, error: "Doit contenir 9 (SIREN) ou 14 chiffres (SIRET)" };
 
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     if (siretResult.valid) {
       try {
         const apiRes = await fetch(
-          `https://recherche-entreprises.api.gouv.fr/search?q=${siretResult.clean || siret.replace(/[\s\-\.]/g,"")}&page=1&per_page=1`,
+          `https://recherche-entreprises.api.gouv.fr/search?q=${siretResult.clean || siret.replace(/[\s-.]/g,"")}&page=1&per_page=1`,
           { headers: { "Accept": "application/json" } }
         );
         const apiData = await apiRes.json();
