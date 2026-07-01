@@ -870,7 +870,7 @@ export default async function handler(req, res) {
           const prPlan = await prPlanRes.json();
           const prProfile = Array.isArray(prMonthData) && prMonthData[0];
           if (prProfile && !prProfile.trial_exhausted) {
-            const newCount = (prProfile.missions_completed_month || 0) + 1;
+            const newCount = (prProfile.missions_completed_month || 0) + missionDayCount;
             // profiles.plan_abonnement a priorité sur user_metadata (écrit en premier par le webhook Stripe)
             const plan = prProfile?.plan_abonnement || prPlan?.user_metadata?.plan_abonnement || "free";
 
@@ -994,6 +994,19 @@ export default async function handler(req, res) {
           type: "mission",
           title: "Mission à valider ✅",
           body: `Le prestataire a confirmé la fin de mission "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
+          read: false,
+        }),
+      }).catch(() => {});
+
+      // Notification de confirmation au prestataire
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.prestataire_id,
+          type: "mission",
+          title: "Prestation confirmée 👍",
+          body: `Votre fin de mission "${mission.metier || mission.sector || ""}" a bien été enregistrée. En attente de validation client pour déclencher votre paiement.`,
           read: false,
         }),
       }).catch(() => {});

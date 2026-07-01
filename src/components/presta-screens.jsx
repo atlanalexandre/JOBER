@@ -1524,6 +1524,7 @@ export function PMissionsTab({ onNavigate }) {
   const [contractSignedAt, setContractSignedAt] = useState({});
   const [contractAcceptMission, setContractAcceptMission] = useState(null);
   const [validatingMission, setValidatingMission] = useState(null);
+  const [validatedSummary, setValidatedSummary] = useState(null);
   const [sharingLocation, setSharingLocation] = useState({});
   const trackingRefsMap = useRef({});
   const [checkingInId, setCheckingInId] = useState(null);
@@ -1797,6 +1798,39 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         />
       )}
 
+      {validatedSummary && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setValidatedSummary(null)}>
+          <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:380, width:"100%", border:"1px solid rgba(16,217,143,0.3)", boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:48, marginBottom:8 }}>✅</div>
+              <div style={{ fontWeight:800, fontSize:18, color:"#10D98F", marginBottom:4 }}>Prestation validée !</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>En attente de validation par le client</div>
+            </div>
+            <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
+              {[
+                ["Mission",   validatedSummary.metier || validatedSummary.sector || "—"],
+                ["Date",      validatedSummary.date || (validatedSummary.date_debut ? `${validatedSummary.date_debut} → ${validatedSummary.date_fin||""}` : "—")],
+                ["Durée",     validatedSummary.actual_hours != null ? `${validatedSummary.actual_hours}h (réelles)` : validatedSummary.hours ? `${validatedSummary.hours}h` : "—"],
+                ["Tarif",     validatedSummary.tarif_horaire ? `${validatedSummary.tarif_horaire} €/h` : "—"],
+                ["Montant",   validatedSummary.tarif_horaire && (validatedSummary.actual_hours ?? validatedSummary.hours) ? `${((validatedSummary.actual_hours ?? validatedSummary.hours) * validatedSummary.tarif_horaire).toFixed(2)} € HT` : "—"],
+                ["Ville",     validatedSummary.ville || "—"],
+              ].map(([l, v]) => (
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ color:"rgba(255,255,255,0.45)", fontSize:12 }}>{l}</span>
+                  <span style={{ color:"#E8EAF0", fontWeight:600, fontSize:12 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ background:"rgba(16,217,143,0.07)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:10, padding:"10px 14px", fontSize:12, color:"rgba(255,255,255,0.6)", lineHeight:1.6, marginBottom:16 }}>
+              Une notification a été envoyée au client. Dès sa validation, votre paiement sera déclenché automatiquement.
+            </div>
+            <button onClick={()=>setValidatedSummary(null)} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
       {contractMission && (
         <ContractModal
           title="Attestation de réalisation de prestation"
@@ -1817,7 +1851,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             setContractMission(null);
             const { data:{ session } } = await supabase.auth.getSession();
             const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:prestation.id, contrat_presta_signe_at: ts }) });
-            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); }
+            if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===prestation.id?{...x,validation_prestataire:true}:x)); setValidatedSummary(prestation); }
             else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
           }}
           onClose={() => setContractMission(null)}
@@ -2152,7 +2186,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           setValidatingMission(m.id);
                           const { data:{ session } } = await supabase.auth.getSession();
                           const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"validate_presta", mission_id:m.id, contrat_presta_signe_at: contractSignedAt[m.id] }) });
-                          if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); }
+                          if(r.ok) { setAssignedMissions(prev=>prev.map(x=>x.id===m.id?{...x,validation_prestataire:true}:x)); setValidatedSummary(m); }
                           else { const e = await r.json().catch(()=>({})); showToast(e.error || "Erreur lors de la validation — réessayez."); }
                           setValidatingMission(null);
                         }

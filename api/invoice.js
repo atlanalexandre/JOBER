@@ -169,7 +169,7 @@ export default async function handler(req, res) {
   const today = new Date();
   const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-  const hours = Number(mission.hours || 0);
+  const hours = Number(mission.actual_hours ?? mission.hours ?? 0);
   const tarifHoraire = Number(mission.tarif_horaire || 0);
   const htCalc = Math.round(hours * tarifHoraire * 100) / 100;
   const ht = htCalc > 0 ? htCalc : Number(mission.montant_total || 0);
