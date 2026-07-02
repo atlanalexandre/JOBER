@@ -1682,13 +1682,13 @@ export function PMissionsTab({ onNavigate }) {
     const watchable = assignedMissions.filter(m => {
       const c = missionCoordCache[m.id];
       if (!c || typeof c !== "object" || arrivedAtMap[m.id]) return false;
-      // N'activer la détection que si la mission commence dans moins de 30 min ou a déjà commencé
+      // N'activer la détection que si la mission commence dans moins de 60 min ou a déjà commencé
       if (m.date && m.heure_debut) {
         try {
           const [yr, mo, dy] = m.date.split("-").map(Number);
           const [hh, mm] = m.heure_debut.split(":").map(Number);
           const missionStart = new Date(yr, mo - 1, dy, hh, mm).getTime();
-          if (now < missionStart - 30 * 60 * 1000) return false;
+          if (now < missionStart - 60 * 60 * 1000) return false;
         } catch { /* ignore */ }
       }
       return true;
@@ -2097,7 +2097,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           const [yr,mo,dy] = m.date.split("-").map(Number);
                           const [hh,mm] = m.heure_debut.split(":").map(Number);
                           const missionStartMs = new Date(yr, mo-1, dy, hh, mm).getTime();
-                          tooEarly = Date.now() < missionStartMs - 30*60*1000;
+                          tooEarly = Date.now() < missionStartMs - 60*60*1000;
                           missionStarted = Date.now() >= missionStartMs;
                         } catch { /* ignore */ }
                       }
@@ -2120,7 +2120,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
                           <div>
                             <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
-                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 30 min avant le début de la mission.</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 1h avant le début de la mission.</div>
                           </div>
                         </div>
                       ) : (
