@@ -308,7 +308,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
 }
 
 // ── STRIPE PAYMENT SCREEN ─────────────────────────────────────────
-export function StripePaymentScreen({ amount, provider, description, teamMode, teamProviders, onSuccess, onBack }) {
+export function StripePaymentScreen({ amount, provider, description, missionId, teamMode, teamProviders, onSuccess, onBack }) {
   const [method, setMethod] = useState("card");
   const [cardName, setCardName] = useState("");
   const [cardNameError, setCardNameError] = useState(false);
@@ -403,7 +403,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
           const r = await fetch("/api/stripe-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
-            body: JSON.stringify({ amount: total, currency: "eur", metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
+            body: JSON.stringify({ amount: total, currency: "eur", ...(missionId ? { mission_id: missionId } : {}), metadata: { prestataire: (provider || (teamProviders||[])[0])?.id || "" } }),
           });
           const { clientSecret, error: intentErr } = await r.json();
           if (intentErr || !clientSecret) { ev.complete("fail"); setStripeError(intentErr || "Erreur création paiement"); setProcessing(false); return; }
@@ -457,7 +457,7 @@ export function StripePaymentScreen({ amount, provider, description, teamMode, t
         const r = await fetch("/api/stripe-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
-          body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
+          body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, ...(missionId ? { mission_id: missionId } : {}), metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
         });
         const { clientSecret, error: intentErr } = await r.json();
         if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
