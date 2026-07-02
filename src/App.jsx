@@ -522,12 +522,12 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6 }}>Vérifiez vos spams si vous ne recevez rien</div>
       </div>
 
-      {/* Shine nudge pendant l'attente */}
-      <a href="https://shine.fr" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:14, padding:"14px 16px", marginBottom:20, textDecoration:"none", width:"100%", maxWidth:320, boxSizing:"border-box" }}>
-        <div style={{ width:40, height:40, borderRadius:12, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>✨</div>
+      {/* URSSAF nudge pendant l'attente */}
+      <a href="https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:14, padding:"14px 16px", marginBottom:20, textDecoration:"none", width:"100%", maxWidth:320, boxSizing:"border-box" }}>
+        <div style={{ width:40, height:40, borderRadius:12, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🏛️</div>
         <div style={{ flex:1, textAlign:"left" }}>
           <div style={{ color:"#FFD250", fontWeight:700, fontSize:13, marginBottom:3 }}>Profitez de l'attente !</div>
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Ouvrez votre compte pro Shine en 10 min pour être prêt à recevoir vos premiers paiements →</div>
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Créez votre auto-entreprise gratuitement sur le site officiel de l'URSSAF →</div>
         </div>
       </a>
 

@@ -520,12 +520,12 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 
-          {/* Shine nudge */}
-          <a href="https://shine.fr" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:12, padding:"12px 14px", marginBottom:20, textDecoration:"none" }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>✨</div>
+          {/* URSSAF nudge */}
+          <a href="https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:12, padding:"12px 14px", marginBottom:20, textDecoration:"none" }}>
+            <div style={{ width:36, height:36, borderRadius:10, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏛️</div>
             <div style={{ flex:1 }}>
-              <div style={{ color:"#FFD250", fontWeight:700, fontSize:12, marginBottom:2 }}>Pas encore de compte pro ?</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.4 }}>Ouvre un compte Shine en 10 min pour recevoir tes paiements ALANE →</div>
+              <div style={{ color:"#FFD250", fontWeight:700, fontSize:12, marginBottom:2 }}>Pas encore d'auto-entreprise ?</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le site officiel de l'URSSAF →</div>
             </div>
           </a>
 
