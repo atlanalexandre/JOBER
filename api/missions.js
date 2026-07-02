@@ -125,27 +125,32 @@ function emailActionHtml(title, message, color, icon) {
 }
 
 async function handleEmailAction(req, res) {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
   const { action, m: missionId, p: prestaId, exp, sig } = req.query || {};
   const SECRET = process.env.BO_SESSION_SECRET;
-  if (!SECRET) return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration manquante.", "#F25E5E", "⚠️"));
 
   const isUuidQ = (v) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
-  if (!action || !missionId || !prestaId || !exp || !sig) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
+  if (!action || !missionId || !prestaId) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
   if (!["accept","refuse"].includes(action) || !isUuidQ(missionId) || !isUuidQ(prestaId)) return res.status(400).send(emailActionHtml("Lien invalide", "Paramètres incorrects.", "#F25E5E", "❌"));
 
-  let sigOk = false;
-  try {
-    const { createHmac, timingSafeEqual } = await import("crypto");
-    const payload2 = `${action}.${missionId}.${prestaId}.${exp}`;
-    const expected = createHmac("sha256", SECRET).update(payload2).digest("base64url");
-    sigOk = timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-  } catch {}
-  if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
-  if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
+  // Vérification HMAC si le secret est configuré ET que le lien contient une signature
+  if (SECRET && exp && sig) {
+    let sigOk = false;
+    try {
+      const { createHmac, timingSafeEqual } = await import("crypto");
+      const payload2 = `${action}.${missionId}.${prestaId}.${exp}`;
+      const expected = createHmac("sha256", SECRET).update(payload2).digest("base64url");
+      const bufSig = Buffer.from(sig);
+      const bufExp = Buffer.from(expected);
+      sigOk = bufSig.length === bufExp.length && timingSafeEqual(bufSig, bufExp);
+    } catch (e) { console.error("[email-action] sig verify error:", e.message); }
+    if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
+    if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
+  }
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️"));
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) { res.setHeader("Content-Type","text/html; charset=utf-8"); return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️")); }
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
   const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline`, { headers: hdrs });
