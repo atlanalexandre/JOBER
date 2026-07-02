@@ -334,7 +334,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             <div style={{ marginBottom:14 }}>
               {[
                 { id:"legalstart", nom:"LegalStart",        logo:"⚖️", color:"#4F46E5", badge:"Recommandé", info:"0€ · SIRET en 48h · Validation juridique incluse", lien:"https://www.legalstart.fr/micro-entreprise/" },
-                { id:"shine",      nom:"Shine",             logo:"✨", color:"#7C3AED", badge:"Tout-en-un",  info:"Gratuit · Compte pro + SIRET en 24h",              lien:"https://www.shine.fr/" },
+                { id:"urssaf2",    nom:"URSSAF (officiel)", logo:"🏛️", color:"#7C3AED", badge:"100% gratuit", info:"Gratuit · Site officiel de l'État · SIRET en 24h", lien:"https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html" },
                 { id:"urssaf",     nom:"URSSAF (officiel)", logo:"🏛️", color:"#059669", badge:"100% gratuit", info:"Gratuit · Site officiel de l’État · SIRET 24h", lien:"https://www.autoentrepreneur.urssaf.fr/" },
               ].map(p=>(
                 <div key={p.id} onClick={()=>setChoixAE(choixAE===p.id?null:p.id)} style={{ background:choixAE===p.id?p.color+"15":"#0D1B3E", border:`2px solid ${choixAE===p.id?p.color:C.border}`, borderRadius:r+2, padding:"13px", marginBottom:8, cursor:"pointer" }}>
@@ -2795,7 +2795,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <span style={{ fontSize:22 }}>🚀</span>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Pas encore auto-entrepreneur ?</div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>LegalStart & Shine vous accompagnent dans vos démarches</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>LegalStart & URSSAF vous accompagnent dans vos démarches</div>
             </div>
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>
@@ -2991,18 +2991,18 @@ export function MicroEntrepriseScreen({ onBack }) {
       url: "https://www.legalstart.fr/micro-entreprise/",
     },
     {
-      id: "shine",
-      name: "Shine",
-      emoji: "✨",
-      tagline: "Le compte pro pensé pour les indépendants",
-      color: "#0EA5E9",
+      id: "urssaf_ae",
+      name: "URSSAF (officiel)",
+      emoji: "🏛️",
+      tagline: "Le site officiel pour créer votre auto-entreprise",
+      color: "#059669",
       avantages: [
-        "Compte bancaire professionnel en 24h",
-        "Facturation et devis intégrés",
-        "Suivi TVA, cotisations URSSAF simplifiés",
+        "100% gratuit · Site officiel de l'État",
+        "Immatriculation SIRET en 24h",
+        "Démarches simplifiées en ligne",
       ],
-      cta: "Ouvrir mon compte pro →",
-      url: "https://www.shine.fr",
+      cta: "Créer mon auto-entreprise →",
+      url: "https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html",
     },
   ];
 
