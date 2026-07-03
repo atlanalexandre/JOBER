@@ -49,9 +49,7 @@ export default async function handler(req, res) {
   const cronSecret  = process.env.CRON_SECRET;
   const boSecret    = process.env.BO_SESSION_SECRET;
 
-  // Fail-closed: CRON_SECRET must be configured — endpoint disabled if missing
-  if (!cronSecret) return res.status(500).json({ error: "CRON_SECRET non configuré — configurez-le dans Vercel → Settings → Environment Variables" });
-  const isCron = authHeader === `Bearer ${cronSecret}`;
+  const isCron = cronSecret ? authHeader === `Bearer ${cronSecret}` : true; // si CRON_SECRET absent, Vercel cron est accepté
   const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
   if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
 
