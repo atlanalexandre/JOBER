@@ -517,6 +517,17 @@ ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrived_at timestamptz;
 -- Démarrage effectif de la prestation (déclenche le timer côté prestataire)
 ALTER TABLE missions ADD COLUMN IF NOT EXISTS started_at timestamptz;
 
+-- Gestion du retard d'arrivée du prestataire
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS arrival_delay_minutes integer;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS delay_status text; -- 'pending' | 'approved' | 'rejected'
+
+-- Heures réelles facturées (ancre de facturation — définie par respond_delay et extra_hours)
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS actual_hours numeric;
+
+-- Heures supplémentaires demandées par le prestataire
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS extra_hours_requested numeric;
+ALTER TABLE missions ADD COLUMN IF NOT EXISTS extra_hours_status text; -- 'pending' | 'accepted' | 'refused'
+
 -- ── FONCTION atomique vérification limite de plan ────────────────────
 -- Vérifie si le prestataire peut encore accepter une mission (lecture atomique FOR UPDATE)
 -- Retourne le nombre de slots disponibles (0 = limite atteinte)

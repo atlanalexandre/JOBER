@@ -5361,7 +5361,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const poll = async () => {
       const { data } = await supabase
         .from("missions")
-        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total")
+        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total,hours,delay_status")
         .eq("id", selected.id)
         .single();
       if (!data) return;
@@ -5371,7 +5371,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           data.validation_prestataire !== prev.validation_prestataire ||
           data.status !== prev.status ||
           data.started_at !== prev.started_at ||
-          data.arrived_at !== prev.arrived_at
+          data.arrived_at !== prev.arrived_at ||
+          data.delay_status !== prev.delay_status ||
+          String(data.actual_hours) !== String(prev.actual_hours)
         ) {
           setMissions(list => list.map(m => m.id === prev.id ? { ...m, ...data } : m));
           return { ...prev, ...data };
@@ -5639,8 +5641,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"approved" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ✅ Accepter le décalage
@@ -5651,8 +5653,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"rejected" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ❌ Refuser — fin à l'heure prévue
