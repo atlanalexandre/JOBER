@@ -295,6 +295,49 @@ export default async function handler(req, res) {
         });
       }
 
+      // ── Auto-validation après 24h (fallback si le cron Vercel n'est pas actif) ──
+      const nowTs = Date.now();
+      const toAutoValidate = missions.filter(m => {
+        if (m.status !== "assigned" || !m.validation_prestataire) return false;
+        if (!m.date) return false;
+        const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
+        // heure_debut est en heure locale française — Vercel tourne en UTC
+        const naiveMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime();
+        const offsetMs = (() => {
+          const d = new Date(naiveMs), y = d.getUTCFullYear();
+          const dstStart = new Date(Date.UTC(y,2,31)); dstStart.setUTCDate(31-dstStart.getUTCDay()); dstStart.setUTCHours(1,0,0,0);
+          const dstEnd   = new Date(Date.UTC(y,9,31)); dstEnd.setUTCDate(31-dstEnd.getUTCDay());     dstEnd.setUTCHours(1,0,0,0);
+          return (d >= dstStart && d < dstEnd) ? -7200000 : -3600000;
+        })();
+        const missionEndMs = naiveMs + offsetMs + Number(m.hours || 1) * 3600000;
+        return nowTs - missionEndMs >= 24 * 3600000;
+      });
+
+      if (toAutoValidate.length > 0) {
+        await Promise.all(toAutoValidate.map(async m => {
+          try {
+            const hours = m.actual_hours ?? m.hours ?? 0;
+            const montantTotal = Math.round(Number(hours) * Number(m.tarif_horaire || 0) * 100) / 100;
+            await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+              method: "PATCH",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal || m.montant_total }),
+            });
+            // Mettre à jour le statut local pour que la réponse reflète déjà la validation
+            m.status = "completed";
+            m.validation_client = true;
+            m.montant_total = montantTotal || m.montant_total;
+            // Notifier le prestataire
+            if (m.prestataire_id) {
+              fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Mission validée automatiquement ✅", body: `Votre mission "${m.metier || "la mission"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`, read: false }),
+              }).catch(() => {});
+            }
+          } catch (e) { console.error(`auto-validate mission ${m.id}:`, e.message); }
+        }));
+      }
+
       // Enrich missions: candidatures + prestataire name directly on mission (for direct assignments without candidatures)
       const enriched = missions.map(m => ({
         ...m,
