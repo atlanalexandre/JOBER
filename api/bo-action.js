@@ -46,6 +46,12 @@ export default async function handler(req, res) {
 
   const { action, profileId, ...payload } = req.body;
   const body = req.body; // alias so named-action blocks can destructure fields directly
+
+  // Validation UUID pour profileId — évite les injections PostgREST via le paramètre de chemin
+  const isUuidId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  if (profileId !== undefined && profileId !== null && !isUuidId(profileId)) {
+    return res.status(400).json({ error: "profileId invalide" });
+  }
   const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -69,12 +75,17 @@ export default async function handler(req, res) {
       const authData = await authRes.json();
       const authUsers = authData.users || [];
       const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
+      // Whitelist explicite des champs user_metadata exposés — évite la fuite de champs futurs sensibles
+      const META_EXPOSE = ["telephone", "type_compte", "societe_nom", "kbis", "rib", "role", "prenom", "nom"];
       const merged = (Array.isArray(profiles) ? profiles : []).map(p => {
         const u = authMap[p.id] || {};
+        const meta = u.user_metadata || {};
+        const exposedMeta = {};
+        for (const k of META_EXPOSE) if (meta[k] !== undefined) exposedMeta[k] = meta[k];
         return {
           ...p,
           email: u.email || "",
-          ...(u.user_metadata || {}),
+          ...exposedMeta,
         };
       });
       return res.status(200).json(merged);
@@ -1066,6 +1077,16 @@ export default async function handler(req, res) {
       );
       const missions = await r.json();
       return res.status(200).json(Array.isArray(missions) ? missions : []);
+    }
+
+    if (action === "bo_log_export") {
+      const { details } = body;
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "export_csv", details: details || null }),
+      }).catch(() => {});
+      return res.status(200).json({ ok: true });
     }
 
     if (action === "reset_visits") {

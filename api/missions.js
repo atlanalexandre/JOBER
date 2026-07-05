@@ -133,8 +133,9 @@ async function handleEmailAction(req, res) {
   if (!action || !missionId || !prestaId) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
   if (!["accept","refuse"].includes(action) || !isUuidQ(missionId) || !isUuidQ(prestaId)) return res.status(400).send(emailActionHtml("Lien invalide", "Paramètres incorrects.", "#F25E5E", "❌"));
 
-  // Vérification HMAC si le secret est configuré ET que le lien contient une signature
-  if (SECRET && exp && sig) {
+  // Vérification HMAC — obligatoire quand le secret est configuré (ne pas contourner avec des liens sans sig)
+  if (SECRET) {
+    if (!exp || !sig) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien ne contient pas de signature de sécurité.", "#F25E5E", "🔒"));
     let sigOk = false;
     try {
       const { createHmac, timingSafeEqual } = await import("crypto");
@@ -855,7 +856,7 @@ export default async function handler(req, res) {
                   subject: "Mission validée — votre paiement est en cours 💰",
                   html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
                     <h2 style="color:#A29BFE;margin:0 0 12px">Mission validée ✅</h2>
-                    <p>Bonjour ${prestaName},</p>
+                    <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre mission <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
                     <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
@@ -1506,7 +1507,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           user_id: recipient_id,
           type: "system",
-          title: `💬 Nouveau message de ${sender_name || "votre contact"}`,
+          title: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
           body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
           read: false,
           ref_id: caller.id,
@@ -1524,10 +1525,10 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               from: RESEND_FROM,
               to: [recipientEmail],
-              subject: `💬 Nouveau message de ${sender_name || "votre contact"}`,
+              subject: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
               html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
                 <h2 style="color:#4F46E5">Nouveau message ALANE</h2>
-                <p><strong>${sender_name || "Votre contact"}</strong> vous a envoyé un message :</p>
+                <p><strong>${esc(sender_name || "Votre contact")}</strong> vous a envoyé un message :</p>
                 <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px;font-style:italic">${esc(message_preview || "")}</div>
                 <p>Connectez-vous à ALANE pour répondre.</p>
                 <p style="margin-top:24px;color:#888;font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
@@ -1556,7 +1557,7 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                 sender: "ALANE",
                 recipient: e164,
-                content: smsClean(`ALANE - Nouveau message de ${sender_name || "votre contact"} : ${(message_preview || "").slice(0, 80)} — alane.fr`),
+                content: smsClean(`ALANE - Nouveau message de ${(sender_name || "votre contact").slice(0,50)} : ${(message_preview || "").slice(0, 80)} — alane.fr`),
               }),
             });
             const sb = await sr.json().catch(() => ({}));
@@ -1649,6 +1650,8 @@ export default async function handler(req, res) {
     }
 
     if (action === "get_sector_status") {
+      const callerGss = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!callerGss) return res.status(401).json({ error: "Non authentifié" });
       // Threshold configurable depuis le BO
       let minPrestataires = 30;
       try {
@@ -1992,7 +1995,7 @@ export default async function handler(req, res) {
             subject: `💶 Mission interrompue — vous serez payé(e) pour ${billedHours}h`,
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
               <h2 style="color:#050E20">Mission interrompue par le client</h2>
-              <p style="color:#444">Bonjour ${prestaName},</p>
+              <p style="color:#444">Bonjour ${esc(prestaName)},</p>
               <p style="color:#444">Le client a mis fin à la mission <strong>${esc(missionLabel)}</strong> avant son terme prévu.</p>
               <div style="background:#fff;border-radius:10px;padding:16px;margin:20px 0;border-left:4px solid #7C6FE0">
                 <table style="width:100%;font-size:14px;color:#333">
