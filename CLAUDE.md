@@ -29,6 +29,7 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `BREVO_API_KEY` | Clé API Brevo — SMS transactionnels (`missions.js`) et emails (`cron-reset-monthly.js`) |
 | `VAPID_PUBLIC_KEY` | Clé publique VAPID pour les push notifications web (`missions.js`) |
 | `VAPID_PRIVATE_KEY` | Clé privée VAPID pour les push notifications web (`missions.js`) |
+| `BO_ALLOWED_IPS` | IPs autorisées à accéder au backoffice, séparées par des virgules ex: `90.12.34.56,185.20.0.1` — si absent, pas de restriction IP (Edge Middleware `middleware.js`) |
 
 ## Base de données Supabase
 
