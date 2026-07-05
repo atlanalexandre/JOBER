@@ -420,13 +420,33 @@ export default async function handler(req, res) {
               for (const pm of (Array.isArray(pendMissions) ? pendMissions : [])) {
                 const netCents2 = Math.round((pm.montant_total || 0) * (1 - COMMISSION2) * 100);
                 if (netCents2 < 100) continue;
+
+                // Verrou atomique TOCTOU : passe payout_status → processing avant d'émettre le virement
+                const lockRes2 = await fetch(
+                  `${SUPABASE_URL}/rest/v1/missions?id=eq.${pm.id}&payout_status=eq.pending`,
+                  {
+                    method: "PATCH",
+                    headers: { ...hdrs2, "Prefer": "return=representation" },
+                    body: JSON.stringify({ payout_status: "processing" }),
+                  }
+                ).catch(() => null);
+                const lockData2 = lockRes2?.ok ? await lockRes2.json().catch(() => []) : [];
+                if (!Array.isArray(lockData2) || lockData2.length === 0) {
+                  console.log(`[account.updated] mission ${pm.id} already processing or transferred, skipping`);
+                  continue;
+                }
+
                 const tParams2 = new URLSearchParams({
                   amount: String(netCents2), currency: "eur", destination: account.id,
                   "metadata[mission_id]": pm.id, "metadata[prestataire_id]": prestataireId2,
                 });
                 const tRes2 = await fetch("https://api.stripe.com/v1/transfers", {
                   method: "POST",
-                  headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+                  headers: {
+                    "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Idempotency-Key": `transfer-mission-${pm.id}-${prestataireId2}`,
+                  },
                   body: tParams2.toString(),
                 }).catch(() => null);
                 if (tRes2?.ok) {
@@ -436,6 +456,12 @@ export default async function handler(req, res) {
                     body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: tData2?.id }),
                   }).catch(() => {});
                   console.log(`[account.updated] Pending transfer processed: ${tData2?.id} for mission ${pm.id}`);
+                } else {
+                  // Rollback du verrou si Stripe a échoué
+                  await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${pm.id}`, {
+                    method: "PATCH", headers: hdrs2,
+                    body: JSON.stringify({ payout_status: "pending" }),
+                  }).catch(() => {});
                 }
               }
             }

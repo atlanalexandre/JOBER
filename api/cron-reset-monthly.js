@@ -49,9 +49,18 @@ export default async function handler(req, res) {
   const cronSecret  = process.env.CRON_SECRET;
   const boSecret    = process.env.BO_SESSION_SECRET;
 
+  if (!cronSecret) {
+    console.warn("[cron] ATTENTION: CRON_SECRET non configuré — l'endpoint est accessible sans authentification. Configurez CRON_SECRET dans Vercel pour sécuriser cet endpoint.");
+  }
   const isCron = cronSecret ? authHeader === `Bearer ${cronSecret}` : true; // si CRON_SECRET absent, Vercel cron est accepté
   const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
   if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
+
+  // Valider le paramètre ?action — seule la valeur "reminders" est acceptée
+  const queryAction = req.query?.action;
+  if (queryAction !== undefined && queryAction !== "reminders") {
+    return res.status(400).json({ error: "Action inconnue — valeur acceptée : reminders" });
+  }
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

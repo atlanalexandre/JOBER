@@ -5361,7 +5361,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const poll = async () => {
       const { data } = await supabase
         .from("missions")
-        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total")
+        .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total,hours,delay_status")
         .eq("id", selected.id)
         .single();
       if (!data) return;
@@ -5371,7 +5371,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           data.validation_prestataire !== prev.validation_prestataire ||
           data.status !== prev.status ||
           data.started_at !== prev.started_at ||
-          data.arrived_at !== prev.arrived_at
+          data.arrived_at !== prev.arrived_at ||
+          data.delay_status !== prev.delay_status ||
+          String(data.actual_hours) !== String(prev.actual_hours)
         ) {
           setMissions(list => list.map(m => m.id === prev.id ? { ...m, ...data } : m));
           return { ...prev, ...data };
@@ -5639,8 +5641,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"approved" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ✅ Accepter le décalage
@@ -5651,8 +5653,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     const tok = sd?.session?.access_token;
                     const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${tok}`}, body: JSON.stringify({ action:"respond_delay", mission_id: selected.id, response:"rejected" }) });
                     const j = await r.json();
-                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours } : m));
-                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours } : s);
+                    if (j.ok) setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : m));
+                    if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                   ❌ Refuser — fin à l'heure prévue
@@ -6120,34 +6122,54 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     );
   }
 
+  // Formater la date lisiblement : "2026-07-03" → "3 juil."
+  const fmtDate = (d) => {
+    if (!d) return "";
+    const dt = new Date(d + "T12:00:00");
+    return dt.toLocaleDateString("fr-FR", { day:"numeric", month:"short" });
+  };
+
   return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
-      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
-        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>📋 Mes prestations</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{prestations.length} prestation{prestations.length!==1?"s":""} au total</p>
-      </div>
-      <div style={{ padding:"16px 18px 0" }}>
-        <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:16 }}>
-          {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"prestataires",l:"Prestataires"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit" }}>{t.l}</button>
-          ))}
+    <div style={{ minHeight:"100%", background:"#0A1628", paddingBottom:80 }}>
+
+      {/* ── Header compact ── */}
+      <div style={{ padding:"52px 18px 0", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
+        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.08)", border:"none", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", color:C.white, cursor:"pointer", fontSize:16, flexShrink:0 }}>←</button>
+        <div style={{ flex:1 }}>
+          <div style={{ color:C.white, fontSize:18, fontWeight:800, lineHeight:1.2 }}>Mes prestations</div>
+          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
         </div>
+      </div>
+
+      {/* ── Onglets scrollables ── */}
+      <div style={{ overflowX:"auto", display:"flex", gap:8, padding:"14px 18px 0", scrollbarWidth:"none" }}>
+        {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"prestataires",l:"Prestataires"}].map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ flexShrink:0, padding:"7px 16px", border:"none", borderRadius:20, cursor:"pointer", background:active?"#fff":"rgba(255,255,255,0.07)", color:active?"#0A1628":"rgba(255,255,255,0.5)", fontWeight:active?700:500, fontSize:13, fontFamily:"inherit", transition:"all 0.15s" }}>{t.l}</button>
+          );
+        })}
+      </div>
+
+      <div style={{ padding:"14px 18px 0" }}>
         {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
+
         {!loading && tab !== "prestataires" && filtered.length === 0 && (
-          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
-            <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucune prestation</div>
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"40px 24px", textAlign:"center", marginTop:8 }}>
+            <div style={{ fontSize:32, marginBottom:10 }}>📭</div>
+            <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:4 }}>Aucune prestation</div>
             <div style={{ color:C.textMuted, fontSize:12 }}>Publiez votre première prestation depuis un secteur.</div>
           </div>
         )}
+
+        {/* ── Onglet prestataires ── */}
         {tab === "prestataires" && (
           <div>
             {prestaHistoire.length === 0 && !loading && (
-              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"32px", textAlign:"center" }}>
-                <div style={{ fontSize:36, marginBottom:10 }}>👤</div>
-                <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:6 }}>Aucun prestataire</div>
-                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières prestations terminées.</div>
+              <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"40px 24px", textAlign:"center", marginTop:8 }}>
+                <div style={{ fontSize:32, marginBottom:10 }}>👤</div>
+                <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:4 }}>Aucun prestataire</div>
+                <div style={{ color:C.textMuted, fontSize:12 }}>Vos prestataires apparaîtront ici après vos premières missions terminées.</div>
               </div>
             )}
             {prestaHistoire.map((ph) => {
@@ -6158,27 +6180,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               const missions = Array.isArray(ph.missions) ? ph.missions : [];
               const metier   = fullProv?.jobTitle || missions[0]?.metier || "";
               const sortedM  = [...missions].sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
-              const lastDate = sortedM[0]?.date || "—";
+              const lastDate = sortedM[0]?.date ? fmtDate(sortedM[0].date) : "—";
               const nbMissions = missions.length;
               return (
-              <div key={ph.prestataire_id} style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:12, border:`1px solid ${C.border}` }}>
-                <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                  <div
-                    onClick={() => onNavigate("profile", navProv)}
-                    style={{ width:54, height:54, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
-                    {photoUrl ? <img src={photoUrl} alt={`Photo de profil de ${ph.name || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
+              <div key={ph.prestataire_id} style={{ background:"#111D35", borderRadius:14, padding:"14px 16px", marginBottom:10, border:`1px solid rgba(255,255,255,0.07)` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <div onClick={() => onNavigate("profile", navProv)}
+                    style={{ width:48, height:48, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden", cursor:"pointer" }}>
+                    {photoUrl ? <img src={photoUrl} alt={`Photo de ${ph.name || "prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ph.initials}
                   </div>
-                  <div style={{ flex:1, minWidth:0 }} onClick={() => onNavigate("profile", navProv)} >
-                    <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{ph.name}</div>
+                  <div style={{ flex:1, minWidth:0 }} onClick={() => onNavigate("profile", navProv)}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{ph.name}</div>
                     {metier && <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>{metier}</div>}
-                    <div style={{ color:C.textMuted, fontSize:12, marginTop:2 }}>
-                      {nbMissions} prestation{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}
-                    </div>
-                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:2 }}>Voir le profil →</div>
+                    <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>{nbMissions} prestation{nbMissions > 1 ? "s" : ""} · Dernière : {lastDate}</div>
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onNavigate("chat", { id: ph.prestataire_id, name: ph.name, avatar:"👷", color:C.violet }); }}
-                    style={{ padding:"8px 12px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}20`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+                  <button onClick={(e) => { e.stopPropagation(); onNavigate("chat", { id: ph.prestataire_id, name: ph.name, avatar:"👷", color:C.violet }); }}
+                    style={{ padding:"8px 12px", borderRadius:10, border:`1px solid ${C.violet}44`, background:`${C.violet}18`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                     💬
                   </button>
                 </div>
@@ -6187,6 +6204,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             })}
           </div>
         )}
+
+        {/* ── Liste des missions ── */}
         {tab !== "prestataires" && filtered.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
@@ -6198,89 +6217,97 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             const e = h*60+min+Math.round(Number(m.hours)*60);
             return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`;
           })();
-          const borderColor = pending>0 ? C.violet : m.status==="assigned" ? C.violet : m.status==="completed" ? C.accentGold : m.status==="cancelled" ? "#F25E5E" : C.border;
+
+          // Couleur et libellé du badge statut
+          const badgeColor = pending>0 ? C.violet : statusColor[m.status] || C.textMuted;
+          const badgeLabel = pending>0 ? `${pending} candidature${pending>1?"s":""}` : statusLabel[m.status] || m.status;
+
+          // Ligne info condensée : "3 juil. · 08:00–09:00 · Paris"
+          const infoParts = [
+            m.date ? fmtDate(m.date) : null,
+            heureDebut && heureFin ? `${heureDebut}–${heureFin}` : heureDebut || (m.hours ? `${m.hours}h` : null),
+            m.ville || null,
+          ].filter(Boolean);
+
+          // Signaler un problème : missions terminées < 7j
+          const canDispute = m.status === "completed" && !disputeSuccess[m.id] && (() => {
+            const mDate = m.date ? new Date(m.date) : null;
+            return mDate ? (Date.now() - mDate.getTime()) / 86400000 <= 7 : false;
+          })();
+
           return (
             <div key={m.id} onClick={()=>openCandidatures(m)}
-              style={{ background:"#0D1B3E", borderRadius:16, marginBottom:12, cursor:"pointer", overflow:"hidden",
-                border:`1px solid ${borderColor}44` }}>
-              {/* Bande de statut en haut */}
-              <div style={{ background:`${statusColor[m.status]||C.textMuted}18`, borderBottom:`1px solid ${statusColor[m.status]||C.textMuted}22`, padding:"7px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <span style={{ color:statusColor[m.status]||C.textMuted, fontSize:11, fontWeight:800, letterSpacing:0.5, textTransform:"uppercase" }}>
-                  {pending>0 ? `🔔 ${pending} candidature${pending>1?"s":""} en attente` : statusLabel[m.status]||m.status}
-                </span>
-                {m.recurrence && <span style={{ fontSize:10, color:C.violet, fontWeight:700 }}>🔄 {m.recurrence==="weekly"?"Hebdo":m.recurrence==="biweekly"?"Bi-mens.":"Mensuel"}</span>}
-              </div>
-              {/* Corps de la carte */}
-              <div style={{ padding:"13px 14px", display:"flex", gap:12, alignItems:"flex-start" }}>
-                <div style={{ width:46, height:46, borderRadius:13, background:`${sector?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sector?.icon||"📋"}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:15, marginBottom:5 }}>{m.metier || sector?.label || "Prestation"}</div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                    {m.date && (
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
-                        <span style={{ width:14, textAlign:"center" }}>📅</span>
-                        <span>{m.date}</span>
-                      </div>
-                    )}
-                    {(heureDebut || m.hours) && (
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
-                        <span style={{ width:14, textAlign:"center" }}>🕐</span>
-                        <span>{heureDebut && heureFin ? `${heureDebut} – ${heureFin}` : heureDebut || `${m.hours}h`}</span>
-                      </div>
-                    )}
-                    {m.ville && (
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.textSub, fontSize:12 }}>
-                        <span style={{ width:14, textAlign:"center" }}>📍</span>
-                        <span>{m.ville}</span>
-                      </div>
-                    )}
-                    {m.status==="assigned" && acceptedCandidature && (
-                      <div style={{ display:"flex", alignItems:"center", gap:6, color:C.success, fontSize:12, fontWeight:700, marginTop:2 }}>
-                        <span style={{ width:14, textAlign:"center" }}>✓</span>
-                        <span>{[acceptedCandidature.prenom, acceptedCandidature.nom].filter(Boolean).join(" ") || "Prestataire assigné"}</span>
-                      </div>
-                    )}
-                  </div>
+              style={{ background:"#111D35", borderRadius:14, marginBottom:10, cursor:"pointer", overflow:"hidden", border:`1px solid rgba(255,255,255,0.07)` }}>
+
+              <div style={{ padding:"13px 14px 13px", display:"flex", gap:12, alignItems:"center" }}>
+                {/* Icône secteur */}
+                <div style={{ width:42, height:42, borderRadius:12, background:`${sector?.color||C.violet}1A`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
+                  {sector?.icon||"📋"}
                 </div>
-                <div style={{ color:C.textMuted, fontSize:18, alignSelf:"center", paddingLeft:4 }}>›</div>
-              </div>
-              {m.status === "completed" && !disputeSuccess[m.id] && (() => {
-                const mDate = m.date ? new Date(m.date) : null;
-                const daysElapsed = mDate ? (Date.now() - mDate.getTime()) / 86400000 : 999;
-                if (daysElapsed > 7) return null;
-                return (
-                  <div style={{ padding:"0 14px 12px" }} onClick={e => e.stopPropagation()}>
-                    <button
-                      disabled={disputingId === m.id}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const motif = await showPrompt("Décrivez le problème rencontré :", "Décrivez le problème...");
-                        if (!motif || !motif.trim()) return;
-                        setDisputingId(m.id);
-                        try {
-                          const { data: sd } = await supabase.auth.getSession();
-                          const tok = sd?.session?.access_token;
-                          const res = await fetch("/api/missions", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", ...(tok ? { "Authorization": `Bearer ${tok}` } : {}) },
-                            body: JSON.stringify({ action: "raise_dispute", mission_id: m.id, reason: motif.trim() }),
-                          });
-                          const j = await res.json();
-                          if (j.ok) {
-                            setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
-                          } else {
-                            showToast(j.error || "Erreur lors de l'envoi du signalement.");
-                          }
-                        } catch { showToast("Erreur réseau, réessayez."); }
-                        setDisputingId(null);
-                      }}
-                      style={{ background:"transparent", border:"1px solid rgba(242,94,94,0.3)", color:"#F25E5E", fontSize:12, padding:"8px", borderRadius:10, width:"100%", marginTop:6, cursor:"pointer", fontFamily:"inherit", opacity: disputingId === m.id ? 0.6 : 1 }}
-                    >
-                      {disputingId === m.id ? "Envoi…" : "⚠️ Signaler un problème"}
-                    </button>
+
+                {/* Contenu */}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:14, lineHeight:1.3 }}>{m.metier || sector?.label || "Prestation"}</div>
+                    {/* Badge statut */}
+                    <div style={{ flexShrink:0, background:`${badgeColor}18`, border:`1px solid ${badgeColor}44`, borderRadius:20, padding:"2px 9px", fontSize:11, fontWeight:700, color:badgeColor, whiteSpace:"nowrap" }}>
+                      {badgeLabel}
+                    </div>
                   </div>
-                );
-              })()}
+
+                  {/* Info condensée sur une ligne */}
+                  <div style={{ color:"rgba(255,255,255,0.38)", fontSize:12, lineHeight:1.4 }}>
+                    {infoParts.join(" · ")}
+                  </div>
+
+                  {/* Prestataire assigné */}
+                  {m.status==="assigned" && acceptedCandidature && (
+                    <div style={{ color:C.success, fontSize:12, fontWeight:600, marginTop:4 }}>
+                      ✓ {[acceptedCandidature.prenom, acceptedCandidature.nom].filter(Boolean).join(" ") || "Prestataire assigné"}
+                    </div>
+                  )}
+
+                  {/* Récurrence */}
+                  {m.recurrence && (
+                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:3 }}>
+                      🔄 {m.recurrence==="weekly"?"Hebdomadaire":m.recurrence==="biweekly"?"Bi-mensuel":"Mensuel"}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ color:"rgba(255,255,255,0.2)", fontSize:16, flexShrink:0 }}>›</div>
+              </div>
+
+              {/* Signaler un problème — discret, en bas de carte */}
+              {canDispute && (
+                <div style={{ borderTop:"1px solid rgba(255,255,255,0.06)", padding:"8px 14px" }} onClick={e => e.stopPropagation()}>
+                  <button
+                    disabled={disputingId === m.id}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const motif = await showPrompt("Décrivez le problème rencontré :", "Décrivez le problème...");
+                      if (!motif || !motif.trim()) return;
+                      setDisputingId(m.id);
+                      try {
+                        const { data: sd } = await supabase.auth.getSession();
+                        const tok = sd?.session?.access_token;
+                        const res = await fetch("/api/missions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", ...(tok ? { "Authorization": `Bearer ${tok}` } : {}) },
+                          body: JSON.stringify({ action: "raise_dispute", mission_id: m.id, reason: motif.trim() }),
+                        });
+                        const j = await res.json();
+                        if (j.ok) setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
+                        else showToast(j.error || "Erreur lors de l'envoi du signalement.");
+                      } catch { showToast("Erreur réseau, réessayez."); }
+                      setDisputingId(null);
+                    }}
+                    style={{ background:"none", border:"none", color:"rgba(242,94,94,0.6)", fontSize:12, padding:"2px 0", cursor:"pointer", fontFamily:"inherit", opacity: disputingId === m.id ? 0.5 : 1 }}
+                  >
+                    {disputingId === m.id ? "Envoi…" : "⚠ Signaler un problème"}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

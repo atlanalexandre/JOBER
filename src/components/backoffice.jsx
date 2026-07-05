@@ -1360,6 +1360,8 @@ export function BOExportCSV({ d }) {
       const a    = document.createElement("a");
       a.href = url; a.download = `alane-comptes-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
+      // Journaliser l'export (piste d'audit — contient des données sensibles IBAN/KBIS)
+      boFetch({ action:"bo_log_export", details:{ type:"csv_comptes", count:(Array.isArray(users)?users.length:0) } }).catch(()=>{});
     } catch(_) {}
     setExporting(false);
   };
