@@ -5,8 +5,10 @@
 // Format : une ou plusieurs IPs séparées par des virgules, ex: "90.12.34.56,185.20.0.1"
 // Si la variable est absente, le middleware laisse tout passer (rétrocompatibilité).
 
+// Seule la page /bo est protégée par IP — les APIs conservent leur propre auth
+// (bo-verify-pin : mot de passe + rate limiting / bo-action : token HMAC)
 export const config = {
-  matcher: ["/bo", "/bo/(.*)", "/api/bo-action", "/api/bo-verify-pin"],
+  matcher: ["/bo", "/bo/(.*)"],
 };
 
 export default function middleware(request) {
