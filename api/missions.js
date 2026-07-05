@@ -1766,6 +1766,8 @@ export default async function handler(req, res) {
             headers: {
               "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
               "Content-Type": "application/x-www-form-urlencoded",
+              // Idempotency key: même mission = même remboursement, jamais de doublon
+              "Idempotency-Key": `refund-cancel-${mission_id}`,
             },
             body: stripeBody.toString(),
           });
@@ -1783,7 +1785,10 @@ export default async function handler(req, res) {
       }
 
       // ── Marquer la mission comme annulée (après tentative de remboursement)
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Si ce PATCH échoue, on retourne une erreur pour que le client puisse réessayer.
+      // La prochaine tentative retrouvera le même remboursement Stripe grâce à l'Idempotency-Key
+      // (pas de double débit), puis re-tentera le PATCH.
+      const cancelPatchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({
@@ -1792,6 +1797,24 @@ export default async function handler(req, res) {
           cancellation_penalty: keptAmount,
         }),
       });
+      if (!cancelPatchRes.ok) {
+        const patchErr = await cancelPatchRes.text().catch(() => "");
+        console.error("[cancel_client] Supabase PATCH failed:", cancelPatchRes.status, patchErr);
+        // Le remboursement Stripe a (peut-être) déjà été déclenché — on informe l'admin
+        if (stripeRefundId && RESEND_API_KEY && ADMIN_EMAIL) {
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: RESEND_FROM || "ALANE <onboarding@resend.dev>",
+              to: ADMIN_EMAIL,
+              subject: `[ACTION REQUISE] Annulation incomplète — mission ${mission_id.slice(0,8)}`,
+              html: `<p>Le remboursement Stripe <strong>${stripeRefundId}</strong> a réussi mais la mission n'a pas pu être marquée "cancelled" en DB (erreur ${cancelPatchRes.status}).<br>Vérifier et corriger manuellement dans Supabase.</p>`,
+            }),
+          }).catch(() => {});
+        }
+        return res.status(500).json({ error: "Erreur lors de la mise à jour de la mission — votre remboursement a bien été déclenché. Contactez le support si ce message persiste." });
+      }
 
       // Email au client — confirmation de remboursement
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
