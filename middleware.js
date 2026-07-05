@@ -16,8 +16,10 @@ export default function middleware(request) {
   if (!BO_ALLOWED_IPS || !BO_ALLOWED_IPS.trim()) return;
 
   const forwarded = request.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : null;
-  const allowed = BO_ALLOWED_IPS.split(",").map((s) => s.trim()).filter(Boolean);
+  const rawIp = forwarded ? forwarded.split(",")[0].trim() : (request.ip || null);
+  // Normalise IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4)
+  const ip = rawIp ? rawIp.replace(/^::ffff:/i, "") : null;
+  const allowed = BO_ALLOWED_IPS.split(",").map((s) => s.trim().replace(/^::ffff:/i, "")).filter(Boolean);
 
   if (!ip || !allowed.includes(ip)) {
     return new Response(
