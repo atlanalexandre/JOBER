@@ -5,6 +5,19 @@ import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../const
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 
+async function notifyDocUpload(docType, isRenewal = false) {
+  try {
+    const { data: sd } = await supabase.auth.getSession();
+    const token = sd?.session?.access_token;
+    if (!token) return;
+    fetch("/api/notify-doc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ docType, isRenewal }),
+    }).catch(() => {});
+  } catch {}
+}
+
 function ContractModal({ title, contractText, onSign, onClose }) {
   const [accepted, setAccepted] = useState(false);
   return (
@@ -73,6 +86,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       if (storageErr) throw storageErr;
       const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: user.id, type: doc.id, storage_path: path });
       if (dbErr) throw dbErr;
+      notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.();
     } catch (err) {
@@ -382,7 +396,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
               if(!error){
                 setDocs(prev=>({...prev,[doc.id]:path}));
-                if(user) await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+                if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
               }
             }} required />
           ))}
@@ -396,7 +410,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
               if(!error){
                 setDocs(prev=>({...prev,[doc.id]:path}));
-                if(user) await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+                if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
               }
             }} required={false} />
           ))}
@@ -968,6 +982,7 @@ export function PrestaProfileEditScreen({ onBack }) {
     if (!upErr) {
       const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
       if (urlData?.publicUrl) setPhotoUrl(urlData.publicUrl);
+      notifyDocUpload("photo", true);
     }
     setPhotoUploading(false);
   };
