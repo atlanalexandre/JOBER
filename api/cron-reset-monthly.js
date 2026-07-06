@@ -167,6 +167,11 @@ ${[
   toRole === "client" ? ["👷 Prestataire", prestaName] : ["🏢 Client", clientName],
 ].map(([l,v])=>`<tr><td style="color:#8B8FA8;font-size:13px;padding:6px 0;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${esc(String(v))}</td></tr>`).join("")}
 </table>
+${toRole === "prestataire" ? `
+<div style="margin-top:16px;background:#1A2B4A;border-left:4px solid #F0B429;border-radius:0 10px 10px 0;padding:14px 16px;">
+  <p style="color:#F0B429;font-size:13px;font-weight:800;margin:0 0 6px;">🚗 Pensez au temps de trajet !</p>
+  <p style="color:#B0B8CC;font-size:13px;line-height:1.6;margin:0;">Prévoyez d'arriver <strong style="color:#F0F0F5;">quelques minutes avant l'heure de début</strong>. Un retard peut impacter votre note et votre accès aux prochaines missions.</p>
+</div>` : ""}
 ${(() => {
   const appUrl = process.env.APP_URL || "https://www.alane.fr";
   const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
