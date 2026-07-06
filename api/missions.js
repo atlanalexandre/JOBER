@@ -1791,11 +1791,7 @@ export default async function handler(req, res) {
       const cancelPatchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          status: "cancelled",
-          cancellation_reason: reason || null,
-          cancellation_penalty: keptAmount,
-        }),
+        body: JSON.stringify({ status: "cancelled" }),
       });
       if (!cancelPatchRes.ok) {
         const patchErr = await cancelPatchRes.text().catch(() => "");
@@ -1812,8 +1808,9 @@ export default async function handler(req, res) {
               html: `<p>Le remboursement Stripe <strong>${stripeRefundId}</strong> a réussi mais la mission n'a pas pu être marquée "cancelled" en DB (erreur ${cancelPatchRes.status}).<br>Vérifier et corriger manuellement dans Supabase.</p>`,
             }),
           }).catch(() => {});
+          return res.status(500).json({ error: "Erreur lors de la mise à jour de la mission — votre remboursement a bien été déclenché. Contactez le support si ce message persiste." });
         }
-        return res.status(500).json({ error: "Erreur lors de la mise à jour de la mission — votre remboursement a bien été déclenché. Contactez le support si ce message persiste." });
+        return res.status(500).json({ error: "Erreur lors de l'annulation — réessayez ou contactez le support." });
       }
 
       // Email au client — confirmation de remboursement

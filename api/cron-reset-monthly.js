@@ -169,8 +169,9 @@ ${[
 </table>
 ${toRole === "prestataire" ? `
 <div style="margin-top:16px;background:#1A2B4A;border-left:4px solid #F0B429;border-radius:0 10px 10px 0;padding:14px 16px;">
-  <p style="color:#F0B429;font-size:13px;font-weight:800;margin:0 0 6px;">🚗 Pensez au temps de trajet !</p>
-  <p style="color:#B0B8CC;font-size:13px;line-height:1.6;margin:0;">Prévoyez d'arriver <strong style="color:#F0F0F5;">quelques minutes avant l'heure de début</strong>. Un retard peut impacter votre note et votre accès aux prochaines missions.</p>
+  <p style="color:#F0B429;font-size:13px;font-weight:800;margin:0 0 8px;">🚗 Anticipez votre temps de trajet !</p>
+  <p style="color:#B0B8CC;font-size:13px;line-height:1.6;margin:0 0 12px;">Calculez votre itinéraire dès maintenant et prévoyez d'arriver <strong style="color:#F0F0F5;">au moins 10 minutes avant l'heure de début</strong>. Un retard impacte votre note et peut limiter votre accès aux prochaines missions.</p>
+  ${[m.adresse, m.ville].filter(Boolean).length ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", "))}" style="display:inline-block;padding:9px 18px;background:#F0B429;color:#050E20;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px;">📍 Calculer mon itinéraire →</a>` : ""}
 </div>` : ""}
 ${(() => {
   const appUrl = process.env.APP_URL || "https://www.alane.fr";
