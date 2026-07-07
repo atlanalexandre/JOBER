@@ -309,22 +309,17 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
 
 // ── STRIPE PAYMENT SCREEN ─────────────────────────────────────────
 export function StripePaymentScreen({ amount, provider, description, missionId, teamMode, teamProviders, onSuccess, onBack }) {
-  const [method, setMethod] = useState("card");
   const [cardName, setCardName] = useState("");
   const [cardNameError, setCardNameError] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
   const [stripeError, setStripeError] = useState(null);
-  const [savedIban, setSavedIban]     = useState("");
-  const [editingIban, setEditingIban] = useState(false);
-  const [ibanInput, setIbanInput]     = useState("");
   const stripeRef   = useRef(null);
   const cardElRef   = useRef(null);
   const mountRef    = useRef(null);
 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
-  const [wireConfirmed, setWireConfirmed] = useState(false);
   const [applePayAvailable, setApplePayAvailable] = useState(false);
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
@@ -333,9 +328,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const m = data?.user?.user_metadata || {};
-      const rib = m.rib || "";
-      setSavedIban(rib);
-      setIbanInput(rib);
       if (m.stripe_pm_id) {
         setSavedCard({ pmId: m.stripe_pm_id, customerId: m.stripe_customer_id, brand: m.card_brand||"card", last4: m.card_last4||"••••" });
       }
@@ -343,7 +335,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   }, []);
 
   useEffect(() => {
-    if (method !== "card") return;
     if (savedCard && useSavedCard) {
       (async () => {
         const { loadStripe } = await import("@stripe/stripe-js");
@@ -373,7 +364,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       if (mountRef.current) cardEl.mount(mountRef.current);
     })();
     return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
-  }, [method, useSavedCard]);
+  }, [useSavedCard]);
 
   // ── Apple Pay / Google Pay ──────────────────────────────────────────
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
@@ -470,10 +461,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
-    } else if (method === "wire") {
-      setProcessing(false);
-      setWireConfirmed(true);
-      onSuccess && onSuccess("wire_pending");
     }
   };
 
@@ -531,7 +518,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
             <div ref={applePayBtnRef} style={{ borderRadius:12, overflow:"hidden" }} />
             <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:14 }}>
               <div style={{ flex:1, height:1, background:C.border }} />
-              <span style={{ color:C.textSub, fontSize:11, fontWeight:600 }}>ou payer par carte / virement</span>
+              <span style={{ color:C.textSub, fontSize:11, fontWeight:600 }}>ou payer par carte</span>
               <div style={{ flex:1, height:1, background:C.border }} />
             </div>
           </div>
@@ -539,18 +526,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 
         {/* Méthode de paiement */}
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>Mode de paiement</div>
-          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-            {[{id:"card",icon:"💳",label:"Carte bancaire"},{id:"wire",icon:"🏦",label:"Virement"}].map(m => (
-              <button key={m.id} onClick={()=>setMethod(m.id)} style={{ flex:1, padding:"10px 6px", borderRadius:12, border:`2px solid ${method===m.id?C.violet:C.grayLight}`, background:method===m.id?`${C.violet}08`:C.white, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>
-                <div style={{ fontSize:18 }}>{m.icon}</div>
-                <div style={{ fontSize:11, fontWeight:method===m.id?700:500, color:method===m.id?C.violet:C.gray, marginTop:2 }}>{m.label}</div>
-              </button>
-            ))}
-          </div>
-
-          {method==="card" && (
-            <div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>💳 Carte bancaire</div>
+          <div>
               {savedCard && (
                 <div style={{ marginBottom:12 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useSavedCard?`${C.violet}18`:"#0D1B3E", border:`2px solid ${useSavedCard?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }} onClick={()=>setUseSavedCard(true)}>
@@ -603,43 +580,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                   ⚠️ {stripeError}
                 </div>
               )}
-            </div>
-          )}
-          {method==="wire" && (
-            <div style={{ background:`${C.accentGold}15`, borderRadius:12, padding:"14px", fontSize:13, lineHeight:1.7 }}>
-              <div style={{ fontWeight:800, color:C.text, marginBottom:8 }}>Coordonnées bancaires ALANE</div>
-              {[["IBAN","FR76 3000 4000 0100 0000 0000 123"],["BIC","BNPAFRPPXXX"],["Référence",`ALANE-${Date.now().toString().slice(-6)}`],["Montant",`${total} €`]].map(([l,v])=>(
-                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0" }}>
-                  <span style={{ color:C.textSub }}>{l}</span><span style={{ fontWeight:700, color:C.text, fontSize:12 }}>{v}</span>
-                </div>
-              ))}
-              <div style={{ marginTop:10, color:C.warning, fontSize:11, fontWeight:600 }}>⚠️ Délai de validation : 1-2 jours ouvrés</div>
-            </div>
-          )}
-          {method==="wire" && wireConfirmed && (
-            <div style={{ background:"#16a34a15", border:"1px solid #16a34a40", borderRadius:10, padding:"12px 14px", color:"#4ade80", fontSize:13, marginTop:12, lineHeight:1.6 }}>
-              ✅ <strong>Commande confirmée.</strong> Effectuez le virement avec la référence ci-dessus dans les 48h. Notre équipe vous confirmera la réception et la mission sera activée.
-            </div>
-          )}
-        </div>
-
-        {/* IBAN remboursement */}
-        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: editingIban ? 10 : 0 }}>
-            <div>
-              <div style={{ fontSize:12, fontWeight:700, color:C.text }}>🏦 IBAN pour remboursement</div>
-              {!editingIban && <div style={{ fontSize:12, color:C.textSub, marginTop:3 }}>{savedIban ? `${ibanInput.slice(0,8)}••••••••••••••` : "Non renseigné"}</div>}
-            </div>
-            <button onClick={()=>setEditingIban(!editingIban)} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-              {editingIban ? "Annuler" : savedIban ? "✏️ Modifier" : "+ Ajouter"}
-            </button>
           </div>
-          {editingIban && (
-            <div>
-              <input value={ibanInput} onChange={e=>setIbanInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(.{4})/g,"$1 ").trim())} placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" style={{ width:"100%", padding:"11px 12px", borderRadius:10, border:`1px solid ${C.border}`, fontSize:13, fontFamily:"monospace", background:"#162547", color:C.text, boxSizing:"border-box", outline:"none", marginBottom:8 }} />
-              <button onClick={async()=>{ await supabase.auth.updateUser({ data:{ rib: ibanInput.replace(/\s/g,"") } }); setSavedIban(ibanInput); setEditingIban(false); }} style={{ width:"100%", padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Enregistrer</button>
-            </div>
-          )}
         </div>
 
         {/* Sécurité */}
@@ -649,9 +590,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           ))}
         </div>
 
-        <Btn full onClick={handlePay} disabled={processing || (method==="wire" && wireConfirmed)}
+        <Btn full onClick={handlePay} disabled={processing}
           style={{ fontSize:16, padding:"18px", position:"relative" }}>
-          {processing ? "⏳ Traitement en cours…" : method==="wire" ? (wireConfirmed ? "✅ Commande confirmée" : "✓ Confirmer ma commande par virement") : `🔒 Payer ${total} € en sécurité`}
+          {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
         </Btn>
         <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>Aucun débit avant validation de votre prestation</p>
       </div>
