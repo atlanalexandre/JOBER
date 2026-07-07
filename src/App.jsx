@@ -1073,6 +1073,7 @@ export default function App() {
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
   const [showOnboarding,setShowOnboarding]=useState(false);
+  const [bookingDraftBanner,setBookingDraftBanner]=useState(null); // { prestataireName, metier, montant }
   const [docsRefreshKey,setDocsRefreshKey]=useState(0);
   const [cookieNotice,setCookieNotice]=useState(()=>{ try { return !localStorage.getItem("alane_cookie_ok"); } catch(e) { return false; } });
   const [clientCashback,setClientCashback]=useState(null);
@@ -1243,6 +1244,19 @@ export default function App() {
     let onboarded; try { onboarded = localStorage.getItem(key); } catch(e) {}
     if(!onboarded) setShowOnboarding(true);
   },[screen, supaUser]);
+
+  // Bannière de reprise — brouillon de réservation abandonné (option A : localStorage)
+  useEffect(()=>{
+    if(screen !== "home" || role !== "client") return;
+    try {
+      const raw = localStorage.getItem("jober_booking_draft");
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      // Afficher uniquement si le brouillon a plus de 10 min
+      if (!draft?.timestamp || Date.now() - draft.timestamp < 10 * 60 * 1000) return;
+      setBookingDraftBanner(draft);
+    } catch {}
+  },[screen, role]);
 
   // Charger le cashback du client quand on arrive sur le dashboard
   useEffect(()=>{
@@ -1432,6 +1446,32 @@ export default function App() {
           navigate(to);
         }}
       />
+    )}
+    {/* Bannière de reprise — réservation abandonnée (option A) */}
+    {bookingDraftBanner && screen === "home" && (
+      <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:9997, padding:"0 12px", paddingTop:"env(safe-area-inset-top,0px)" }}>
+        <div style={{ background:"linear-gradient(135deg,#1A2B4A,#0D1B3E)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:"0 0 16px 16px", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 4px 20px rgba(0,0,0,0.5)" }}>
+          <div style={{ fontSize:26, flexShrink:0 }}>⏳</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontWeight:800, color:"#F0F0F5", fontSize:13, marginBottom:2 }}>
+              Vous n'avez pas finalisé votre réservation
+            </div>
+            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {bookingDraftBanner.prestataireName
+                ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${bookingDraftBanner.montant} €` : ""}`
+                : "Reprenez là où vous en étiez"}
+            </div>
+          </div>
+          <button
+            onClick={()=>{ navigate("mission_history"); setBookingDraftBanner(null); }}
+            style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
+          >Reprendre</button>
+          <button
+            onClick={()=>{ setBookingDraftBanner(null); try { localStorage.removeItem("jober_booking_draft"); } catch {} }}
+            style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", lineHeight:1, flexShrink:0 }}
+          >×</button>
+        </div>
+      </div>
     )}
     {cookieNotice && (
       <div style={{

@@ -334,6 +334,37 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     });
   }, []);
 
+  // ── Sauvegarde du brouillon à l'entrée dans le tunnel de paiement ──────────
+  useEffect(() => {
+    const draft = {
+      prestataireName: (provider || (teamProviders||[])[0])?.name || null,
+      metier: description || null,
+      montant: typeof amount === "object" ? (amount?.amount ?? null) : (amount ?? null),
+      missionId: missionId || null,
+      timestamp: Date.now(),
+    };
+    // A — localStorage (reprise in-app immédiate)
+    try { localStorage.setItem("jober_booking_draft", JSON.stringify(draft)); } catch {}
+    // B+C — Supabase (push + email via cron après 30 min)
+    supabase.auth.getSession().then(({ data: sd }) => {
+      const token = sd?.session?.access_token;
+      if (!token) return;
+      fetch("/api/booking-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          action: "save",
+          prestataire_name: draft.prestataireName,
+          metier: draft.metier,
+          montant: draft.montant,
+          mission_id: draft.missionId,
+        }),
+      }).catch(() => {});
+    });
+    // Nettoyage si l'utilisateur quitte sans payer
+    return () => {};
+  }, []);
+
   useEffect(() => {
     if (savedCard && useSavedCard) {
       (async () => {
@@ -405,6 +436,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
             const { error: e2 } = await stripe.confirmCardPayment(clientSecret);
             if (e2) { setStripeError(e2.message); setProcessing(false); return; }
           }
+          clearDraft();
           setDone(true); setProcessing(false);
           onSuccess && onSuccess(paymentIntent.id);
         } catch (e) { ev.complete("fail"); setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
@@ -422,6 +454,19 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     btn.mount(applePayBtnRef.current);
     return () => btn.destroy();
   }, [applePayAvailable]);
+
+  const clearDraft = () => {
+    try { localStorage.removeItem("jober_booking_draft"); } catch {}
+    supabase.auth.getSession().then(({ data: sd }) => {
+      const token = sd?.session?.access_token;
+      if (!token) return;
+      fetch("/api/booking-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "clear" }),
+      }).catch(() => {});
+    });
+  };
 
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
   if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
@@ -458,7 +503,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
         if (error) { setStripeError(error.message); setProcessing(false); return; }
         if (paymentIntent?.status === "succeeded") {
-          setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
+          clearDraft(); setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
         }
       } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
     }

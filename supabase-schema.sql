@@ -630,3 +630,22 @@ CREATE TABLE IF NOT EXISTS bo_rate_limits (
   reset_at timestamptz NOT NULL DEFAULT (now() + interval '5 minutes')
 );
 ALTER TABLE bo_rate_limits ENABLE ROW LEVEL SECURITY;
+
+-- ── Brouillons de réservation abandonnés ─────────────────────────────────────
+-- Sauvegardés au début du tunnel de paiement, supprimés après succès.
+-- Le cron cron-abandon.js envoie push + email après 30 min si notified_at IS NULL.
+CREATE TABLE IF NOT EXISTS booking_drafts (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id        uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  prestataire_name text,
+  metier           text,
+  date             text,
+  ville            text,
+  montant          numeric,
+  mission_id       uuid,
+  created_at       timestamptz DEFAULT now(),
+  notified_at      timestamptz,
+  UNIQUE(client_id)
+);
+ALTER TABLE booking_drafts ENABLE ROW LEVEL SECURITY;
+-- Accès service_role uniquement (cron + endpoint API)
