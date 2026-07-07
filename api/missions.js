@@ -1754,6 +1754,9 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       let stripeRefundError = null;
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
       if (mission.stripe_payment_intent && refundAmount > 0 && STRIPE_SECRET_KEY) {
         try {
           const stripeBody = new URLSearchParams({
@@ -1814,9 +1817,6 @@ export default async function handler(req, res) {
       }
 
       // Email au client — confirmation de remboursement
-      const RESEND_API_KEY = process.env.RESEND_API_KEY;
-      const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-      const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
       if (RESEND_API_KEY && clientEmail) {
         const refundEur = (refundAmount / 100).toFixed(2).replace(".", ",");
         const keptEur   = keptAmount.toFixed(2).replace(".", ",");
