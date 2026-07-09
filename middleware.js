@@ -17,8 +17,8 @@ export default function middleware(request) {
   // Variable non configurée → pas de restriction (évite le lockout au premier déploiement)
   if (!BO_ALLOWED_IPS || !BO_ALLOWED_IPS.trim()) return;
 
-  const forwarded = request.headers.get("x-forwarded-for");
-  const rawIp = forwarded ? forwarded.split(",")[0].trim() : (request.ip || null);
+  // Vercel Edge provides request.ip as the real client IP (can't be spoofed via x-forwarded-for)
+  const rawIp = request.ip || null;
   // Normalise IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4)
   const ip = rawIp ? rawIp.replace(/^::ffff:/i, "") : null;
   const allowed = BO_ALLOWED_IPS.split(",").map((s) => s.trim().replace(/^::ffff:/i, "")).filter(Boolean);

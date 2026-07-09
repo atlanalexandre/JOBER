@@ -42,7 +42,7 @@ export default async function handler(req, res) {
         metier:          metier || null,
         date:            date   || null,
         ville:           ville  || null,
-        montant:         montant || null,
+        montant:         montant != null ? Number(montant) : null,
         mission_id:      mission_id || null,
         created_at:      new Date().toISOString(),
         notified_at:     null,

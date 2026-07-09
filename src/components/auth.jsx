@@ -1119,7 +1119,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.auth.signOut();
       return;
     }
-    if (role === "prestataire" && (!profile?.status || profile.status === "pending")) {
+    if (!profile?.status || profile.status === "pending") {
       setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
       await supabase.auth.signOut();
       return;

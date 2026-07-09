@@ -9,7 +9,10 @@ function genToken(secret) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+  // Take the LAST value in x-forwarded-for: Vercel's edge appends the real client IP at the end,
+  // so the first value can be spoofed by the client to bypass the rate limit.
+  const xfwd = req.headers["x-forwarded-for"] || "";
+  const ip = (xfwd ? xfwd.split(",").at(-1).trim() : null) || req.socket?.remoteAddress || "unknown";
   const now = Date.now();
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;

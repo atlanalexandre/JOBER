@@ -1463,7 +1463,7 @@ export default function App() {
             </div>
           </div>
           <button
-            onClick={()=>{ navigate("mission_history"); setBookingDraftBanner(null); }}
+            onClick={()=>{ navigate("home"); setBookingDraftBanner(null); }}
             style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
           >Reprendre</button>
           <button

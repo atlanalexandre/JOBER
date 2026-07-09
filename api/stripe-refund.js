@@ -81,6 +81,7 @@ export default async function handler(req, res) {
 
     // Reverse the Connect transfer to the prestataire if one was made
     let transferReversalId = null;
+    let transferReversalFailed = false;
     if (stripeTransferId) {
       try {
         const revRes = await fetch(`https://api.stripe.com/v1/transfers/${stripeTransferId}/reversals`, {
@@ -93,9 +94,11 @@ export default async function handler(req, res) {
           console.log(`[stripe-refund] Transfer ${stripeTransferId} reversed → ${transferReversalId}`);
         } else {
           console.error("[stripe-refund] Transfer reversal failed:", revData.error?.message);
+          transferReversalFailed = true;
         }
       } catch (revErr) {
         console.error("[stripe-refund] Transfer reversal error:", revErr.message);
+        transferReversalFailed = true;
       }
     }
 
@@ -113,7 +116,7 @@ export default async function handler(req, res) {
       }).catch(() => {});
     }
 
-    return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount, transferReversalId });
+    return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount, transferReversalId, transferReversalFailed: transferReversalFailed || undefined });
   } catch (e) {
     console.error("stripe-refund error:", e);
     return res.status(500).json({ error: "Erreur serveur" });

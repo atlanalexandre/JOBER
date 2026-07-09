@@ -52,7 +52,8 @@ export default async function handler(req, res) {
   } catch {}
 
   const fullName   = [prenom, nom].filter(Boolean).join(" ") || email;
-  const docLabel   = DOC_LABELS[docType] || docType;
+  const esc        = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const docLabel   = DOC_LABELS[docType] || esc(docType);
   const actionWord = isRenewal ? "renouvelé" : "chargé";
   const boUrl      = (process.env.APP_URL || "https://www.alane.fr") + "/bo";
 
