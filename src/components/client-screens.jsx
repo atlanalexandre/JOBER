@@ -3250,7 +3250,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         {step === 4 && (
           <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:r, padding:"20px 16px", textAlign:"center" }}>
             <div style={{ fontSize:14, color:"#F25E5E", fontWeight:700, marginBottom:12 }}>❌ Cette prestation a été annulée</div>
-            <button onClick={()=>onNavigate("dashboard")} style={{ padding:"11px 24px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+            <button onClick={()=>onNavigate("home")} style={{ padding:"11px 24px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
               Retour à l'accueil
             </button>
           </div>
