@@ -5588,9 +5588,14 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
         body: JSON.stringify({ action: "close", mission_id: missionId }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Erreur");
+      }
       setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status: "closed" } : m));
-    } catch { showToast("Erreur lors de la fermeture. Réessayez."); }
+      setSelected(prev => prev?.id === missionId ? { ...prev, status: "closed" } : prev);
+      showToast("Prestation clôturée.");
+    } catch(e) { showToast(e.message || "Erreur lors de la fermeture. Réessayez."); }
   };
 
   const handleCancel = async () => {
