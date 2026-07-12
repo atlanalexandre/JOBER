@@ -1311,15 +1311,19 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Utilisez l'annulation pour clore une mission en cours" });
       }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.open`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify({ status: "closed" }),
       });
       if (!patchRes.ok) {
         const errText = await patchRes.text().catch(() => "");
         console.error("[close] Supabase PATCH failed:", patchRes.status, errText);
         return res.status(500).json({ error: "Erreur lors de la fermeture — réessayez" });
+      }
+      const updated = await patchRes.json().catch(() => []);
+      if (!Array.isArray(updated) || updated.length === 0) {
+        return res.status(409).json({ error: "La mission n'a pas pu être fermée — statut inattendu, rechargez et réessayez." });
       }
       return res.status(200).json({ success: true });
     }
