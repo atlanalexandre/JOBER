@@ -566,6 +566,7 @@ export default async function handler(req, res) {
     if (action === "resolve_dispute") {
       const { mission_id, resolution } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (!["refunded", "rejected"].includes(resolution)) return res.status(400).json({ error: "resolution invalide (refunded|rejected)" });
 
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
@@ -837,6 +838,7 @@ export default async function handler(req, res) {
     if (action === "force_complete_mission") {
       const { mission_id } = req.body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,tarif_horaire,metier,sector,recurrence,date,heure_debut,ville`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -1161,7 +1163,7 @@ export default async function handler(req, res) {
       if (!["free","premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ plan_abonnement: plan, trial_exhausted: plan !== "free" ? false : undefined }),
+        body: JSON.stringify({ plan_abonnement: plan, trial_exhausted: false }),
       });
       if (!patchRes.ok) {
         const patchErr = await patchRes.text().catch(()=>"");

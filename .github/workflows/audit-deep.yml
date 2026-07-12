@@ -1,0 +1,85 @@
+name: Audit profond hebdomadaire
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"  # Lundi à 3h UTC (5h Paris en heure d'été)
+  workflow_dispatch:       # Déclenchement manuel possible
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit-deep:
+    name: Audit IA — revue de code complète
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Historique complet pour les diffs
+
+      - name: Vérifier s'il y a des commits cette semaine
+        id: check
+        run: |
+          COUNT=$(git log --since='7 days ago' --oneline --no-merges | wc -l | tr -d ' ')
+          echo "commits=$COUNT" >> $GITHUB_OUTPUT
+          echo "Commits cette semaine : $COUNT"
+          git log --since='7 days ago' --oneline --no-merges | head -20
+
+      - name: Audit de code IA (Claude Code)
+        uses: anthropics/claude-code-action@beta
+        if: steps.check.outputs.commits != '0'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token:      ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Tu es un expert en sécurité et qualité de code pour l'application ALANE (React/Vite + Supabase + Vercel).
+
+            ## Mission
+            Effectue un audit de code complet sur les changements de la semaine écoulée.
+
+            ## Étapes
+
+            1. **Obtenir le diff de la semaine**
+               ```bash
+               git log --since='7 days ago' --oneline --no-merges
+               git diff $(git log --since='7 days ago' --format='%H' --no-merges | tail -1)~1...HEAD
+               ```
+               Si la commande échoue (pas assez de commits), utilise : `git diff HEAD~5...HEAD`
+
+            2. **Audit multi-angles** — cherche dans chaque fichier modifié :
+               - **Sécurité** : bypass d'auth, variables d'environnement exposées côté client, injections (PostgREST, SQL, XSS), tokens non validés, headers spoofables
+               - **Logique** : falsy-zero (`|| null` sur un 0), conditions inversées, `await` manquant sur des fetches critiques, fire-and-forget dans des fonctions Vercel
+               - **CLAUDE.md** : `SUPABASE_SERVICE_ROLE_KEY` côté client, imports relatifs dans `/api/` depuis un fichier helper, suppression du `signOut()` post-inscription, modif des flags `jober_stay_logged_in` / `jober_session_active`
+               - **Données** : colonnes inexistantes dans le schéma, PATCH sans filtre id/uuid valide
+
+            3. **Créer une GitHub Issue** avec les findings :
+               - Utilise l'outil GitHub pour créer une issue dans ce repository
+               - **Titre** selon la sévérité :
+                 - `🔴 Audit hebdo [date] — N bug(s) critique(s)` si bugs de sécurité ou logique bloquante
+                 - `🟡 Audit hebdo [date] — N avertissement(s)` si problèmes mineurs uniquement
+                 - `✅ Audit hebdo [date] — Aucun problème détecté` si tout va bien
+               - **Corps** : pour chaque finding, indique `fichier:ligne | description | impact concret`
+               - **Label** : `audit`
+               - **Assignee** : laisse vide
+
+            4. Si aucun commit cette semaine, crée une issue `✅ Audit hebdo [date] — Aucun changement à réviser`
+
+            ## Règles
+            - Ne fais PAS de modifications de code
+            - Ne crée PAS de PR
+            - Sois concis mais précis dans les findings
+            - Un finding sans scénario de déclenchement concret n'a pas de valeur
+
+      - name: Audit OK (aucun commit)
+        if: steps.check.outputs.commits == '0'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token:      ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Crée une GitHub Issue dans ce repository avec :
+            - Titre : "✅ Audit hebdo — Aucun changement cette semaine"
+            - Corps : "Aucun commit cette semaine — pas de code à auditer."
+            - Label : "audit"

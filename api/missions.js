@@ -133,21 +133,20 @@ async function handleEmailAction(req, res) {
   if (!action || !missionId || !prestaId) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
   if (!["accept","refuse"].includes(action) || !isUuidQ(missionId) || !isUuidQ(prestaId)) return res.status(400).send(emailActionHtml("Lien invalide", "Paramètres incorrects.", "#F25E5E", "❌"));
 
-  // Vérification HMAC — obligatoire quand le secret est configuré (ne pas contourner avec des liens sans sig)
-  if (SECRET) {
-    if (!exp || !sig) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien ne contient pas de signature de sécurité.", "#F25E5E", "🔒"));
-    let sigOk = false;
-    try {
-      const { createHmac, timingSafeEqual } = await import("crypto");
-      const payload2 = `${action}.${missionId}.${prestaId}.${exp}`;
-      const expected = createHmac("sha256", SECRET).update(payload2).digest("base64url");
-      const bufSig = Buffer.from(sig);
-      const bufExp = Buffer.from(expected);
-      sigOk = bufSig.length === bufExp.length && timingSafeEqual(bufSig, bufExp);
-    } catch (e) { console.error("[email-action] sig verify error:", e.message); }
-    if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
-    if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
-  }
+  // Vérification HMAC — obligatoire. Sans BO_SESSION_SECRET configuré, les liens email sont désactivés.
+  if (!SECRET) return res.status(503).send(emailActionHtml("Service non configuré", "BO_SESSION_SECRET n'est pas défini sur ce serveur. Configurez cette variable Vercel pour activer les liens email.", "#F5A623", "⚙️"));
+  if (!exp || !sig) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien ne contient pas de signature de sécurité.", "#F25E5E", "🔒"));
+  let sigOk = false;
+  try {
+    const { createHmac, timingSafeEqual } = await import("crypto");
+    const payload2 = `${action}.${missionId}.${prestaId}.${exp}`;
+    const expected = createHmac("sha256", SECRET).update(payload2).digest("base64url");
+    const bufSig = Buffer.from(sig);
+    const bufExp = Buffer.from(expected);
+    sigOk = bufSig.length === bufExp.length && timingSafeEqual(bufSig, bufExp);
+  } catch (e) { console.error("[email-action] sig verify error:", e.message); }
+  if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
+  if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -328,6 +327,34 @@ export default async function handler(req, res) {
             m.status = "completed";
             m.validation_client = true;
             m.montant_total = montantTotal || m.montant_total;
+            // Créditer le cashback client (même logique que l'action complete)
+            if (m.client_id && montantTotal > 0) {
+              try {
+                const pr2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=missions_completed_month`, { headers });
+                const pr2Data = pr2.ok ? await pr2.json().catch(() => []) : [];
+                const clientProfile = Array.isArray(pr2Data) && pr2Data[0];
+                const missionsThisMonth = (clientProfile?.missions_completed_month || 0) + 1;
+                const CASHBACK_TIERS = [
+                  { min: 0,  max: 2,   rate: 0.005  },
+                  { min: 3,  max: 5,   rate: 0.0075 },
+                  { min: 6,  max: 9,   rate: 0.01   },
+                  { min: 10, max: 999, rate: 0.015  },
+                ];
+                const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
+                const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+                await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
+                  method: "POST",
+                  headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
+                }).catch(() => {});
+                if (cashbackEarned > 0) {
+                  fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre mission "${m.metier || "la mission"}" a été validée automatiquement. Cashback crédité.`, read: false }),
+                  }).catch(() => {});
+                }
+              } catch (e2) { console.error(`auto-validate cashback ${m.id}:`, e2.message); }
+            }
             // Notifier le prestataire
             if (m.prestataire_id) {
               fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -611,17 +638,18 @@ export default async function handler(req, res) {
         sendPushToUser(verified_prestataire_id, { title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée ! Préparez-vous pour la mission.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
-      // Email de confirmation au client
+      // Email de confirmation au client (awaité pour éviter la coupure Vercel avant envoi)
       const RESEND_API_KEY_AC = process.env.RESEND_API_KEY;
       const RESEND_FROM_AC    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_API_KEY_AC && missionCheck?.client_id) {
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${missionCheck.client_id}`, { headers })
-          .then(r => r.json()).then(clientAuth => {
-            const clientEmail = clientAuth?.email;
-            if (!clientEmail) return;
+        try {
+          const clientAuthRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${missionCheck.client_id}`, { headers });
+          const clientAuth = clientAuthRes.ok ? await clientAuthRes.json().catch(() => null) : null;
+          const clientEmail = clientAuth?.email;
+          if (clientEmail) {
             const clientPrenom = clientAuth?.user_metadata?.prenom || "";
             const mLabel = esc(missionCheck.titre || missionCheck.metier || "votre mission");
-            return fetch("https://api.resend.com/emails", {
+            await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY_AC}`, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -636,8 +664,9 @@ export default async function handler(req, res) {
   <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p>
 </div>`,
               }),
-            });
-          }).catch(e => console.error("[accept] email client failed:", e.message));
+            }).catch(e => console.error("[accept] Resend failed:", e.message));
+          }
+        } catch (e) { console.error("[accept] email client failed:", e.message); }
       }
 
       return res.status(200).json({ success: true });
@@ -1282,15 +1311,19 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Utilisez l'annulation pour clore une mission en cours" });
       }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.open`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify({ status: "closed" }),
       });
       if (!patchRes.ok) {
         const errText = await patchRes.text().catch(() => "");
         console.error("[close] Supabase PATCH failed:", patchRes.status, errText);
         return res.status(500).json({ error: "Erreur lors de la fermeture — réessayez" });
+      }
+      const updated = await patchRes.json().catch(() => []);
+      if (!Array.isArray(updated) || updated.length === 0) {
+        return res.status(409).json({ error: "La mission n'a pas pu être fermée — statut inattendu, rechargez et réessayez." });
       }
       return res.status(200).json({ success: true });
     }

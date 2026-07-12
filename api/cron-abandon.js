@@ -155,7 +155,7 @@ export default async function handler(req, res) {
     }
 
     // ── 3. Marquer comme notifié ─────────────────────────────────────────────
-    await fetch(`${SUPABASE_URL}/rest/v1/booking_drafts?client_id=eq.${draft.client_id}`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/booking_drafts?id=eq.${draft.id}`, {
       method: "PATCH",
       headers: { ...hdrs, "Prefer": "return=minimal" },
       body: JSON.stringify({ notified_at: new Date().toISOString() }),
