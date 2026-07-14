@@ -30,34 +30,32 @@ export default async function handler(req, res) {
 
   const { paymentIntentId, missionId, reason } = req.body || {};
   if (!paymentIntentId) return res.status(400).json({ error: "paymentIntentId requis" });
+  if (!missionId) return res.status(400).json({ error: "missionId requis" });
 
-  // S-06: cross-check missionId ↔ paymentIntentId to prevent cross-mission refund
-  if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
-    const checkRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`,
-      { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
-    ).catch(() => null);
-    if (checkRes?.ok) {
-      const checkData = await checkRes.json().catch(() => []);
-      const mission = Array.isArray(checkData) && checkData[0];
-      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
-      if (mission.stripe_payment_intent && mission.stripe_payment_intent !== paymentIntentId) {
-        return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette mission" });
-      }
-    }
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Supabase non configuré" });
+
+  // S-06: cross-check missionId ↔ paymentIntentId to prevent cross-mission refund (mandatory)
+  const checkRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`,
+    { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
+  ).catch(() => null);
+  if (!checkRes?.ok) return res.status(500).json({ error: "Impossible de vérifier la mission" });
+  const checkData = await checkRes.json().catch(() => []);
+  const missionCheck = Array.isArray(checkData) && checkData[0];
+  if (!missionCheck) return res.status(404).json({ error: "Mission introuvable" });
+  if (missionCheck.stripe_payment_intent && missionCheck.stripe_payment_intent !== paymentIntentId) {
+    return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette mission" });
   }
 
   // Fetch stripe_transfer_id before refunding so we can reverse the payout to the prestataire
   let stripeTransferId = null;
-  if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
-    const trRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_transfer_id`,
-      { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
-    ).catch(() => null);
-    if (trRes?.ok) {
-      const trData = await trRes.json().catch(() => []);
-      stripeTransferId = Array.isArray(trData) && trData[0]?.stripe_transfer_id || null;
-    }
+  const trRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_transfer_id`,
+    { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
+  ).catch(() => null);
+  if (trRes?.ok) {
+    const trData = await trRes.json().catch(() => []);
+    stripeTransferId = Array.isArray(trData) && trData[0]?.stripe_transfer_id || null;
   }
 
   try {
@@ -103,7 +101,7 @@ export default async function handler(req, res) {
     }
 
     // Update mission status to closed
-    if (missionId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+    {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
         method: "PATCH",
         headers: {

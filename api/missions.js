@@ -1979,29 +1979,33 @@ export default async function handler(req, res) {
       const refundAmount = Math.max(0, originalMontant - proratedAmount);
       let stripeRefundId = null;
       if (refundAmount > 0 && mission.stripe_payment_intent) {
+        // Stripe refund is mandatory when a payment was captured — abort cancellation on failure
+        const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
+        if (!STRIPE_SECRET_KEY_CANCEL) {
+          return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
+        }
         try {
-          const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
-          if (STRIPE_SECRET_KEY_CANCEL) {
-            const refundCents = Math.round(refundAmount * 100);
-            const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({
-                payment_intent: mission.stripe_payment_intent,
-                amount: String(refundCents),
-                reason: "requested_by_customer",
-              }).toString(),
-            });
-            const rfData = await rfRes.json();
-            if (rfData?.id) {
-              stripeRefundId = rfData.id;
-              console.log("[cancel_in_progress] Stripe partial refund ok:", rfData.id, "amount:", refundCents);
-            } else {
-              console.error("[cancel_in_progress] Stripe refund failed:", JSON.stringify(rfData));
-            }
+          const refundCents = Math.round(refundAmount * 100);
+          const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              payment_intent: mission.stripe_payment_intent,
+              amount: String(refundCents),
+              reason: "requested_by_customer",
+            }).toString(),
+          });
+          const rfData = await rfRes.json();
+          if (rfData?.id) {
+            stripeRefundId = rfData.id;
+            console.log("[cancel_in_progress] Stripe partial refund ok:", rfData.id, "amount:", refundCents);
+          } else {
+            console.error("[cancel_in_progress] Stripe refund failed:", JSON.stringify(rfData));
+            return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
           }
         } catch (e) {
           console.error("[cancel_in_progress] Stripe refund exception:", e.message);
+          return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
         }
       }
 
@@ -2758,8 +2762,11 @@ export default async function handler(req, res) {
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou non annulable" });
 
-      // Remboursement Stripe si la mission était payée
+      // Remboursement Stripe si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
+        if (!process.env.STRIPE_SECRET_KEY) {
+          return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
+        }
         try {
           const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
             method: "POST",
@@ -2777,9 +2784,11 @@ export default async function handler(req, res) {
             console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour mission ${mission_id}`);
           } else {
             console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+            return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
           }
         } catch (stripeErr) {
           console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
+          return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
         }
       }
 
