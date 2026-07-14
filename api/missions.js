@@ -74,15 +74,33 @@ const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 // SMS sanitization — strip CRLF to prevent header injection + cap length
 const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
 
-// Rate limiting en mémoire — 120 req/min par IP (reset Vercel cold start accepté)
+// Rate limiting — Upstash Redis (persistant cross-instances) avec fallback in-memory
 const _rl = new Map();
-function checkRateLimit(ip, max = 120, windowMs = 60_000) {
+function _rlMemory(ip, max, windowMs) {
   const now = Date.now();
   const rec = _rl.get(ip) || { count: 0, reset: now + windowMs };
   if (now > rec.reset) { rec.count = 0; rec.reset = now + windowMs; }
   rec.count++;
   _rl.set(ip, rec);
   return rec.count > max;
+}
+async function checkRateLimit(ip, max = 120, windowMs = 60_000) {
+  const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
+  const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!REDIS_URL || !REDIS_TOKEN) return _rlMemory(ip, max, windowMs);
+  try {
+    const key = `rl:missions:${ip}`;
+    const ttl = Math.ceil(windowMs / 1000);
+    const r = await fetch(`${REDIS_URL}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify([["INCR", key], ["EXPIRE", key, ttl, "NX"]]),
+    });
+    if (!r.ok) return _rlMemory(ip, max, windowMs);
+    const data = await r.json();
+    const count = data?.[0]?.result ?? 1;
+    return count > max;
+  } catch { return _rlMemory(ip, max, windowMs); }
 }
 
 async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
