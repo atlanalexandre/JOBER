@@ -30,6 +30,8 @@ App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB
 | `VAPID_PUBLIC_KEY` | Clé publique VAPID pour les push notifications web (`missions.js`) |
 | `VAPID_PRIVATE_KEY` | Clé privée VAPID pour les push notifications web (`missions.js`) |
 | `BO_ALLOWED_IPS` | IPs autorisées à accéder au backoffice, séparées par des virgules ex: `90.12.34.56,185.20.0.1` — si absent, pas de restriction IP (Edge Middleware `middleware.js`) |
+| `UPSTASH_REDIS_REST_URL` | URL REST Upstash Redis — rate limiting persistant cross-instances (`missions.js`). Si absent, fallback in-memory (non recommandé en prod) |
+| `UPSTASH_REDIS_REST_TOKEN` | Token Bearer Upstash Redis — obligatoire si `UPSTASH_REDIS_REST_URL` est défini |
 
 ## Base de données Supabase
 
