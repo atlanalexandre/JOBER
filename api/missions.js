@@ -113,7 +113,18 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
       headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
     });
     if (!r.ok) return null;
-    return await r.json();
+    const user = await r.json();
+    if (!user?.id) return null;
+    // Vérifier que le profil est approuvé — bloque les comptes pending/rejected/suspended
+    const profileRes = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}&select=status`,
+      { headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}` } }
+    );
+    if (!profileRes.ok) return null;
+    const profiles = await profileRes.json().catch(() => []);
+    const status = Array.isArray(profiles) && profiles[0]?.status;
+    if (status !== "approved") return null;
+    return user;
   } catch { return null; }
 }
 
@@ -191,7 +202,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   // Rate limiting — 120 req/min par IP
-  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",").at(-1).trim();
   if (checkRateLimit(ip)) return res.status(429).json({ error: "Trop de requêtes — réessayez dans une minute" });
 
   const { action, ...payload } = req.body || {};
@@ -1979,29 +1990,33 @@ export default async function handler(req, res) {
       const refundAmount = Math.max(0, originalMontant - proratedAmount);
       let stripeRefundId = null;
       if (refundAmount > 0 && mission.stripe_payment_intent) {
+        // Stripe refund is mandatory when a payment was captured — abort cancellation on failure
+        const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
+        if (!STRIPE_SECRET_KEY_CANCEL) {
+          return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
+        }
         try {
-          const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
-          if (STRIPE_SECRET_KEY_CANCEL) {
-            const refundCents = Math.round(refundAmount * 100);
-            const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({
-                payment_intent: mission.stripe_payment_intent,
-                amount: String(refundCents),
-                reason: "requested_by_customer",
-              }).toString(),
-            });
-            const rfData = await rfRes.json();
-            if (rfData?.id) {
-              stripeRefundId = rfData.id;
-              console.log("[cancel_in_progress] Stripe partial refund ok:", rfData.id, "amount:", refundCents);
-            } else {
-              console.error("[cancel_in_progress] Stripe refund failed:", JSON.stringify(rfData));
-            }
+          const refundCents = Math.round(refundAmount * 100);
+          const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              payment_intent: mission.stripe_payment_intent,
+              amount: String(refundCents),
+              reason: "requested_by_customer",
+            }).toString(),
+          });
+          const rfData = await rfRes.json();
+          if (rfData?.id) {
+            stripeRefundId = rfData.id;
+            console.log("[cancel_in_progress] Stripe partial refund ok:", rfData.id, "amount:", refundCents);
+          } else {
+            console.error("[cancel_in_progress] Stripe refund failed:", JSON.stringify(rfData));
+            return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
           }
         } catch (e) {
           console.error("[cancel_in_progress] Stripe refund exception:", e.message);
+          return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
         }
       }
 
@@ -2758,8 +2773,11 @@ export default async function handler(req, res) {
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou non annulable" });
 
-      // Remboursement Stripe si la mission était payée
+      // Remboursement Stripe si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
+        if (!process.env.STRIPE_SECRET_KEY) {
+          return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
+        }
         try {
           const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
             method: "POST",
@@ -2777,9 +2795,11 @@ export default async function handler(req, res) {
             console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour mission ${mission_id}`);
           } else {
             console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+            return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
           }
         } catch (stripeErr) {
           console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
+          return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
         }
       }
 

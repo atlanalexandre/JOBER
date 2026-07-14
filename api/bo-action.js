@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,missions_enabled,trial_exhausted,missions_completed_month,plan_abonnement,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,created_at&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
       const profiles = await profilesRes.json();
@@ -242,58 +242,8 @@ export default async function handler(req, res) {
     }
 
     if (action === "enable_missions" || action === "disable_missions") {
-      if (!profileId) return res.status(400).json({ error: "profileId requis" });
-      const enabled = action === "enable_missions";
-
-      const [patchRes, userRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ missions_enabled: enabled }),
-        }),
-        fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers }),
-      ]);
-      if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
-
-      if (enabled) {
-        const userData = await userRes.json();
-        const userEmail = userData.email;
-        const prenom = userData.user_metadata?.prenom || "";
-        if (userEmail) {
-          await sendEmail({
-            to: userEmail,
-            subject: "✅ Accès aux missions activé — ALANE",
-            html: emailHtml(`
-              <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
-              <p>Bonne nouvelle ! 🎉 Vos documents ont été validés par notre équipe.</p>
-              <p>Vous avez maintenant <strong>accès aux missions</strong> sur la plateforme ALANE. Les clients peuvent désormais vous contacter directement.</p>
-              <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#10D98F;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Voir les missions →</a></p>
-              <p style="color:#888;font-size:13px;">À très vite,<br/>L'équipe ALANE</p>
-            `),
-          });
-        }
-
-        // Notification in-app
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            user_id: profileId,
-            type: "mission",
-            title: "Accès aux missions activé ✅",
-            body: "Vos documents ont été validés. Vous pouvez maintenant recevoir des missions via ALANE !",
-            read: false,
-          }),
-        }).catch(() => {});
-      }
-
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ action, target_id: profileId }),
-      }).catch(() => {});
-
-      return res.status(200).json({ success: true });
+      // La colonne missions_enabled n'existe pas dans le schéma — action dépréciée.
+      return res.status(410).json({ error: "Action dépréciée — la colonne missions_enabled n'existe pas dans le schéma." });
     }
 
     if (action === "delete") {
@@ -537,7 +487,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_disputes") {
-      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,dispute_reason,stripe_payment_intent&order=created_at.desc`, { headers });
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`, { headers });
       const missions = await missionsRes.json();
       if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
 
@@ -753,6 +703,7 @@ export default async function handler(req, res) {
 
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
+      if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
       // Vérifier que le document appartient bien au profil demandé
       const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&prestataire_id=eq.${profileId}&select=id`, { headers });
       const docCheckData = await docCheckRes.json();
@@ -888,6 +839,7 @@ export default async function handler(req, res) {
     if (action === "release_dispute") {
       const { mission_id } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
@@ -915,6 +867,7 @@ export default async function handler(req, res) {
     if (action === "refund_dispute") {
       const { mission_id } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
@@ -951,6 +904,7 @@ export default async function handler(req, res) {
     if (action === "manual_refund") {
       const { mission_id, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -977,6 +931,7 @@ export default async function handler(req, res) {
     if (action === "cancel_mission") {
       const { mission_id, refund, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -997,6 +952,7 @@ export default async function handler(req, res) {
     if (action === "reassign_mission") {
       const { mission_id, new_presta_email, reason } = body;
       if (!mission_id || !new_presta_email) return res.status(400).json({ error: "mission_id + new_presta_email requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -1017,6 +973,7 @@ export default async function handler(req, res) {
     if (action === "update_mission") {
       const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const updates = {};
       if (date !== undefined && date !== "") updates.date = date;
       if (hours !== undefined && hours !== "") updates.hours = Number(hours);
@@ -1067,6 +1024,7 @@ export default async function handler(req, res) {
     if (action === "delete_rating") {
       const { ratingId } = body;
       if (!ratingId) return res.status(400).json({ error: "ratingId requis" });
+      if (!isUuidId(ratingId)) return res.status(400).json({ error: "ratingId invalide" });
       await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${ratingId}`, { method:"DELETE", headers:{...headers,"Prefer":"return=minimal"} });
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(()=>{});
       return res.status(200).json({ ok:true });

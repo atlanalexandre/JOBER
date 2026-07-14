@@ -69,8 +69,8 @@ export default async function handler(req, res) {
           <h2 style="color:#050E20;margin-bottom:4px">📄 Nouveau document soumis</h2>
           <p style="color:#444;margin-bottom:20px">Un prestataire vient de ${actionWord} un document — une validation manuelle est peut-être requise.</p>
           <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px">
-            <tr><td style="padding:7px 0;color:#666;width:140px">Prestataire</td><td style="font-weight:700">${fullName}</td></tr>
-            <tr><td style="padding:7px 0;color:#666">Email</td><td>${email}</td></tr>
+            <tr><td style="padding:7px 0;color:#666;width:140px">Prestataire</td><td style="font-weight:700">${esc(fullName)}</td></tr>
+            <tr><td style="padding:7px 0;color:#666">Email</td><td>${esc(email)}</td></tr>
             <tr><td style="padding:7px 0;color:#666">Document</td><td style="font-weight:700">${docLabel}</td></tr>
             <tr><td style="padding:7px 0;color:#666">Action</td><td>${isRenewal ? "🔄 Renouvellement" : "⬆️ Premier chargement"}</td></tr>
           </table>
