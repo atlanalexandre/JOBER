@@ -703,6 +703,7 @@ export default async function handler(req, res) {
 
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
+      if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
       // Vérifier que le document appartient bien au profil demandé
       const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&prestataire_id=eq.${profileId}&select=id`, { headers });
       const docCheckData = await docCheckRes.json();
@@ -838,6 +839,7 @@ export default async function handler(req, res) {
     if (action === "release_dispute") {
       const { mission_id } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
@@ -865,6 +867,7 @@ export default async function handler(req, res) {
     if (action === "refund_dispute") {
       const { mission_id } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
@@ -901,6 +904,7 @@ export default async function handler(req, res) {
     if (action === "manual_refund") {
       const { mission_id, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -927,6 +931,7 @@ export default async function handler(req, res) {
     if (action === "cancel_mission") {
       const { mission_id, refund, reason } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -947,6 +952,7 @@ export default async function handler(req, res) {
     if (action === "reassign_mission") {
       const { mission_id, new_presta_email, reason } = body;
       if (!mission_id || !new_presta_email) return res.status(400).json({ error: "mission_id + new_presta_email requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
@@ -967,6 +973,7 @@ export default async function handler(req, res) {
     if (action === "update_mission") {
       const { mission_id, date, hours, tarif_horaire, ville, metier } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       const updates = {};
       if (date !== undefined && date !== "") updates.date = date;
       if (hours !== undefined && hours !== "") updates.hours = Number(hours);
@@ -1017,6 +1024,7 @@ export default async function handler(req, res) {
     if (action === "delete_rating") {
       const { ratingId } = body;
       if (!ratingId) return res.status(400).json({ error: "ratingId requis" });
+      if (!isUuidId(ratingId)) return res.status(400).json({ error: "ratingId invalide" });
       await fetch(`${SUPABASE_URL}/rest/v1/ratings?id=eq.${ratingId}`, { method:"DELETE", headers:{...headers,"Prefer":"return=minimal"} });
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"delete_rating", target_id:ratingId }) }).catch(()=>{});
       return res.status(200).json({ ok:true });

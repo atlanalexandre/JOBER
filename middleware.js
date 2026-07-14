@@ -4,11 +4,8 @@
 // Configurer BO_ALLOWED_IPS dans Vercel → Settings → Environment Variables
 // Format : une ou plusieurs IPs séparées par des virgules, ex: "90.12.34.56,185.20.0.1"
 // Si la variable est absente, le middleware laisse tout passer (rétrocompatibilité).
-
-// Seule la page /bo est protégée par IP — les APIs conservent leur propre auth
-// (bo-verify-pin : mot de passe + rate limiting / bo-action : token HMAC)
 export const config = {
-  matcher: ["/bo", "/bo/(.*)"],
+  matcher: ["/bo", "/bo/(.*)", "/api/bo-action", "/api/bo-verify-pin"],
 };
 
 export default function middleware(request) {
@@ -24,6 +21,13 @@ export default function middleware(request) {
   const allowed = BO_ALLOWED_IPS.split(",").map((s) => s.trim().replace(/^::ffff:/i, "")).filter(Boolean);
 
   if (!ip || !allowed.includes(ip)) {
+    const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+    if (isApiRoute) {
+      return new Response(
+        JSON.stringify({ error: "Accès refusé — IP non autorisée" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
     return new Response(
       `<!doctype html><html lang="fr"><head><meta charset="UTF-8"><title>403 – Accès refusé</title>
       <style>body{font-family:system-ui,sans-serif;background:#050E20;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}

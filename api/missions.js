@@ -113,7 +113,18 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
       headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
     });
     if (!r.ok) return null;
-    return await r.json();
+    const user = await r.json();
+    if (!user?.id) return null;
+    // Vérifier que le profil est approuvé — bloque les comptes pending/rejected/suspended
+    const profileRes = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}&select=status`,
+      { headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}` } }
+    );
+    if (!profileRes.ok) return null;
+    const profiles = await profileRes.json().catch(() => []);
+    const status = Array.isArray(profiles) && profiles[0]?.status;
+    if (status !== "approved") return null;
+    return user;
   } catch { return null; }
 }
 
