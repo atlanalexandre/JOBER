@@ -1119,7 +1119,7 @@ export default function App() {
           const { data:{ user } } = await supabase.auth.getUser();
           if(user){
             const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single();
-            const _plan = pr?.plan_abonnement || user.user_metadata?.plan_abonnement || "free";
+            const _plan = pr?.plan_abonnement || "free";
             setPrestaPlan(_plan);
             // Invariant : plan payant → jamais trial_exhausted
             setTrialExhausted(_plan !== "free" ? false : !!pr?.trial_exhausted);
@@ -1140,7 +1140,7 @@ export default function App() {
         const { data:{ user } } = await supabase.auth.getUser();
         // profiles est la source de vérité pour plan_abonnement (le webhook Stripe y écrit en priorité)
         const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
-        const plan = pr?.plan_abonnement || user?.user_metadata?.plan_abonnement || "free";
+        const plan = pr?.plan_abonnement || "free";
         setPrestaPlan(plan);
         // Invariant : plan payant → jamais trial_exhausted
         setTrialExhausted(plan !== "free" ? false : !!pr?.trial_exhausted);
@@ -1387,7 +1387,7 @@ export default function App() {
       if(profile?.role){
         setRole(profile.role);
         if(profile.role==="prestataire"){
-          const _planLogin = profile.plan_abonnement || session.user.user_metadata?.plan_abonnement || "free";
+          const _planLogin = profile.plan_abonnement || "free";
           setPrestaPlan(_planLogin);
           // Invariant : plan payant → jamais trial_exhausted
           setTrialExhausted(_planLogin !== "free" ? false : !!profile.trial_exhausted);
@@ -1514,7 +1514,7 @@ export default function App() {
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); const _pl=pr?.plan_abonnement||user.user_metadata?.plan_abonnement||"free"; setPrestaPlan(_pl); setTrialExhausted(_pl!=="free"?false:!!pr?.trial_exhausted); setProfileLoaded(true); } }}
+          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); const _pl=pr?.plan_abonnement||"free"; setPrestaPlan(_pl); setTrialExhausted(_pl!=="free"?false:!!pr?.trial_exhausted); setProfileLoaded(true); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 

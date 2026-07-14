@@ -209,10 +209,14 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       // If referrer reaches 3 filleuls, grant 1 month Premium
       if (newCount >= 3 && newCount % 3 === 0) {
         const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
+        // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
+        const hdrsAdmin = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
+        const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${referrerUUID}`, { headers: hdrsAdmin }).catch(() => null);
+        const existingMeta = (getR?.ok ? ((await getR.json().catch(() => ({}))).user_metadata || {}) : {});
         await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${referrerUUID}`, {
           method: "PUT",
-          headers: { ...hdrs, "Prefer": undefined },
-          body: JSON.stringify({ user_metadata: { plan_abonnement: "premium", subscription_end_date: endDate } }),
+          headers: hdrsAdmin,
+          body: JSON.stringify({ user_metadata: { ...existingMeta, plan_abonnement: "premium", subscription_end_date: endDate } }),
         }).catch(() => {});
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST", headers: hdrs,
