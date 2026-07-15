@@ -79,8 +79,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (step === 5) {
       const siretClean = siretNum.replace(/[\s.]/g,"");
-      if (!siretClean) return "Numéro SIRET obligatoire";
-      if (!/^\d{9}(\d{5})?$/.test(siretClean)) return "SIRET invalide — 9 chiffres (SIREN) ou 14 chiffres (SIRET)";
+      if (siretClean && !/^\d{9}(\d{5})?$/.test(siretClean)) return "SIRET invalide — 9 chiffres (SIREN) ou 14 chiffres (SIRET)";
       if (ribIban.trim()) {
         const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
@@ -494,7 +493,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
           </div>
           <Input
-            label="N° SIRET *"
+            label="N° SIRET"
             placeholder="123 456 789 00010"
             icon="📄"
             value={siretNum}
@@ -517,6 +516,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           {siretInfo?.error && (
             <div style={{ fontSize:12, color:"#F25E5E", marginTop:-12, marginBottom:14, paddingLeft:4 }}>Numéro introuvable — vérifiez votre SIRET</div>
           )}
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:-10, marginBottom:14, paddingLeft:4, lineHeight:1.4 }}>
+            Si vous venez de créer votre statut, vous pourrez fournir votre SIRET avec vos documents lors de la validation de votre compte.
+          </div>
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 
