@@ -9,17 +9,22 @@ export default async function handler(req, res) {
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
   if (!["premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
 
-  // Verify JWT to get user
-  let userId = null;
+  // Verify JWT to get user — requis pour lier le checkout à un compte
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
   const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ") && SUPABASE_URL && SERVICE_ROLE_KEY) {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": auth },
-      });
-      if (r.ok) { const u = await r.json(); userId = u.id || null; }
-    } catch {}
+  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Non authentifié" });
+  let userId = null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": auth },
+    });
+    if (!r.ok) return res.status(401).json({ error: "Token invalide" });
+    const u = await r.json();
+    userId = u.id || null;
+  } catch {
+    return res.status(401).json({ error: "Erreur d'authentification" });
   }
+  if (!userId) return res.status(401).json({ error: "Utilisateur introuvable" });
 
   const priceEnvKey = plan === "premium"
     ? (billing === "yearly" ? "STRIPE_PRICE_PREMIUM_YEARLY" : "STRIPE_PRICE_PREMIUM_MONTHLY")

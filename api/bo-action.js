@@ -10,13 +10,15 @@ function verifyBoToken(authHeader) {
   const token = authHeader.slice(7);
   const secret = process.env.BO_SESSION_SECRET;
   if (!secret) return false;
-  const dot = token.indexOf(".");
-  if (dot === -1) return false;
-  const ts  = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
+  const parts = token.split(".");
+  // Support new format (ts.nonce.sig) and legacy format (ts.sig)
+  const ts      = parts[0];
+  const sig     = parts.length >= 3 ? parts[2] : parts[1];
+  const payload = parts.length >= 3 ? `${parts[0]}.${parts[1]}` : parts[0];
+  if (!ts || !sig) return false;
   const age = Math.floor(Date.now() / 1000) - parseInt(ts, 10);
-  if (isNaN(age) || age < 0 || age > 86400) return false; // expire après 24h
-  const expected = crypto.createHmac("sha256", secret).update(ts).digest("hex");
+  if (isNaN(age) || age < 0 || age > 86400) return false;
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   if (sig.length !== expected.length) return false;
   try {
     return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
@@ -299,10 +301,21 @@ export default async function handler(req, res) {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
+      // Supprimer les candidatures de ce prestataire
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${profileId}`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
+      // Supprimer aussi toutes les candidatures sur les missions du client supprimé
+      const clientMissionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?client_id=eq.${profileId}&select=id`, { headers });
+      const clientMissions = clientMissionsRes.ok ? await clientMissionsRes.json().catch(() => []) : [];
+      if (Array.isArray(clientMissions) && clientMissions.length > 0) {
+        const missionIds = clientMissions.map(m => m.id).join(",");
+        await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=in.(${missionIds})`, {
+          method: "DELETE",
+          headers: { ...headers, "Prefer": "return=minimal" },
+        });
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${profileId},prestataire_id.eq.${profileId})`, {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
@@ -523,11 +536,37 @@ export default async function handler(req, res) {
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (!["refunded", "rejected"].includes(resolution)) return res.status(400).json({ error: "resolution invalide (refunded|rejected)" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,stripe_payment_intent,montant_total`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable" });
       if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+
+      // Pour resolution="refunded" : déclencher le remboursement Stripe réel avant de fermer
+      if (resolution === "refunded" && m.stripe_payment_intent) {
+        const STRIPE_SK = process.env.STRIPE_SECRET_KEY;
+        if (!STRIPE_SK) return res.status(500).json({ error: "Stripe non configuré — remboursement impossible" });
+        try {
+          const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${STRIPE_SK}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Idempotency-Key": `refund-dispute-${mission_id}`,
+            },
+            body: new URLSearchParams({ payment_intent: m.stripe_payment_intent, reason: "fraudulent" }).toString(),
+          });
+          const rfData = await rfRes.json();
+          if (!rfData?.id) {
+            console.error("[resolve_dispute] Stripe refund failed:", JSON.stringify(rfData));
+            return res.status(500).json({ error: `Remboursement Stripe échoué : ${rfData?.error?.message || "erreur inconnue"}` });
+          }
+          console.log(`[resolve_dispute] Stripe refund OK: ${rfData.id} pour mission ${mission_id}`);
+        } catch (e) {
+          console.error("[resolve_dispute] Stripe refund exception:", e.message);
+          return res.status(500).json({ error: "Erreur lors du remboursement Stripe — mission non fermée" });
+        }
+      }
 
       // "refunded" → closed, "rejected" → completed (prestation validée malgré le litige)
       const newStatus = resolution === "refunded" ? "closed" : "completed";
@@ -679,7 +718,7 @@ export default async function handler(req, res) {
       }
 
       // Récupère les emails depuis auth.users
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, { headers: { ...headers, "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers: { ...headers, "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
       const usersData = await usersRes.json();
       let emailMap = {};
       if (usersData?.users) usersData.users.forEach(u => { emailMap[u.id] = u.email; });
@@ -818,7 +857,8 @@ export default async function handler(req, res) {
       const mCount = (prof?.missions_completed_month||0)+1;
       const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
       const cashback = Math.round(montantTotal*rate*100)/100;
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>{});
+      const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>null);
+      if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement est en cours.`, read:false }) }).catch(()=>{});

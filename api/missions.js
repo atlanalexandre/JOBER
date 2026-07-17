@@ -221,7 +221,7 @@ export default async function handler(req, res) {
 
   // Rate limiting — 120 req/min par IP
   const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",").at(-1).trim();
-  if (checkRateLimit(ip)) return res.status(429).json({ error: "Trop de requêtes — réessayez dans une minute" });
+  if (await checkRateLimit(ip)) return res.status(429).json({ error: "Trop de requêtes — réessayez dans une minute" });
 
   const { action, ...payload } = req.body || {};
 
@@ -707,14 +707,16 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       const client_id = caller.id;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable" });
       if (mission.client_id !== client_id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "assigned") return res.status(400).json({ error: "Mission non assignée" });
+      if (!mission.stripe_payment_intent) return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette mission — impossible de valider" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de mission" });
 
       const hours        = mission.actual_hours ?? mission.hours ?? 0;
@@ -2017,7 +2019,11 @@ export default async function handler(req, res) {
           const refundCents = Math.round(refundAmount * 100);
           const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`, "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Idempotency-Key": `refund-cancel-${mission_id}`,
+            },
             body: new URLSearchParams({
               payment_intent: mission.stripe_payment_intent,
               amount: String(refundCents),
@@ -2802,6 +2808,7 @@ export default async function handler(req, res) {
             headers: {
               "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
               "Content-Type": "application/x-www-form-urlencoded",
+              "Idempotency-Key": `refund-presta-cancel-${mission_id}`,
             },
             body: new URLSearchParams({
               payment_intent: mission.stripe_payment_intent,
@@ -3000,6 +3007,7 @@ export default async function handler(req, res) {
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (m.client_id !== caller.id && m.prestataire_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (m.status !== "assigned") return res.status(400).json({ error: "Mission non en cours" });
       if (!m.started_at) return res.status(400).json({ error: "Mission non démarrée" });
 

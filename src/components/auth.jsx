@@ -80,10 +80,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 5) {
       const siretClean = siretNum.replace(/[\s.]/g,"");
       if (siretClean && !/^\d{9}(\d{5})?$/.test(siretClean)) return "SIRET invalide — 9 chiffres (SIREN) ou 14 chiffres (SIRET)";
-      if (ribIban.trim()) {
-        const clean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
-        if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(clean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
-      }
+      if (!ribIban.trim()) return "L'IBAN est obligatoire pour recevoir vos paiements";
+      const ibanClean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
+      if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
       if (!rcProConfirmed) return "Vous devez confirmer disposer d'une RC Pro en cours de validité";
     }
     if (step === 7) {

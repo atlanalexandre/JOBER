@@ -2,8 +2,9 @@ import crypto from "crypto";
 
 function genToken(secret) {
   const ts = Math.floor(Date.now() / 1000).toString();
-  const sig = crypto.createHmac("sha256", secret).update(ts).digest("hex");
-  return `${ts}.${sig}`;
+  const nonce = crypto.randomBytes(8).toString("hex");
+  const sig = crypto.createHmac("sha256", secret).update(`${ts}.${nonce}`).digest("hex");
+  return `${ts}.${nonce}.${sig}`;
 }
 
 export default async function handler(req, res) {
