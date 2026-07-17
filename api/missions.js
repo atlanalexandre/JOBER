@@ -74,6 +74,31 @@ const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 // SMS sanitization — strip CRLF to prevent header injection + cap length
 const smsClean = (s, max = 160) => String(s||"").replace(/[\r\n\t]/g," ").trim().slice(0, max);
 
+// Détection de conflit de créneau pour un prestataire
+// Retourne la mission conflictuelle ou null si pas de conflit
+async function checkPrestaireConflict(prestataire_id, missionDate, heureDebut, hours, supabaseUrl, headers, excludeMissionId = null) {
+  if (!missionDate || !heureDebut) return null;
+  const [h, m] = heureDebut.split(":").map(Number);
+  const startMin = h * 60 + (m || 0);
+  const endMin   = startMin + Math.ceil(Number(hours || 1) * 60);
+  let url = `${supabaseUrl}/rest/v1/missions?prestataire_id=eq.${prestataire_id}&date=eq.${encodeURIComponent(missionDate)}&status=in.(assigned,pending_acceptance)&select=id,heure_debut,hours,metier`;
+  if (excludeMissionId) url += `&id=neq.${excludeMissionId}`;
+  try {
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
+    const existing = await res.json().catch(() => []);
+    if (!Array.isArray(existing)) return null;
+    for (const em of existing) {
+      if (!em.heure_debut) continue;
+      const [eh, em2] = em.heure_debut.split(":").map(Number);
+      const eStart = eh * 60 + (em2 || 0);
+      const eEnd   = eStart + Math.ceil(Number(em.hours || 1) * 60);
+      if (startMin < eEnd && eStart < endMin) return em;
+    }
+  } catch {}
+  return null;
+}
+
 // Rate limiting — Upstash Redis (persistant cross-instances) avec fallback in-memory
 const _rl = new Map();
 function _rlMemory(ip, max, windowMs) {
@@ -182,7 +207,7 @@ async function handleEmailAction(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) { res.setHeader("Content-Type","text/html; charset=utf-8"); return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️")); }
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
-  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline`, { headers: hdrs });
+  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers: hdrs });
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette mission a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
 
@@ -197,6 +222,19 @@ async function handleEmailAction(req, res) {
   }
 
   const missionLabel = mission.titre || mission.metier || "la mission";
+
+  // Vérification conflit de créneau avant assignation
+  if (action === "accept") {
+    const conflict = await checkPrestaireConflict(prestaId, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, hdrs, missionId);
+    if (conflict) {
+      return res.status(409).send(emailActionHtml(
+        "Créneau indisponible",
+        `Vous avez déjà une mission (<strong>${esc(conflict.metier || "autre mission")}</strong>) sur ce créneau. Contactez ALANE pour régulariser.`,
+        "#F5A623", "⚠️"
+      ));
+    }
+  }
+
   const patchBody = action === "accept" ? { status: "assigned" } : { status: "open", prestataire_id: null };
   await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify(patchBody) });
 
@@ -556,13 +594,21 @@ export default async function handler(req, res) {
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre,date,heure_debut`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       // Refus si déjà assignée : évite la création de double PaymentIntent en cas de requêtes concurrentes
       if (missionCheck && ["assigned","completed","closed","cancelled"].includes(missionCheck.status)) {
         return res.status(409).json({ error: "La mission a déjà été assignée ou fermée" });
+      }
+
+      // Vérification conflit de créneau pour le prestataire avant de lancer le paiement
+      if (verified_prestataire_id && missionCheck) {
+        const conflict = await checkPrestaireConflict(verified_prestataire_id, missionCheck.date, missionCheck.heure_debut, missionCheck.hours, SUPABASE_URL, headers, mission_id);
+        if (conflict) {
+          return res.status(409).json({ error: `Ce prestataire a déjà une mission assignée sur ce créneau (${missionCheck.date} ${missionCheck.heure_debut || ""}). Choisissez un autre prestataire.` });
+        }
       }
 
       // Si un PaymentIntent existe déjà, vérifier son statut avant d'en créer un nouveau
@@ -2343,7 +2389,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou délai dépassé" });
@@ -2357,6 +2403,14 @@ export default async function handler(req, res) {
           body: JSON.stringify({ status: "open", prestataire_id: null }),
         }).catch(() => {});
         return res.status(410).json({ error: "Le délai d'acceptation est dépassé. La mission est de nouveau disponible." });
+      }
+
+      // Vérification conflit de créneau — bloquer l'acceptation si le prestataire a déjà une mission ce jour/heure
+      if (response === "accept") {
+        const conflict = await checkPrestaireConflict(caller.id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+        if (conflict) {
+          return res.status(409).json({ error: `Vous avez déjà une mission assignée sur ce créneau (${mission.date} ${mission.heure_debut || ""}). Vous ne pouvez pas accepter deux missions simultanées.` });
+        }
       }
 
       // Récupérer le vrai nom du prestataire depuis la DB (pas depuis le payload client)
