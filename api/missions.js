@@ -1388,7 +1388,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Utilisez l'annulation pour clore une mission en cours" });
       }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.open`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,rejected,refused)`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify({ status: "closed" }),
@@ -1843,7 +1843,21 @@ export default async function handler(req, res) {
         const missionStartUTC = new Date(missionStart.getTime() + frenchOffsetMs(missionStart));
         lessThan24h = (missionStartUTC - new Date()) / 3600000 < 24;
       }
-      const missionAmount = Number(mission.montant_total) || 0;
+      // montant_total n'est défini qu'à la validation — pour les missions assigned non validées,
+      // le montant réel est dans le PaymentIntent Stripe. On le récupère si nécessaire.
+      let missionAmount = Number(mission.montant_total) || 0;
+      if (!missionAmount && mission.stripe_payment_intent && STRIPE_SECRET_KEY) {
+        try {
+          const piRes = await fetch(`https://api.stripe.com/v1/payment_intents/${mission.stripe_payment_intent}`, {
+            headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+          });
+          if (piRes.ok) {
+            const piData = await piRes.json();
+            if (piData.amount_received > 0) missionAmount = piData.amount_received / 100;
+            else if (piData.amount > 0) missionAmount = piData.amount / 100;
+          }
+        } catch {}
+      }
       // > 24h : remboursement intégral / < 24h : frais de service retenus (4,90€)
       const refundAmount = lessThan24h
         ? Math.max(0, Math.round((missionAmount - FRAIS_SERVICE) * 100)) // en centimes
@@ -2376,17 +2390,45 @@ export default async function handler(req, res) {
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
       if (!["accept","refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
-      // Vérification quota : bloquer l'acceptation si trial épuisé et plan free
+      // Vérification quota (même logique que `accept`) — vérification atomique via RPC
       if (response === "accept") {
-        const [prRow, urData] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=trial_exhausted,plan_abonnement`, { headers }).then(r => r.json()),
-          fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).then(r => r.json()),
-        ]);
-        const trialExhausted = Array.isArray(prRow) && prRow[0]?.trial_exhausted === true;
-        const plan = (Array.isArray(prRow) && prRow[0]?.plan_abonnement) || urData?.user_metadata?.plan_abonnement || "free";
-        if (trialExhausted && plan === "free") {
-          return res.status(403).json({ error: "quota_exhausted", message: "Votre quota gratuit est épuisé. Passez Premium pour accepter des prestations." });
-        }
+        const quotaResult = await (async () => {
+          try {
+            let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
+            const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+            const slData = await slRes.json();
+            if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
+
+            const [urRes, prRes] = await Promise.all([
+              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }),
+              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
+            ]);
+            const urData = await urRes.json();
+            const prData = await prRes.json();
+            const prProfile = Array.isArray(prData) && prData[0];
+            let plan = prProfile?.plan_abonnement || urData.user_metadata?.plan_abonnement || "free";
+            const endDate = urData.user_metadata?.subscription_end_date;
+            const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
+            if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
+              plan = "free";
+              await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
+            }
+            const trialExhausted = prProfile?.trial_exhausted === true;
+            const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
+            const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
+            if (limit < 999) {
+              const slotRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_prestataire_slot`, {
+                method: "POST", headers,
+                body: JSON.stringify({ p_prestataire_id: caller.id, p_limit: limit }),
+              });
+              const slots = slotRes.ok ? (await slotRes.json().catch(() => 0)) : 0;
+              if (slots <= 0) return { error: `Limite atteinte — vous avez atteint votre limite de ${limit} mission${limit > 1 ? "s" : ""}/mois pour votre plan ${plan}.`, limit_reached: true };
+            }
+            return null;
+          } catch { return { error: "Erreur vérification limite plan", limit_reached: false }; }
+        })();
+        if (quotaResult) return res.status(403).json(quotaResult);
       }
 
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers });
