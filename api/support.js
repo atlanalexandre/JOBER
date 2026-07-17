@@ -2,13 +2,13 @@ import { esc, emailHtml, sendEmail, hashPii } from "./_email.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
-function checkContactRateLimit(ip) {
+function checkContactRateLimit(ip, max = 3) {
   const now = Date.now();
   const rec = _contactRl.get(ip) || { count: 0, reset: now + 600_000 }; // 10 min
   if (now > rec.reset) { rec.count = 0; rec.reset = now + 600_000; }
   rec.count++;
   _contactRl.set(ip, rec);
-  return rec.count > 3; // max 3 tickets/10min par IP
+  return rec.count > max;
 }
 
 async function verifyUser(req, supabaseUrl, serviceRoleKey) {
@@ -158,7 +158,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       <p style="text-align:center;margin:24px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}?bo=1' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
     `);
 
-    await sendEmail({ to: ADMIN_EMAIL, subject: `Nouvelle inscription ${roleLabel} — ${prenom} ${nom}`, html });
+    const cleanSubject = `Nouvelle inscription ${roleLabel} — ${String(prenom||"").replace(/[\r\n]/g," ")} ${String(nom||"").replace(/[\r\n]/g," ")}`;
+    await sendEmail({ to: ADMIN_EMAIL, subject: cleanSubject, html });
     return res.status(200).json({ ok: true });
   }
 
@@ -289,12 +290,11 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   if (subject.length > 200) return res.status(400).json({ error: "Le sujet ne doit pas dépasser 200 caractères" });
   if (message.length > 5000) return res.status(400).json({ error: "Le message ne doit pas dépasser 5000 caractères" });
   if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return res.status(400).json({ error: "Adresse email invalide" });
-  // Anti-spam : honeypot + rate limit pour les soumissions anonymes (sans userId)
+  // Anti-spam : honeypot + rate limit (tous les utilisateurs, limite plus haute si authentifié)
   if (_hp) return res.status(200).json({ success: true }); // Champ honeypot rempli = bot
-  if (!userId) {
-    const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
-    if (checkContactRateLimit(ip)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
-  }
+  const rlIp = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",").at(-1).trim();
+  const rlMax = userId ? 20 : 3; // 20/10min pour authentifiés, 3/10min pour anonymes
+  if (checkContactRateLimit(rlIp, rlMax)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
 
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

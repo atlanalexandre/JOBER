@@ -123,6 +123,9 @@ export default async function handler(req, res) {
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Mission introuvable" });
   if (mission.client_id !== callerPi.id) return res.status(403).json({ error: "Accès interdit — vous n'êtes pas le client de cette mission" });
+  if (!["open", "pending_acceptance"].includes(mission.status)) {
+    return res.status(400).json({ error: "Un paiement ne peut être créé que pour une mission ouverte ou en attente d'attribution" });
+  }
   const computed = mission.montant_total
     ? Number(mission.montant_total)
     : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
@@ -177,7 +180,7 @@ export default async function handler(req, res) {
 
     const r = await fetch("https://api.stripe.com/v1/payment_intents", {
       method: "POST",
-      headers: stripeHeaders,
+      headers: { ...stripeHeaders, "Idempotency-Key": `pi-${missionMetaId}-${callerPi.id}` },
       body: new URLSearchParams(params),
     });
     const intent = await r.json();

@@ -2,15 +2,21 @@ import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
-  const [tsStr, sig] = token.split(".");
+  const parts = token.split(".");
+  // Support new format (ts.nonce.sig) and legacy format (ts.sig)
+  const tsStr  = parts[0];
+  const sig    = parts.length >= 3 ? parts[2] : parts[1];
+  const payload = parts.length >= 3 ? `${parts[0]}.${parts[1]}` : parts[0];
   if (!tsStr || !sig) return false;
   const ts = parseInt(tsStr, 10);
   if (Date.now() / 1000 - ts > 86400) return false;
-  const expected = crypto.createHmac("sha256", secret).update(tsStr).digest("hex");
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   const expBuf = Buffer.from(expected, "hex");
-  const sigBuf = Buffer.from(sig, "hex");
-  if (expBuf.length !== sigBuf.length) return false;
-  return crypto.timingSafeEqual(expBuf, sigBuf);
+  try {
+    const sigBuf = Buffer.from(sig, "hex");
+    if (expBuf.length !== sigBuf.length) return false;
+    return crypto.timingSafeEqual(expBuf, sigBuf);
+  } catch { return false; }
 }
 
 function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }

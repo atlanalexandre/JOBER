@@ -32,12 +32,18 @@ export default async function handler(req, res) {
   if (!sig) return res.status(400).json({ error: "Signature manquante" });
   try {
     const crypto = await import("crypto");
-    const [, tsStr, v1] = sig.match(/t=(\d+),v1=([a-f0-9]+)/) || [];
-    if (!tsStr || !v1) return res.status(400).json({ error: "Signature invalide" });
+    const tsMatch = sig.match(/t=(\d+)/);
+    const v1Matches = [...sig.matchAll(/v1=([a-f0-9]+)/g)].map(m => m[1]);
+    const tsStr = tsMatch?.[1];
+    if (!tsStr || !v1Matches.length) return res.status(400).json({ error: "Signature invalide" });
     if (Math.abs(Date.now() / 1000 - parseInt(tsStr, 10)) > 300) return res.status(400).json({ error: "Timestamp expiré" });
     const payload  = `${tsStr}.${rawBody.toString()}`;
     const expected = crypto.default.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(payload).digest("hex");
-    if (expected.length !== v1.length || !crypto.default.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(v1, "hex"))) return res.status(400).json({ error: "Signature invalide" });
+    const expectedBuf = Buffer.from(expected, "hex");
+    const valid = v1Matches.some(v1 => {
+      try { return expectedBuf.length === v1.length / 2 && crypto.default.timingSafeEqual(expectedBuf, Buffer.from(v1, "hex")); } catch { return false; }
+    });
+    if (!valid) return res.status(400).json({ error: "Signature invalide" });
   } catch { return res.status(400).json({ error: "Erreur signature" }); }
 
   let event;
@@ -92,7 +98,7 @@ export default async function handler(req, res) {
       let missionPatch;
       try {
         missionPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=not.in.(completed,closed,cancelled,refused,rejected,assigned)`, {
-          method: "PATCH", headers, body: JSON.stringify(patch),
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" }, body: JSON.stringify(patch),
         });
       } catch (e) {
         console.error("stripe-webhook: Supabase down, Stripe will retry", e);
@@ -101,6 +107,11 @@ export default async function handler(req, res) {
       if (!missionPatch.ok) {
         console.error("stripe-webhook: mission PATCH failed", missionPatch.status, await missionPatch.text());
         return res.status(500).json({ error: "Mission update failed" });
+      }
+      const patchedRows = await missionPatch.json().catch(() => []);
+      if (!Array.isArray(patchedRows) || patchedRows.length === 0) {
+        console.log("[stripe-webhook] mission already processed (0 rows updated) — skipping secondary effects", intent.id);
+        return res.status(200).json({ received: true });
       }
 
       // Opérations secondaires : on ne bloque pas Stripe si elles échouent
