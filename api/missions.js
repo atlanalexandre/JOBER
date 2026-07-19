@@ -68,6 +68,34 @@ async function sendWebPush(sub, notification) {
   }
 }
 
+// Haversine distance in km between two lat/lng points
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Geocode a French city/postal-code string via the free government API (no key needed)
+const _geocodeCache = {};
+async function geocodeFR(query) {
+  if (!query) return null;
+  const q = String(query).trim().toLowerCase();
+  if (_geocodeCache[q]) return _geocodeCache[q];
+  try {
+    const r = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=1`, { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const feat = d?.features?.[0];
+    if (!feat) return null;
+    const [lon, lat] = feat.geometry.coordinates;
+    const result = { lat, lon };
+    _geocodeCache[q] = result;
+    return result;
+  } catch { return null; }
+}
+
 // HTML escaping — prevents XSS in email templates
 const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
@@ -1066,9 +1094,11 @@ export default async function handler(req, res) {
             const planLimit = PLAN_LIMITS_C[plan] ?? 2;
 
             const patchBody = { missions_completed_month: newCount };
+            let justExhausted = false;
             // Si le prestataire est en plan free et vient d'atteindre sa limite → marquer trial_exhausted
             if (plan === "free" && newCount >= planLimit) {
               patchBody.trial_exhausted = true;
+              justExhausted = true;
               console.log(`[complete] Prestataire ${mission.prestataire_id} a atteint sa limite free (${newCount}/${planLimit}) — trial_exhausted=true`);
             }
             await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}`, {
@@ -1076,6 +1106,20 @@ export default async function handler(req, res) {
               headers: { ...headers, "Prefer": "return=minimal" },
               body: JSON.stringify(patchBody),
             }).catch(e => console.error("[complete] prestataire missions_completed_month update error:", e.message));
+            // Notifier le prestataire qu'il a épuisé son quota gratuit
+            if (justExhausted) {
+              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({
+                  user_id: mission.prestataire_id,
+                  type: "system",
+                  title: "⛔ Quota mensuel épuisé",
+                  body: `Vous avez atteint votre limite de ${planLimit} mission${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
+                  read: false,
+                }),
+              }).catch(() => {});
+            }
           }
         } catch (e) {
           console.error("[complete] prestataire slot tracking error:", e.message);
@@ -1494,6 +1538,9 @@ export default async function handler(req, res) {
       const pushTitle = "🔔 Nouvelle mission disponible";
       const pushBody  = `${mission?.metier || sector || "Mission"} · ${mission?.date || ""} · ${mission?.ville || ""} (${mission?.hours || ""}h)`;
 
+      // Geocode mission ville once for distance filtering (best-effort, non-blocking)
+      const missionCoords = await geocodeFR(mission?.ville).catch(() => null);
+
       let notified = 0;
       if (Array.isArray(profiles)) {
         const chunks = [];
@@ -1506,6 +1553,22 @@ export default async function handler(req, res) {
               const presta_sector = meta.secteur || meta.sector;
               console.log("[broadcast] checking prestataire sector:", presta_sector, "vs mission:", sector);
               if (sector && presta_sector !== sector) return;
+
+              // Geo filter: respect prestataire's zone_km (rayon d'intervention)
+              const zoneKm = Number(meta.zone_km) || 50; // default 50 km
+              if (missionCoords) {
+                const prestaLocation = meta.ville || meta.code_postal;
+                if (prestaLocation) {
+                  const prestaCoords = await geocodeFR(prestaLocation).catch(() => null);
+                  if (prestaCoords) {
+                    const dist = haversineKm(missionCoords.lat, missionCoords.lon, prestaCoords.lat, prestaCoords.lon);
+                    if (dist > zoneKm) {
+                      console.log(`[broadcast] prestataire ${p.id} hors zone (${Math.round(dist)}km > ${zoneKm}km) — skipped`);
+                      return;
+                    }
+                  }
+                }
+              }
 
               // In-app notification
               await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {

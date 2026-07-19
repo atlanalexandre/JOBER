@@ -1459,6 +1459,8 @@ export function useProviders() {
               metiers_list: p.metiers_list || [],
               photo_url:       p.photo_url || null,
               missions_count:  p.missions_count || 0,
+              zone_km:         p.zone_km || 50,
+              trial_exhausted: p.trial_exhausted || false,
             };
           });
           _providersCache = mapped;
@@ -1579,6 +1581,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
   const { providers } = useProviders();
 
+
   const allServices = (METIERS[s.id]||[]).map(name => {
     const count = providers.filter(p=>p.sector===s.id && p.jobTitle===name).length;
     const availCount = providers.filter(p=>p.sector===s.id && p.jobTitle===name && p.available).length;
@@ -1598,8 +1601,11 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     .sort((a,b) => {
       const planDiff = (b.planRank||0) - (a.planRank||0);
       if(planDiff !== 0) return planDiff;
-      if(sortBy==="tarif")    return a.rateNum - b.rateNum;
-      if(sortBy==="distance") return parseFloat(a.distance||"9") - parseFloat(b.distance||"9");
+      if(sortBy==="tarif") return a.rateNum - b.rateNum;
+      if(sortBy==="distance" && clientCoords) {
+        const distOf = p => { const c = cpToCoords(p.code_postal); return c ? haversineKm(clientCoords.lat, clientCoords.lng, c[0], c[1]) : 9999; };
+        return distOf(a) - distOf(b);
+      }
       return b.rating - a.rating;
     });
 
@@ -2286,6 +2292,17 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         </div>
       </div>
       <div style={{ padding:"22px 18px" }}>
+
+        {/* Badge quota épuisé */}
+        {p.trial_exhausted && (p.plan || "free") === "free" && (
+          <div style={{ background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.35)", borderRadius:14, padding:"13px 16px", marginBottom:14, display:"flex", alignItems:"flex-start", gap:12 }}>
+            <span style={{ fontSize:20 }}>⛔</span>
+            <div>
+              <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:3 }}>Quota mensuel atteint</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, lineHeight:1.6 }}>Ce prestataire a utilisé toutes ses missions gratuites ce mois-ci. Il redevient disponible le 1er du mois prochain, ou en passant sur un plan Premium.</div>
+            </div>
+          </div>
+        )}
 
         {/* Bouton CV si disponible */}
         {cv && (
