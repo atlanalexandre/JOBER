@@ -296,6 +296,72 @@ export default async function handler(req, res) {
         }).catch(() => {});
       }
 
+      // Stripe: rembourser les missions payées assignées + annuler l'abonnement actif
+      const STRIPE_SK_DEL = process.env.STRIPE_SECRET_KEY;
+      if (STRIPE_SK_DEL) {
+        try {
+          const paidMissionsRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions?or=(prestataire_id.eq.${profileId},client_id.eq.${profileId})&stripe_payment_intent=not.is.null&status=in.(assigned,pending_acceptance)&select=id,client_id,prestataire_id,stripe_payment_intent,montant_total,metier,sector`,
+            { headers }
+          );
+          const paidMissions = paidMissionsRes.ok ? await paidMissionsRes.json().catch(() => []) : [];
+          for (const pm of (Array.isArray(paidMissions) ? paidMissions : [])) {
+            try {
+              const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${STRIPE_SK_DEL}`,
+                  "Content-Type": "application/x-www-form-urlencoded",
+                  "Idempotency-Key": `refund-delete-${pm.id}`,
+                },
+                body: new URLSearchParams({ payment_intent: pm.stripe_payment_intent, reason: "fraudulent" }).toString(),
+              });
+              const rfData = await rfRes.json();
+              if (rfData?.id) {
+                console.log(`[delete] Stripe refund OK: ${rfData.id} for mission ${pm.id}`);
+              } else {
+                console.error(`[delete] Stripe refund failed for mission ${pm.id}:`, JSON.stringify(rfData));
+              }
+            } catch (e) {
+              console.error(`[delete] Stripe refund exception for mission ${pm.id}:`, e.message);
+            }
+            // Notifier le client affecté (si ce n'est pas lui qui est supprimé)
+            const affectedClient = pm.client_id !== profileId ? pm.client_id : null;
+            if (affectedClient) {
+              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({
+                  user_id: affectedClient,
+                  type: "system",
+                  title: "Prestation annulée — remboursement en cours",
+                  body: `La mission "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
+                  read: false,
+                }),
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error("[delete] Stripe refunds loop error:", e.message);
+        }
+
+        // Annuler l'abonnement Stripe actif
+        try {
+          const profSubRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=stripe_subscription_id`, { headers });
+          const profSubData = profSubRes.ok ? await profSubRes.json().catch(() => []) : [];
+          const stripeSubId = Array.isArray(profSubData) && profSubData[0]?.stripe_subscription_id || null;
+          if (stripeSubId) {
+            await fetch(`https://api.stripe.com/v1/subscriptions/${stripeSubId}`, {
+              method: "DELETE",
+              headers: { "Authorization": `Bearer ${STRIPE_SK_DEL}` },
+            });
+            console.log(`[delete] Stripe subscription cancelled: ${stripeSubId}`);
+          }
+        } catch (e) {
+          console.error("[delete] Stripe subscription cancel error:", e.message);
+        }
+      }
+
       // Cascade: supprimer toutes les données liées avant de supprimer le compte
       await fetch(`${SUPABASE_URL}/rest/v1/notifications?user_id=eq.${profileId}`, {
         method: "DELETE",
