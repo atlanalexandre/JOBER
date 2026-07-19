@@ -117,6 +117,7 @@ export default async function handler(req, res) {
         missions_count:   missionCountByProvider[p.id] || 0,
         cv:               meta.cv || null,
         photo_url:        meta.photo_public_auth ? (meta.photo_url || null) : null,
+        zone_km:          Number(meta.zone_km) || 50,
         created_at:       p.created_at,
       };
     });

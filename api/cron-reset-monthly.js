@@ -542,6 +542,47 @@ ${(() => {
     }
   } catch (e) { console.error("cron zombie expiry error:", e); }
 
+  // ── Auto-clôture des missions ouvertes dont la date est passée ──
+  {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    try {
+      const pastRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&date=lt.${todayStr}&select=id,client_id,metier,titre`,
+        { headers }
+      );
+      const pastMissions = await pastRes.json().catch(() => []);
+      if (Array.isArray(pastMissions) && pastMissions.length) {
+        await Promise.all(pastMissions.map(async m => {
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "closed" }),
+          }).catch(() => {});
+          // Rejeter toutes candidatures en attente
+          await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "rejected" }),
+          }).catch(() => {});
+          if (m.client_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({
+                user_id: m.client_id,
+                type: "mission",
+                title: "Mission clôturée automatiquement",
+                body: `Votre mission "${m.titre || m.metier || "mission"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
+                read: false,
+              }),
+            }).catch(() => {});
+          }
+        }));
+        console.log(`[cron] auto-closed ${pastMissions.length} past-date open mission(s)`);
+      }
+    } catch (e) { console.error("[cron] auto-close past missions error:", e); }
+  }
+
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
     // Reset mensuel : remet missions_completed_month à 0 ET débloque trial_exhausted pour TOUS les profils.
