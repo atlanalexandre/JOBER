@@ -863,6 +863,11 @@ export default async function handler(req, res) {
       const tarifHoraire = mission.tarif_horaire || 0;
       const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
 
+      if (montantTotal <= 0) {
+        console.error(`[complete] montant_total nul — mission ${mission_id} hours=${hours} tarif=${tarifHoraire}`);
+        return res.status(400).json({ error: "Le montant de la mission est nul ou invalide — contactez le support pour finaliser manuellement." });
+      }
+
       // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
       const missionDayCount = (mission.date_debut && mission.date_fin)
         ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
@@ -1251,12 +1256,15 @@ export default async function handler(req, res) {
         if (missionEndUTC > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une mission qui n'est pas encore terminée" });
       }
 
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&validation_prestataire=is.false`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify({ validation_prestataire: true, contrat_presta_signe_at: contrat_presta_signe_at || new Date().toISOString() }),
       });
-      if (!patchRes.ok) return res.status(500).json({ error: "Erreur lors de la validation" });
+      const validatedRows = await patchRes.json().catch(() => []);
+      if (!Array.isArray(validatedRows) || validatedRows.length === 0) {
+        return res.status(400).json({ error: "La fin de mission a déjà été confirmée — vérifiez votre espace." });
+      }
 
       await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
         method: "POST",
@@ -2092,7 +2100,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             from: RESEND_FROM,
             to: clientEmail,
-            subject: `Annulation confirmée — remboursement de ${refundEur} € en cours`,
+            subject: refundAmount > 0 ? `Annulation confirmée — remboursement de ${refundEur} € en cours` : "Annulation confirmée",
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
               <h2 style="color:#050E20">✅ Annulation confirmée</h2>
               <p style="color:#444">Votre mission <strong>${esc(mission.metier || mission.sector || "")}</strong> a bien été annulée.</p>
@@ -2101,7 +2109,7 @@ export default async function handler(req, res) {
                 <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
                 ${lessThan24h ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
               </table>
-              <p style="font-size:13px;color:#666">${stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h."}</p>
+              <p style="font-size:13px;color:#666">${refundAmount > 0 ? (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.") : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${lessThan24h ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus car l'annulation a eu lieu moins de 24h avant le début de la prestation.</p>` : ""}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
@@ -2224,7 +2232,7 @@ export default async function handler(req, res) {
             headers: {
               "Authorization": `Bearer ${STRIPE_SECRET_KEY_CANCEL}`,
               "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": `refund-cancel-${mission_id}`,
+              "Idempotency-Key": `refund-cancel-inprogress-${mission_id}`,
             },
             body: new URLSearchParams({
               payment_intent: mission.stripe_payment_intent,
@@ -2610,11 +2618,15 @@ export default async function handler(req, res) {
       const patchBody = response === "accept"
         ? { status: "assigned" }
         : { status: "open", prestataire_id: null };
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      const respondPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.pending_acceptance`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
         body: JSON.stringify(patchBody),
       });
+      const respondedRows = await respondPatch.json().catch(() => []);
+      if (!Array.isArray(respondedRows) || respondedRows.length === 0) {
+        return res.status(409).json({ error: "La mission n'est plus en attente — délai dépassé ou déjà assignée." });
+      }
 
       if (mission.client_id) {
         const missionLabel = mission.titre || mission.metier || "";
@@ -3069,7 +3081,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "refused", prestataire_id: null }),
+        body: JSON.stringify({ status: "needs_replacement", prestataire_id: null }),
       });
 
       // Rejeter la candidature acceptée du prestataire qui annule

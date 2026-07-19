@@ -277,7 +277,18 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true });
       }
 
-      if (isActive && plan) {
+      // Fetch existing plan as fallback when subscription metadata has no plan set
+      let existingPlan = null;
+      try {
+        const epR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=plan_abonnement`, { headers: hdrs });
+        if (epR.ok) {
+          const epData = await epR.json().catch(() => []);
+          existingPlan = Array.isArray(epData) && epData[0]?.plan_abonnement || null;
+        }
+      } catch {}
+
+      if (isActive) {
+        const effectivePlan = plan || existingPlan || "premium";
         const endDate = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
 
         // Update user_metadata
@@ -288,7 +299,7 @@ export default async function handler(req, res) {
             const meta = u.user_metadata || {};
             await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
               method: "PUT", headers: hdrs,
-              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: plan, subscription_end_date: endDate } }),
+              body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: effectivePlan, subscription_end_date: endDate } }),
             });
           }
         } catch (e) { console.error("[sub.updated] metadata update failed:", e.message); }
@@ -298,7 +309,7 @@ export default async function handler(req, res) {
           method: "PATCH",
           headers: { ...hdrs, "Prefer": "return=minimal" },
           body: JSON.stringify({
-            plan_abonnement: plan,
+            plan_abonnement: effectivePlan,
             subscription_end_date: endDate ? endDate.split("T")[0] : null,
           }),
         }).catch(e => console.error("[sub.updated] profile patch failed:", e.message));
@@ -362,6 +373,41 @@ export default async function handler(req, res) {
         }
       } catch {}
       console.log("[payment_intent.payment_failed] mission remise en open:", missionId);
+    }
+  }
+
+  // ── Paiement de renouvellement échoué : avertir le prestataire ──
+  if (event.type === "invoice.payment_failed") {
+    const invoice    = event.data.object;
+    const customerId = invoice.customer;
+    if (customerId && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      const hdrs = {
+        "apikey":        SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "Content-Type":  "application/json",
+      };
+      let userId = null;
+      try {
+        const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_customer_id=eq.${customerId}&select=id`, { headers: hdrs });
+        if (profR.ok) {
+          const profData = await profR.json().catch(() => []);
+          userId = Array.isArray(profData) && profData[0]?.id || null;
+        }
+      } catch {}
+      if (userId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: userId,
+            type: "system",
+            title: "⚠️ Paiement de renouvellement échoué",
+            body: "Le renouvellement de votre abonnement ALANE a échoué. Mettez à jour votre moyen de paiement dans votre espace pour conserver votre accès Premium.",
+            read: false,
+          }),
+        }).catch(() => {});
+        console.warn(`[invoice.payment_failed] Renewal failed for user ${userId} — customer ${customerId}`);
+      }
     }
   }
 

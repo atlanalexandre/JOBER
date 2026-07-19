@@ -2765,7 +2765,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             </div>
           )}
-          <Btn full onClick={()=>{
+          <Btn full onClick={async ()=>{
             if(!isUrgent){
               if(!startDate){ setDateError(true); return; }
               if(missionType==="range" && !endDate){ setDateError(true); return; }
@@ -2797,6 +2797,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               }
             }
             setDateError(false); setAvailError(""); setTooSoonError(false);
+            // Vérification en temps réel : le prestataire est-il déjà pris ce jour ?
+            if (!isUrgent && startDate && p?.id) {
+              const { data: conflicts } = await supabase
+                .from("missions")
+                .select("id")
+                .eq("prestataire_id", p.id)
+                .eq("date", startDate)
+                .in("status", ["assigned", "pending_acceptance"]);
+              if (conflicts && conflicts.length > 0) {
+                setAvailError(`${p.name} a déjà une mission assignée le ${formatDate(startDate)}. Choisissez une autre date.`);
+                return;
+              }
+            }
             if (!clientContractSignedAt) {
               setShowClientContract(true);
             } else {
