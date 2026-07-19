@@ -297,7 +297,9 @@ export default async function handler(req, res) {
       const { sector, metier, limit: rawLimit, offset: rawOffset } = payload;
       const pageLimit  = Math.min(Math.max(1, parseInt(rawLimit,  10) || 50), 100);
       const pageOffset = Math.max(0, parseInt(rawOffset, 10) || 0);
-      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&order=created_at.desc&limit=${pageLimit}&offset=${pageOffset}`;
+      // Exclure les missions dont la date est passée (missions fantômes)
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let url = `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&or=(date.gte.${todayStr},date.is.null)&order=created_at.desc&limit=${pageLimit}&offset=${pageOffset}`;
       if (sector) url += `&sector=eq.${encodeURIComponent(sector)}`;
       if (metier) url += `&metier=eq.${encodeURIComponent(metier)}`;
       const r = await fetch(url, { headers });
@@ -315,6 +317,24 @@ export default async function handler(req, res) {
       );
       const missions = await r.json();
       if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
+
+      // Remettre en open les missions pending_acceptance dont la deadline est dépassée
+      // (fallback si le prestataire ne se reconnecte jamais pour déclencher my_missions)
+      const nowIsoLC = new Date().toISOString();
+      const expiredPending = missions.filter(m =>
+        m.status === "pending_acceptance" && m.acceptance_deadline && m.acceptance_deadline < nowIsoLC
+      );
+      if (expiredPending.length > 0) {
+        await Promise.all(expiredPending.map(async m => {
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "open", prestataire_id: null }),
+          }).catch(() => {});
+          m.status = "open";
+          m.prestataire_id = null;
+        }));
+      }
 
       // Fetch all candidatures for all missions in parallel
       const missionIds = missions.map(m => m.id);
@@ -1402,6 +1422,12 @@ export default async function handler(req, res) {
       if (!Array.isArray(updated) || updated.length === 0) {
         return res.status(409).json({ error: "La mission n'a pas pu être fermée — statut inattendu, rechargez et réessayez." });
       }
+      // Rejeter toutes les candidatures liées (évite les faux espoirs chez les prestataires)
+      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&status=in.(pending,accepted)`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "rejected" }),
+      }).catch(() => {});
       return res.status(200).json({ success: true });
     }
 
@@ -1939,6 +1965,13 @@ export default async function handler(req, res) {
         }
         return res.status(500).json({ error: "Erreur lors de l'annulation — réessayez ou contactez le support." });
       }
+
+      // Rejeter toutes les candidatures liées à cette mission
+      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&status=in.(pending,accepted)`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "rejected" }),
+      }).catch(() => {});
 
       // Email au client — confirmation de remboursement
       if (RESEND_API_KEY && clientEmail) {
@@ -2929,6 +2962,13 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "refused", prestataire_id: null }),
       });
+
+      // Rejeter la candidature acceptée du prestataire qui annule
+      await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.accepted`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "rejected" }),
+      }).catch(() => {});
 
       if (mission.client_id) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
