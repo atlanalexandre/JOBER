@@ -89,16 +89,24 @@ export default async function handler(req, res) {
       const zombies = await zRes.json().catch(() => []);
       if (Array.isArray(zombies) && zombies.length) {
         await Promise.all(zombies.map(async z => {
+          // Reset mission → open + effacer prestataire_id + réinitialiser broadcast_sent_at
+          // pour permettre une re-diffusion immédiate
           await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "open", prestataire_id: null }),
+            body: JSON.stringify({ status: "open", prestataire_id: null, broadcast_sent_at: null }),
           }).catch(() => {});
           if (z.client_id) {
             await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
               method: "POST",
               headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ user_id: z.client_id, type: "mission", title: "Prestataire non disponible", body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre mission"}". Elle est remise en recherche.`, read: false }),
+              body: JSON.stringify({
+                user_id: z.client_id,
+                type: "mission",
+                title: "Prestataire non disponible",
+                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre mission"}". Elle est remise en recherche — vous pouvez la re-diffuser depuis votre espace.`,
+                read: false,
+              }),
             }).catch(() => {});
           }
         }));

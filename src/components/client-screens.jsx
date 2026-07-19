@@ -2342,6 +2342,16 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>{p.langues.map(l=><Badge key={l} color={C.violet} small>{l}</Badge>)}</div>
           </div>
         )}
+        {p.zone_km && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:12 }}>
+            <span style={{ fontSize:22 }}>📍</span>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Rayon d'intervention</div>
+              <div style={{ color:C.textSub, fontSize:13, marginTop:2 }}>Intervient jusqu'à <strong style={{ color:C.violet }}>{p.zone_km} km</strong> à la ronde</div>
+            </div>
+          </div>
+        )}
+
         {p.dispon_jours?.length > 0 && (
           <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
             <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>📅 Disponibilités</h4>
