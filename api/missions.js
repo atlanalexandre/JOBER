@@ -319,6 +319,52 @@ export default async function handler(req, res) {
   };
 
   try {
+    if (action === "create_mission") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { sector, metier, date, heure_debut, hours, tarif_horaire, ville, adresse, description, titre } = payload;
+
+      // Validation serveur
+      if (!sector || !metier) return res.status(400).json({ error: "Secteur et métier requis" });
+      if (!date) return res.status(400).json({ error: "Date requise" });
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (date < todayStr) return res.status(400).json({ error: "La date de la mission ne peut pas être dans le passé" });
+      const parsedHours = Number(hours);
+      if (!parsedHours || parsedHours <= 0 || parsedHours > 24) return res.status(400).json({ error: "Durée invalide (entre 0.5 et 24h)" });
+      const parsedTarif = Number(tarif_horaire);
+      if (!parsedTarif || parsedTarif < 1) return res.status(400).json({ error: "Tarif invalide (minimum 1 €/h)" });
+      if (!ville) return res.status(400).json({ error: "Ville requise" });
+
+      // Vérifier que le caller est bien un client
+      const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role,status`, { headers });
+      const profile = (await profileRes.json().catch(() => []))[0];
+      if (!profile || profile.role !== "client") return res.status(403).json({ error: "Réservé aux clients" });
+      if (profile.status !== "approved") return res.status(403).json({ error: "Compte non approuvé" });
+
+      const missionData = {
+        client_id: caller.id,
+        sector, metier, date, heure_debut: heure_debut || null,
+        hours: parsedHours, tarif_horaire: parsedTarif,
+        ville, adresse: adresse || null,
+        description: description || null,
+        titre: titre || null,
+        status: "open",
+      };
+      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/missions`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
+        body: JSON.stringify(missionData),
+      });
+      if (!insertRes.ok) {
+        const err = await insertRes.text().catch(() => "");
+        console.error("[create_mission] insert error:", err);
+        return res.status(500).json({ error: "Erreur création mission" });
+      }
+      const created = await insertRes.json().catch(() => []);
+      const mission = Array.isArray(created) ? created[0] : created;
+      return res.status(201).json({ success: true, mission });
+    }
+
     if (action === "list_open") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
