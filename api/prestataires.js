@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   try {
     // Fetch approved prestataires + verified doc IDs in parallel
     const [profilesRes, verifiedDocsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at,trial_exhausted`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
     ]);
     const profiles     = await profilesRes.json();
@@ -105,7 +105,13 @@ export default async function handler(req, res) {
         dispo_immediat:        meta.dispo_immediat        || false,
         code_postal:      meta.code_postal      || null,
         ville:            meta.ville            || null,
-        plan_abonnement:  meta.plan_abonnement  || "free",
+        plan_abonnement:  (() => {
+          let plan = meta.plan_abonnement || "free";
+          const endDate = meta.subscription_end_date;
+          if (endDate && plan !== "free" && new Date(endDate).getTime() < Date.now()) plan = "free";
+          return plan;
+        })(),
+        trial_exhausted:  p.trial_exhausted     || false,
         rating:           avgRating,
         reviews:          provRatings.length,
         missions_count:   missionCountByProvider[p.id] || 0,
