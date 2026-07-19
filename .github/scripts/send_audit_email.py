@@ -49,7 +49,7 @@ api_key = resend.api_key
 print('API key prefix: {}...'.format(api_key[:8] if api_key else 'VIDE'))
 try:
     params = {
-        'from': 'ALANE Audit <no-reply@alane.fr>',
+        'from': 'ALANE Audit <onboarding@resend.dev>',
         'to': ['direction@alane.fr'],
         'subject': '{} Audit ALANE — {} — {}'.format(status_icon, status, date_str),
         'html': html_content,
