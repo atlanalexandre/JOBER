@@ -1,11 +1,6 @@
 export const IS_LAUNCH = true;
 export const isLaunchPhase = () => IS_LAUNCH;
 
-export const MARGES = {
-  proprete:0.20, logistique:0.18, hotellerie:0.20,
-  restauration:0.25, commercial:0.22, distribution:0.18, divers:0.20,
-};
-
 export const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 
 export const ABONNEMENTS_PRESTA = [
