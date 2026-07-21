@@ -1,5 +1,6 @@
 // Service Worker — ALANE
 // Push notifications + cache strategy
+/* global clients */
 
 const CACHE_NAME = "alane-v3";
 const STATIC_ASSETS = [

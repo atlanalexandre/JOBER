@@ -1,4 +1,5 @@
 // Vercel Edge Middleware — protection IP du backoffice
+/* global process */
 // Routes protégées : /bo, /bo/*, /api/bo-action, /api/bo-verify-pin
 //
 // Configurer BO_ALLOWED_IPS dans Vercel → Settings → Environment Variables

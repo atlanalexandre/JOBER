@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Non authentifié" });
-  let userId = null;
+  let userId;
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": auth },
