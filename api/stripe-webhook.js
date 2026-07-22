@@ -87,6 +87,33 @@ export default async function handler(req, res) {
               read: false,
             }),
           }).catch(e => console.error("[wallet_topup] notification failed:", e));
+          // Email de confirmation de recharge
+          const RESEND_API_KEY_W = process.env.RESEND_API_KEY;
+          const RESEND_FROM_W    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
+          if (RESEND_API_KEY_W) {
+            try {
+              const userR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${topupUserId}`, {
+                headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` },
+              });
+              if (userR.ok) {
+                const uData = await userR.json();
+                const userEmail = uData?.email;
+                const prenom = uData?.user_metadata?.prenom || "";
+                if (userEmail) {
+                  await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${RESEND_API_KEY_W}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      from: RESEND_FROM_W,
+                      to: userEmail,
+                      subject: `Wallet rechargé — ${topupAmount.toFixed(2).replace(".", ",")} € disponibles sur ALANE`,
+                      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 8px">Wallet rechargé 💳</h2><p style="color:rgba(255,255,255,0.7);margin:0 0 20px">Bonjour${prenom ? " " + prenom : ""},</p><div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin:0 0 20px"><div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Montant rechargé</span><strong>+${topupAmount.toFixed(2).replace(".", ",")} €</strong></div><div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:rgba(255,255,255,0.5)">Nouveau solde</span><strong style="color:#F0B429">${newBal.toFixed(2).replace(".", ",")} €</strong></div></div><p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.6">Ces fonds seront utilisés automatiquement lors de votre prochain paiement de mission, sans frais Stripe supplémentaires.</p><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p></div>`,
+                    }),
+                  }).catch(e => console.error("[wallet_topup] email failed:", e));
+                }
+              }
+            } catch {}
+          }
         } catch (e) {
           console.error("[stripe-webhook/wallet_topup] error:", e);
           return res.status(500).json({ error: "Supabase unavailable" });

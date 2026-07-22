@@ -2020,11 +2020,31 @@ export default async function handler(req, res) {
       // plutôt que "cancelled" sans remboursement (irrécupérable côté client)
       let stripeRefundId = null;
       let stripeRefundError = null;
+      let walletRefunded = false;
       const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
-      if (mission.stripe_payment_intent && refundAmount > 0 && STRIPE_SECRET_KEY) {
+      const isWalletPaid = mission.stripe_payment_intent?.startsWith("wallet_");
+
+      if (isWalletPaid && refundAmount > 0) {
+        // Remboursement sur le wallet prépayé
+        try {
+          const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
+          const profData = await profR.json().catch(() => []);
+          const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+          const refundEuros = refundAmount / 100;
+          const newBal = Math.round((currentBal + refundEuros) * 100) / 100;
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ prepaid_balance: newBal }),
+          });
+          walletRefunded = true;
+        } catch (e) {
+          console.error("[cancel_client] wallet refund failed:", e.message);
+        }
+      } else if (!isWalletPaid && mission.stripe_payment_intent && refundAmount > 0 && STRIPE_SECRET_KEY) {
         try {
           const stripeBody = new URLSearchParams({
             payment_intent: mission.stripe_payment_intent,
@@ -2109,7 +2129,7 @@ export default async function handler(req, res) {
                 <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
                 ${lessThan24h ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
               </table>
-              <p style="font-size:13px;color:#666">${refundAmount > 0 ? (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.") : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
+              <p style="font-size:13px;color:#666">${refundAmount > 0 ? (walletRefunded ? "Le remboursement a été crédité instantanément sur votre wallet ALANE." : (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.")) : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
               ${lessThan24h ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus car l'annulation a eu lieu moins de 24h avant le début de la prestation.</p>` : ""}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
@@ -2219,7 +2239,24 @@ export default async function handler(req, res) {
       const originalMontant = Number(mission.montant_total) || 0;
       const refundAmount = Math.max(0, originalMontant - proratedAmount);
       let stripeRefundId = null;
-      if (refundAmount > 0 && mission.stripe_payment_intent) {
+      const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
+
+      if (refundAmount > 0 && isWalletPaidInProgress) {
+        // Remboursement proraté sur le wallet prépayé
+        try {
+          const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
+          const profData = await profR.json().catch(() => []);
+          const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+          const newBal = Math.round((currentBal + refundAmount) * 100) / 100;
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ prepaid_balance: newBal }),
+          });
+        } catch (e) {
+          console.error("[cancel_in_progress] wallet refund failed:", e.message);
+        }
+      } else if (refundAmount > 0 && mission.stripe_payment_intent && !isWalletPaidInProgress) {
         // Stripe refund is mandatory when a payment was captured — abort cancellation on failure
         const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
         if (!STRIPE_SECRET_KEY_CANCEL) {
@@ -3047,34 +3084,55 @@ export default async function handler(req, res) {
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Mission introuvable ou non annulable" });
 
-      // Remboursement Stripe si la mission était payée — abort si le refund échoue
+      // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {
-        if (!process.env.STRIPE_SECRET_KEY) {
-          return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
-        }
-        try {
-          const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": `refund-presta-cancel-${mission_id}`,
-            },
-            body: new URLSearchParams({
-              payment_intent: mission.stripe_payment_intent,
-              reason: "requested_by_customer",
-            }).toString(),
-          });
-          const refundData = await refundRes.json();
-          if (refundData.id) {
-            console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour mission ${mission_id}`);
-          } else {
-            console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+        const isWalletPaidPresta = mission.stripe_payment_intent.startsWith("wallet_");
+        if (isWalletPaidPresta) {
+          // Remboursement intégral sur le wallet du client
+          const refundAmountEuros = Number(mission.montant_total) || 0;
+          if (refundAmountEuros > 0 && mission.client_id) {
+            try {
+              const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers });
+              const profData = await profR.json().catch(() => []);
+              const currentBal = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+              const newBal = Math.round((currentBal + refundAmountEuros) * 100) / 100;
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.client_id}`, {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ prepaid_balance: newBal }),
+              });
+            } catch (e) {
+              console.error("[presta_cancel] wallet refund failed:", e.message);
+            }
+          }
+        } else {
+          if (!process.env.STRIPE_SECRET_KEY) {
+            return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
+          }
+          try {
+            const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Idempotency-Key": `refund-presta-cancel-${mission_id}`,
+              },
+              body: new URLSearchParams({
+                payment_intent: mission.stripe_payment_intent,
+                reason: "requested_by_customer",
+              }).toString(),
+            });
+            const refundData = await refundRes.json();
+            if (refundData.id) {
+              console.log(`[presta_cancel] Remboursement Stripe OK: ${refundData.id} pour mission ${mission_id}`);
+            } else {
+              console.error(`[presta_cancel] Remboursement Stripe échoué:`, JSON.stringify(refundData));
+              return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
+            }
+          } catch (stripeErr) {
+            console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
             return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
           }
-        } catch (stripeErr) {
-          console.error(`[presta_cancel] Erreur appel Stripe refund:`, stripeErr.message);
-          return res.status(500).json({ error: "Le remboursement Stripe a échoué — la mission n'a pas été annulée. Contactez le support." });
         }
       }
 
