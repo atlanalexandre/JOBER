@@ -324,6 +324,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [prepaidBalance, setPrepaidBalance] = useState(0);
   const [useWallet, setUseWallet]           = useState(false);
   const [walletProcessing, setWalletProcessing] = useState(false);
+  const [showTopupModal,   setShowTopupModal]   = useState(false);
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
   const applePayStripeRef = useRef(null);
@@ -663,6 +664,35 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           </div>
         )}
 
+        {/* Wallet insuffisant — bannière de recharge rapide */}
+        {prepaidBalance > 0 && prepaidBalance < total && (
+          <div style={{ background:"rgba(107,86,255,0.10)", border:"1px solid rgba(107,86,255,0.35)", borderRadius:14, padding:"14px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
+            <div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>💰 Wallet insuffisant</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>
+                Solde : <strong style={{ color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".",",")} €</strong> — il manque <strong style={{ color:C.violet }}>{(total - prepaidBalance).toFixed(2).replace(".",",")} €</strong>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowTopupModal(true)}
+              style={{ background:C.violet, border:"none", borderRadius:10, padding:"10px 16px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", flexShrink:0 }}>
+              + Recharger
+            </button>
+          </div>
+        )}
+
+        {showTopupModal && (
+          <WalletTopupModal
+            onClose={() => setShowTopupModal(false)}
+            onSuccess={(amt) => {
+              const newBalance = Math.round((prepaidBalance + amt) * 100) / 100;
+              setPrepaidBalance(newBalance);
+              setShowTopupModal(false);
+              if (newBalance >= total) setUseWallet(true);
+            }}
+          />
+        )}
+
         {/* Méthode de paiement */}
         {!useWallet && (
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
@@ -753,14 +783,16 @@ const ALANE_FORME   = "SAS";
 const TOPUP_AMOUNTS = [20, 50, 100, 200];
 
 export function WalletTopupModal({ onClose, onSuccess }) {
-  const [selectedAmt, setSelectedAmt] = useState(50);
-  const [customAmt,   setCustomAmt]   = useState("");
-  const [useCustom,   setUseCustom]   = useState(false);
-  const [cardName,    setCardName]    = useState("");
-  const [cardNameErr, setCardNameErr] = useState(false);
-  const [processing,  setProcessing]  = useState(false);
-  const [done,        setDone]        = useState(false);
-  const [error,       setError]       = useState(null);
+  const [selectedAmt,  setSelectedAmt]  = useState(50);
+  const [customAmt,    setCustomAmt]    = useState("");
+  const [useCustom,    setUseCustom]    = useState(false);
+  const [cardName,     setCardName]     = useState("");
+  const [cardNameErr,  setCardNameErr]  = useState(false);
+  const [processing,   setProcessing]   = useState(false);
+  const [done,         setDone]         = useState(false);
+  const [error,        setError]        = useState(null);
+  const [savedCard,    setSavedCard]    = useState(null); // { pmId, brand, last4 }
+  const [useSavedCard, setUseSavedCard] = useState(false);
   const stripeRef  = useRef(null);
   const cardElRef  = useRef(null);
   const mountRef   = useRef(null);
@@ -775,14 +807,32 @@ export function WalletTopupModal({ onClose, onSuccess }) {
     ? `Avec ${amount} €, couvrez plusieurs missions et ne payez les 0,25 € de frais fixes Stripe qu'une seule fois — au lieu d'une fois par prestation.`
     : "Chaque recharge = un seul paiement Stripe, quelle que soit la quantité de missions financées.";
 
+  // Load saved card from user_metadata on mount
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const m = data?.user?.user_metadata || {};
+      if (m.stripe_pm_id) {
+        setSavedCard({ pmId: m.stripe_pm_id, brand: m.card_brand || "card", last4: m.card_last4 || "••••" });
+        setUseSavedCard(true);
+      }
+    });
+  }, []);
+
+  // Mount Stripe card element only when using a new card
+  useEffect(() => {
+    if (useSavedCard) {
+      if (cardElRef.current) { cardElRef.current.destroy(); cardElRef.current = null; }
+      return;
+    }
+    let destroyed = false;
     (async () => {
       const { loadStripe } = await import("@stripe/stripe-js");
       const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-      if (!pk || !mountRef.current) return;
+      if (!pk || destroyed) return;
       const stripe = await loadStripe(pk);
-      if (!stripe) return;
+      if (!stripe || destroyed) return;
       stripeRef.current = stripe;
+      if (!mountRef.current || cardElRef.current || destroyed) return;
       const elements = stripe.elements();
       const cardEl = elements.create("card", {
         hidePostalCode: true,
@@ -792,19 +842,28 @@ export function WalletTopupModal({ onClose, onSuccess }) {
         },
       });
       cardElRef.current = cardEl;
-      if (mountRef.current) cardEl.mount(mountRef.current);
+      if (mountRef.current && !destroyed) cardEl.mount(mountRef.current);
     })();
-    return () => { if (cardElRef.current) { cardElRef.current.destroy(); cardElRef.current = null; } };
-  }, []);
+    return () => {
+      destroyed = true;
+      if (cardElRef.current) { cardElRef.current.destroy(); cardElRef.current = null; }
+    };
+  }, [useSavedCard]);
 
   const handlePay = async () => {
     if (processing || done) return;
-    if (!cardName.trim()) { setCardNameErr(true); return; }
+    if (!useSavedCard && !cardName.trim()) { setCardNameErr(true); return; }
     if (!amount || amount < 10 || amount > 1000) { setError("Montant invalide (10 € – 1 000 €)"); return; }
-    if (!stripeRef.current || !cardElRef.current) { setError("Stripe non initialisé — rechargez la page."); return; }
+    if (!useSavedCard && (!stripeRef.current || !cardElRef.current)) { setError("Stripe non initialisé — rechargez la page."); return; }
     setProcessing(true);
     setError(null);
     try {
+      // Ensure Stripe is loaded when using saved card (no card element was mounted)
+      if (useSavedCard && !stripeRef.current) {
+        const { loadStripe } = await import("@stripe/stripe-js");
+        const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+        stripeRef.current = await loadStripe(pk);
+      }
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const r = await fetch("/api/stripe-wallet-topup", {
@@ -814,9 +873,10 @@ export function WalletTopupModal({ onClose, onSuccess }) {
       });
       const { clientSecret, error: intentErr } = await r.json();
       if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
-      const { error: stripeErr, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, {
-        payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined },
-      });
+      const paymentMethodParam = useSavedCard && savedCard
+        ? { payment_method: savedCard.pmId }
+        : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
+      const { error: stripeErr, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, paymentMethodParam);
       if (stripeErr) throw new Error(stripeErr.message);
       if (paymentIntent?.status === "succeeded") {
         setDone(true);
@@ -888,21 +948,53 @@ export function WalletTopupModal({ onClose, onSuccess }) {
             {/* Carte */}
             <div style={{ marginBottom:14 }}>
               <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:1 }}>Paiement par carte</div>
-              <div style={{ marginBottom:10 }}>
-                <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:5, color: cardNameErr ? "#f87171" : "rgba(255,255,255,0.5)" }}>
-                  Titulaire <span style={{ color:"#f87171" }}>*</span>
-                </label>
-                <input
-                  value={cardName}
-                  onChange={e=>{ setCardName(e.target.value); if(e.target.value.trim()) setCardNameErr(false); }}
-                  placeholder="Jean Dupont"
-                  style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${cardNameErr?"#f87171":"rgba(255,255,255,0.15)"}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:"#fff" }}
-                />
-                {cardNameErr && <div style={{ color:"#f87171", fontSize:11, marginTop:4 }}>Champ obligatoire</div>}
-              </div>
-              <div style={{ borderRadius:11, border:"1px solid rgba(255,255,255,0.15)", background:"#162547", overflow:"hidden" }}>
-                <div ref={mountRef} style={{ padding:"14px", minHeight:50 }} />
-              </div>
+
+              {/* Saved card selector */}
+              {savedCard && (
+                <div style={{ marginBottom:12 }}>
+                  <div onClick={()=>setUseSavedCard(true)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useSavedCard ? "rgba(107,86,255,0.12)" : "rgba(255,255,255,0.04)", border:`2px solid ${useSavedCard ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:11, padding:"12px 14px", cursor:"pointer", marginBottom:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:20 }}>💳</span>
+                      <div>
+                        <div style={{ fontWeight:700, color:"#fff", fontSize:13, textTransform:"capitalize" }}>{savedCard.brand} ••••{savedCard.last4}</div>
+                        <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>Carte enregistrée</div>
+                      </div>
+                    </div>
+                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useSavedCard ? C.violet : "rgba(255,255,255,0.25)"}`, background:useSavedCard ? C.violet : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      {useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
+                    </div>
+                  </div>
+                  <div onClick={()=>setUseSavedCard(false)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: !useSavedCard ? "rgba(107,86,255,0.12)" : "rgba(255,255,255,0.04)", border:`2px solid ${!useSavedCard ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:20 }}>➕</span>
+                      <div style={{ fontWeight:600, color:"#fff", fontSize:13 }}>Utiliser une autre carte</div>
+                    </div>
+                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${!useSavedCard ? C.violet : "rgba(255,255,255,0.25)"}`, background:!useSavedCard ? C.violet : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      {!useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(!savedCard || !useSavedCard) && (
+                <>
+                  <div style={{ marginBottom:10 }}>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:5, color: cardNameErr ? "#f87171" : "rgba(255,255,255,0.5)" }}>
+                      Titulaire <span style={{ color:"#f87171" }}>*</span>
+                    </label>
+                    <input
+                      value={cardName}
+                      onChange={e=>{ setCardName(e.target.value); if(e.target.value.trim()) setCardNameErr(false); }}
+                      placeholder="Jean Dupont"
+                      style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${cardNameErr?"#f87171":"rgba(255,255,255,0.15)"}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:"#fff" }}
+                    />
+                    {cardNameErr && <div style={{ color:"#f87171", fontSize:11, marginTop:4 }}>Champ obligatoire</div>}
+                  </div>
+                  <div style={{ borderRadius:11, border:"1px solid rgba(255,255,255,0.15)", background:"#162547", overflow:"hidden" }}>
+                    <div ref={mountRef} style={{ padding:"14px", minHeight:50 }} />
+                  </div>
+                </>
+              )}
             </div>
 
             {error && (
