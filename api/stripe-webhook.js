@@ -51,7 +51,50 @@ export default async function handler(req, res) {
   catch { return res.status(400).json({ error: "JSON invalide" }); }
 
   if (event.type === "payment_intent.succeeded") {
-    const intent        = event.data.object;
+    const intent = event.data.object;
+
+    // ── Recharge wallet ───────────────────────────────────────────
+    if (intent.metadata?.type === "wallet_topup") {
+      const topupUserId = intent.metadata?.user_id;
+      const topupAmount = Number(intent.metadata?.amount_euros) || (intent.amount / 100);
+      if (topupUserId && topupAmount > 0 && SUPABASE_URL && SERVICE_ROLE_KEY) {
+        const wHdrs = {
+          "apikey":        SERVICE_ROLE_KEY,
+          "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+          "Content-Type":  "application/json",
+          "Prefer":        "return=minimal",
+        };
+        try {
+          const profR    = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}&select=prepaid_balance`, {
+            headers: { ...wHdrs, "Prefer": "return=representation" },
+          });
+          const profData = await profR.json().catch(() => []);
+          const current  = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+          const newBal   = Math.round((current + topupAmount) * 100) / 100;
+          const upd = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}`, {
+            method: "PATCH", headers: wHdrs, body: JSON.stringify({ prepaid_balance: newBal }),
+          });
+          if (!upd.ok) {
+            console.error("[stripe-webhook/wallet_topup] PATCH failed", upd.status);
+            return res.status(500).json({ error: "Wallet update failed" });
+          }
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers: wHdrs,
+            body: JSON.stringify({
+              user_id: topupUserId, type: "cashback",
+              title: "Wallet rechargé 💳",
+              body: `${topupAmount.toFixed(2).replace(".", ",")} € ajoutés à votre wallet ALANE. Solde : ${newBal.toFixed(2).replace(".", ",")} €.`,
+              read: false,
+            }),
+          }).catch(e => console.error("[wallet_topup] notification failed:", e));
+        } catch (e) {
+          console.error("[stripe-webhook/wallet_topup] error:", e);
+          return res.status(500).json({ error: "Supabase unavailable" });
+        }
+      }
+      return res.status(200).json({ received: true });
+    }
+
     const missionId     = intent.metadata?.mission;
     const candidatureId = intent.metadata?.candidature_id;
     const prestataireId = intent.metadata?.prestataire_id;

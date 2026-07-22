@@ -5,7 +5,7 @@ import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prix
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
-import { StripePaymentScreen } from "./payment.jsx";
+import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
 
 function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
@@ -719,6 +719,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
+  const [prepaidBalance, setPrepaidBalance] = useState(0);
+  const [showTopupModal, setShowTopupModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
@@ -754,12 +756,13 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const tourKey = `alane_tour_done_${user.id}`;
       let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
       if (!tourDone) setShowTour(true);
-      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
+      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month,prepaid_balance").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
           if (p.prenom) setUserName(p.prenom);
           setWalletBalance(p.cashback_balance || 0);
           setWalletMissions(p.missions_completed_month || 0);
+          setPrepaidBalance(Number(p.prepaid_balance || 0));
         });
     });
     return ()=>{ mounted=false; };
@@ -1121,6 +1124,46 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           </div>
         </div>
       </div>
+
+      {/* ── Wallet prépayé ── */}
+      <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
+        <div style={{
+          borderRadius:16, padding:"16px 18px",
+          background:"rgba(255,255,255,0.03)",
+          border:"1px solid rgba(255,255,255,0.08)",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+        }}>
+          <div>
+            <div style={{ fontSize:10, letterSpacing:1.4, textTransform:"uppercase", color:"rgba(255,255,255,0.45)", fontWeight:600, marginBottom:4 }}>Wallet paiement</div>
+            <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+              <span style={{ fontSize:24, fontWeight:800, color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".", ",")}</span>
+              <span style={{ fontSize:14, color:"rgba(255,255,255,0.5)" }}>€</span>
+            </div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
+              {prepaidBalance > 0 ? "Utilisé automatiquement au paiement" : "Rechargez pour éviter les frais Stripe fixes"}
+            </div>
+          </div>
+          <button onClick={()=>setShowTopupModal(true)} style={{
+            background:C.violet, border:"none", borderRadius:11, padding:"10px 14px",
+            color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+            whiteSpace:"nowrap", flexShrink:0,
+          }}>+ Recharger</button>
+        </div>
+        {prepaidBalance === 0 && (
+          <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.35)", display:"flex", alignItems:"center", gap:5 }}>
+            <span>💡</span>
+            <span>Économisez 0,25 € de frais Stripe par prestation financée depuis le wallet</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal recharge wallet ── */}
+      {showTopupModal && (
+        <WalletTopupModal
+          onClose={() => setShowTopupModal(false)}
+          onSuccess={(amt) => { setPrepaidBalance(b => Math.round((b + amt) * 100) / 100); setShowTopupModal(false); }}
+        />
+      )}
 
       {/* ── Mode urgence ── */}
       <div style={{ padding:"0 22px 24px", position:"relative", zIndex:2 }}>
@@ -5000,7 +5043,7 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 4 — Statut indépendant des Prestataires",
-          text:"Les Prestataires inscrits sur la Plateforme interviennent en qualité d'auto-entrepreneurs ou de micro-entrepreneurs indépendants, conformément aux dispositions de l'article L8221-6 du Code du travail.\n\nLes Missions réalisées via la Plateforme ne constituent en aucun cas des contrats de travail entre le Prestataire et le Client, ni entre le Prestataire et ALANE. Il n'existe aucun lien de subordination entre les parties. Le Prestataire est seul maître de son organisation, de ses horaires (sous réserve des contraintes inhérentes à la Mission acceptée) et des moyens mis en œuvre pour exécuter la prestation.\n\nLe Prestataire conserve la pleine autonomie dans les moyens mis en œuvre pour exécuter la prestation : le Client définit le résultat attendu, non les méthodes de travail. Le Prestataire est libre d'exercer son activité pour d'autres clients, y compris concurrents, parallèlement à son activité sur la Plateforme, et ne peut se voir imposer aucune exclusivité. L'organisation de son temps de travail en dehors des créneaux définis dans la Mission lui appartient entièrement.\n\nLe fait que la Mission précise un horaire, un lieu et une durée est inhérent à la nature des services de proximité, et ne constitue pas en soi un lien de subordination : ces contraintes résultent des exigences de la prestation elle-même, et non d'un pouvoir de direction exercé sur le Prestataire par le Client ou par ALANE.\n\nALANE n'est pas une entreprise de travail temporaire au sens des articles L1251-1 et suivants du Code du travail, ni une entreprise de mise à disposition de personnel au sens de l'article L8241-1 du même code.\n\nChaque Prestataire est personnellement responsable de :\n• Son immatriculation régulière et du maintien en règle de son statut d'auto-entrepreneur\n• Le paiement de ses cotisations sociales auprès de l'URSSAF\n• La déclaration de ses revenus issus des Missions réalisées via la Plateforme\n• Le respect des plafonds de chiffre d'affaires applicables au régime de la micro-entreprise (77 700 € pour les prestations de services, au 1er janvier 2026)\n• La souscription aux assurances professionnelles nécessaires à l'exercice de son activité\n\n4.1 Secteurs exclus\nALANE est une plateforme de mise en relation de professionnels indépendants qualifiés. Afin de prévenir tout risque de requalification en prêt de main-d'œuvre illicite ou en travail temporaire déguisé, les métiers relevant exclusivement de l'exécution industrielle en série sont exclus de la Plateforme. Sont notamment interdits : opérateur de production, manutentionnaire, préparateur de commandes, cariste (sans certification autonome), conditionneur, agent de fabrication en ligne de production. Cette liste est indicative et peut être complétée par ALANE à tout moment. Tout compte dont les missions relèvent de ces catégories exclues peut être suspendu sans préavis."
+          text:"Les Prestataires inscrits sur la Plateforme interviennent en qualité d'auto-entrepreneurs ou de micro-entrepreneurs indépendants, conformément aux dispositions de l'article L8221-6 du Code du travail.\n\nLes Missions réalisées via la Plateforme ne constituent en aucun cas des contrats de travail entre le Prestataire et le Client, ni entre le Prestataire et ALANE. Il n'existe aucun lien de subordination entre les parties. Le Prestataire est seul maître de son organisation, de ses horaires (sous réserve des contraintes inhérentes à la Mission acceptée) et des moyens mis en œuvre pour exécuter la prestation.\n\nLe Prestataire conserve la pleine autonomie dans les moyens mis en œuvre pour exécuter la prestation : le Client définit le résultat attendu, non les méthodes de travail. Le Prestataire est libre d'exercer son activité pour d'autres clients, y compris concurrents, parallèlement à son activité sur la Plateforme, et ne peut se voir imposer aucune exclusivité. L'organisation de son temps de travail en dehors des créneaux définis dans la Mission lui appartient entièrement.\n\nLe fait que la Mission précise un horaire, un lieu et une durée est inhérent à la nature des services de proximité, et ne constitue pas en soi un lien de subordination : ces contraintes résultent des exigences de la prestation elle-même, et non d'un pouvoir de direction exercé sur le Prestataire par le Client ou par ALANE.\n\nALANE n'est pas une entreprise de travail temporaire au sens des articles L1251-1 et suivants du Code du travail, ni une entreprise de mise à disposition de personnel au sens de l'article L8241-1 du même code.\n\nChaque Prestataire est personnellement responsable de :\n• Son immatriculation régulière et du maintien en règle de son statut d'auto-entrepreneur\n• Le paiement de ses cotisations sociales auprès de l'URSSAF\n• La déclaration de ses revenus issus des Missions réalisées via la Plateforme\n• Le respect des plafonds de chiffre d'affaires applicables au régime de la micro-entreprise (77 700 € pour les prestations de services, au 1er janvier 2026)\n• La souscription aux assurances professionnelles nécessaires à l'exercice de son activité\n\n4.1 Secteurs exclus\nALANE est une plateforme de mise en relation de professionnels indépendants qualifiés. Afin de prévenir tout risque de requalification en prêt de main-d'œuvre illicite ou en travail temporaire déguisé, les métiers relevant exclusivement de l'exécution industrielle en série sont exclus de la Plateforme. Sont notamment interdits : opérateur de production, manutentionnaire, préparateur de commandes, cariste (sans certification autonome), conditionneur, agent de fabrication en ligne de production. Cette liste est indicative et peut être complétée par ALANE à tout moment. ALANE se réserve le droit d'exclure toute activité dont les modalités d'exécution seraient susceptibles de relever principalement d'une mise à disposition de personnel, quand bien même le métier ne figurerait pas expressément dans la liste ci-dessus. Tout compte dont les missions présentent des indices sérieux de relever d'un secteur exclu peut être suspendu immédiatement à titre conservatoire, dans l'attente d'un examen contradictoire conformément à l'article 16."
         },
         {
           title:"Article 5 — Fonctionnement des Missions",
@@ -5012,7 +5055,7 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 6 — Tarifs et commission ALANE",
-          text:"6.1 Rémunération du Prestataire\nLe tarif horaire est librement fixé par le Prestataire lors de la création de son profil. Ce tarif constitue la rémunération nette que percevra le Prestataire pour chaque heure de prestation réalisée, déduction faite des cotisations sociales dont il est lui-même redevable en sa qualité d'auto-entrepreneur.\n\n6.2 Frais de service ALANE\nEn contrepartie des services d'intermédiation rendus par la Plateforme, ALANE perçoit des frais de service à la charge du Client, ajoutés au montant de la prestation lors du paiement. Ces frais couvrent les coûts de traitement, la gestion des paiements via Stripe, la mise en relation et le service client. Les frais en vigueur sont les suivants :\n• Prestation ponctuelle : 4,90 €\n• Prestation multi-jours : 2,90 € par jour\n• Prestation urgente (moins de 24h) : 9,90 €\n\nCes tarifs sont susceptibles d'évoluer. Toute modification tarifaire sera notifiée aux utilisateurs avec un préavis d'au moins 30 jours via la Plateforme et/ou par email.\n\n6.3 Facturation\nALANE n'émet pas de facture pour les prestations réalisées entre Clients et Prestataires. Chaque Prestataire est seul responsable de l'émission des factures correspondant à son activité indépendante. La Plateforme met à disposition une attestation de prestation à titre indicatif, qui ne constitue pas un document comptable au sens légal."
+          text:"6.1 Rémunération du Prestataire\nLe tarif horaire est librement fixé par le Prestataire lors de la création de son profil. Ce tarif est communiqué à titre d'outil d'estimation économique de la prestation et ne constitue pas une rémunération salariale ni une mise à disposition de personnel au sens du Code du travail. Il représente la contrepartie financière convenue entre le Client et le Prestataire pour la réalisation d'une prestation déterminée, déduction faite des cotisations sociales dont le Prestataire est lui-même redevable en sa qualité d'auto-entrepreneur.\n\n6.2 Frais de service ALANE\nEn contrepartie des services d'intermédiation rendus par la Plateforme, ALANE perçoit des frais de service à la charge du Client, ajoutés au montant de la prestation lors du paiement. Ces frais couvrent les coûts de traitement, la gestion des paiements via Stripe, la mise en relation et le service client. Les frais en vigueur sont les suivants :\n• Prestation ponctuelle : 4,90 €\n• Prestation multi-jours : 2,90 € par jour\n• Prestation urgente (moins de 24h) : 9,90 €\n\nCes tarifs sont susceptibles d'évoluer. Toute modification tarifaire sera notifiée aux utilisateurs avec un préavis d'au moins 30 jours via la Plateforme et/ou par email.\n\n6.3 Facturation\nALANE n'émet pas de facture pour les prestations réalisées entre Clients et Prestataires. Chaque Prestataire est seul responsable de l'émission des factures correspondant à son activité indépendante. La Plateforme met à disposition une attestation de prestation à titre indicatif, qui ne constitue pas un document comptable au sens légal."
         },
         {
           title:"Article 7 — Paiement et sécurisation des fonds",
@@ -5020,7 +5063,7 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 8 — Annulations et remboursements",
-          text:"8.1 Annulation par le Client\nEn cas d'annulation d'une Mission par le Client avant le début de la prestation :\n• Les frais de service ALANE sont en principe retenus et non remboursables car ils couvrent des coûts déjà engagés. Par exception, en cas d'annulation directement imputable à un dysfonctionnement avéré de la Plateforme ou à une erreur d'ALANE, les frais de service pourront être remboursés ou crédités sur le compte du Client.\n• Le montant de la prestation (tarif horaire × durée) est remboursé intégralement au Client si l'annulation intervient plus de 24 heures avant le début prévu de la Mission.\n• Si l'annulation intervient moins de 24 heures avant le début prévu, les frais de service ALANE (4,90 €) sont retenus à titre d'indemnité d'annulation ; le reste du montant de la prestation est remboursé intégralement au Client.\n• Si le Client ne se présente pas ou annule après le début de la prestation, le montant intégral de la prestation est dû au Prestataire.\n\n8.2 Annulation par le Prestataire\nEn cas d'annulation d'une Mission par le Prestataire après acceptation de la candidature, le Client est intégralement remboursé (montant de la prestation + frais de service). ALANE se réserve le droit de prendre toute mesure contractuelle proportionnée, incluant une réduction de la visibilité du profil sur la Plateforme ou la restriction temporaire ou définitive de l'accès au service, en cas d'annulations répétées ou abusives, après notification écrite au Prestataire.\n\n8.3 Remboursements\nLes remboursements sont traités via Stripe et crédités sur le moyen de paiement initialement utilisé par le Client dans un délai de 5 à 10 jours ouvrés selon l'établissement bancaire."
+          text:"8.1 Annulation par le Client\nEn cas d'annulation d'une Mission par le Client avant le début de la prestation :\n• Les frais de service ALANE sont en principe retenus et non remboursables car ils couvrent des coûts déjà engagés. Par exception, en cas d'annulation directement imputable à un dysfonctionnement avéré de la Plateforme ou à une erreur d'ALANE, les frais de service pourront être remboursés ou crédités sur le compte du Client.\n• Le montant de la prestation (tarif horaire × durée) est remboursé intégralement au Client si l'annulation intervient plus de 24 heures avant le début prévu de la Mission.\n• Si l'annulation intervient moins de 24 heures avant le début prévu, les frais de service ALANE (4,90 €) sont retenus à titre d'indemnité d'annulation ; le reste du montant de la prestation est remboursé intégralement au Client.\n• Si le Client ne se présente pas ou annule après le début de la prestation, le montant intégral de la prestation est dû au Prestataire.\n\n8.2 Annulation par le Prestataire\nEn cas d'annulation d'une Mission par le Prestataire après acceptation de la candidature, le Client est intégralement remboursé (montant de la prestation + frais de service). ALANE se réserve le droit de prendre toute mesure contractuelle proportionnée, incluant des restrictions d'accès au service temporaires ou définitives, en cas d'annulations répétées ou abusives, après notification écrite au Prestataire.\n\n8.3 Remboursements\nLes remboursements sont traités via Stripe et crédités sur le moyen de paiement initialement utilisé par le Client dans un délai de 5 à 10 jours ouvrés selon l'établissement bancaire."
         },
         {
           title:"Article 9 — Obligations du Prestataire",
