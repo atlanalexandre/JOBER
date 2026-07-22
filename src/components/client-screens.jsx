@@ -564,7 +564,10 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         {/* Suppression RGPD */}
         <DeleteAccountSection onLogout={onLogout} />
 
-        <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20 }}>ALANE v1.0 · Tous droits réservés</p>
+        <p style={{ textAlign:"center", color:C.textMuted, fontSize:11, marginTop:20, lineHeight:1.8 }}>
+          ALANE v1.0 · Tous droits réservés<br/>
+          <a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:C.violet, textDecoration:"underline" }}>Conditions Générales (CGPS)</a>
+        </p>
       </div>
 
       {/* Modal changement de mot de passe */}
@@ -4787,6 +4790,9 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
               <Btn full onClick={()=>window.print()} style={{ padding:"14px", fontSize:14, fontWeight:700 }}>
                 🖨️ Télécharger / Imprimer PDF
               </Btn>
+              <div style={{ textAlign:"center", marginTop:12 }}>
+                <a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:C.textSub, fontSize:11, textDecoration:"underline" }}>Lire les CGPS complètes →</a>
+              </div>
             </div>
           </div>
         )}

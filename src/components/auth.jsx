@@ -691,6 +691,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
             <div style={{ marginTop:16, textAlign:"center" }}>
               <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
+              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.45)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale (19 articles) →</a></div>
             </div>
           </div>
         </div>
@@ -1044,6 +1045,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
             <div style={{ marginTop:16, textAlign:"center" }}>
               <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
+              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.45)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale (19 articles) →</a></div>
             </div>
           </div>
         </div>
