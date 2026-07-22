@@ -344,7 +344,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       timestamp: Date.now(),
     };
     // A — localStorage (reprise in-app immédiate)
-    try { localStorage.setItem("jober_booking_draft", JSON.stringify(draft)); } catch {}
+    try { localStorage.setItem("jober_booking_draft", JSON.stringify(draft)); } catch { /* ignore */ }
     // B+C — Supabase (push + email via cron après 30 min)
     supabase.auth.getSession().then(({ data: sd }) => {
       const token = sd?.session?.access_token;
@@ -457,7 +457,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   }, [applePayAvailable]);
 
   const clearDraft = () => {
-    try { localStorage.removeItem("jober_booking_draft"); } catch {}
+    try { localStorage.removeItem("jober_booking_draft"); } catch { /* ignore */ }
     supabase.auth.getSession().then(({ data: sd }) => {
       const token = sd?.session?.access_token;
       if (!token) return;
@@ -475,40 +475,38 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const handlePay = async () => {
     if (processing) return;
     setStripeError(null);
-    if (method === "card") {
-      const useStored = savedCard && useSavedCard;
-      if (!useStored && !cardName.trim()) {
-        setCardNameError(true);
-        return;
-      }
-      if (!stripeRef.current) {
-        const { loadStripe } = await import("@stripe/stripe-js");
-        const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-        stripeRef.current = pk ? await loadStripe(pk) : null;
-      }
-      if (!stripeRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
-      if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
-      setProcessing(true);
-      try {
-        const { data: { session: piSession } } = await supabase.auth.getSession();
-        if (!missionId) throw new Error("Identifiant de mission manquant. Veuillez fermer et rouvrir le paiement.");
-        const r = await fetch("/api/stripe-intent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
-          body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, mission_id: missionId, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
-        });
-        const { clientSecret, error: intentErr } = await r.json();
-        if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
-        const confirmOpts = useStored
-          ? { payment_method: savedCard.pmId }
-          : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
-        const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
-        if (error) { setStripeError(error.message); setProcessing(false); return; }
-        if (paymentIntent?.status === "succeeded") {
-          clearDraft(); setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
-        }
-      } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
+    const useStored = savedCard && useSavedCard;
+    if (!useStored && !cardName.trim()) {
+      setCardNameError(true);
+      return;
     }
+    if (!stripeRef.current) {
+      const { loadStripe } = await import("@stripe/stripe-js");
+      const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+      stripeRef.current = pk ? await loadStripe(pk) : null;
+    }
+    if (!stripeRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+    if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+    setProcessing(true);
+    try {
+      const { data: { session: piSession } } = await supabase.auth.getSession();
+      if (!missionId) throw new Error("Identifiant de mission manquant. Veuillez fermer et rouvrir le paiement.");
+      const r = await fetch("/api/stripe-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
+        body: JSON.stringify({ amount: total, currency: "eur", customerId: savedCard?.customerId||null, mission_id: missionId, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
+      });
+      const { clientSecret, error: intentErr } = await r.json();
+      if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
+      const confirmOpts = useStored
+        ? { payment_method: savedCard.pmId }
+        : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
+      const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
+      if (error) { setStripeError(error.message); setProcessing(false); return; }
+      if (paymentIntent?.status === "succeeded") {
+        clearDraft(); setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
+      }
+    } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
   };
 
   if(done) return (

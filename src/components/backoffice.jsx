@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
-import { MARGES } from "../constants/plans.js";
 import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
@@ -2736,21 +2735,18 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Commission par secteur</div>
-            {d.sectors.slice(0,5).map((s,i) => {
-              const comm = Math.round(d.finance.caTotal * (s.pct/100) * (MARGES[s.id]||0.20));
-              return (
-                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:i<4?`1px solid ${C.grayLight}`:"none" }}>
-                  <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                    <span>{s.icon}</span>
-                    <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{s.label}</span>
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontWeight:800, color:C.violet, fontSize:13 }}>{comm.toLocaleString()} €</div>
-                    <div style={{ color:C.textSub, fontSize:10 }}>Marge {Math.round((MARGES[s.id]||0.20)*100)}%</div>
-                  </div>
+            {d.sectors.slice(0,5).map((s,i) => (
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:i<4?`1px solid ${C.grayLight}`:"none" }}>
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  <span>{s.icon}</span>
+                  <span style={{ fontSize:13, color:C.text, fontWeight:600 }}>{s.label}</span>
                 </div>
-              );
-            })}
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontWeight:800, color:C.violet, fontSize:13 }}>{s.pct.toFixed(1)} %</div>
+                  <div style={{ color:C.textSub, fontSize:10 }}>du volume total</div>
+                </div>
+              </div>
+            ))}
           </div>
 
           <div style={{ display:"flex", gap:10, marginBottom:16 }}>

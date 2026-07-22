@@ -15,7 +15,7 @@ async function notifyDocUpload(docType, isRenewal = false) {
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ docType, isRenewal }),
     }).catch(() => {});
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 function ContractModal({ title, contractText, onSign, onClose }) {
