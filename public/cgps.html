@@ -51,7 +51,7 @@
 <div class="wrap">
 
   <div style="margin-bottom:24px;">
-    <button onclick="history.back()" style="display:inline-flex;align-items:center;gap:8px;background:#4a4aaa;border:none;border-radius:8px;padding:11px 18px;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;color:#fff;cursor:pointer;">
+    <button onclick="if(history.length>1){history.back();}else{window.close();}" style="display:inline-flex;align-items:center;gap:8px;background:#4a4aaa;border:none;border-radius:8px;padding:11px 18px;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;color:#fff;cursor:pointer;">
       ← Retour
     </button>
   </div>
