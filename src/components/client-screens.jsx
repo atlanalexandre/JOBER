@@ -5,7 +5,7 @@ import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prix
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
-import { StripePaymentScreen } from "./payment.jsx";
+import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
 
 function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
@@ -719,6 +719,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
+  const [prepaidBalance, setPrepaidBalance] = useState(0);
+  const [showTopupModal, setShowTopupModal] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
@@ -754,12 +756,13 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const tourKey = `alane_tour_done_${user.id}`;
       let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
       if (!tourDone) setShowTour(true);
-      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
+      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month,prepaid_balance").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
           if (p.prenom) setUserName(p.prenom);
           setWalletBalance(p.cashback_balance || 0);
           setWalletMissions(p.missions_completed_month || 0);
+          setPrepaidBalance(Number(p.prepaid_balance || 0));
         });
     });
     return ()=>{ mounted=false; };
@@ -1121,6 +1124,46 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           </div>
         </div>
       </div>
+
+      {/* ── Wallet prépayé ── */}
+      <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
+        <div style={{
+          borderRadius:16, padding:"16px 18px",
+          background:"rgba(255,255,255,0.03)",
+          border:"1px solid rgba(255,255,255,0.08)",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+        }}>
+          <div>
+            <div style={{ fontSize:10, letterSpacing:1.4, textTransform:"uppercase", color:"rgba(255,255,255,0.45)", fontWeight:600, marginBottom:4 }}>Wallet paiement</div>
+            <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+              <span style={{ fontSize:24, fontWeight:800, color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".", ",")}</span>
+              <span style={{ fontSize:14, color:"rgba(255,255,255,0.5)" }}>€</span>
+            </div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
+              {prepaidBalance > 0 ? "Utilisé automatiquement au paiement" : "Rechargez pour éviter les frais Stripe fixes"}
+            </div>
+          </div>
+          <button onClick={()=>setShowTopupModal(true)} style={{
+            background:C.violet, border:"none", borderRadius:11, padding:"10px 14px",
+            color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+            whiteSpace:"nowrap", flexShrink:0,
+          }}>+ Recharger</button>
+        </div>
+        {prepaidBalance === 0 && (
+          <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.35)", display:"flex", alignItems:"center", gap:5 }}>
+            <span>💡</span>
+            <span>Économisez 0,25 € de frais Stripe par prestation financée depuis le wallet</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modal recharge wallet ── */}
+      {showTopupModal && (
+        <WalletTopupModal
+          onClose={() => setShowTopupModal(false)}
+          onSuccess={(amt) => { setPrepaidBalance(b => Math.round((b + amt) * 100) / 100); setShowTopupModal(false); }}
+        />
+      )}
 
       {/* ── Mode urgence ── */}
       <div style={{ padding:"0 22px 24px", position:"relative", zIndex:2 }}>

@@ -47,6 +47,7 @@ Le schéma SQL complet est dans `supabase-schema.sql` à la racine du projet.
 | `status` | text | `"pending"`, `"approved"`, `"rejected"` |
 | `cashback_balance` | numeric | Solde cashback client, défaut 0 |
 | `missions_completed_month` | integer | Missions validées ce mois (reset le 1er via cron) |
+| `prepaid_balance` | numeric | Wallet prépayé client (rechargé via Stripe, débité à chaque mission), défaut 0 |
 | `created_at` | timestamp | |
 
 ### Table `missions`

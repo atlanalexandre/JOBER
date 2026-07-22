@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS documents (
 -- ── COLONNES manquantes sur profiles ─────────────────────────
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance        numeric DEFAULT 0;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS missions_completed_month integer DEFAULT 0;
+-- Wallet prépayé client (solde rechargé via Stripe, débité à chaque mission)
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS prepaid_balance         numeric DEFAULT 0;
 
 -- [Str-06] Stripe Connect — colonnes manquantes sur profiles
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS stripe_account_id     text;
