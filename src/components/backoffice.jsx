@@ -56,26 +56,26 @@ function AlertRow({ a }) {
 export function BackofficeLogin({ onLogin, onBack }) {
   const [pwd, setPwd]           = useState("");
   const [show, setShow]         = useState(false);
-  const [error, setError]       = useState(false);
+  const [error, setError]       = useState("");
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
 
   const handleSubmit = () => {
     if (!pwd.trim() || checking || locked) return;
-    setChecking(true);
+    setChecking(true); setError("");
     fetch("/api/bo-verify-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pin: pwd }),
     })
-      .then(r => r.json())
+      .then(r => r.json().then(j => ({ status: r.status, ...j })))
       .then(j => {
         setChecking(false);
         if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
-        else { setError(true); setPwd(""); setAttempts(a => a + 1); }
+        else { setError(j.error || "Mot de passe incorrect"); setPwd(""); setAttempts(a => a + 1); }
       })
-      .catch(() => { setChecking(false); setError(true); setPwd(""); setAttempts(a => a + 1); });
+      .catch((e) => { setChecking(false); setError("Erreur réseau : " + (e?.message || "inconnue")); setPwd(""); setAttempts(a => a + 1); });
   };
 
   return (
@@ -87,14 +87,14 @@ export function BackofficeLogin({ onLogin, onBack }) {
       <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, margin:"0 0 36px" }}>Accès administrateur uniquement</p>
 
       {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
-      {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Mot de passe incorrect — Réessayez</p>}
+      {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>{error}</p>}
       {!locked && !error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
 
       <div style={{ width:"100%", maxWidth:320, position:"relative", marginBottom:16 }}>
         <input
           type={show ? "text" : "password"}
           value={pwd}
-          onChange={e => { setPwd(e.target.value); setError(false); }}
+          onChange={e => { setPwd(e.target.value); setError(""); }}
           onKeyDown={e => e.key === "Enter" && handleSubmit()}
           disabled={locked || checking}
           placeholder="Mot de passe administrateur"
