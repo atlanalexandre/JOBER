@@ -65,10 +65,12 @@ export default async function handler(req, res) {
   // Délai croissant sur TOUTES les réponses (masque le timing, pénalise la force brute)
   await new Promise(r => setTimeout(r, Math.min(attempts * 400, 3000)));
 
+  const expected = BO_PASSWORD.trim(); // sécurise contre un espace accidentel dans Vercel
+  const received = pin.trim();
   let pinOk = false;
   try {
-    if (pin.length === BO_PASSWORD.length) {
-      pinOk = crypto.timingSafeEqual(Buffer.from(pin), Buffer.from(BO_PASSWORD));
+    if (received.length === expected.length) {
+      pinOk = crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
     }
   } catch { pinOk = false; }
 
