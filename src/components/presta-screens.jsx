@@ -972,17 +972,34 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { showToast("Photo max 5 Mo"); return; }
+    if (file.size > 5 * 1024 * 1024) { showToast("Photo trop lourde (max 5 Mo)"); return; }
     setPhotoUploading(true);
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user) { setPhotoUploading(false); return; }
-    const ext = file.name.split(".").pop().toLowerCase() || "jpg";
-    const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
-    if (!upErr) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) { setPhotoUploading(false); return; }
+      // iOS peut envoyer .heic ou un nom sans extension — on sécurise
+      const rawExt = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+      const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : "jpg";
+      const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("documents")
+        .upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
+      if (upErr) {
+        showToast("Erreur upload : " + upErr.message);
+        setPhotoUploading(false);
+        return;
+      }
       const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
-      if (urlData?.publicUrl) setPhotoUrl(urlData.publicUrl);
-      notifyDocUpload("photo", true);
+      if (urlData?.publicUrl) {
+        // Cache-buster pour forcer l'affichage de la nouvelle photo
+        setPhotoUrl(urlData.publicUrl + "?t=" + Date.now());
+        notifyDocUpload("photo", true);
+        showToast("Photo ajoutée ✓ — pensez à enregistrer");
+      } else {
+        showToast("Photo envoyée mais URL introuvable");
+      }
+    } catch (err) {
+      showToast("Erreur inattendue : " + (err?.message || "inconnue"));
     }
     setPhotoUploading(false);
   };
