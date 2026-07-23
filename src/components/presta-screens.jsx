@@ -82,7 +82,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const user = authData.user;
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${doc.id}_${Date.now()}.${ext}`;
-      const { error: storageErr } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+      const { error: storageErr } = await supabase.storage.from("Documents").upload(path, file, { upsert: true });
       if (storageErr) throw storageErr;
       const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: user.id, type: doc.id, storage_path: path });
       if (dbErr) throw dbErr;
@@ -393,7 +393,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { data:_ud } = await supabase.auth.getUser();
               const user = _ud?.user;
               const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
-              const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+              const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(!error){
                 setDocs(prev=>({...prev,[doc.id]:path}));
                 if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
@@ -407,7 +407,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { data:_ud } = await supabase.auth.getUser();
               const user = _ud?.user;
               const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
-              const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+              const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(!error){
                 setDocs(prev=>({...prev,[doc.id]:path}));
                 if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
@@ -988,13 +988,13 @@ export function PrestaProfileEditScreen({ onBack }) {
       const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : "jpg";
       const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
-        .from("documents")
+        .from("Documents")
         .upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
       if (upErr) {
         showToast("Erreur upload : " + upErr.message);
         // La preview locale reste affichée mais ne sera pas sauvegardée
       } else {
-        const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
+        const { data: urlData } = supabase.storage.from("Documents").getPublicUrl(path);
         if (urlData?.publicUrl) {
           setPhotoUrl(urlData.publicUrl + "?t=" + Date.now());
           notifyDocUpload("photo", true);

@@ -7043,7 +7043,7 @@ export function DocUploadScreen({ onBack }) {
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+    const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
     if(!error) {
       await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
       setDbDocs(prev => { const filtered = prev.filter(d=>d.type!==docId); return [...filtered, { type:docId, storage_path:path, created_at:new Date().toISOString() }]; });
@@ -7152,7 +7152,7 @@ export function ClientProDocScreen({ onBack }) {
     setUploading(docId); setUploadOk(null);
     const ext = file.name.split(".").pop();
     const path = `${userId}/${docId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert:true });
+    const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
     if(!error) {
       await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:path, created_at:new Date().toISOString() }]);
