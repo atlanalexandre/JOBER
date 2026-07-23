@@ -187,13 +187,13 @@ export function BOComptes() {
   };
 
   const handleVerifyAllDocs = async (profileId) => {
-    const unverified = (docs[profileId]||[]).filter(d => !d.verified);
+    const unverified = (docs[profileId]||[]).filter(d => !d.verified && !d.isVirtual);
     if (!unverified.length) return;
     setValidatingAll(profileId);
     for (const doc of unverified) {
       await boFetch({ action:"verify_doc", profileId, docId: doc.id });
     }
-    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => ({ ...doc, verified:true })) }));
+    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.isVirtual ? doc : { ...doc, verified:true }) }));
     setValidatingAll(null);
   };
 
@@ -857,7 +857,7 @@ export function BOComptes() {
                             Documents uploadés ({userDocs.filter(d=>d.verified).length}/{userDocs.length} validés)
                           </div>
                           {userDocs.map(doc => {
-                            const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+                            const isImg = doc.signedUrl && (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl) || doc.signedUrl.startsWith("data:image"));
                             return (
                               <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
                                 <span style={{ fontSize:20 }}>{DOC_ICON[doc.type]||"📄"}</span>
@@ -866,10 +866,10 @@ export function BOComptes() {
                                   <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}{doc.signedUrl?" · Appuyer pour voir":""}</div>
                                 </div>
                                 <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:6 }}>
-                                  {doc.signedUrl && (
+                                  {doc.signedUrl && !doc.isVirtual && (
                                     <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                                   )}
-                                  {!doc.verified && (
+                                  {!doc.verified && !doc.isVirtual && (
                                     <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
                                       {docVerifying===doc.id ? "…" : "✓"}
                                     </button>
@@ -879,7 +879,7 @@ export function BOComptes() {
                               </div>
                             );
                           })}
-                          {userDocs.some(d=>!d.verified) && (
+                          {userDocs.some(d=>!d.verified && !d.isVirtual) && (
                             <button onClick={()=>handleVerifyAllDocs(docModal.profileId)} disabled={validatingAll===docModal.profileId} style={{ width:"100%", marginTop:4, padding:"10px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:validatingAll===docModal.profileId?0.5:1 }}>
                               {validatingAll===docModal.profileId ? "Validation en cours…" : "✓ Tout valider"}
                             </button>
