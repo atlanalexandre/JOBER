@@ -81,7 +81,6 @@ export function BackofficeLogin({ onLogin, onBack }) {
         else { setError(j.error || "Mot de passe incorrect"); setPwd(""); setAttempts(a => a + 1); }
       })
       .catch((e) => { setChecking(false); setError(e?.message || "Erreur réseau inconnue"); setPwd(""); setAttempts(a => a + 1); });
->>>>>>> origin/main
   };
 
   return (
