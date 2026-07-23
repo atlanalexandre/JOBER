@@ -39,8 +39,9 @@ export default function middleware(request) {
         { status: 403, headers: { "Content-Type": "text/html;charset=utf-8" } }
       );
     }
-  } catch {
+  } catch (err) {
     // En cas d'erreur du middleware, laisser passer la requête
+    void err;
     return;
   }
 }
