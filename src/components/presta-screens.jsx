@@ -1203,7 +1203,7 @@ export function PrestaProfileEditScreen({ onBack }) {
             </div>
           )}
           <Input label="Téléphone" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
-          <IbanInput label="IBAN" placeholder="FR76 3000 6000 0112 3456 7890 189" value={iban} onChange={e=>setIban(e.target.value.toUpperCase())} />
+          <IbanInput label="IBAN (pour recevoir vos virements)" placeholder="FR76 3000 6000 0112 3456 7890 189" value={iban} onChange={e=>setIban(e.target.value.toUpperCase())} />
         </div>
 
         {/* CV */}
@@ -2465,6 +2465,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [_missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
+  const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
   useEffect(()=>{
     if(activeScreen==="p_dashboard") setTab("profil");
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
@@ -2475,6 +2476,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setUserRib(u.user_metadata?.rib||null);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
+      setDashPhotoUrl(u.user_metadata?.photo_url||null);
       const m=u.user_metadata||{};
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
@@ -2536,6 +2538,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setMissionsUsedMonth(doneMois.length + assignedNow);
       const { data: uploadedDocs } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
       const uploaded = (uploadedDocs||[]).map(d=>d.type);
+      // Photo stockée en data URL dans user_metadata — pas dans la table documents
+      if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
       setUploadedDocIds(uploaded);
       const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
@@ -2692,7 +2696,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       {showTour && <PrestaTour onDone={dismissTour} />}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
-          <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)" }}>👨‍💼</div>
+          <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)", flexShrink:0 }}>
+      {dashPhotoUrl
+        ? <img src={dashPhotoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+        : "👨‍💼"}
+    </div>
           <div style={{ flex:1 }}>
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>Espace prestataire</p>
             <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"2px 0 5px" }}>{userName||"Mon espace"}</h2>
