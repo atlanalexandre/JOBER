@@ -752,20 +752,37 @@ export default async function handler(req, res) {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}&select=*&order=created_at.desc`, { headers });
       const docs = await r.json();
-      if (!Array.isArray(docs)) return res.status(200).json([]);
-      // Générer des URLs signées (1h) pour chaque doc
-      const withUrls = await Promise.all(docs.map(async (doc) => {
+      const docsArray = Array.isArray(docs) ? docs : [];
+
+      // Vérifie si l'utilisateur a une photo dans user_metadata
+      const authKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      let photoEntry = null;
+      try {
+        const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
+          headers: { "apikey": authKey, "Authorization": `Bearer ${authKey}` },
+        });
+        const userData = userRes.ok ? await userRes.json() : null;
+        const photoUrl = userData?.user_metadata?.photo_url || null;
+        if (photoUrl) {
+          photoEntry = { id: "photo_virtual", prestataire_id: profileId, type: "photo", storage_path: null, verified: false, created_at: null, signedUrl: photoUrl, isVirtual: true };
+        }
+      } catch (e) { void e; }
+
+      // Générer des URLs signées (1h) pour chaque doc — bucket "Documents" (majuscule)
+      const withUrls = await Promise.all(docsArray.map(async (doc) => {
         try {
-          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/documents/${doc.storage_path}`, {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/Documents/${doc.storage_path}`, {
             method: "POST",
             headers: { ...headers, "Content-Type": "application/json" },
             body: JSON.stringify({ expiresIn: 3600 }),
           });
           const sj = await sr.json();
           return { ...doc, signedUrl: sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null };
-        } catch { return { ...doc, signedUrl: null }; }
+        } catch (e) { void e; return { ...doc, signedUrl: null }; }
       }));
-      return res.status(200).json(withUrls);
+
+      const result = photoEntry ? [photoEntry, ...withUrls] : withUrls;
+      return res.status(200).json(result);
     }
 
     if (action === "list_all_docs") {
@@ -793,7 +810,7 @@ export default async function handler(req, res) {
       const withUrls = await Promise.all(allDocs.map(async (doc) => {
         let signedUrl = null;
         try {
-          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/documents/${doc.storage_path}`, {
+          const sr = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/Documents/${doc.storage_path}`, {
             method: "POST",
             headers: { ...headers, "Content-Type": "application/json" },
             body: JSON.stringify({ expiresIn: 3600 }),
