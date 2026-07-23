@@ -973,36 +973,35 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { showToast("Photo trop lourde (max 5 Mo)"); return; }
-
-    // Aperçu local immédiat — indépendant de Supabase
-    const reader = new FileReader();
-    reader.onload = (ev) => setPreviewUrl(ev.target.result);
-    reader.readAsDataURL(file);
-
+    if (file.size > 10 * 1024 * 1024) { showToast("Photo trop lourde (max 10 Mo)"); return; }
     setPhotoUploading(true);
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData?.user) { setPhotoUploading(false); return; }
-      const rawExt = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
-      const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : "jpg";
-      const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("Documents")
-        .upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
-      if (upErr) {
-        showToast("Erreur upload : " + upErr.message);
-        // La preview locale reste affichée mais ne sera pas sauvegardée
-      } else {
-        const { data: urlData } = supabase.storage.from("Documents").getPublicUrl(path);
-        if (urlData?.publicUrl) {
-          setPhotoUrl(urlData.publicUrl + "?t=" + Date.now());
-          notifyDocUpload("photo", true);
-        }
-        showToast("Photo ajoutée ✓ — pensez à enregistrer");
-      }
+      // Compression canvas → data URL JPEG 350px max, qualité 0.82
+      // Stockée directement dans user_metadata — pas de Storage bucket requis
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 350;
+            const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+            const canvas = document.createElement("canvas");
+            canvas.width  = Math.round(img.width  * ratio);
+            canvas.height = Math.round(img.height * ratio);
+            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL("image/jpeg", 0.82));
+          };
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setPreviewUrl(dataUrl);
+      setPhotoUrl(dataUrl);
+      showToast("Photo prête — pensez à enregistrer");
     } catch (err) {
-      showToast("Erreur inattendue : " + (err?.message || "inconnue"));
+      showToast("Erreur traitement photo : " + (err?.message || "inconnue"));
     }
     setPhotoUploading(false);
   };
