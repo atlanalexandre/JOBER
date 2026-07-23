@@ -69,13 +69,18 @@ export function BackofficeLogin({ onLogin, onBack }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pin: pwd }),
     })
-      .then(r => r.json().then(j => ({ status: r.status, ...j })))
+      .then(async r => {
+        const text = await r.text();
+        let j;
+        try { j = JSON.parse(text); } catch { throw new Error(`Réponse serveur (${r.status}): ${text.slice(0, 120)}`); }
+        return { status: r.status, ...j };
+      })
       .then(j => {
         setChecking(false);
         if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
         else { setError(j.error || "Mot de passe incorrect"); setPwd(""); setAttempts(a => a + 1); }
       })
-      .catch((e) => { setChecking(false); setError("Erreur réseau : " + (e?.message || "inconnue")); setPwd(""); setAttempts(a => a + 1); });
+      .catch((e) => { setChecking(false); setError(e?.message || "Erreur réseau inconnue"); setPwd(""); setAttempts(a => a + 1); });
   };
 
   return (
