@@ -937,8 +937,9 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [saveError, setSaveError] = useState(false);
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
-  const [photoUrl, setPhotoUrl]   = useState(null);
-  const [photoAuth, setPhotoAuth] = useState(false);
+  const [photoUrl, setPhotoUrl]       = useState(null);
+  const [previewUrl, setPreviewUrl]   = useState(null); // aperçu local immédiat (Data URL)
+  const [photoAuth, setPhotoAuth]     = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(()=>{
@@ -973,11 +974,16 @@ export function PrestaProfileEditScreen({ onBack }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { showToast("Photo trop lourde (max 5 Mo)"); return; }
+
+    // Aperçu local immédiat — indépendant de Supabase
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreviewUrl(ev.target.result);
+    reader.readAsDataURL(file);
+
     setPhotoUploading(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
       if (!authData?.user) { setPhotoUploading(false); return; }
-      // iOS peut envoyer .heic ou un nom sans extension — on sécurise
       const rawExt = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
       const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : "jpg";
       const path = `${authData.user.id}/photo_${Date.now()}.${ext}`;
@@ -986,17 +992,14 @@ export function PrestaProfileEditScreen({ onBack }) {
         .upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
       if (upErr) {
         showToast("Erreur upload : " + upErr.message);
-        setPhotoUploading(false);
-        return;
-      }
-      const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
-      if (urlData?.publicUrl) {
-        // Cache-buster pour forcer l'affichage de la nouvelle photo
-        setPhotoUrl(urlData.publicUrl + "?t=" + Date.now());
-        notifyDocUpload("photo", true);
-        showToast("Photo ajoutée ✓ — pensez à enregistrer");
+        // La preview locale reste affichée mais ne sera pas sauvegardée
       } else {
-        showToast("Photo envoyée mais URL introuvable");
+        const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
+        if (urlData?.publicUrl) {
+          setPhotoUrl(urlData.publicUrl + "?t=" + Date.now());
+          notifyDocUpload("photo", true);
+        }
+        showToast("Photo ajoutée ✓ — pensez à enregistrer");
       }
     } catch (err) {
       showToast("Erreur inattendue : " + (err?.message || "inconnue"));
@@ -1038,6 +1041,8 @@ export function PrestaProfileEditScreen({ onBack }) {
     (dispoImmediat ? 10 : 0)
   );
   const completeColor = completePct >= 80 ? "#22c55e" : completePct >= 50 ? "#f59e0b" : "#ef4444";
+  // Indicateur coloré : rouge si manquant, couleur secteur si rempli
+  const dot = (filled) => <span style={{ color: filled ? color : "#ef4444", fontWeight:700, fontSize:13 }}>●</span>;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:100 }}>
@@ -1060,20 +1065,22 @@ export function PrestaProfileEditScreen({ onBack }) {
         {/* Photo de profil */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:12, textTransform:"uppercase", letterSpacing:0.8 }}>
-            Photo de profil <span style={{ color:color, fontWeight:700 }}>●</span>
+            Photo de profil {dot(!!(previewUrl || photoUrl))}
           </label>
           <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:`${color}22`, border:`2px solid ${color}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0 }}>
-              {photoUrl
-                ? <img src={photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              {(previewUrl || photoUrl)
+                ? <img src={previewUrl || photoUrl} alt="Photo de profil" style={{ width:"100%", height:"100%", objectFit:"cover" }} onError={() => { setPreviewUrl(null); setPhotoUrl(null); showToast("Impossible d'afficher la photo — vérifiez les accès du bucket Supabase"); }} />
                 : "📷"}
             </div>
             <div>
               <label style={{ display:"inline-block", padding:"9px 16px", background:`${color}22`, border:`1px solid ${color}55`, borderRadius:10, color, fontWeight:700, fontSize:13, cursor: photoUploading ? "not-allowed" : "pointer" }}>
-                {photoUploading ? "Envoi en cours…" : photoUrl ? "Changer la photo" : "Ajouter une photo"}
+                {photoUploading ? "Envoi en cours…" : (previewUrl || photoUrl) ? "Changer la photo" : "Ajouter une photo"}
                 <input type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoUpload} disabled={photoUploading} />
               </label>
-              {photoUrl && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo enregistrée</div>}
+              {photoUrl && !previewUrl && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo enregistrée</div>}
+              {previewUrl && photoUploading && <div style={{ color:color, fontSize:12, marginTop:6 }}>⏳ Envoi en cours…</div>}
+              {previewUrl && !photoUploading && <div style={{ color:C.success, fontSize:12, marginTop:6 }}>✓ Photo prête — enregistrez</div>}
             </div>
           </div>
           <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
@@ -1094,7 +1101,7 @@ export function PrestaProfileEditScreen({ onBack }) {
 
         {/* Disponibilités par jour */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📅 Disponibilités</div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📅 Disponibilités {dot(hasDispos)}</div>
           <div style={{ color:C.textSub, fontSize:12, marginBottom:14 }}>Sélectionnez vos créneaux jour par jour</div>
           {JOURS.map(jour => {
             const sel = dispos[jour] || [];
@@ -1181,7 +1188,7 @@ export function PrestaProfileEditScreen({ onBack }) {
 
         {/* Coordonnées */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement</div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:12 }}>📞 Coordonnées & paiement {dot(!!(telephone && iban))}</div>
           {meta?.date_naissance && (
             <div style={{ marginBottom:14 }}>
               <div style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:4 }}>🎂 Date de naissance</div>
