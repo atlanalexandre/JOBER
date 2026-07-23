@@ -1104,45 +1104,52 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const handleLogin = async () => {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     setLoading(true); setError("");
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) {
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        setError(err.message === "Email not confirmed"
+          ? "Email non confirmé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation avant de vous connecter."
+          : err.message);
+        return;
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user) { setError("Erreur d'authentification — réessayez."); return; }
+
+      const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
+
+      if (!profile?.role || profile.role !== role) {
+        setError(`Ce compte est un compte ${profile?.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
+        await supabase.auth.signOut();
+        return;
+      }
+      if (!profile?.status || profile.status === "pending") {
+        setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
+        await supabase.auth.signOut();
+        return;
+      }
+      if (profile?.status === "rejected") {
+        setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
+        await supabase.auth.signOut();
+        return;
+      }
+      if (profile?.status === "suspended") {
+        setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
+        await supabase.auth.signOut();
+        return;
+      }
+      if (stayLoggedIn) {
+        try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
+      } else {
+        try { sessionStorage.setItem("alane_session_active", "1"); localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
+      }
+      onLogin();
+    } catch(e) {
+      setError("Erreur inattendue — réessayez. (" + (e?.message || "inconnue") + ")");
+    } finally {
       setLoading(false);
-      setError(err.message === "Email not confirmed"
-        ? "Email non confirmé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation avant de vous connecter."
-        : err.message);
-      return;
     }
-
-    const { data:{ user } } = await supabase.auth.getUser();
-    const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
-    setLoading(false);
-
-    if (!profile?.role || profile.role !== role) {
-      setError(`Ce compte est un compte ${profile?.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
-      await supabase.auth.signOut();
-      return;
-    }
-    if (!profile?.status || profile.status === "pending") {
-      setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
-      await supabase.auth.signOut();
-      return;
-    }
-    if (profile?.status === "rejected") {
-      setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
-      await supabase.auth.signOut();
-      return;
-    }
-    if (profile?.status === "suspended") {
-      setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
-      await supabase.auth.signOut();
-      return;
-    }
-    if (stayLoggedIn) {
-      try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
-    } else {
-      try { sessionStorage.setItem("alane_session_active", "1"); localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
-    }
-    onLogin();
   };
 
   const handleRegister = async () => {
