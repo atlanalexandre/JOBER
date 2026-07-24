@@ -1105,16 +1105,17 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
     setLoading(true); setError("");
     try {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: signInData, error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) {
         setError(err.message === "Email not confirmed"
           ? "Email non confirmé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation avant de vous connecter."
-          : err.message);
+          : err.message === "Invalid login credentials"
+            ? "Email ou mot de passe incorrect."
+            : err.message);
         return;
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData?.user;
+      const user = signInData?.user;
       if (!user) { setError("Erreur d'authentification — réessayez."); return; }
 
       const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
