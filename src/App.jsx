@@ -125,7 +125,9 @@ function SplashScreen({ onNext, onBackoffice }) {
 
       {/* Logo aligné à gauche */}
       <div style={{ paddingTop:64, marginBottom:"auto" }}>
-        <ALANELogo size="lg" />
+        <div onClick={onNext} style={{ cursor:"pointer", display:"inline-flex" }}>
+          <ALANELogo size="lg" />
+        </div>
       </div>
 
       {/* Hero content */}
