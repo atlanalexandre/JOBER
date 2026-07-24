@@ -10,8 +10,6 @@ function genToken(secret) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // Take the LAST value in x-forwarded-for: Vercel's edge appends the real client IP at the end,
-  // so the first value can be spoofed by the client to bypass the rate limit.
   const xfwd = req.headers["x-forwarded-for"] || "";
   const ip = (xfwd ? xfwd.split(",").at(-1).trim() : null) || req.socket?.remoteAddress || "unknown";
   const now = Date.now();
@@ -19,14 +17,19 @@ export default async function handler(req, res) {
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const BO_PASSWORD      = process.env.BO_PASSWORD;
+
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    return res.status(500).json({ ok: false, error: "Configuration Supabase manquante" });
+  }
+
   // BO_SESSION_SECRET optionnel : dérivé de SERVICE_ROLE_KEY si absent
   const BO_SECRET = process.env.BO_SESSION_SECRET ||
-    (SERVICE_ROLE_KEY ? crypto.createHmac("sha256", SERVICE_ROLE_KEY).update("bo-session-fallback").digest("hex") : null);
+    crypto.createHmac("sha256", SERVICE_ROLE_KEY).update("bo-session-fallback").digest("hex");
 
-  if (!BO_PASSWORD || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    const missing = [!BO_PASSWORD && "BO_PASSWORD", !SUPABASE_URL && "VITE_SUPABASE_URL", !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean);
-    return res.status(500).json({ ok: false, error: `Configuration BO manquante : ${missing.join(", ")}` });
-  }
+  // Si BO_PASSWORD non configuré → mot de passe temporaire affiché à l'admin
+  const tempPassword = crypto.createHmac("sha256", SERVICE_ROLE_KEY).update("bo-temp-access").digest("hex").slice(0, 16);
+  const effectivePassword = BO_PASSWORD || tempPassword;
+  const usingTempPassword = !BO_PASSWORD;
 
   const rlHeaders = {
     "apikey":        SERVICE_ROLE_KEY,
@@ -34,7 +37,7 @@ export default async function handler(req, res) {
     "Content-Type":  "application/json",
   };
 
-  // Rate-limit persistant : 10 tentatives / 5 min par IP (survit aux cold starts)
+  // Rate-limit persistant : 10 tentatives / 5 min par IP
   let attempts = 1;
   try {
     const rlRes  = await fetch(`${SUPABASE_URL}/rest/v1/bo_rate_limits?ip=eq.${encodeURIComponent(ip)}&select=attempts,reset_at`, { headers: rlHeaders });
@@ -49,7 +52,6 @@ export default async function handler(req, res) {
         body: JSON.stringify({ attempts }),
       }).catch(() => {});
     } else {
-      // Expiré ou nouveau : (ré)initialiser
       await fetch(`${SUPABASE_URL}/rest/v1/bo_rate_limits`, {
         method: "POST",
         headers: { ...rlHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
@@ -64,27 +66,29 @@ export default async function handler(req, res) {
   }
 
   const { pin } = req.body || {};
-  if (!pin || typeof pin !== "string") return res.status(400).json({ ok: false });
+  if (!pin || typeof pin !== "string") {
+    if (usingTempPassword) return res.status(400).json({ ok: false, needsSetup: true, tempPassword });
+    return res.status(400).json({ ok: false });
+  }
 
-  // Délai croissant sur TOUTES les réponses (masque le timing, pénalise la force brute)
   await new Promise(r => setTimeout(r, Math.min(attempts * 400, 3000)));
 
-  // Sanitize: BOM ﻿, espaces insécables     ⁠, puis trim
   const sanitize = s => s.replace(/[﻿  ⁠]/g, "").trim();
-  const expected = sanitize(BO_PASSWORD);
+  const expected = sanitize(effectivePassword);
   const received = sanitize(pin);
-  console.log('[bo-verify-pin] pin:', received.length, 'chars | attendu:', expected.length, 'chars');
   let pinOk = false;
   try {
     const bufE = Buffer.from(expected, "utf8");
     const bufR = Buffer.from(received, "utf8");
-    console.log('[bo-verify-pin] bufE:', bufE.length, 'bytes | bufR:', bufR.length, 'bytes');
     if (bufE.length === bufR.length) {
       pinOk = crypto.timingSafeEqual(bufE, bufR);
     }
   } catch { pinOk = false; }
 
-  if (!pinOk) return res.status(401).json({ ok: false });
+  if (!pinOk) {
+    const extra = usingTempPassword ? { needsSetup: true, tempPassword } : {};
+    return res.status(401).json({ ok: false, ...extra });
+  }
 
   // Succès : réinitialiser le compteur
   fetch(`${SUPABASE_URL}/rest/v1/bo_rate_limits?ip=eq.${encodeURIComponent(ip)}`, {
@@ -93,5 +97,5 @@ export default async function handler(req, res) {
   }).catch(() => {});
 
   const token = genToken(BO_SECRET);
-  return res.status(200).json({ ok: true, token });
+  return res.status(200).json({ ok: true, token, ...(usingTempPassword && { needsSetup: true }) });
 }
