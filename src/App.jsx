@@ -1082,6 +1082,7 @@ export default function App() {
   const [cookieNotice,setCookieNotice]=useState(()=>{ try { return !localStorage.getItem("alane_cookie_ok"); } catch(e) { return false; } });
   const [clientCashback,setClientCashback]=useState(null);
   const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
+  const initProfileRef = useRef(undefined); // cache profil préchargé dès INITIAL_SESSION
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -1296,7 +1297,19 @@ export default function App() {
     let initialized = false;
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
       // INITIAL_SESSION : on met à jour supaUser silencieusement, sans naviguer
-      if(event==="INITIAL_SESSION"){ initSessionRef.current = session || null; setSupaUser(session?.user||null); initialized=true; return; }
+      if(event==="INITIAL_SESSION"){
+        initSessionRef.current = session || null;
+        setSupaUser(session?.user||null);
+        initialized=true;
+        // Précharger le profil en arrière-plan pour que le clic "Commencer" soit instantané
+        if(session?.user){
+          supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()
+            .then(({data})=>{ initProfileRef.current = data || null; });
+        } else {
+          initProfileRef.current = null;
+        }
+        return;
+      }
       // TOKEN_REFRESHED : simple mise à jour du user, jamais de navigation
       if(event==="TOKEN_REFRESHED"){ setSupaUser(session?.user||null); return; }
 
@@ -1390,7 +1403,10 @@ export default function App() {
         return;
       }
       setSupaUser(session.user);
-      const { data:profile } = await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
+      // Utiliser le profil préchargé si disponible, sinon fetch réseau
+      const profile = initProfileRef.current !== undefined
+        ? initProfileRef.current
+        : (await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()).data;
       if(profile?.role){
         setRole(profile.role);
         if(profile.role==="prestataire"){
