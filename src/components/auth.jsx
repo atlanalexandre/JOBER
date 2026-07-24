@@ -1120,8 +1120,13 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
 
       const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
 
-      if (!profile?.role || profile.role !== role) {
-        setError(`Ce compte est un compte ${profile?.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
+      if (!profile) {
+        setError("Profil introuvable. Contactez le support si le problème persiste.");
+        await supabase.auth.signOut();
+        return;
+      }
+      if (!profile.role || profile.role !== role) {
+        setError(`Ce compte est un compte ${profile.role === "prestataire" ? "Prestataire" : "Client"}. Utilisez l'espace correspondant.`);
         await supabase.auth.signOut();
         return;
       }
