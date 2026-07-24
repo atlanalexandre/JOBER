@@ -30,7 +30,8 @@ const MINI_PDF_BYTES = Buffer.from(
   "trailer<</Size 4/Root 1 0 R>>\nstartxref\n173\n%%EOF"
 );
 
-const DOC_TYPES = ["kbis", "rib", "cni", "urssaf", "rc_pro", "diplomes"];
+// Tous les documents obligatoires + diplomes (optionnel)
+const DOC_TYPES = ["kbis", "rib", "cni", "urssaf", "domicile", "rc_pro", "diplomes"];
 
 async function uploadFile(supabaseUrl, key, path, bytes, contentType) {
   const r = await fetch(`${supabaseUrl}/storage/v1/object/Documents/${path}`, {
