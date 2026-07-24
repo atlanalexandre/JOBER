@@ -1,10 +1,10 @@
 // Endpoint de seed — crée un faux prestataire complet pour démo
 // Protégé par BO_PASSWORD. Appel : POST /api/seed-demo { "password": "..." }
 
-const DEMO_EMAIL    = "thomas.dubois@demo-alane.fr";
+const DEMO_EMAIL    = "alexandre.stngroupe@gmail.com";
 const DEMO_PASSWORD = "Demo2024!";
-const DEMO_PRENOM   = "Thomas";
-const DEMO_NOM      = "Dubois";
+const DEMO_PRENOM   = "Alexandre";
+const DEMO_NOM      = "Atlan";
 const DEMO_TEL      = "+33 6 12 34 56 78";
 const DEMO_IBAN     = "FR7614508059809278244891L38";
 
@@ -68,17 +68,16 @@ export default async function handler(req, res) {
   // ── 1. Créer ou retrouver l'utilisateur demo ─────────────────────────────
   let userId;
 
-  // Chercher si l'utilisateur existe déjà
   const searchRes = await fetch(
-    `${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=200`,
+    `${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`,
     { headers: hdrs }
   );
   const searchData = searchRes.ok ? await searchRes.json() : null;
-  const existing = searchData?.users?.find(u => u.email === DEMO_EMAIL);
+  const allUsers = searchData?.users || [];
+  const existing = allUsers.find(u => u.email?.toLowerCase() === DEMO_EMAIL.toLowerCase());
 
   if (existing) {
     userId = existing.id;
-    // Mettre à jour les métadonnées
     await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: "PUT",
       headers: hdrs,
@@ -88,7 +87,6 @@ export default async function handler(req, res) {
       }),
     });
   } else {
-    // Créer l'utilisateur
     const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: "POST",
       headers: hdrs,
@@ -107,7 +105,40 @@ export default async function handler(req, res) {
     userId = created.id;
   }
 
-  // ── 2. Upsert profile ────────────────────────────────────────────────────
+  // ── 2. Supprimer tous les autres prestataires ────────────────────────────
+  const othersRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&id=neq.${userId}&select=id`,
+    { headers: hdrs }
+  );
+  const others = othersRes.ok ? await othersRes.json() : [];
+  const deletedIds = [];
+
+  for (const p of others) {
+    const pid = p.id;
+    // Supprimer les documents de la table
+    await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${pid}`, {
+      method: "DELETE", headers: hdrs,
+    });
+    // Supprimer les missions (en tant que prestataire)
+    await fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${pid}`, {
+      method: "DELETE", headers: hdrs,
+    });
+    // Supprimer les candidatures
+    await fetch(`${SUPABASE_URL}/rest/v1/candidatures?prestataire_id=eq.${pid}`, {
+      method: "DELETE", headers: hdrs,
+    });
+    // Supprimer le profile
+    await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${pid}`, {
+      method: "DELETE", headers: hdrs,
+    });
+    // Supprimer l'auth user
+    await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${pid}`, {
+      method: "DELETE", headers: hdrs,
+    });
+    deletedIds.push(pid);
+  }
+
+  // ── 3. Upsert profile demo ────────────────────────────────────────────────
   await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
     method: "POST",
     headers: { ...hdrs, "Prefer": "resolution=merge-duplicates" },
@@ -123,7 +154,7 @@ export default async function handler(req, res) {
     }),
   });
 
-  // ── 3. Upload photo dans user_metadata ───────────────────────────────────
+  // ── 4. Upload photo dans user_metadata ───────────────────────────────────
   await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
     method: "PUT",
     headers: hdrs,
@@ -132,7 +163,7 @@ export default async function handler(req, res) {
     }),
   });
 
-  // ── 4. Uploader les fichiers placeholder dans Storage ────────────────────
+  // ── 5. Uploader les fichiers placeholder dans Storage ────────────────────
   for (const docType of DOC_TYPES) {
     await uploadFile(
       SUPABASE_URL, SERVICE_ROLE_KEY,
@@ -141,14 +172,12 @@ export default async function handler(req, res) {
     );
   }
 
-  // ── 5. Upsert documents dans la table ────────────────────────────────────
-  // Supprimer les anciens pour ce prestataire
+  // ── 6. Upsert documents dans la table ────────────────────────────────────
   await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${userId}`, {
     method: "DELETE",
     headers: hdrs,
   });
 
-  // Insérer les nouveaux
   const docs = DOC_TYPES.map(type => ({
     prestataire_id: userId,
     type,
@@ -162,8 +191,7 @@ export default async function handler(req, res) {
     body: JSON.stringify(docs),
   });
 
-  // ── 6. Créer quelques missions demo ──────────────────────────────────────
-  // Trouver un client existant pour les missions (premier client approuvé)
+  // ── 7. Créer quelques missions demo ──────────────────────────────────────
   const clientsRes = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?role=eq.client&status=eq.approved&limit=1&select=id`,
     { headers: hdrs }
@@ -172,7 +200,6 @@ export default async function handler(req, res) {
   const clientId = clients[0]?.id;
 
   if (clientId) {
-    // Supprimer les missions demo précédentes
     await fetch(
       `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${userId}`,
       { method: "DELETE", headers: hdrs }
@@ -214,6 +241,7 @@ export default async function handler(req, res) {
     email: DEMO_EMAIL,
     password: DEMO_PASSWORD,
     userId,
+    deletedPrestataires: deletedIds.length,
     message: `Profil demo créé — connectez-vous avec ${DEMO_EMAIL} / ${DEMO_PASSWORD}`,
   });
 }
@@ -225,7 +253,7 @@ function buildMeta() {
     nom: DEMO_NOM,
     telephone: DEMO_TEL,
     type_compte: "auto-entrepreneur",
-    societe_nom: "Thomas Dubois Services",
+    societe_nom: "Alexandre Atlan Services",
     statut_pro: "auto-entrepreneur",
     plan_abonnement: "essentiel",
     niveau: "Confirmé",
