@@ -1149,12 +1149,27 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             whiteSpace:"nowrap", flexShrink:0,
           }}>+ Recharger</button>
         </div>
-        {prepaidBalance === 0 && (
-          <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.35)", display:"flex", alignItems:"center", gap:5 }}>
-            <span>💡</span>
-            <span>Économisez 0,25 € de frais Stripe par prestation financée depuis le wallet</span>
-          </div>
-        )}
+        {(() => {
+          const missionsRef = Math.max(walletMissions, 1);
+          const saving = (missionsRef * 0.25).toFixed(2).replace(".", ",");
+          const label = walletMissions >= 2
+            ? `Avec vos ${walletMissions} missions ce mois, vous économisez ~${saving} € de frais Stripe via le wallet`
+            : "1 recharge = 1 seul paiement Stripe, peu importe le nombre de missions financées";
+          return (
+            <div
+              onClick={() => setShowTopupModal(true)}
+              style={{
+                marginTop:8, borderRadius:10, padding:"9px 13px",
+                background:"rgba(16,217,143,0.07)", border:"1px solid rgba(16,217,143,0.18)",
+                display:"flex", alignItems:"center", gap:8, cursor:"pointer",
+              }}
+            >
+              <span style={{ fontSize:14, flexShrink:0 }}>💚</span>
+              <span style={{ fontSize:11, color:"rgba(16,217,143,0.85)", fontWeight:500, lineHeight:1.4 }}>{label}</span>
+              <span style={{ fontSize:11, color:"rgba(16,217,143,0.5)", flexShrink:0, marginLeft:"auto" }}>Recharger →</span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Modal recharge wallet ── */}
