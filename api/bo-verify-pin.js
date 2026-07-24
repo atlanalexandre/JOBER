@@ -22,7 +22,14 @@ export default async function handler(req, res) {
   const BO_SECRET        = process.env.BO_SESSION_SECRET;
   if (!BO_PASSWORD || !BO_SECRET || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
     const missing = [!BO_PASSWORD && "BO_PASSWORD", !BO_SECRET && "BO_SESSION_SECRET", !SUPABASE_URL && "VITE_SUPABASE_URL", !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean);
-    return res.status(500).json({ ok: false, error: `Configuration BO manquante: ${missing.join(", ")}` });
+    const debug = {
+      VERCEL_ENV: process.env.VERCEL_ENV || "undefined",
+      BO_PASSWORD: BO_PASSWORD ? `ok(${BO_PASSWORD.length})` : "VIDE",
+      BO_SESSION_SECRET: BO_SECRET ? `ok(${BO_SECRET.length})` : "VIDE",
+      VITE_SUPABASE_URL: SUPABASE_URL ? "ok" : "VIDE",
+      SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? "ok" : "VIDE",
+    };
+    return res.status(500).json({ ok: false, error: `Config manquante: ${missing.join(", ")}`, debug });
   }
 
   const rlHeaders = {
