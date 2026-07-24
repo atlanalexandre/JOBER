@@ -204,7 +204,7 @@ function SplashScreen({ onNext, onBackoffice }) {
   );
 }
 
-function RoleScreen({ onSelect }) {
+function RoleScreen({ onSelect, onBack }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
@@ -220,7 +220,9 @@ function RoleScreen({ onSelect }) {
 
       <div style={{ marginBottom:48 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:32 }}>
-          <ALANELogo size="sm" />
+          <div onClick={onBack} style={{ cursor:"pointer" }}>
+            <ALANELogo size="sm" />
+          </div>
         </div>
         <p style={{ color:C.textMuted, fontSize:11, letterSpacing:1.5, textTransform:"uppercase", fontWeight:600, marginBottom:10 }}>Bienvenue</p>
         <h2 style={{ color:C.text, fontSize:32, fontWeight:800, margin:0, lineHeight:1.15, fontFamily:font.display }}>Vous êtes ?</h2>
@@ -1508,7 +1510,7 @@ export default function App() {
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
-      {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} />}
+      {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
