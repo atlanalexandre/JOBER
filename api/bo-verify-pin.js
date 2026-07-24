@@ -65,12 +65,18 @@ export default async function handler(req, res) {
   // Délai croissant sur TOUTES les réponses (masque le timing, pénalise la force brute)
   await new Promise(r => setTimeout(r, Math.min(attempts * 400, 3000)));
 
-  const expected = BO_PASSWORD.trim(); // sécurise contre un espace accidentel dans Vercel
-  const received = pin.trim();
+  // Sanitize: BOM ﻿, espaces insécables     ⁠, puis trim
+  const sanitize = s => s.replace(/[﻿  ⁠]/g, "").trim();
+  const expected = sanitize(BO_PASSWORD);
+  const received = sanitize(pin);
+  console.log('[bo-verify-pin] pin:', received.length, 'chars | attendu:', expected.length, 'chars');
   let pinOk = false;
   try {
-    if (received.length === expected.length) {
-      pinOk = crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+    const bufE = Buffer.from(expected, "utf8");
+    const bufR = Buffer.from(received, "utf8");
+    console.log('[bo-verify-pin] bufE:', bufE.length, 'bytes | bufR:', bufR.length, 'bytes');
+    if (bufE.length === bufR.length) {
+      pinOk = crypto.timingSafeEqual(bufE, bufR);
     }
   } catch { pinOk = false; }
 
