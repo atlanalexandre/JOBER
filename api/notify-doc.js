@@ -1,9 +1,15 @@
 const DOC_LABELS = {
-  kbis:    "KBIS / Extrait Kbis",
-  rib:     "RIB / IBAN",
-  cni:     "Carte d'identité",
-  photo:   "Photo de profil",
-  autre:   "Autre document",
+  kbis:     "KBIS / Extrait Kbis",
+  rib:      "RIB / IBAN",
+  cni:      "Pièce d'identité",
+  photo:    "Photo de profil",
+  urssaf:   "Attestation URSSAF",
+  domicile: "Justificatif de domicile",
+  rc_pro:   "RC Professionnelle",
+  rcpro:    "RC Professionnelle",
+  tva:      "Attestation TVA",
+  diplomes: "Diplômes",
+  autre:    "Autre document",
 };
 
 async function verifyUser(req, supabaseUrl, serviceRoleKey) {
