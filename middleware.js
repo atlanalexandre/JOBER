@@ -1,37 +1,22 @@
-// Vercel Edge Middleware — protection IP du backoffice + redirect admin.alane.fr → /bo
+// Vercel Edge Middleware — protection IP du backoffice
 /* global process */
 export const config = {
-  matcher: ["/bo", "/bo/:path*", "/api/bo-action", "/api/bo-verify-pin", "/", "/((?!_next|assets|api).*)"],
+  matcher: ["/bo", "/bo/:path*", "/api/bo-action", "/api/bo-verify-pin"],
 };
 
 export default function middleware(request) {
   try {
-    const url = new URL(request.url);
-    const host = request.headers.get("host") || "";
-
-    // Redirect admin.alane.fr → /bo (sauf si déjà sur /bo)
-    if (host === "admin.alane.fr") {
-      if (!url.pathname.startsWith("/bo")) {
-        return Response.redirect(`https://admin.alane.fr/bo${url.pathname === "/" ? "" : url.pathname}${url.search}`, 301);
-      }
-      // Sur admin.alane.fr/bo/* : laisser passer (protection IP s'applique ensuite)
-    }
-
     const BO_ALLOWED_IPS = process.env.BO_ALLOWED_IPS;
 
-    // Pas de restriction IP configurée → laisser passer
+    // Variable non configurée → pas de restriction
     if (!BO_ALLOWED_IPS || !BO_ALLOWED_IPS.trim()) return;
-
-    // Appliquer la restriction IP uniquement aux routes BO
-    const pathname = url.pathname;
-    const isBoRoute = pathname.startsWith("/bo") || pathname.startsWith("/api/bo-action") || pathname.startsWith("/api/bo-verify-pin");
-    if (!isBoRoute) return;
 
     const rawIp = request.ip || null;
     const ip = rawIp ? rawIp.replace(/^::ffff:/i, "") : null;
     const allowed = BO_ALLOWED_IPS.split(",").map((s) => s.trim().replace(/^::ffff:/i, "")).filter(Boolean);
 
     if (!ip || !allowed.includes(ip)) {
+      const pathname = new URL(request.url).pathname;
       const isApiRoute = pathname.startsWith("/api/");
       if (isApiRoute) {
         return new Response(
