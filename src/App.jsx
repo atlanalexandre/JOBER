@@ -1095,7 +1095,7 @@ export default function App() {
     if(profil && profil.length > 30) {
       try { sessionStorage.setItem("alane_public_profil", profil); } catch(e) {}
     }
-    if(params.get("bo") === "1") {
+    if(params.get("bo") === "1" || window.location.hostname === "admin.alane.fr") {
       setScreen("bo_login");
     }
     if(ref || profil || params.get("bo")) window.history.replaceState({}, "", window.location.pathname);
