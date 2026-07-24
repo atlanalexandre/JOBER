@@ -77,12 +77,20 @@ export default async function handler(req, res) {
     "Content-Type":  "application/json",
   };
 
+  try {
+
   // Brouillons > 30 min, pas encore notifiés
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const draftsRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/booking_drafts?created_at=lt.${encodeURIComponent(cutoff)}&notified_at=is.null&select=*`,
-    { headers: hdrs }
-  );
+  let draftsRes;
+  try {
+    draftsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/booking_drafts?created_at=lt.${encodeURIComponent(cutoff)}&notified_at=is.null&select=*`,
+      { headers: hdrs }
+    );
+  } catch (e) {
+    console.error("[cron-abandon] fetch drafts error:", e.message);
+    return res.status(200).json({ ok: true, checked: 0, notified: 0, error: e.message });
+  }
   const drafts = draftsRes.ok ? await draftsRes.json().catch(() => []) : [];
   if (!Array.isArray(drafts) || drafts.length === 0) {
     return res.status(200).json({ ok: true, checked: 0, notified: 0 });
@@ -166,4 +174,9 @@ export default async function handler(req, res) {
 
   console.log(`[cron-abandon] checked=${drafts.length} notified=${notified}`);
   return res.status(200).json({ ok: true, checked: drafts.length, notified });
+
+  } catch (e) {
+    console.error("[cron-abandon] unhandled error:", e.message, e.stack);
+    return res.status(200).json({ ok: false, error: e.message });
+  }
 }
