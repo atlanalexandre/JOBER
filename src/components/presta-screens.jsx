@@ -5,6 +5,42 @@ import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../const
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 
+const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
+const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
+const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
+
+async function validateDoc(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
+    return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
+  }
+  if (file.size > 10 * 1024 * 1024) return "Fichier trop lourd (max 10 Mo).";
+  if (file.size < 5 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
+
+  if (file.type === "application/pdf" || ext === "pdf") {
+    try {
+      const buf = await file.slice(0, 5).arrayBuffer();
+      const header = String.fromCharCode(...new Uint8Array(buf));
+      if (!header.startsWith("%PDF")) return "PDF corrompu ou illisible — régénérez-le ou envoyez une photo du document.";
+    } catch { /* ignore — laisser passer si ArrayBuffer indisponible */ }
+    return null;
+  }
+
+  // Image : tenter un chargement (sauf HEIC/HEIF que le navigateur ne décode pas)
+  if (!["heic","heif"].includes(ext)) {
+    const ok = await new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload  = () => { URL.revokeObjectURL(url); resolve(true); };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(false); };
+      img.src = url;
+    });
+    if (!ok) return "Image illisible ou corrompue — vérifiez qu'elle s'ouvre correctement sur votre appareil.";
+  }
+
+  return null;
+}
+
 async function notifyDocUpload(docType, isRenewal = false) {
   try {
     const { data: sd } = await supabase.auth.getSession();
@@ -73,7 +109,8 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { setUploadError("Fichier trop lourd (max 10 Mo)"); return; }
+    const validErr = await validateDoc(file);
+    if (validErr) { setUploadError(validErr); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
     setUploading(true);
     setUploadError(null);
     try {
@@ -101,7 +138,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   return (
     <div style={{ marginBottom:8 }}>
       <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", display:"flex", gap:10, alignItems:"center", border:`1px solid ${uploadError?C.danger+"60":valid?C.border:C.accent+"30"}` }}>
-        <input ref={fileInputRef} type="file" style={{ display:"none" }} onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} style={{ display:"none" }} onChange={handleFileChange} />
         <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
@@ -128,31 +165,42 @@ function DocRowItem({ doc, isValid, onUploaded }) {
 
 export function DocUploadCard({ doc, value, onChange, required }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState(null);
   const inputRef = useRef(null);
   const loaded = !!value;
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadErr(null);
+    const validErr = await validateDoc(file);
+    if (validErr) { setUploadErr(validErr); if (inputRef.current) inputRef.current.value = ""; return; }
     setUploading(true);
     await onChange(file);
     setUploading(false);
   };
 
-  const acceptAttr = doc.id === "photo" ? "image/*" : ".pdf,.jpg,.jpeg,.png";
+  const acceptAttr = doc.id === "photo" ? "image/*" : ACCEPT_ATTR;
 
   return (
-    <div style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`2px solid ${loaded?C.success:C.grayLight}`, display:"flex", gap:11, alignItems:"flex-start" }}>
-      <input ref={inputRef} type="file" accept={acceptAttr} style={{ display:"none" }} onChange={handleFile} />
-      <div style={{ width:40, height:40, borderRadius:11, background:loaded?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
-      <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doc.info}</div>
-        <button onClick={()=>inputRef.current?.click()} disabled={uploading} style={{ marginTop:6, background:"none", border:"none", color:loaded?C.success:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", padding:0, fontFamily:"inherit" }}>
-          {uploading ? "Envoi…" : loaded ? "✓ Chargé — Remplacer" : "+ Charger le fichier"}
-        </button>
+    <div style={{ marginBottom:9 }}>
+      <div style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", border:`2px solid ${uploadErr?C.danger:loaded?C.success:C.grayLight}`, display:"flex", gap:11, alignItems:"flex-start" }}>
+        <input ref={inputRef} type="file" accept={acceptAttr} style={{ display:"none" }} onChange={handleFile} />
+        <div style={{ width:40, height:40, borderRadius:11, background:loaded?`${C.success}18`:C.grayLight, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{doc.icon}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{doc.label}</div>
+          <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doc.info}</div>
+          <button onClick={()=>inputRef.current?.click()} disabled={uploading} style={{ marginTop:6, background:"none", border:"none", color:loaded?C.success:C.violet, fontSize:12, fontWeight:700, cursor:"pointer", padding:0, fontFamily:"inherit" }}>
+            {uploading ? "Envoi…" : loaded ? "✓ Chargé — Remplacer" : "+ Charger le fichier"}
+          </button>
+        </div>
+        <Badge color={required?C.accent:C.gray} small>{required?"Obligatoire":"Optionnel"}</Badge>
       </div>
-      <Badge color={required?C.accent:C.gray} small>{required?"Obligatoire":"Optionnel"}</Badge>
+      {uploadErr && (
+        <div style={{ background:`${C.danger}15`, border:`1px solid ${C.danger}44`, borderRadius:8, padding:"6px 10px", marginTop:4, fontSize:11, color:C.danger, fontWeight:600 }}>
+          ⚠️ {uploadErr}
+        </div>
+      )}
     </div>
   );
 }
