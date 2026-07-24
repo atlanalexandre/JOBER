@@ -57,13 +57,14 @@ export function BackofficeLogin({ onLogin, onBack }) {
   const [pwd, setPwd]           = useState("");
   const [show, setShow]         = useState(false);
   const [error, setError]       = useState("");
+  const [debugInfo, setDebugInfo] = useState(null);
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
 
   const handleSubmit = () => {
     if (!pwd.trim() || checking || locked) return;
-    setChecking(true); setError("");
+    setChecking(true); setError(""); setDebugInfo(null);
     fetch("/api/bo-verify-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -78,7 +79,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
       .then(j => {
         setChecking(false);
         if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
-        else { setError(j.error || "Mot de passe incorrect"); setPwd(""); setAttempts(a => a + 1); }
+        else { setError(j.error || "Mot de passe incorrect"); if (j.debug) setDebugInfo(j.debug); setPwd(""); setAttempts(a => a + 1); }
       })
       .catch((e) => { setChecking(false); setError(e?.message || "Erreur réseau inconnue"); setPwd(""); setAttempts(a => a + 1); });
   };
@@ -93,6 +94,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
 
       {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
       {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>{error}</p>}
+      {debugInfo && <pre style={{ color:"#aaa", fontSize:10, marginBottom:12, background:"rgba(0,0,0,0.3)", padding:8, borderRadius:8, textAlign:"left", maxWidth:320, wordBreak:"break-all", whiteSpace:"pre-wrap" }}>{JSON.stringify(debugInfo, null, 2)}</pre>}
       {!locked && !error && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
 
       <div style={{ width:"100%", maxWidth:320, position:"relative", marginBottom:16 }}>
