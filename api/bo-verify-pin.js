@@ -21,7 +21,8 @@ export default async function handler(req, res) {
   const BO_PASSWORD      = process.env.BO_PASSWORD;
   const BO_SECRET        = process.env.BO_SESSION_SECRET;
   if (!BO_PASSWORD || !BO_SECRET || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    return res.status(500).json({ ok: false, error: "Configuration BO manquante" });
+    const missing = [!BO_PASSWORD && "BO_PASSWORD", !BO_SECRET && "BO_SESSION_SECRET", !SUPABASE_URL && "VITE_SUPABASE_URL", !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean);
+    return res.status(500).json({ ok: false, error: `Configuration BO manquante: ${missing.join(", ")}` });
   }
 
   const rlHeaders = {
