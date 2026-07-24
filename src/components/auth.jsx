@@ -1121,7 +1121,20 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
 
       if (!profile) {
-        setError("Profil introuvable. Contactez le support si le problème persiste.");
+        // Profil absent — tentative de récupération depuis les métadonnées d'inscription
+        const meta = user.user_metadata || {};
+        if (meta.role && meta.role === role) {
+          await supabase.from("profiles").upsert({
+            id: user.id,
+            role: meta.role,
+            prenom: meta.prenom || "",
+            nom: meta.nom || "",
+            status: "pending",
+          }, { onConflict: "id" });
+          setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
+        } else {
+          setError("Profil introuvable. Contactez le support si le problème persiste.");
+        }
         await supabase.auth.signOut();
         return;
       }
