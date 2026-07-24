@@ -1,5 +1,26 @@
 // Endpoint de seed — crée un faux prestataire complet pour démo
-// Protégé par BO_PASSWORD. Appel : POST /api/seed-demo { "password": "..." }
+// Auth : token BO session (header Authorization) OU mot de passe BO dans le body
+
+import crypto from "crypto";
+
+// Vérifie le token de session BO (même logique que bo-action.js)
+function verifyBoToken(authHeader) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  const secret = process.env.BO_SESSION_SECRET;
+  if (!secret) return false;
+  const parts = token.split(".");
+  const ts      = parts[0];
+  const sig     = parts.length >= 3 ? parts[2] : parts[1];
+  const payload = parts.length >= 3 ? `${parts[0]}.${parts[1]}` : parts[0];
+  if (!ts || !sig) return false;
+  const age = Math.floor(Date.now() / 1000) - parseInt(ts, 10);
+  if (isNaN(age) || age < 0 || age > 86400) return false;
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  if (sig.length !== expected.length) return false;
+  try { return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex")); }
+  catch { return false; }
+}
 
 const DEMO_EMAIL    = "alexandre.stngroupe@gmail.com";
 const DEMO_PASSWORD = "Demo2024!";
@@ -55,8 +76,11 @@ export default async function handler(req, res) {
   const BO_PASSWORD      = process.env.BO_PASSWORD;
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config manquante" });
-  if (!BO_PASSWORD || (req.body?.password || "").trim() !== BO_PASSWORD.trim()) {
-    return res.status(401).json({ error: "Mot de passe incorrect" });
+
+  const tokenOk = verifyBoToken(req.headers.authorization || "");
+  const passwordOk = BO_PASSWORD && (req.body?.password || "").trim() === BO_PASSWORD.trim();
+  if (!tokenOk && !passwordOk) {
+    return res.status(401).json({ error: "Non autorisé" });
   }
 
   const hdrs = {

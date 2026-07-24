@@ -1478,6 +1478,52 @@ function ResetOnboardingButton() {
   );
 }
 
+function SeedDemoButton() {
+  const [status, setStatus] = useState(null); // null | "loading" | "ok" | "error"
+  const [msg, setMsg]       = useState("");
+
+  const run = async () => {
+    setStatus("loading"); setMsg("");
+    try {
+      let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
+      const r = await fetch("/api/seed-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok) {
+        setStatus("ok");
+        setMsg(`✅ Profil démo créé — ${j.email} / ${j.password}${j.deletedPrestataires ? ` · ${j.deletedPrestataires} autre(s) prestataire(s) supprimé(s)` : ""}`);
+      } else {
+        setStatus("error");
+        setMsg(j.error || `Erreur ${r.status}`);
+      }
+    } catch(e) {
+      setStatus("error"); setMsg(e.message || "Erreur réseau");
+    }
+  };
+
+  return (
+    <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
+      <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>🌱 Seed démo prestataire</div>
+      <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px", lineHeight:1.5 }}>
+        Crée (ou recrée) le profil démo complet avec tous les documents validés et 3 missions exemples. Supprime tous les autres prestataires.
+      </p>
+      <button
+        onClick={run}
+        disabled={status === "loading"}
+        style={{ background: C.violet, border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity: status === "loading" ? 0.6 : 1 }}
+      >
+        {status === "loading" ? "⏳ En cours…" : "🌱 Lancer le seed"}
+      </button>
+      {msg && (
+        <div style={{ marginTop:10, fontSize:12, color: status === "ok" ? C.success : C.danger, lineHeight:1.5 }}>{msg}</div>
+      )}
+    </div>
+  );
+}
+
 export function BOTest({ onNavigate }) {
   const MOCK_P = {
     id:"bo-test-001", name:"Jean Demo", jobTitle:"Agent de démonstration", role:"Agent de démonstration",
@@ -1582,6 +1628,8 @@ export function BOTest({ onNavigate }) {
         <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Réinitialise le tutoriel pour qu'il se relance au prochain accès à l'accueil (efface la clé localStorage du navigateur actuel).</p>
         <ResetOnboardingButton />
       </div>
+
+      <SeedDemoButton />
     </div>
   );
 }
