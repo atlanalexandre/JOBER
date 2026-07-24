@@ -1,4 +1,4 @@
-import { useState, useEffect, Component } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
@@ -1077,6 +1077,7 @@ export default function App() {
   const [docsRefreshKey,setDocsRefreshKey]=useState(0);
   const [cookieNotice,setCookieNotice]=useState(()=>{ try { return !localStorage.getItem("alane_cookie_ok"); } catch(e) { return false; } });
   const [clientCashback,setClientCashback]=useState(null);
+  const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -1291,7 +1292,7 @@ export default function App() {
     let initialized = false;
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((event,session)=>{
       // INITIAL_SESSION : on met à jour supaUser silencieusement, sans naviguer
-      if(event==="INITIAL_SESSION"){ setSupaUser(session?.user||null); initialized=true; return; }
+      if(event==="INITIAL_SESSION"){ initSessionRef.current = session || null; setSupaUser(session?.user||null); initialized=true; return; }
       // TOKEN_REFRESHED : simple mise à jour du user, jamais de navigation
       if(event==="TOKEN_REFRESHED"){ setSupaUser(session?.user||null); return; }
 
@@ -1359,7 +1360,9 @@ export default function App() {
 
   // Appelé quand l'utilisateur clique "Commencer" sur le splash
   const handleSplashNext = async () => {
-    const { data:{ session } } = await supabase.auth.getSession();
+    const session = initSessionRef.current !== undefined
+      ? initSessionRef.current
+      : (await supabase.auth.getSession()).data.session;
     if(session){
       let stayLoggedIn; try {
         stayLoggedIn = localStorage.getItem("alane_stay_logged_in");
