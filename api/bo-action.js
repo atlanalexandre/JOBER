@@ -1,14 +1,18 @@
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 
-if (!process.env.BO_SESSION_SECRET) {
-  console.error("[bo-action] CRITIQUE: BO_SESSION_SECRET n'est pas défini — le backoffice est inaccessible. Configurez cette variable dans Vercel.");
+// BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
+function getBoSecret() {
+  if (process.env.BO_SESSION_SECRET) return process.env.BO_SESSION_SECRET;
+  const srk = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (srk) return crypto.createHmac("sha256", srk).update("bo-session-fallback").digest("hex");
+  return null;
 }
 
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
-  const secret = process.env.BO_SESSION_SECRET;
+  const secret = getBoSecret();
   if (!secret) return false;
   const parts = token.split(".");
   // Support new format (ts.nonce.sig) and legacy format (ts.sig)

@@ -19,17 +19,13 @@ export default async function handler(req, res) {
   const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const BO_PASSWORD      = process.env.BO_PASSWORD;
-  const BO_SECRET        = process.env.BO_SESSION_SECRET;
-  if (!BO_PASSWORD || !BO_SECRET || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    const missing = [!BO_PASSWORD && "BO_PASSWORD", !BO_SECRET && "BO_SESSION_SECRET", !SUPABASE_URL && "VITE_SUPABASE_URL", !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean);
-    const debug = {
-      VERCEL_ENV: process.env.VERCEL_ENV || "undefined",
-      BO_PASSWORD: BO_PASSWORD ? `ok(${BO_PASSWORD.length})` : "VIDE",
-      BO_SESSION_SECRET: BO_SECRET ? `ok(${BO_SECRET.length})` : "VIDE",
-      VITE_SUPABASE_URL: SUPABASE_URL ? "ok" : "VIDE",
-      SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? "ok" : "VIDE",
-    };
-    return res.status(500).json({ ok: false, error: `Config manquante: ${missing.join(", ")}`, debug });
+  // BO_SESSION_SECRET optionnel : dérivé de SERVICE_ROLE_KEY si absent
+  const BO_SECRET = process.env.BO_SESSION_SECRET ||
+    (SERVICE_ROLE_KEY ? crypto.createHmac("sha256", SERVICE_ROLE_KEY).update("bo-session-fallback").digest("hex") : null);
+
+  if (!BO_PASSWORD || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    const missing = [!BO_PASSWORD && "BO_PASSWORD", !SUPABASE_URL && "VITE_SUPABASE_URL", !SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean);
+    return res.status(500).json({ ok: false, error: `Configuration BO manquante : ${missing.join(", ")}` });
   }
 
   const rlHeaders = {
