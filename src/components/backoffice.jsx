@@ -110,8 +110,10 @@ export function BackofficeLogin({ onLogin, onBack }) {
       {tempPwd && (
         <div style={{ background:"rgba(196,169,107,0.12)", border:"1px solid rgba(196,169,107,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, maxWidth:320, width:"100%" }}>
           <p style={{ color:"rgba(196,169,107,0.9)", fontSize:11, margin:"0 0 6px", fontWeight:600 }}>BO_PASSWORD non configuré — mot de passe temporaire :</p>
-          <p style={{ color:"#fff", fontSize:15, fontFamily:"monospace", fontWeight:700, margin:0, letterSpacing:1 }}>{tempPwd}</p>
-          <p style={{ color:"rgba(196,169,107,0.6)", fontSize:10, margin:"6px 0 0" }}>Copiez ce code et entrez-le dans le champ ci-dessous.</p>
+          <p style={{ color:"#fff", fontSize:15, fontFamily:"monospace", fontWeight:700, margin:"0 0 8px", letterSpacing:1 }}>{tempPwd}</p>
+          <button onClick={() => { setPwd(tempPwd); setError(""); }} style={{ width:"100%", padding:"8px", borderRadius:8, border:"1px solid rgba(196,169,107,0.6)", background:"rgba(196,169,107,0.2)", color:"rgba(196,169,107,1)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"monospace" }}>
+            👆 Utiliser ce mot de passe
+          </button>
         </div>
       )}
       {!locked && !error && !tempPwd && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
@@ -125,6 +127,9 @@ export function BackofficeLogin({ onLogin, onBack }) {
           disabled={locked || checking}
           placeholder="Mot de passe administrateur"
           autoComplete="current-password"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,0.08)", border:`2px solid ${error ? C.danger : "rgba(255,255,255,0.15)"}`, borderRadius:14, padding:"15px 48px 15px 18px", color:C.white, fontSize:16, fontFamily:"inherit", outline:"none", transition:"border-color 0.2s" }}
         />
         <button onClick={() => setShow(s => !s)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:18, lineHeight:1 }}>
