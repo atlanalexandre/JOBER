@@ -20,7 +20,7 @@ export function useBoData() {
   const [visits, setVisits] = useState(null);
 
   const fetchAll = () => Promise.all([
-    boFetch({ action: "stats" }).then(r => r.json()).catch(() => null),
+    boFetch({ action: "stats" }).then(r => r.json()).then(j => (j && j.users) ? j : null).catch(() => null),
     boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
   ]).then(([stats, vis]) => {
     setData(stats);
