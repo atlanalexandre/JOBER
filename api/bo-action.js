@@ -1360,6 +1360,35 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (action === "seed_docs") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const DEMO_DOCS = [
+        { type:"photo",    storage_path:`demo/${profileId}/photo_profil.jpg` },
+        { type:"cni",      storage_path:`demo/${profileId}/piece_identite.pdf` },
+        { type:"kbis",     storage_path:`demo/${profileId}/kbis_siret.pdf` },
+        { type:"urssaf",   storage_path:`demo/${profileId}/attestation_urssaf.pdf` },
+        { type:"rib",      storage_path:`demo/${profileId}/rib_iban.pdf` },
+        { type:"domicile", storage_path:`demo/${profileId}/justif_domicile.pdf` },
+        { type:"rc_pro",   storage_path:`demo/${profileId}/rc_professionnelle.pdf` },
+      ];
+      const inserts = DEMO_DOCS.map(d => ({
+        prestataire_id: profileId,
+        type: d.type,
+        storage_path: d.storage_path,
+        verified: true,
+      }));
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=ignore-duplicates,return=minimal" },
+        body: JSON.stringify(inserts),
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        return res.status(500).json({ error: `Erreur insertion: ${err}` });
+      }
+      return res.status(200).json({ ok: true, inserted: inserts.length });
+    }
+
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
