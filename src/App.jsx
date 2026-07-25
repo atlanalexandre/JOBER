@@ -101,7 +101,7 @@ function AlaneIcon({ size = 18 }) {
 
 // ── SCREENS ───────────────────────────────────────────────────────
 
-function SplashScreen({ onNext, onBackoffice }) {
+function SplashScreen({ onNext }) {
   const [v,setV]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
@@ -873,36 +873,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
     </div>
   );
 
-  const showAdminBtn = screen === "splash";
-
-  // Admin button — splash screen only
-  const adminBtn = showAdminBtn && (
-    <button
-      onClick={() => onNavigate("bo_login")}
-      title="Administration"
-      style={{
-        position: "fixed",
-        top: 14,
-        right: 14,
-        zIndex: 9999,
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        color: "rgba(255,255,255,0.45)",
-        fontSize: 16,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-      }}
-    >
-      ⚙️
-    </button>
-  );
 
 
   if (isMobile) {
@@ -921,7 +891,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
         </div>
         {showClientNav && <ClientNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
         {showPrestaNav && <PrestaNav active={screen} onNavigate={onNavigate} unreadCount={unreadCount} />}
-        {adminBtn}
       </div>
     );
   }
@@ -992,7 +961,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             {children}
           </div>
         </div>
-        {adminBtn}
       </div>
     );
   }
@@ -1015,7 +983,6 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
           {children}
         </div>
       </div>
-      {adminBtn}
     </div>
   );
 }
@@ -1096,10 +1063,10 @@ export default function App() {
     if(profil && profil.length > 30) {
       try { sessionStorage.setItem("alane_public_profil", profil); } catch(e) {}
     }
-    if(params.get("bo") === "1" || window.location.hostname === "admin.alane.fr") {
+    if(window.location.hostname === "admin.alane.fr") {
       setScreen("bo_login");
     }
-    if(ref || profil || params.get("bo")) window.history.replaceState({}, "", window.location.pathname);
+    if(ref || profil) window.history.replaceState({}, "", window.location.pathname);
   },[]);
 
   // Public profil navigation — déclenché après que l'app est chargée
@@ -1528,7 +1495,7 @@ export default function App() {
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
-      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onBackoffice={()=>setScreen("bo_login")} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} />}
       {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
