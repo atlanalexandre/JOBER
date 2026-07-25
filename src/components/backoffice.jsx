@@ -68,6 +68,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
   const [error, setError]       = useState("");
   const [tempPwd, setTempPwd]   = useState(null);
   const [boPwdLen, setBoPwdLen] = useState(null);
+  const [boDebug, setBoDebug]   = useState(null);
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
@@ -92,6 +93,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
         else {
           if (j.tempPassword) setTempPwd(j.tempPassword);
           if (j._debug_boPwdLen !== undefined) setBoPwdLen(j._debug_boPwdLen);
+          if (j._debug_vercelEnv || j._debug_boKeys) setBoDebug({ env: j._debug_vercelEnv, keys: j._debug_boKeys });
           setError(j.error || "Mot de passe incorrect");
           setPwd(""); setAttempts(a => a + 1);
         }
@@ -118,8 +120,14 @@ export function BackofficeLogin({ onLogin, onBack }) {
           </button>
           {boPwdLen !== null && (
             <p style={{ color:"rgba(196,169,107,0.5)", fontSize:10, margin:"6px 0 0", fontFamily:"monospace" }}>
-              Diagnostic Vercel — BO_PASSWORD lu : {boPwdLen === -1 ? "absent (undefined)" : boPwdLen === 0 ? "vide (\"\")" : `${boPwdLen} caractères ✓`}
+              Diagnostic — BO_PASSWORD : {boPwdLen === -1 ? "absent (undefined)" : boPwdLen === 0 ? "vide (\"\")" : `${boPwdLen} caractères ✓`}
             </p>
+          )}
+          {boDebug && (
+            <div style={{ color:"rgba(196,169,107,0.5)", fontSize:10, margin:"4px 0 0", fontFamily:"monospace", lineHeight:1.5 }}>
+              <div>Vercel ENV : {boDebug.env || "?"}</div>
+              <div>Vars BO/PASSWORD présentes : {boDebug.keys?.length ? boDebug.keys.join(", ") : "aucune"}</div>
+            </div>
           )}
         </div>
       )}
