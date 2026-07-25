@@ -1361,6 +1361,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Action invalide" });
   } catch (e) {
     console.error("bo-action error:", e);
-    return res.status(500).json({ error: "Erreur serveur" });
+    return res.status(500).json({ error: `Erreur serveur: ${e?.message || String(e)}` });
   }
 }
