@@ -86,7 +86,9 @@ export default async function handler(req, res) {
   } catch { pinOk = false; }
 
   if (!pinOk) {
-    const extra = usingTempPassword ? { needsSetup: true, tempPassword } : {};
+    const extra = usingTempPassword
+      ? { needsSetup: true, tempPassword, _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1 }
+      : { _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1 };
     return res.status(401).json({ ok: false, ...extra });
   }
 
