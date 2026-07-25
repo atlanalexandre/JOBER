@@ -18,9 +18,18 @@ export function useBoData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState(null);
+  const [authError, setAuthError] = useState(null);
 
   const fetchAll = () => Promise.all([
-    boFetch({ action: "stats" }).then(r => r.json()).then(j => (j && j.users) ? j : null).catch(() => null),
+    boFetch({ action: "stats" }).then(async r => {
+      const j = await r.json();
+      if (r.status === 401 || (j && j.error && !j.users)) {
+        setAuthError(j.error || "Token invalide");
+        return null;
+      }
+      setAuthError(null);
+      return (j && j.users) ? j : null;
+    }).catch(e => { setAuthError(e?.message || "Erreur réseau"); return null; }),
     boFetch({ action: "visits_stats" }).then(r => r.json()).catch(() => null),
   ]).then(([stats, vis]) => {
     setData(stats);
@@ -34,7 +43,7 @@ export function useBoData() {
     return () => clearInterval(iv);
   }, []);
 
-  return { data, loading, visits };
+  return { data, loading, visits, authError };
 }
 
 // AlertRow — backoffice alertes
@@ -2410,7 +2419,7 @@ export function BORefundSection() {
 
 export function BackofficeDashboard({ onBack, onNavigate }) {
   const [tab, setTab] = useState("dashboard");
-  const { data: boData, loading: boLoading, visits: boVisits } = useBoData();
+  const { data: boData, loading: boLoading, visits: boVisits, authError: boAuthError } = useBoData();
   const d = boData || {
     users:    { clients:0, prestataires:0, total:0, pending:0 },
     missions: { total:0, open:0, assigned:0, terminees:0, closed:0, tauxCompletion:0 },
@@ -2449,6 +2458,18 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Actif</div>
         </div>
       </div>
+
+      {/* Bannière erreur auth token */}
+      {boAuthError && (
+        <div style={{ margin:"12px 14px 0", background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+          <span style={{ fontSize:16, flexShrink:0 }}>🔐</span>
+          <div>
+            <div style={{ color:"#F25E5E", fontWeight:700, fontSize:12, marginBottom:2 }}>Erreur d'authentification API — les données ne se chargent pas</div>
+            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontFamily:"monospace", wordBreak:"break-all" }}>{boAuthError}</div>
+            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:4 }}>Vérifiez que BO_SESSION_SECRET est bien configuré dans Vercel (ou supprimez-le pour utiliser la dérivation automatique).</div>
+          </div>
+        </div>
+      )}
 
       {/* Layout : sidebar gauche + contenu */}
       <div style={{ display:"flex", gap:0, padding:"18px 14px", alignItems:"flex-start" }}>
