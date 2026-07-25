@@ -86,9 +86,13 @@ export default async function handler(req, res) {
   } catch { pinOk = false; }
 
   if (!pinOk) {
+    // Diagnostic: list env var names containing "BO" or "PASSWORD" (names only, no values)
+    const boEnvKeys = Object.keys(process.env).filter(k =>
+      k.toUpperCase().includes("BO") || k.toUpperCase().includes("PASSWORD")
+    );
     const extra = usingTempPassword
-      ? { needsSetup: true, tempPassword, _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1 }
-      : { _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1 };
+      ? { needsSetup: true, tempPassword, _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1, _debug_vercelEnv: process.env.VERCEL_ENV || "non-vercel", _debug_boKeys: boEnvKeys }
+      : { _debug_boPwdLen: process.env.BO_PASSWORD?.length ?? -1, _debug_vercelEnv: process.env.VERCEL_ENV || "non-vercel", _debug_boKeys: boEnvKeys };
     return res.status(401).json({ ok: false, ...extra });
   }
 
