@@ -16,13 +16,14 @@ export class ErrorBoundary extends Component {
   componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
   render() {
     if (!this.state.hasError) return this.props.children;
+    const errMsg = this.state.error ? (this.state.error.message || String(this.state.error)) : "Erreur inconnue";
     return (
       <div style={{ minHeight:"100vh", background:"#050E20", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
         <div style={{ fontSize:64, marginBottom:16 }}>&#128565;</div>
         <h2 style={{ color:"#fff", fontSize:22, fontWeight:800, margin:"0 0 12px", fontFamily:"'Playfair Display',serif" }}>Oups, quelque chose s'est cassé</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, maxWidth:300, lineHeight:1.7, margin:"0 auto 24px" }}>
-          Une erreur inattendue s'est produite. Nos équipes sont notifiées. Essayez de recharger la page.
-        </p>
+        <div style={{ background:"rgba(242,94,94,0.1)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:10, padding:"10px 16px", maxWidth:400, width:"100%", marginBottom:20 }}>
+          <p style={{ color:"#F25E5E", fontSize:12, fontFamily:"monospace", wordBreak:"break-all", margin:0, textAlign:"left" }}>{errMsg}</p>
+        </div>
         <button aria-label="Recharger la page" onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
           &#128260; Recharger la page
         </button>
