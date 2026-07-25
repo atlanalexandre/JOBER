@@ -14,9 +14,10 @@ export default async function handler(req, res) {
   const ip = (xfwd ? xfwd.split(",").at(-1).trim() : null) || req.socket?.remoteAddress || "unknown";
   const now = Date.now();
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const BO_PASSWORD      = process.env.BO_PASSWORD;
+  // Sanitize : supprime espaces/sauts de ligne (copier-coller iPad/mobile)
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+  const BO_PASSWORD      = (process.env.BO_PASSWORD || "").replace(/\s/g, "") || undefined;
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ ok: false, error: "Configuration Supabase manquante" });

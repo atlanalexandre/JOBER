@@ -3,8 +3,9 @@ import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
-  if (process.env.BO_SESSION_SECRET) return process.env.BO_SESSION_SECRET;
-  const srk = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const bss = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
+  if (bss) return bss;
+  const srk = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (srk) return crypto.createHmac("sha256", srk).update("bo-session-fallback").digest("hex");
   return null;
 }
@@ -58,8 +59,9 @@ export default async function handler(req, res) {
   if (profileId !== undefined && profileId !== null && !isUuidId(profileId)) {
     return res.status(400).json({ error: "profileId invalide" });
   }
-  const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Sanitize : supprime espaces/sauts de ligne (copier-coller iPad/mobile)
+  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
