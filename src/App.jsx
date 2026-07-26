@@ -1417,6 +1417,8 @@ export default function App() {
         setScreen(profile.role==="prestataire"?"p_home":"home");
         return;
       }
+      // Session active mais profil introuvable → compte supprimé
+      await supabase.auth.signOut();
     }
     setScreen("role");
   };

@@ -2551,11 +2551,15 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
       const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
-        fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():null).catch(()=>null),
+        fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(async r=>{
+          if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
+          return r.ok?r.json():null;
+        }).catch(()=>null),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
+      if(prof==="__deleted__") return;
       if(prof) {
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
