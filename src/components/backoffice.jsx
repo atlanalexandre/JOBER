@@ -162,6 +162,193 @@ export function BackofficeLogin({ onLogin, onBack }) {
   );
 }
 
+function DemoDocPreview({ type }) {
+  const S = { // styles communs
+    page: { background:"#fff", borderRadius:8, width:"100%", maxWidth:560, margin:"0 auto", fontFamily:"'Arial',sans-serif", color:"#1a1a1a", overflow:"hidden", boxShadow:"0 4px 24px rgba(0,0,0,0.3)" },
+    header: { background:"#003189", color:"#fff", padding:"16px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" },
+    body: { padding:"20px 24px" },
+    row: { display:"flex", justifyContent:"space-between", borderBottom:"1px solid #eee", padding:"7px 0", fontSize:13 },
+    label: { color:"#666", fontWeight:600, fontSize:12 },
+    value: { color:"#1a1a1a", fontWeight:700, fontSize:13, textAlign:"right" },
+    stamp: { border:"3px solid #22C55E", borderRadius:8, padding:"6px 14px", color:"#22C55E", fontWeight:900, fontSize:13, display:"inline-block", transform:"rotate(-5deg)", letterSpacing:1, marginTop:12 },
+    section: { fontWeight:700, fontSize:11, color:"#003189", textTransform:"uppercase", letterSpacing:1, borderBottom:"2px solid #003189", paddingBottom:4, marginBottom:10, marginTop:16 },
+  };
+
+  if (type === "kbis") return (
+    <div style={S.page}>
+      <div style={S.header}>
+        <div>
+          <div style={{ fontSize:10, opacity:0.7, letterSpacing:2, marginBottom:2 }}>TRIBUNAL DE COMMERCE DE PARIS</div>
+          <div style={{ fontWeight:900, fontSize:16, letterSpacing:1 }}>EXTRAIT K-BIS</div>
+        </div>
+        <div style={{ textAlign:"right", fontSize:11 }}>
+          <div>N° RCS : 823 456 789</div>
+          <div style={{ opacity:0.7 }}>Paris B</div>
+        </div>
+      </div>
+      <div style={S.body}>
+        <div style={S.section}>Identification de l'entreprise</div>
+        {[["Dénomination","ATLAN SERVICES SAS"],["Forme juridique","Société par Actions Simplifiée"],["Capital social","10 000,00 €"],["SIRET","823 456 789 00015"],["Code APE","7820Z – Activité des agences de travail temporaire"],["Date d'immatriculation","15/03/2019"],["Adresse","12 Rue de la Paix, 75002 Paris"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={{ textAlign:"center", marginTop:16 }}>
+          <div style={S.stamp}>✓ CERTIFIÉ CONFORME</div>
+          <div style={{ fontSize:10, color:"#999", marginTop:8 }}>Délivré le 12/01/2025 — Greffe du Tribunal de Commerce de Paris</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "urssaf") return (
+    <div style={S.page}>
+      <div style={{ ...S.header, background:"#C8102E" }}>
+        <div>
+          <div style={{ fontSize:10, opacity:0.7, letterSpacing:2, marginBottom:2 }}>URSSAF ÎLE-DE-FRANCE</div>
+          <div style={{ fontWeight:900, fontSize:15 }}>ATTESTATION DE VIGILANCE</div>
+        </div>
+        <div style={{ fontSize:22, opacity:0.6 }}>🏛️</div>
+      </div>
+      <div style={S.body}>
+        <div style={S.section}>Employeur</div>
+        {[["Raison sociale","ATLAN SERVICES SAS"],["SIRET","823 456 789 00015"],["Adresse","12 Rue de la Paix, 75002 Paris"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={S.section}>Attestation</div>
+        <div style={{ fontSize:13, lineHeight:1.7, color:"#333", background:"#f8f9fa", borderRadius:6, padding:"12px 14px", marginBottom:12 }}>
+          L'URSSAF Île-de-France atteste que l'entreprise <strong>ATLAN SERVICES SAS</strong> est à jour de ses obligations déclaratives et de paiement envers les organismes de recouvrement à la date du présent document.
+        </div>
+        {[["Période couverte","01/01/2025 – 31/03/2025"],["Date d'émission","10/01/2025"],["Référence","URSSAFx2025-0088741"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={{ textAlign:"center", marginTop:12 }}>
+          <div style={S.stamp}>✓ VALIDE</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "rc_pro") return (
+    <div style={S.page}>
+      <div style={{ ...S.header, background:"#1E3A5F" }}>
+        <div>
+          <div style={{ fontSize:10, opacity:0.7, letterSpacing:2, marginBottom:2 }}>AXA FRANCE IARD</div>
+          <div style={{ fontWeight:900, fontSize:15 }}>ATTESTATION RC PROFESSIONNELLE</div>
+        </div>
+        <div style={{ fontSize:22, opacity:0.6 }}>🛡️</div>
+      </div>
+      <div style={S.body}>
+        <div style={S.section}>Assuré</div>
+        {[["Nom / Raison sociale","ATLAN SERVICES SAS"],["SIRET","823 456 789 00015"],["Activité","Mise à disposition de personnel"],["Adresse","12 Rue de la Paix, 75002 Paris"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={S.section}>Contrat</div>
+        {[["N° de police","AXA-RC-2024-887654"],["Garanties","RC exploitation + RC professionnelle"],["Capital garanti","2 000 000 €"],["Période de validité","01/01/2025 – 31/12/2025"],["Émise le","05/01/2025"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={{ textAlign:"center", marginTop:12 }}>
+          <div style={S.stamp}>✓ EN VIGUEUR</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "rib") return (
+    <div style={S.page}>
+      <div style={{ ...S.header, background:"#00843D" }}>
+        <div>
+          <div style={{ fontSize:10, opacity:0.7, letterSpacing:2, marginBottom:2 }}>CRÉDIT AGRICOLE ILE-DE-FRANCE</div>
+          <div style={{ fontWeight:900, fontSize:15 }}>RELEVÉ D'IDENTITÉ BANCAIRE</div>
+        </div>
+        <div style={{ fontSize:22, opacity:0.6 }}>💳</div>
+      </div>
+      <div style={S.body}>
+        <div style={S.section}>Titulaire du compte</div>
+        {[["Titulaire","ATLAN SERVICES SAS"],["Adresse","12 Rue de la Paix, 75002 Paris"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={S.section}>Coordonnées bancaires</div>
+        {[["Banque","18206"],["Guichet","00060"],["N° de compte","06123456789"],["Clé RIB","56"],["Domiciliation","CA IDF PARIS 08"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value} style={{ fontFamily:"monospace" }}>{v}</span></div>
+        ))}
+        <div style={{ background:"#f0f7f0", borderRadius:8, padding:"12px 16px", marginTop:14, border:"1px solid #22C55E22" }}>
+          <div style={{ fontSize:10, color:"#666", fontWeight:600, marginBottom:4 }}>IBAN</div>
+          <div style={{ fontFamily:"monospace", fontSize:16, fontWeight:900, color:"#003189", letterSpacing:2 }}>FR76 1820 6000 6006 1234 5678 956</div>
+          <div style={{ fontFamily:"monospace", fontSize:13, color:"#555", marginTop:4 }}>BIC : AGRIFRPP882</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "cni") return (
+    <div style={S.page}>
+      <div style={{ background:"#002395", padding:"0" }}>
+        <div style={{ background:"linear-gradient(135deg,#002395,#ED2939)", padding:"20px 24px 12px", color:"#fff" }}>
+          <div style={{ fontSize:9, letterSpacing:3, opacity:0.8, marginBottom:4 }}>RÉPUBLIQUE FRANÇAISE</div>
+          <div style={{ fontWeight:900, fontSize:14, letterSpacing:2 }}>CARTE NATIONALE D'IDENTITÉ</div>
+        </div>
+        <div style={{ background:"#fff", padding:"20px 24px" }}>
+          <div style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
+            <div style={{ width:80, height:100, background:"#e8e8e8", borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, flexShrink:0 }}>👤</div>
+            <div style={{ flex:1 }}>
+              {[["Nom","ATLAN"],["Prénom(s)","Alexandre Jean"],["Date de naissance","14/03/1992"],["Lieu de naissance","Paris (75)"],["Nationalité","Française"],["Sexe","M"]].map(([l,v])=>(
+                <div key={l} style={{ marginBottom:6 }}>
+                  <div style={{ fontSize:9, color:"#002395", fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>{l}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ borderTop:"1px solid #eee", marginTop:14, paddingTop:10 }}>
+            {[["N° carte","991234567890"],["Date de délivrance","20/06/2022"],["Date d'expiration","20/06/2032"],["Délivrée par","Préfecture de Police de Paris"]].map(([l,v])=>(
+              <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "domicile") return (
+    <div style={S.page}>
+      <div style={{ ...S.header, background:"#F05A22" }}>
+        <div>
+          <div style={{ fontSize:10, opacity:0.7, letterSpacing:2, marginBottom:2 }}>EDF — ÉLECTRICITÉ DE FRANCE</div>
+          <div style={{ fontWeight:900, fontSize:15 }}>FACTURE D'ÉLECTRICITÉ</div>
+        </div>
+        <div style={{ fontSize:22, opacity:0.6 }}>🏠</div>
+      </div>
+      <div style={S.body}>
+        <div style={S.section}>Client</div>
+        {[["Nom","Alexandre ATLAN"],["Adresse de fourniture","12 Rue de la Paix, Apt 3B"],["Code postal / Ville","75002 Paris"],["Référence client","0612345678901"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={S.section}>Facture</div>
+        {[["N° de facture","EDF-2025-01-887456"],["Période","01/12/2024 – 31/12/2024"],["Date d'émission","08/01/2025"],["Montant TTC","87,42 €"],["Échéance","28/01/2025"]].map(([l,v])=>(
+          <div key={l} style={S.row}><span style={S.label}>{l}</span><span style={S.value}>{v}</span></div>
+        ))}
+        <div style={{ textAlign:"center", marginTop:12 }}>
+          <div style={S.stamp}>✓ PAYÉE</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (type === "photo") return (
+    <div style={{ textAlign:"center", padding:24 }}>
+      <div style={{ width:180, height:180, borderRadius:"50%", background:"linear-gradient(135deg,#7C6FE0,#4F46E5)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", border:"4px solid rgba(124,111,224,0.4)", fontSize:80 }}>
+        👤
+      </div>
+      <div style={{ color:"#fff", fontWeight:700, fontSize:18, marginBottom:4 }}>Alexandre ATLAN</div>
+      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13, marginBottom:16 }}>Prestataire · Plan Élite</div>
+      <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:10, padding:"8px 20px", display:"inline-block" }}>
+        <span style={{ color:"#22C55E", fontWeight:700, fontSize:13 }}>✓ Photo validée</span>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
 export function BOComptes() {
   const [profiles, setProfiles]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -823,14 +1010,7 @@ export function BOComptes() {
             </div>
             <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
               {previewDoc.isDemo ? (
-                <div style={{ textAlign:"center", padding:40 }}>
-                  <div style={{ fontSize:56, marginBottom:16 }}>{previewDoc.icon}</div>
-                  <div style={{ color:"#fff", fontWeight:700, fontSize:17, marginBottom:8 }}>{previewDoc.label}</div>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:20 }}>Document de démonstration</div>
-                  <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:10, padding:"10px 20px", display:"inline-block" }}>
-                    <span style={{ color:"#22C55E", fontWeight:700, fontSize:13 }}>✓ Vérifié et validé</span>
-                  </div>
-                </div>
+                <DemoDocPreview type={previewDoc.docType} />
               ) : previewDoc.isImg ? (
                 <img src={previewDoc.url} alt={previewDoc.label} style={{ maxWidth:"100%", maxHeight:"75vh", display:"block", margin:"0 auto", borderRadius:8 }} />
               ) : (
@@ -919,7 +1099,7 @@ export function BOComptes() {
                             const handleClick = doc.signedUrl
                               ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })
                               : isDemo
-                                ? ()=>setPreviewDoc({ url:null, isImg:false, isDemo:true, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })
+                                ? ()=>setPreviewDoc({ url:null, isImg:false, isDemo:true, docType:doc.type, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })
                                 : undefined;
                             return (
                               <div key={doc.id} onClick={handleClick} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:handleClick?"pointer":"default" }}>
