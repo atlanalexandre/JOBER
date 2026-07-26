@@ -1062,6 +1062,7 @@ export default function App() {
   const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
   const initProfileRef = useRef(undefined); // cache profil préchargé dès INITIAL_SESSION
   const isRecoveryRef  = useRef(false);     // true dès que PASSWORD_RECOVERY event est reçu
+  const [resetToken]   = useState(()=>{ try { return new URLSearchParams(window.location.search).get("reset_token")||null; } catch{ return null; } });
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -1514,7 +1515,7 @@ export default function App() {
       onlineStatus={onlineStatus} onToggleOnline={handleToggleOnline}
       unreadCount={unreadCount}
     >
-      {screen==="reset_password"    && <ResetPasswordScreen resetToken={new URLSearchParams(typeof window!=="undefined"?window.location.search:"").get("reset_token")||null} onDone={()=>setScreen("role")} />}
+      {screen==="reset_password"    && <ResetPasswordScreen resetToken={resetToken} onDone={()=>setScreen("role")} />}
       {screen==="pending_approval"  && <PendingApprovalScreen
         onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }}
         onApproved={(r)=>{ setRole(r); setScreen(r==="prestataire"?"p_home":"home"); }}
