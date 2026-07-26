@@ -1093,21 +1093,24 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // Avec flowType "pkce", updateUser() gère le refresh du token automatiquement
-      const { error: updateErr } = await supabase.auth.updateUser({ data: profileData });
-      if (updateErr) {
-        console.error("[handleSave] updateUser error:", updateErr);
-        const isAuthErr = updateErr.message?.toLowerCase().includes("bearer") ||
-                          updateErr.message?.toLowerCase().includes("token") ||
-                          updateErr.status === 401;
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
         setSaving(false);
-        if (isAuthErr) {
-          setSaveError("Session expirée — déconnexion en cours, reconnectez-vous.");
-          setTimeout(() => supabase.auth.signOut(), 1500);
-        } else {
-          setSaveError(updateErr.message || "Erreur lors de l'enregistrement.");
-          setTimeout(() => setSaveError(null), 5000);
-        }
+        setSaveError("Session expirée — reconnectez-vous.");
+        return;
+      }
+
+      const res = await fetch("/api/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ profileData }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSaving(false);
+        setSaveError(err.error || "Erreur lors de l'enregistrement.");
+        setTimeout(() => setSaveError(null), 5000);
         return;
       }
       setSaving(false);
