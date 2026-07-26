@@ -1,73 +1,53 @@
+import crypto from "crypto";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { email, redirectOrigin } = req.body || {};
+  const { email } = req.body || {};
   if (!email || typeof email !== "string") return res.status(400).json({ error: "Email requis" });
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const RESET_SECRET    = (process.env.BO_SESSION_SECRET || "alane-reset-fallback").replace(/\s/g, "");
+  const RESEND_KEY      = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+  const RESEND_FROM     = process.env.RESEND_FROM || "onboarding@resend.dev";
+  const APP_URL         = (process.env.APP_URL || "https://www.alane.fr").replace(/\/$/, "");
+
+  // Vérifier que l'email existe dans Supabase (sécurité silencieuse)
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
-  const RESEND_KEY       = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-  const RESEND_FROM      = process.env.RESEND_FROM || "onboarding@resend.dev";
-  const APP_URL          = process.env.APP_URL || "https://www.alane.fr";
 
-  console.log("[forgot-password] email:", email);
-  console.log("[forgot-password] SUPABASE_URL set:", !!SUPABASE_URL);
-  console.log("[forgot-password] SERVICE_ROLE_KEY set:", !!SERVICE_ROLE_KEY);
-  console.log("[forgot-password] RESEND_KEY set:", !!RESEND_KEY);
-  console.log("[forgot-password] RESEND_FROM:", RESEND_FROM);
-
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    console.error("[forgot-password] Missing Supabase config");
-    return res.status(500).json({ error: "Configuration serveur manquante" });
+  if (SUPABASE_URL && SERVICE_ROLE_KEY) {
+    try {
+      const check = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(normalizedEmail)}&page=1&per_page=1`,
+        { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
+      );
+      if (check.ok) {
+        const data = await check.json();
+        const users = data?.users || [];
+        if (users.length === 0) {
+          // Email inexistant — répondre ok pour ne pas révéler l'existence du compte
+          return res.status(200).json({ ok: true });
+        }
+      }
+    } catch (e) {
+      console.error("[forgot-password] user check error:", e);
+    }
   }
 
-  // Toujours utiliser APP_URL comme redirect (jamais l'URL de déploiement Vercel preview)
-  const appUrl = APP_URL;
+  // Générer token HMAC : emailB64.timestamp.hmac
+  const timestamp   = Date.now();
+  const emailB64    = Buffer.from(normalizedEmail).toString("base64url");
+  const hmac        = crypto.createHmac("sha256", RESET_SECRET)
+    .update(`${normalizedEmail}:${timestamp}`)
+    .digest("hex");
+  const resetToken  = `${emailB64}.${timestamp}.${hmac}`;
+  const resetUrl    = `${APP_URL}?reset_token=${resetToken}`;
 
-  // Generate reset link via Supabase admin API
-  let linkRes;
-  try {
-    linkRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
-      method: "POST",
-      headers: {
-        "apikey": SERVICE_ROLE_KEY,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "recovery",
-        email: email.trim().toLowerCase(),
-        options: { redirectTo: appUrl },
-      }),
-    });
-  } catch (e) {
-    console.error("[forgot-password] generate_link fetch error:", e);
-    return res.status(200).json({ ok: true });
-  }
-
-  console.log("[forgot-password] generate_link status:", linkRes.status);
-
-  if (!linkRes.ok) {
-    const errBody = await linkRes.text().catch(() => "");
-    console.error("[forgot-password] generate_link failed:", linkRes.status, errBody);
-    return res.status(200).json({ ok: true });
-  }
-
-  const linkData = await linkRes.json();
-  // Supabase returns action_link either at root or under properties depending on version
-  const resetLink = linkData?.action_link || linkData?.properties?.action_link;
-
-  console.log("[forgot-password] resetLink obtained:", !!resetLink);
-  console.log("[forgot-password] linkData keys:", Object.keys(linkData || {}));
-  if (linkData?.properties) console.log("[forgot-password] properties keys:", Object.keys(linkData.properties));
-
-  if (!resetLink) {
-    console.error("[forgot-password] No action_link in response:", JSON.stringify(linkData).slice(0, 500));
-    return res.status(200).json({ ok: true });
-  }
+  console.log("[forgot-password] resetUrl domain:", APP_URL);
 
   if (!RESEND_KEY) {
-    console.error("[forgot-password] RESEND_API_KEY not set — email not sent");
+    console.error("[forgot-password] RESEND_API_KEY not set");
     return res.status(200).json({ ok: true });
   }
 
@@ -94,11 +74,11 @@ export default async function handler(req, res) {
             <p style="margin:0 0 20px;color:#444;">Vous avez demandé à réinitialiser le mot de passe de votre compte <strong>ALANE</strong>.</p>
             <p style="margin:0 0 24px;color:#444;">Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe :</p>
             <div style="text-align:center;margin:28px 0;">
-              <a href="${esc(resetLink)}" style="display:inline-block;background:#7C6FE0;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;letter-spacing:0.3px;">
+              <a href="${esc(resetUrl)}" style="display:inline-block;background:#7C6FE0;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;letter-spacing:0.3px;">
                 Réinitialiser mon mot de passe →
               </a>
             </div>
-            <p style="margin:20px 0 0;font-size:12px;color:#999;text-align:center;">Ce lien est valable 24 heures. Si vous n'avez pas fait cette demande, ignorez cet email.</p>
+            <p style="margin:20px 0 0;font-size:12px;color:#999;text-align:center;">Ce lien est valable 1 heure. Si vous n'avez pas fait cette demande, ignorez cet email.</p>
           </td>
         </tr>
         <tr>
@@ -111,24 +91,20 @@ export default async function handler(req, res) {
   </table>
 </body></html>`;
 
-  let emailOk = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${RESEND_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: RESEND_FROM,
-          to: [email.trim().toLowerCase()],
+          to: [normalizedEmail],
           subject: "Réinitialisation de votre mot de passe ALANE",
           html,
         }),
       });
-      console.log("[forgot-password] Resend status (attempt", attempt + 1, "):", r.status);
-      if (r.ok) { emailOk = true; break; }
+      console.log("[forgot-password] Resend status:", r.status);
+      if (r.ok) break;
       const body = await r.text();
       console.error("[forgot-password] Resend error:", r.status, body);
       if (r.status < 500) break;
@@ -139,6 +115,5 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log("[forgot-password] emailOk:", emailOk);
   return res.status(200).json({ ok: true });
 }

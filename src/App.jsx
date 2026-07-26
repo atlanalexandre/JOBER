@@ -1009,8 +1009,12 @@ function urlBase64ToUint8Array(base64String) {
 export default function App() {
   const [screen,setScreen]=useState(()=>{
     try {
-      const p = new URLSearchParams(window.location.hash.slice(1));
-      if(p.get("type")==="recovery") return "reset_password";
+      // Flux custom reset (reset_token dans la query string)
+      const sp = new URLSearchParams(window.location.search);
+      if(sp.get("reset_token")) return "reset_password";
+      // Flux Supabase implicit (type=recovery dans le hash)
+      const hp = new URLSearchParams(window.location.hash.slice(1));
+      if(hp.get("type")==="recovery") return "reset_password";
     } catch{}
     return "splash";
   });
@@ -1352,11 +1356,13 @@ export default function App() {
 
   // Appelé quand l'utilisateur clique "Commencer" sur le splash
   const handleSplashNext = async () => {
-    // Si PASSWORD_RECOVERY a déjà été reçu, ou si le hash contient type=recovery
+    // Flux custom reset ou Supabase implicit recovery
     if(isRecoveryRef.current){ setScreen("reset_password"); return; }
     try {
-      const p = new URLSearchParams(window.location.hash.slice(1));
-      if(p.get("type")==="recovery"){ setScreen("reset_password"); return; }
+      const sp = new URLSearchParams(window.location.search);
+      if(sp.get("reset_token")){ setScreen("reset_password"); return; }
+      const hp = new URLSearchParams(window.location.hash.slice(1));
+      if(hp.get("type")==="recovery"){ setScreen("reset_password"); return; }
     } catch{}
     // Flux PKCE : ?code= dans l'URL → laisser Supabase traiter, attendre l'event PASSWORD_RECOVERY
     try {
@@ -1508,7 +1514,7 @@ export default function App() {
       onlineStatus={onlineStatus} onToggleOnline={handleToggleOnline}
       unreadCount={unreadCount}
     >
-      {screen==="reset_password"    && <ResetPasswordScreen onDone={()=>setScreen("role")} />}
+      {screen==="reset_password"    && <ResetPasswordScreen resetToken={new URLSearchParams(typeof window!=="undefined"?window.location.search:"").get("reset_token")||null} onDone={()=>setScreen("role")} />}
       {screen==="pending_approval"  && <PendingApprovalScreen
         onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }}
         onApproved={(r)=>{ setRole(r); setScreen(r==="prestataire"?"p_home":"home"); }}
