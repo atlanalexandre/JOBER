@@ -1106,18 +1106,38 @@ export function PrestaProfileEditScreen({ onBack }) {
       // photo_url (base64) uniquement si changée dans cette session — évite un payload >64KB
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      const r = await fetch("/api/update-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ profileData }),
-      });
-      const resJson = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        console.error("[handleSave] update-profile error:", r.status, resJson);
-        setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
-        setSaving(false);
-        setTimeout(() => setSaveError(null), 5000);
-        return;
+      let saved = false;
+      if (token) {
+        try {
+          const r = await fetch("/api/update-profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ profileData }),
+          });
+          const resJson = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            console.error("[handleSave] update-profile error:", r.status, resJson);
+            setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
+            setSaving(false);
+            setTimeout(() => setSaveError(null), 5000);
+            return;
+          }
+          saved = true;
+        } catch (fetchErr) {
+          console.warn("[handleSave] API fetch failed, falling back to supabase:", fetchErr?.message);
+        }
+      }
+      // Fallback : supabase.auth.updateUser() si l'endpoint serveur est injoignable
+      if (!saved) {
+        const { error: supaErr } = await supabase.auth.updateUser({ data: profileData });
+        if (supaErr) {
+          console.error("[handleSave] supabase fallback error:", supaErr);
+          setSaveError(supaErr.message || "Erreur lors de l'enregistrement.");
+          setSaving(false);
+          setTimeout(() => setSaveError(null), 5000);
+          return;
+        }
+        saved = true;
       }
       // Refresh local session to pick up updated user_metadata in JWT
       await supabase.auth.refreshSession().catch(() => {});
@@ -1127,7 +1147,7 @@ export function PrestaProfileEditScreen({ onBack }) {
     } catch (e) {
       console.error("[handleSave] exception:", e);
       setSaving(false);
-      setSaveError("Erreur réseau. Vérifiez votre connexion.");
+      setSaveError(e?.message || "Erreur lors de l'enregistrement.");
       setTimeout(() => setSaveError(null), 5000);
     }
   };
