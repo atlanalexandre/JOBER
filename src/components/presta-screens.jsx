@@ -1005,8 +1005,26 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{
-      const m = data?.user?.user_metadata || {};
+    (async () => {
+      // Chargement via Admin API (service role) — évite les user_metadata stales avec flowType implicit
+      const sess = await supabase.auth.getSession();
+      const token = sess.data?.session?.access_token || "";
+      let m = {};
+      if (token) {
+        try {
+          const r = await fetch("/api/update-profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ action: "get" }),
+          });
+          if (r.ok) { const rd = await r.json(); m = rd.user_metadata || {}; }
+        } catch { /* fallback ci-dessous */ }
+      }
+      // Fallback client-side si le token est absent ou l'endpoint échoue
+      if (!token || Object.keys(m).length === 0) {
+        const { data } = await supabase.auth.getUser();
+        m = data?.user?.user_metadata || {};
+      }
       setMeta(m);
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
       if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
@@ -1026,7 +1044,7 @@ export function PrestaProfileEditScreen({ onBack }) {
       setIban(m.rib||"");
       setPhotoUrl(m.photo_url || null);
       setPhotoAuth(m.photo_public_auth || false);
-    });
+    })();
   },[]);
 
   const toggle = (arr, setArr, item) =>
