@@ -595,6 +595,11 @@ export function ResetPasswordScreen({ onDone }) {
   const [error, setError]       = useState("");
   const [done, setDone]         = useState(false);
 
+  useEffect(() => {
+    // Nettoyer le hash de l'URL pour éviter de recharger l'écran après refresh
+    try { window.history.replaceState(null, "", window.location.pathname); } catch {}
+  }, []);
+
   const handleReset = async () => {
     if(!password || password.length < 6){ setError("Minimum 6 caractères"); return; }
     if(password !== confirm){ setError("Les mots de passe ne correspondent pas"); return; }
