@@ -109,17 +109,15 @@ export default async function handler(req, res) {
       const userData = await userRes.json();
       const userEmail = userData.email;
 
-      // Validation SIRET avant le PATCH pour éviter d'approuver un compte avec SIRET invalide
+      // Validation SIRET — log uniquement, ne bloque pas l'approbation
       if (action === "approve") {
         const metaForSiret = userData.user_metadata || {};
         const rawSiret = metaForSiret.kbis ? String(metaForSiret.kbis).replace(/\s/g, "") : null;
         const isPrestataire = metaForSiret.role === "prestataire";
         if (isPrestataire && !rawSiret) {
-          return res.status(400).json({ error: "SIRET obligatoire avant validation — le prestataire doit fournir son numéro SIRET" });
-        }
-        if (rawSiret && rawSiret.length > 0 && !validateSiret(rawSiret)) {
-          console.warn(`[approve] SIRET invalide — profileId=${profileId} siret=${rawSiret}`);
-          return res.status(400).json({ error: "SIRET invalide (algorithme de Luhn)" });
+          console.warn(`[approve] Prestataire sans SIRET — profileId=${profileId}`);
+        } else if (rawSiret && rawSiret.length > 0 && !validateSiret(rawSiret)) {
+          console.warn(`[approve] SIRET invalide (Luhn) — profileId=${profileId} siret=${rawSiret}`);
         }
       }
 
