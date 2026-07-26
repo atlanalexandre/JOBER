@@ -143,10 +143,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     const { prenom, nom, email, role } = req.body;
     if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
 
-    if (!ADMIN_EMAIL) {
-      return res.status(200).json({ ok: true, warning: "email skipped, missing env vars" });
-    }
-
+    const notifDest = ADMIN_EMAIL || "direction@alane.fr";
     const roleLabel = role === "prestataire" ? "Prestataire" : "Client";
     const html = emailHtml(`
       <p>Un nouveau compte est en attente de validation.</p>
@@ -159,7 +156,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     `);
 
     const cleanSubject = `Nouvelle inscription ${roleLabel} — ${String(prenom||"").replace(/[\r\n]/g," ")} ${String(nom||"").replace(/[\r\n]/g," ")}`;
-    await sendEmail({ to: ADMIN_EMAIL, subject: cleanSubject, html });
+    await sendEmail({ to: notifDest, subject: cleanSubject, html });
     return res.status(200).json({ ok: true });
   }
 

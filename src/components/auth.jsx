@@ -131,12 +131,14 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
       });
+      const _token = data.session?.access_token || "";
+      const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: _authH,
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
       }).catch(() => {});
-      await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
+      await fetch("/api/support", { method:"POST", headers: _authH, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
       let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
@@ -824,12 +826,14 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
       });
+      const _token = data.session?.access_token || "";
+      const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: _authH,
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
       }).catch(() => {});
-      await fetch("/api/support", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
+      await fetch("/api/support", { method:"POST", headers: _authH, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
       let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
@@ -1217,7 +1221,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       });
       await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${data.session?.access_token || ""}` },
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
       }).catch(() => {});
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
