@@ -1057,6 +1057,7 @@ export default function App() {
   const [clientCashback,setClientCashback]=useState(null);
   const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
   const initProfileRef = useRef(undefined); // cache profil préchargé dès INITIAL_SESSION
+  const isRecoveryRef  = useRef(false);     // true dès que PASSWORD_RECOVERY event est reçu
 
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
@@ -1288,7 +1289,7 @@ export default function App() {
       if(event==="TOKEN_REFRESHED"){ setSupaUser(session?.user||null); return; }
 
       setSupaUser(session?.user||null);
-      if(event==="PASSWORD_RECOVERY") { setScreen("reset_password"); return; }
+      if(event==="PASSWORD_RECOVERY") { isRecoveryRef.current=true; setScreen("reset_password"); return; }
       if(event==="SIGNED_OUT") {
         // Ignorer le SIGNED_OUT si on est déjà sur un écran pre-login (évite les sauts au démarrage)
         if(!initialized) return;
@@ -1351,10 +1352,19 @@ export default function App() {
 
   // Appelé quand l'utilisateur clique "Commencer" sur le splash
   const handleSplashNext = async () => {
-    // Si l'URL contient un token de reset, ne pas toucher à la session
+    // Si PASSWORD_RECOVERY a déjà été reçu, ou si le hash contient type=recovery
+    if(isRecoveryRef.current){ setScreen("reset_password"); return; }
     try {
       const p = new URLSearchParams(window.location.hash.slice(1));
       if(p.get("type")==="recovery"){ setScreen("reset_password"); return; }
+    } catch{}
+    // Flux PKCE : ?code= dans l'URL → laisser Supabase traiter, attendre l'event PASSWORD_RECOVERY
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if(sp.has("code")){
+        await new Promise(res => setTimeout(res, 1200));
+        if(isRecoveryRef.current){ setScreen("reset_password"); return; }
+      }
     } catch{}
     const session = initSessionRef.current !== undefined
       ? initSessionRef.current
