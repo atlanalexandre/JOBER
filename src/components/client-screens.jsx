@@ -588,7 +588,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
   );
 }
 
-export function ResetPasswordScreen({ onDone }) {
+export function ResetPasswordScreen({ onDone, resetToken }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm]   = useState("");
   const [loading, setLoading]   = useState(false);
@@ -596,7 +596,7 @@ export function ResetPasswordScreen({ onDone }) {
   const [done, setDone]         = useState(false);
 
   useEffect(() => {
-    // Nettoyer le hash de l'URL pour éviter de recharger l'écran après refresh
+    // Nettoyer l'URL pour éviter de recharger l'écran après refresh
     try { window.history.replaceState(null, "", window.location.pathname); } catch {}
   }, []);
 
@@ -604,11 +604,32 @@ export function ResetPasswordScreen({ onDone }) {
     if(!password || password.length < 6){ setError("Minimum 6 caractères"); return; }
     if(password !== confirm){ setError("Les mots de passe ne correspondent pas"); return; }
     setLoading(true); setError("");
-    const { error:err } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if(err){ setError(err.message); return; }
-    setDone(true);
-    setTimeout(()=>onDone(), 2000);
+
+    if(resetToken) {
+      // Flux custom : token signé HMAC, pas besoin d'être connecté
+      try {
+        const r = await fetch("/api/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resetToken, newPassword: password }),
+        });
+        const j = await r.json().catch(() => ({}));
+        setLoading(false);
+        if(!r.ok){ setError(j.error || "Erreur lors de la réinitialisation"); return; }
+        setDone(true);
+        setTimeout(()=>onDone(), 2000);
+      } catch(e) {
+        setLoading(false);
+        setError("Erreur réseau, réessayez");
+      }
+    } else {
+      // Flux Supabase implicit (PASSWORD_RECOVERY event)
+      const { error:err } = await supabase.auth.updateUser({ password });
+      setLoading(false);
+      if(err){ setError(err.message); return; }
+      setDone(true);
+      setTimeout(()=>onDone(), 2000);
+    }
   };
 
   return (
