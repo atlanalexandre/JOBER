@@ -21,7 +21,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
   }
 
-  const appUrl = redirectOrigin || APP_URL;
+  // Toujours utiliser APP_URL comme redirect (jamais l'URL de déploiement Vercel preview)
+  const appUrl = APP_URL;
 
   // Generate reset link via Supabase admin API
   let linkRes;
