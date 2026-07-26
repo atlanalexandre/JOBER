@@ -40,9 +40,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "profileData requis" });
   }
 
-  // Merge : conserver les champs existants (secteur, metier, bio, kbis, photo_url…) + appliquer profileData
+  // Merge léger : conserver les champs existants SAUF photo_url (déjà en Supabase, inutile de le renvoyer).
+  // L'Admin API Supabase fait un merge de user_metadata → les champs absents du body sont préservés.
   const { photo_url: newPhoto, ...restNew } = profileData;
-  const merged = { ...currentMeta, ...restNew };
+  const { photo_url: _oldPhoto, ...restCurrent } = currentMeta;
+  const merged = { ...restCurrent, ...restNew };
   if (newPhoto !== undefined) merged.photo_url = newPhoto;
 
   // Écriture via Admin API
