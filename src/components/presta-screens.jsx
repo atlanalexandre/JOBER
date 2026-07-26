@@ -990,7 +990,7 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [rayon, setRayon] = useState(20);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
   const [photoUrl, setPhotoUrl]       = useState(null);
@@ -1065,25 +1065,48 @@ export function PrestaProfileEditScreen({ onBack }) {
   };
 
   const handleSave = async () => {
-    setSaving(true); setSaveError(false);
-    const updateData = {
-      dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
-      dispon_jours_creneaux: dispos,
-      dispo_immediat: dispoImmediat,
-      tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
-      telephone, rib: iban,
-      photo_public_auth: photoAuth,
-    };
-    // photo_url (base64) uniquement si changée dans cette session — évite un payload >64KB
-    if (photoChanged) updateData.photo_url = photoUrl;
-    const { error } = await supabase.auth.updateUser({ data: updateData });
-    setSaving(false);
-    if (error) {
-      console.error("[handleSave] updateUser error:", error);
-      setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return;
+    setSaving(true); setSaveError(null);
+    try {
+      const sess = await supabase.auth.getSession();
+      const token = sess.data?.session?.access_token || "";
+      if (!token) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
+
+      const profileData = {
+        dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
+        dispon_jours_creneaux: dispos,
+        dispo_immediat: dispoImmediat,
+        tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
+        telephone, rib: iban,
+        photo_public_auth: photoAuth,
+        cv: meta?.cv || {},
+      };
+      // photo_url (base64) uniquement si changée dans cette session — évite un payload >64KB
+      if (photoChanged) profileData.photo_url = photoUrl;
+
+      const r = await fetch("/api/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ profileData }),
+      });
+      const resJson = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error("[handleSave] update-profile error:", r.status, resJson);
+        setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
+        setSaving(false);
+        setTimeout(() => setSaveError(null), 5000);
+        return;
+      }
+      // Refresh local session to pick up updated user_metadata in JWT
+      await supabase.auth.refreshSession().catch(() => {});
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => { setSaved(false); onBack(); }, 1200);
+    } catch (e) {
+      console.error("[handleSave] exception:", e);
+      setSaving(false);
+      setSaveError("Erreur réseau. Vérifiez votre connexion.");
+      setTimeout(() => setSaveError(null), 5000);
     }
-    setSaved(true);
-    setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
   };
 
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta?.secteur) : null;
@@ -1277,7 +1300,7 @@ export function PrestaProfileEditScreen({ onBack }) {
           <CvEditor cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
 
-        {saveError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#F25E5E", textAlign:"center" }}>❌ Erreur lors de l'enregistrement. Vérifiez votre connexion et réessayez.</div>}
+        {saveError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#F25E5E", textAlign:"center" }}>❌ {saveError}</div>}
         <Btn full onClick={handleSave} disabled={saving} style={{ background:saveError?C.accent:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
           {saving ? "Enregistrement…" : saved ? "✅ Sauvegardé !" : "Enregistrer les modifications"}
         </Btn>
