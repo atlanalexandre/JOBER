@@ -26,17 +26,9 @@ async function validateDoc(file) {
     return null;
   }
 
-  // Image : tenter un chargement (sauf HEIC/HEIF que le navigateur ne décode pas)
-  if (!["heic","heif"].includes(ext)) {
-    const ok = await new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload  = () => { URL.revokeObjectURL(url); resolve(true); };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(false); };
-      img.src = url;
-    });
-    if (!ok) return "Image illisible ou corrompue — vérifiez qu'elle s'ouvre correctement sur votre appareil.";
-  }
+  // Pas de test <img> : URL.createObjectURL échoue silencieusement sur iOS Safari
+  // pour les photos de la pellicule (HEIC déguisés en JPEG, Live Photos…).
+  // Les vérifications type/taille sont suffisantes ; le serveur rejette les fichiers invalides.
 
   return null;
 }
@@ -1090,24 +1082,6 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      // Refresh silencieux (fonctionne uniquement avec flowType "pkce")
-      await supabase.auth.refreshSession().catch(() => {});
-      const sess = await supabase.auth.getSession();
-      const token = sess.data?.session?.access_token || "";
-
-      // Vérifier expiration JWT localement (évite un appel réseau voué à l'échec)
-      const tokenExpired = token && (() => {
-        try { const p = JSON.parse(atob(token.split(".")[1])); return p.exp * 1000 < Date.now(); }
-        catch { return false; }
-      })();
-
-      if (!token || tokenExpired) {
-        setSaving(false);
-        setSaveError("Session expirée — déconnexion en cours, veuillez vous reconnecter.");
-        setTimeout(() => supabase.auth.signOut(), 1500);
-        return;
-      }
-
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
@@ -1117,55 +1091,25 @@ export function PrestaProfileEditScreen({ onBack }) {
         photo_public_auth: photoAuth,
         cv: meta?.cv || {},
       };
-      // photo_url (base64) uniquement si changée dans cette session — évite un payload >64KB
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      let saved = false;
-      try {
-        const r = await fetch("/api/update-profile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ profileData }),
-        });
-        const resJson = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          console.error("[handleSave] update-profile error:", r.status, resJson);
-          // 401 de l'API → token refusé par Supabase → déconnexion forcée
-          if (r.status === 401) {
-            setSaveError("Session invalide — déconnexion en cours, veuillez vous reconnecter.");
-            setSaving(false);
-            setTimeout(() => supabase.auth.signOut(), 1500);
-            return;
-          }
-          setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
-          setSaving(false);
+      // Avec flowType "pkce", updateUser() gère le refresh du token automatiquement
+      const { error: updateErr } = await supabase.auth.updateUser({ data: profileData });
+      if (updateErr) {
+        console.error("[handleSave] updateUser error:", updateErr);
+        const isAuthErr = updateErr.message?.toLowerCase().includes("bearer") ||
+                          updateErr.message?.toLowerCase().includes("token") ||
+                          updateErr.status === 401;
+        setSaving(false);
+        if (isAuthErr) {
+          setSaveError("Session expirée — déconnexion en cours, reconnectez-vous.");
+          setTimeout(() => supabase.auth.signOut(), 1500);
+        } else {
+          setSaveError(updateErr.message || "Erreur lors de l'enregistrement.");
           setTimeout(() => setSaveError(null), 5000);
-          return;
         }
-        saved = true;
-      } catch (fetchErr) {
-        console.warn("[handleSave] API fetch failed, falling back to supabase:", fetchErr?.message);
+        return;
       }
-      // Fallback : supabase.auth.updateUser() si l'endpoint serveur est injoignable
-      if (!saved) {
-        const { error: supaErr } = await supabase.auth.updateUser({ data: profileData });
-        if (supaErr) {
-          console.error("[handleSave] supabase fallback error:", supaErr);
-          const isAuthErr = supaErr.message?.toLowerCase().includes("bearer") || supaErr.message?.toLowerCase().includes("token") || supaErr.status === 401;
-          setSaving(false);
-          if (isAuthErr) {
-            setSaveError("Session invalide — déconnexion en cours, veuillez vous reconnecter.");
-            setTimeout(() => supabase.auth.signOut(), 1500);
-          } else {
-            setSaveError(supaErr.message || "Erreur lors de l'enregistrement.");
-            setTimeout(() => setSaveError(null), 5000);
-          }
-          return;
-        }
-        saved = true;
-      }
-      // Refresh local session to pick up updated user_metadata in JWT
-      await supabase.auth.refreshSession().catch(() => {});
       setSaving(false);
       setSaved(true);
       setTimeout(() => { setSaved(false); onBack(); }, 1200);
