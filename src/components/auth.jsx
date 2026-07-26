@@ -1118,13 +1118,27 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       const user = signInData?.user;
       if (!user) { setError("Erreur d'authentification — réessayez."); return; }
 
-      const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
+      // Lecture du profil via l'API serveur (service role key) pour contourner tout problème RLS côté client
+      let profile = null;
+      try {
+        const pRes = await fetch("/api/get-profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.id }),
+        });
+        if (pRes.ok) {
+          profile = await pRes.json();
+        } else if (pRes.status !== 404) {
+          console.error("[login] get-profile error:", pRes.status);
+        }
+      } catch (pErr) {
+        console.error("[login] get-profile fetch error:", pErr);
+      }
 
       if (!profile) {
-        // Profil absent au premier SELECT — tentative de récupération depuis les métadonnées d'inscription
+        // Profil absent — créer depuis les métadonnées d'inscription (nouveau compte)
         const meta = user.user_metadata || {};
         if (meta.role && meta.role === role) {
-          // ignoreDuplicates: true — ne jamais écraser un profil existant (évite de réinitialiser status='approved' → 'pending')
           await supabase.from("profiles").upsert({
             id: user.id,
             role: meta.role,
@@ -1132,30 +1146,6 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             nom: meta.nom || "",
             status: "pending",
           }, { onConflict: "id", ignoreDuplicates: true });
-          // Retenter la lecture — le profil peut exister (avec status='approved') même si le premier SELECT a échoué
-          const { data: retryProfile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
-          if (retryProfile) {
-            // Utiliser le profil retrouvé pour les vérifications habituelles
-            if (!retryProfile.status || retryProfile.status === "pending") {
-              setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
-              await supabase.auth.signOut(); return;
-            }
-            if (retryProfile.status === "rejected") {
-              setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
-              await supabase.auth.signOut(); return;
-            }
-            if (retryProfile.status === "suspended") {
-              setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
-              await supabase.auth.signOut(); return;
-            }
-            if (stayLoggedIn) {
-              try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
-            } else {
-              try { sessionStorage.setItem("alane_session_active", "1"); localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
-            }
-            onLogin(user);
-            return;
-          }
           setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
         } else {
           setError("Profil introuvable. Contactez le support si le problème persiste.");
@@ -1168,17 +1158,17 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         await supabase.auth.signOut();
         return;
       }
-      if (!profile?.status || profile.status === "pending") {
+      if (!profile.status || profile.status === "pending") {
         setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
         await supabase.auth.signOut();
         return;
       }
-      if (profile?.status === "rejected") {
+      if (profile.status === "rejected") {
         setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
         await supabase.auth.signOut();
         return;
       }
-      if (profile?.status === "suspended") {
+      if (profile.status === "suspended") {
         setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
         await supabase.auth.signOut();
         return;
