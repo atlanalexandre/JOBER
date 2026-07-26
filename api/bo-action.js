@@ -172,17 +172,23 @@ export default async function handler(req, res) {
 
         if (allFilters.length > 0) {
           try {
-            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,reason", limit: "1" });
+            const blParams = new URLSearchParams({ or: `(${allFilters.join(",")})`, select: "id,reason,missions_completed_month,plan_abonnement", limit: "1" });
             const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?${blParams}`, { headers });
             const blData = await blRes.json();
             if (Array.isArray(blData) && blData.length > 0) {
-              // Match trouvé : marquer trial épuisé + logguer le vecteur de match
+              const bl = blData[0];
+              // Restaurer la consommation de missions du compte supprimé
+              // pour empêcher de récupérer gratuitement des missions déjà utilisées
+              const restoredPatch = { trial_exhausted: true };
+              if (typeof bl.missions_completed_month === "number" && bl.missions_completed_month > 0) {
+                restoredPatch.missions_completed_month = bl.missions_completed_month;
+              }
               await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
                 method: "PATCH",
                 headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ trial_exhausted: true }),
+                body: JSON.stringify(restoredPatch),
               }).catch(() => {});
-              console.warn(`[approve] Blacklist match — profileId=${profileId} email=${userEmail} iban=${iban2 ? "***" : "none"} siret=${siret2 ? "***" : "none"} matched entry: ${JSON.stringify(blData[0])}`);
+              console.warn(`[approve] Blacklist match — profileId=${profileId} email=${userEmail} missions_restored=${bl.missions_completed_month || 0} plan_deleted=${bl.plan_abonnement || "free"}`);
             }
           } catch(blErr) {
             console.error("[approve] blacklist check error:", blErr.message);
@@ -316,22 +322,30 @@ export default async function handler(req, res) {
         body: JSON.stringify({ action: "delete", target_id: profileId, target_email: userEmail || null, reason: reason || null }),
       }).catch(() => {});
 
-      // Anti-abus : sauvegarder les identifiants dans le blacklist pour bloquer la recréation de compte
-      // Récupérer téléphone, IBAN, SIRET depuis user_metadata
+      // Anti-abus : sauvegarder les identifiants dans la blacklist pour bloquer la recréation de compte
+      // Récupérer téléphone, IBAN, SIRET depuis user_metadata + consommation de missions depuis profiles
       const meta = userData.user_metadata || {};
       const telephone = meta.telephone || null;
       const iban      = meta.rib ? String(meta.rib).replace(/\s/g, "").toUpperCase() : null;
       const siret     = meta.kbis || null;
+      const savedProfileRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement&limit=1`,
+        { headers }
+      );
+      const savedProfileRows = savedProfileRes.ok ? await savedProfileRes.json().catch(() => []) : [];
+      const savedProfile = Array.isArray(savedProfileRows) && savedProfileRows.length > 0 ? savedProfileRows[0] : {};
       if (userEmail || telephone || iban || siret) {
         await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
-            email_hash:     hashPii(userEmail),
-            telephone_hash: hashPii(telephone),
-            iban_hash:      hashPii(iban),
-            siret_hash:     hashPii(siret),
-            reason:         reason ? `account_deleted: ${reason}` : "account_deleted",
+            email_hash:               hashPii(userEmail),
+            telephone_hash:           hashPii(telephone),
+            iban_hash:                hashPii(iban),
+            siret_hash:               hashPii(siret),
+            reason:                   reason ? `account_deleted: ${reason}` : "account_deleted",
+            missions_completed_month: savedProfile.missions_completed_month || 0,
+            plan_abonnement:          savedProfile.plan_abonnement || "free",
           }),
         }).catch(() => {});
       }
