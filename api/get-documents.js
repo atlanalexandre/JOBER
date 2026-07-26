@@ -1,8 +1,18 @@
+async function verifyUser(req, supabaseUrl, serviceRoleKey) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { userId } = req.body || {};
-  if (!userId) return res.status(400).json({ error: "userId requis" });
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
@@ -10,6 +20,12 @@ export default async function handler(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
   }
+
+  const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+  if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+  // Use userId from JWT, not from body, to prevent IDOR
+  const userId = caller.id;
 
   const headers = {
     "apikey": SERVICE_ROLE_KEY,

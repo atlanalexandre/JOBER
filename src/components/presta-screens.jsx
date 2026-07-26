@@ -114,22 +114,27 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !authData?.user) throw new Error("Session expirée");
-      const user = authData.user;
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/${doc.id}_${Date.now()}.${ext}`;
-      const { error: storageErr } = await supabase.storage.from("Documents").upload(path, file, { upsert: true });
-      if (storageErr) throw storageErr;
-      // Insert côté serveur (service role) — bypass RLS INSERT
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
-      const dbRes = await fetch("/api/save-document", {
+      if (!token) throw new Error("Session expirée");
+
+      // Encode file as base64 for server-side upload (bypass Storage RLS)
+      const fileBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = () => reject(new Error("Erreur lecture fichier"));
+        reader.readAsDataURL(file);
+      });
+
+      const uploadRes = await fetch("/api/upload-document", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ type: doc.id, storagePath: path }),
+        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: doc.id }),
       });
-      if (!dbRes.ok) throw new Error("Erreur enregistrement document");
+      if (!uploadRes.ok) {
+        const errData = await uploadRes.json().catch(() => ({}));
+        throw new Error(errData.error || "Erreur lors de l'envoi");
+      }
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
@@ -2604,7 +2609,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const docsRes = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+      const _docsTok = sess.data?.session?.access_token || "";
+      const docsRes = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_docsTok}`},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
       const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
@@ -2917,8 +2923,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
               const { data:{ user } } = await supabase.auth.getUser();
               if(!user) return;
-              // Refresh via service role — bypass RLS
-              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+              const _s = await supabase.auth.getSession();
+              const _t = _s.data?.session?.access_token || "";
+              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_t}`},body:JSON.stringify({userId:user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
               const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
               if(user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
               setUploadedDocIds(uploaded);
