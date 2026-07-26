@@ -628,6 +628,12 @@ CREATE INDEX IF NOT EXISTS idx_blacklist_telephone_hash ON account_blacklist(tel
 CREATE INDEX IF NOT EXISTS idx_blacklist_iban_hash      ON account_blacklist(iban_hash)      WHERE iban_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blacklist_siret_hash     ON account_blacklist(siret_hash)     WHERE siret_hash IS NOT NULL;
 
+-- ── Mémoire du plan + consommation au moment de la suppression ────────────────
+-- Permet de restaurer missions_completed_month si le compte est recréé
+-- avant le reset mensuel, empêchant l'abus des missions gratuites.
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS missions_completed_month integer DEFAULT 0;
+ALTER TABLE account_blacklist ADD COLUMN IF NOT EXISTS plan_abonnement          text    DEFAULT 'free';
+
 -- ── Sécurité : rate-limit persistant backoffice ───────────────────────────
 -- Remplace le Map in-memory de bo-verify-pin.js qui se réinitialise
 -- à chaque cold start Vercel. RLS activé sans policy → accès service_role seul.
