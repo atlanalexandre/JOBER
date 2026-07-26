@@ -58,11 +58,15 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE TABLE IF NOT EXISTS documents (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   prestataire_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  type           text,          -- kbis | rib | cni | autre
+  type           text,          -- kbis | rib | cni | urssaf | rib | domicile | rc_pro | photo | autre
   storage_path   text NOT NULL, -- chemin dans le bucket "documents"
   verified       boolean DEFAULT false,
   created_at     timestamptz DEFAULT now()
 );
+-- Fix FK si elle pointe vers une table "prestataires" au lieu de auth.users :
+-- ALTER TABLE documents DROP CONSTRAINT documents_prestataire_id_fkey;
+-- ALTER TABLE documents ADD CONSTRAINT documents_prestataire_id_fkey
+--   FOREIGN KEY (prestataire_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 -- ── COLONNES manquantes sur profiles ─────────────────────────
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS cashback_balance        numeric DEFAULT 0;
