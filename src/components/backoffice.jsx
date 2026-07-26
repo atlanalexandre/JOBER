@@ -445,7 +445,11 @@ export function BOComptes() {
 
   const handleAction = async (profileId, action, reason) => {
     setActioning(profileId+action);
-    await boFetch({ action, profileId, reason });
+    try {
+      const r = await boFetch({ action, profileId, reason });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) showToast(j.error || `Erreur ${r.status}`, "error");
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setActioning(null);
     load();
   };

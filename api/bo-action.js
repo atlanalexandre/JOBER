@@ -254,8 +254,20 @@ export default async function handler(req, res) {
     }
 
     if (action === "enable_missions" || action === "disable_missions") {
-      // La colonne missions_enabled n'existe pas dans le schéma — action dépréciée.
-      return res.status(410).json({ error: "Action dépréciée — la colonne missions_enabled n'existe pas dans le schéma." });
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const enabled = action === "enable_missions";
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ missions_enabled: enabled }),
+      });
+      if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour missions_enabled" });
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action, target_id: profileId, details: { enabled } }),
+      }).catch(() => {});
+      return res.status(200).json({ success: true });
     }
 
     if (action === "delete") {
