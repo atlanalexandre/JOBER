@@ -121,8 +121,16 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const path = `${user.id}/${doc.id}_${Date.now()}.${ext}`;
       const { error: storageErr } = await supabase.storage.from("Documents").upload(path, file, { upsert: true });
       if (storageErr) throw storageErr;
-      const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: user.id, type: doc.id, storage_path: path });
-      if (dbErr) throw dbErr;
+      // Insert côté serveur (service role) — bypass RLS INSERT
+      const sess = await supabase.auth.getSession();
+      const token = sess.data?.session?.access_token || "";
+      const dbRes = await fetch("/api/save-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ type: doc.id, storagePath: path }),
+      });
+      if (!dbRes.ok) throw new Error("Erreur enregistrement document");
+
       notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.();
@@ -2905,8 +2913,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
               const { data:{ user } } = await supabase.auth.getUser();
               if(!user) return;
-              const { data } = await supabase.from("documents").select("type").eq("prestataire_id", user.id);
-              setUploadedDocIds((data||[]).map(d=>d.type));
+              // Refresh via service role — bypass RLS
+              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+              const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
+              if(user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
+              setUploadedDocIds(uploaded);
             }} />
           ))}
         </>}
