@@ -1012,10 +1012,9 @@ export function PrestaProfileEditScreen({ onBack }) {
           if (r.ok) { const rd = await r.json(); m = rd.user_metadata || {}; }
         } catch { /* fallback ci-dessous */ }
       }
-      // Fallback client-side si le token est absent ou l'endpoint échoue
-      if (!token || Object.keys(m).length === 0) {
-        const { data } = await supabase.auth.getUser();
-        m = data?.user?.user_metadata || {};
+      // Fallback : lit directement depuis la session locale (pas d'appel réseau)
+      if (Object.keys(m).length === 0) {
+        m = sess.data?.session?.user?.user_metadata || {};
       }
       setMeta(m);
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
@@ -1101,16 +1100,25 @@ export function PrestaProfileEditScreen({ onBack }) {
         return;
       }
 
-      const res = await fetch("/api/update-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ profileData }),
+      // Appel direct à l'API Supabase auth — pas de fonction Vercel, pas de timeout, pas de machinerie SDK
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ data: profileData }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         setSaving(false);
-        setSaveError(err.error || "Erreur lors de l'enregistrement.");
-        setTimeout(() => setSaveError(null), 5000);
+        if (res.status === 401) {
+          setSaveError("Session expirée — reconnectez-vous.");
+        } else {
+          setSaveError(err.message || err.error_description || "Erreur lors de l'enregistrement.");
+          setTimeout(() => setSaveError(null), 5000);
+        }
         return;
       }
       setSaving(false);
