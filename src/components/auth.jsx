@@ -1311,11 +1311,16 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
                       <Btn onClick={async()=>{
                         if(!forgotEmail){ setError("Email requis"); return; }
                         setLoading(true); setError("");
-                        const { error:err } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-                          redirectTo: window.location.origin,
-                        });
+                        try {
+                          const r = await fetch("/api/forgot-password", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ email: forgotEmail, redirectOrigin: window.location.origin }),
+                          });
+                          const j = await r.json().catch(() => ({}));
+                          if (!r.ok) { setError(j.error || "Erreur serveur"); setLoading(false); return; }
+                        } catch(e) { setError("Erreur réseau"); setLoading(false); return; }
                         setLoading(false);
-                        if(err){ setError(err.message); return; }
                         setForgotSent(true);
                       }} disabled={loading} style={{ flex:1, fontSize:13, padding:"11px", background:accentColor }}>
                         {loading ? "Envoi…" : "Envoyer →"}
