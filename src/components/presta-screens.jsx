@@ -1090,11 +1090,23 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      // Tenter un refresh du token avant de sauvegarder (évite les erreurs "invalid Bearer token")
+      // Refresh silencieux (fonctionne uniquement avec flowType "pkce")
       await supabase.auth.refreshSession().catch(() => {});
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
-      if (!token) { setSaving(false); setSaveError("Session expirée — veuillez vous déconnecter et reconnecter."); return; }
+
+      // Vérifier expiration JWT localement (évite un appel réseau voué à l'échec)
+      const tokenExpired = token && (() => {
+        try { const p = JSON.parse(atob(token.split(".")[1])); return p.exp * 1000 < Date.now(); }
+        catch { return false; }
+      })();
+
+      if (!token || tokenExpired) {
+        setSaving(false);
+        setSaveError("Session expirée — déconnexion en cours, veuillez vous reconnecter.");
+        setTimeout(() => supabase.auth.signOut(), 1500);
+        return;
+      }
 
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
@@ -1109,34 +1121,45 @@ export function PrestaProfileEditScreen({ onBack }) {
       if (photoChanged) profileData.photo_url = photoUrl;
 
       let saved = false;
-      if (token) {
-        try {
-          const r = await fetch("/api/update-profile", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({ profileData }),
-          });
-          const resJson = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            console.error("[handleSave] update-profile error:", r.status, resJson);
-            setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
+      try {
+        const r = await fetch("/api/update-profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ profileData }),
+        });
+        const resJson = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          console.error("[handleSave] update-profile error:", r.status, resJson);
+          // 401 de l'API → token refusé par Supabase → déconnexion forcée
+          if (r.status === 401) {
+            setSaveError("Session invalide — déconnexion en cours, veuillez vous reconnecter.");
             setSaving(false);
-            setTimeout(() => setSaveError(null), 5000);
+            setTimeout(() => supabase.auth.signOut(), 1500);
             return;
           }
-          saved = true;
-        } catch (fetchErr) {
-          console.warn("[handleSave] API fetch failed, falling back to supabase:", fetchErr?.message);
+          setSaveError(resJson.error || "Erreur lors de l'enregistrement.");
+          setSaving(false);
+          setTimeout(() => setSaveError(null), 5000);
+          return;
         }
+        saved = true;
+      } catch (fetchErr) {
+        console.warn("[handleSave] API fetch failed, falling back to supabase:", fetchErr?.message);
       }
       // Fallback : supabase.auth.updateUser() si l'endpoint serveur est injoignable
       if (!saved) {
         const { error: supaErr } = await supabase.auth.updateUser({ data: profileData });
         if (supaErr) {
           console.error("[handleSave] supabase fallback error:", supaErr);
-          setSaveError(supaErr.message || "Erreur lors de l'enregistrement.");
+          const isAuthErr = supaErr.message?.toLowerCase().includes("bearer") || supaErr.message?.toLowerCase().includes("token") || supaErr.status === 401;
           setSaving(false);
-          setTimeout(() => setSaveError(null), 5000);
+          if (isAuthErr) {
+            setSaveError("Session invalide — déconnexion en cours, veuillez vous reconnecter.");
+            setTimeout(() => supabase.auth.signOut(), 1500);
+          } else {
+            setSaveError(supaErr.message || "Erreur lors de l'enregistrement.");
+            setTimeout(() => setSaveError(null), 5000);
+          }
           return;
         }
         saved = true;
