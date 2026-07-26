@@ -912,7 +912,7 @@ export function BOComptes() {
                   })}
                   {/* Bouton valider l'accès aux prestations */}
                   <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-                    {p.missions_enabled ? (
+                    {p.missions_enabled === true ? (
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <div style={{ padding:"9px 14px", borderRadius:10, background:`${C.success}15`, border:`1px solid ${C.success}44`, color:C.success, fontWeight:700, fontSize:12, display:"inline-block" }}>✅ Prestations activées</div>
                         <button onClick={()=>handleAction(p.id,"disable_missions")} disabled={!!actioning} style={{ padding:"7px 14px", borderRadius:10, border:`1px solid rgba(240,80,80,0.4)`, background:"rgba(240,80,80,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
