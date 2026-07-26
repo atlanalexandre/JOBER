@@ -28,6 +28,19 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Erreur vérification session" });
   }
 
+  // Action "get" : retourner les user_metadata via Admin API (contourne getUser() stale sur mobile)
+  if (req.body?.action === "get") {
+    try {
+      const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: svcHeaders });
+      if (!adminRes.ok) return res.status(500).json({ error: "Erreur lecture profil" });
+      const adminUser = await adminRes.json();
+      return res.status(200).json({ user_metadata: adminUser.user_metadata || {} });
+    } catch (e) {
+      console.error("[update-profile] get exception:", e);
+      return res.status(500).json({ error: "Erreur serveur" });
+    }
+  }
+
   const { profileData } = req.body || {};
   if (!profileData || typeof profileData !== "object") {
     return res.status(400).json({ error: "profileData requis" });
