@@ -1007,7 +1007,13 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export default function App() {
-  const [screen,setScreen]=useState("splash");
+  const [screen,setScreen]=useState(()=>{
+    try {
+      const p = new URLSearchParams(window.location.hash.slice(1));
+      if(p.get("type")==="recovery") return "reset_password";
+    } catch{}
+    return "splash";
+  });
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [trialExhausted,setTrialExhausted]=useState(false);
@@ -1345,6 +1351,11 @@ export default function App() {
 
   // Appelé quand l'utilisateur clique "Commencer" sur le splash
   const handleSplashNext = async () => {
+    // Si l'URL contient un token de reset, ne pas toucher à la session
+    try {
+      const p = new URLSearchParams(window.location.hash.slice(1));
+      if(p.get("type")==="recovery"){ setScreen("reset_password"); return; }
+    } catch{}
     const session = initSessionRef.current !== undefined
       ? initSessionRef.current
       : (await supabase.auth.getSession()).data.session;
