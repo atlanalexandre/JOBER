@@ -15,7 +15,7 @@ async function validateDoc(file) {
     return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
   }
   if (file.size > 10 * 1024 * 1024) return "Fichier trop lourd (max 10 Mo).";
-  if (file.size < 5 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
+  if (file.size < 1 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
 
   if (file.type === "application/pdf" || ext === "pdf") {
     try {
@@ -110,11 +110,29 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const token = sess.data?.session?.access_token || "";
       if (!token) throw new Error("Session expirée");
 
-      // Encode file as base64 for server-side upload (bypass Storage RLS)
+      // Pour les images : compresser avant envoi (évite timeout Vercel sur gros fichiers iOS)
       const fileBase64 = await new Promise((resolve, reject) => {
+        const isImage = file.type.startsWith("image/") || ["jpg","jpeg","png","webp","heic","heif"].includes(file.name.split(".").pop().toLowerCase());
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
         reader.onerror = () => reject(new Error("Erreur lecture fichier"));
+        reader.onload = (ev) => {
+          if (!isImage || file.type === "application/pdf") {
+            resolve(ev.target.result.split(",")[1]);
+            return;
+          }
+          const img = new Image();
+          img.onerror = () => resolve(ev.target.result.split(",")[1]); // fallback sans compression
+          img.onload = () => {
+            const MAX = 1500;
+            const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+            const canvas = document.createElement("canvas");
+            canvas.width  = Math.round(img.width  * ratio);
+            canvas.height = Math.round(img.height * ratio);
+            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+          };
+          img.src = ev.target.result;
+        };
         reader.readAsDataURL(file);
       });
 
@@ -1111,14 +1129,33 @@ export function PrestaProfileEditScreen({ onBack }) {
         body: JSON.stringify({ data: profileData }),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          // Token expiré — rafraîchir et réessayer une fois
+          const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+          if (!refreshErr && refreshed?.session?.access_token) {
+            const retryRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${refreshed.session.access_token}`,
+                "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({ data: profileData }),
+            });
+            if (retryRes.ok) {
+              setSaving(false); setSaved(true);
+              setTimeout(() => { setSaved(false); onBack(); }, 1200);
+              return;
+            }
+          }
+          setSaving(false);
+          setSaveError("Session expirée — reconnectez-vous.");
+          return;
+        }
         const err = await res.json().catch(() => ({}));
         setSaving(false);
-        if (res.status === 401) {
-          setSaveError("Session expirée — reconnectez-vous.");
-        } else {
-          setSaveError(err.message || err.error_description || "Erreur lors de l'enregistrement.");
-          setTimeout(() => setSaveError(null), 5000);
-        }
+        setSaveError(err.message || err.error_description || "Erreur lors de l'enregistrement.");
+        setTimeout(() => setSaveError(null), 5000);
         return;
       }
       setSaving(false);
