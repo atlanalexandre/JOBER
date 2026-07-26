@@ -53,12 +53,15 @@ export default async function handler(req, res) {
   }
 
   const linkData = await linkRes.json();
-  const resetLink = linkData?.properties?.action_link;
+  // Supabase returns action_link either at root or under properties depending on version
+  const resetLink = linkData?.action_link || linkData?.properties?.action_link;
 
   console.log("[forgot-password] resetLink obtained:", !!resetLink);
+  console.log("[forgot-password] linkData keys:", Object.keys(linkData || {}));
+  if (linkData?.properties) console.log("[forgot-password] properties keys:", Object.keys(linkData.properties));
 
   if (!resetLink) {
-    console.error("[forgot-password] No action_link in response:", JSON.stringify(linkData));
+    console.error("[forgot-password] No action_link in response:", JSON.stringify(linkData).slice(0, 500));
     return res.status(200).json({ ok: true });
   }
 
