@@ -75,12 +75,26 @@ export default async function handler(req, res) {
 
   try {
     if (action === "list") {
-      const [profilesRes, authRes] = await Promise.all([
+      const [profilesRes, authRes, blacklistRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,created_at&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
       ]);
       const profiles = await profilesRes.json();
       const authData = await authRes.json();
+
+      // Construire les sets de hash pour lookup O(1)
+      const blData = blacklistRes ? await blacklistRes.json().catch(() => []) : [];
+      const blSets = { email: new Set(), tel: new Set(), iban: new Set(), siret: new Set() };
+      if (Array.isArray(blData)) {
+        for (const entry of blData) {
+          if (entry.email_hash)     blSets.email.add(entry.email_hash);
+          if (entry.telephone_hash) blSets.tel.add(entry.telephone_hash);
+          if (entry.iban_hash)      blSets.iban.add(entry.iban_hash);
+          if (entry.siret_hash)     blSets.siret.add(entry.siret_hash);
+        }
+      }
+
       const authUsers = authData.users || [];
       const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
       // Whitelist explicite des champs user_metadata exposés — évite la fuite de champs futurs sensibles
@@ -90,10 +104,20 @@ export default async function handler(req, res) {
         const meta = u.user_metadata || {};
         const exposedMeta = {};
         for (const k of META_EXPOSE) if (meta[k] !== undefined) exposedMeta[k] = meta[k];
+        const email = u.email || "";
+        const tel   = meta.telephone || null;
+        const iban  = meta.rib ? String(meta.rib).replace(/\s/g, "").toUpperCase() : null;
+        const siret = meta.kbis ? String(meta.kbis).replace(/\s/g, "") : null;
+        const blacklisted =
+          (email && blSets.email.has(hashPii(email))) ||
+          (tel   && blSets.tel.has(hashPii(tel)))     ||
+          (iban  && blSets.iban.has(hashPii(iban)))   ||
+          (siret && blSets.siret.has(hashPii(siret)));
         return {
           ...p,
-          email: u.email || "",
+          email,
           ...exposedMeta,
+          blacklisted: !!blacklisted,
         };
       });
       return res.status(200).json(merged);
