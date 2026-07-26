@@ -610,6 +610,11 @@ export function BOComptes() {
               <div style={{ background:`${statusColor[p.status]||"#888"}22`, border:`1px solid ${statusColor[p.status]||"#888"}55`, borderRadius:8, padding:"3px 10px", color:statusColor[p.status]||"#888", fontSize:11, fontWeight:700 }}>
                 {statusLabel[p.status]||p.status}
               </div>
+              {p.blacklisted && (
+                <div style={{ background:"rgba(242,94,94,0.18)", border:"1px solid rgba(242,94,94,0.6)", borderRadius:8, padding:"3px 10px", color:"#F25E5E", fontSize:10, fontWeight:700 }}>
+                  ⚠️ Compte recréé
+                </div>
+              )}
               {p.trial_exhausted && (
                 <div style={{ background:"rgba(242,94,94,0.15)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:8, padding:"3px 10px", color:"#F25E5E", fontSize:10, fontWeight:700 }}>
                   🔒 Quota épuisé
