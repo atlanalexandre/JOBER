@@ -1090,9 +1090,11 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
+      // Tenter un refresh du token avant de sauvegarder (évite les erreurs "invalid Bearer token")
+      await supabase.auth.refreshSession().catch(() => {});
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
-      if (!token) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
+      if (!token) { setSaving(false); setSaveError("Session expirée — veuillez vous déconnecter et reconnecter."); return; }
 
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
