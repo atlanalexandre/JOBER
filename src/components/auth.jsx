@@ -1121,16 +1121,41 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       const { data: profile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
 
       if (!profile) {
-        // Profil absent — tentative de récupération depuis les métadonnées d'inscription
+        // Profil absent au premier SELECT — tentative de récupération depuis les métadonnées d'inscription
         const meta = user.user_metadata || {};
         if (meta.role && meta.role === role) {
+          // ignoreDuplicates: true — ne jamais écraser un profil existant (évite de réinitialiser status='approved' → 'pending')
           await supabase.from("profiles").upsert({
             id: user.id,
             role: meta.role,
             prenom: meta.prenom || "",
             nom: meta.nom || "",
             status: "pending",
-          }, { onConflict: "id" });
+          }, { onConflict: "id", ignoreDuplicates: true });
+          // Retenter la lecture — le profil peut exister (avec status='approved') même si le premier SELECT a échoué
+          const { data: retryProfile } = await supabase.from("profiles").select("role,status").eq("id", user.id).single();
+          if (retryProfile) {
+            // Utiliser le profil retrouvé pour les vérifications habituelles
+            if (!retryProfile.status || retryProfile.status === "pending") {
+              setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
+              await supabase.auth.signOut(); return;
+            }
+            if (retryProfile.status === "rejected") {
+              setError("Votre compte a été refusé. Contactez le support pour plus d'informations.");
+              await supabase.auth.signOut(); return;
+            }
+            if (retryProfile.status === "suspended") {
+              setError("Votre compte a été temporairement suspendu. Contactez le support pour plus d'informations.");
+              await supabase.auth.signOut(); return;
+            }
+            if (stayLoggedIn) {
+              try { localStorage.setItem("alane_stay_logged_in", "1"); sessionStorage.removeItem("alane_session_active"); } catch(e) {}
+            } else {
+              try { sessionStorage.setItem("alane_session_active", "1"); localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
+            }
+            onLogin(user);
+            return;
+          }
           setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
         } else {
           setError("Profil introuvable. Contactez le support si le problème persiste.");
