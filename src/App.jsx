@@ -1364,6 +1364,14 @@ export default function App() {
       const hp = new URLSearchParams(window.location.hash.slice(1));
       if(hp.get("type")==="recovery"){ setScreen("reset_password"); return; }
     } catch{}
+    // Flux PKCE : ?code= dans l'URL → laisser Supabase traiter, attendre l'event PASSWORD_RECOVERY
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if(sp.has("code")){
+        await new Promise(res => setTimeout(res, 1200));
+        if(isRecoveryRef.current){ setScreen("reset_password"); return; }
+      }
+    } catch{}
     const session = initSessionRef.current !== undefined
       ? initSessionRef.current
       : (await supabase.auth.getSession()).data.session;
