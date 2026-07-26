@@ -15,8 +15,8 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
-  // Verify JWT → get userId
-  let userId;
+  // Un seul appel : vérification JWT + récupération user_metadata courante
+  let userId, currentMeta;
   try {
     const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
@@ -24,21 +24,15 @@ export default async function handler(req, res) {
     if (!userRes.ok) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
     const u = await userRes.json();
     userId = u.id;
-  } catch {
+    currentMeta = u.user_metadata || {};
+  } catch (e) {
+    console.error("[update-profile] JWT verification error:", e?.message);
     return res.status(401).json({ error: "Erreur vérification session" });
   }
 
-  // Action "get" : retourner les user_metadata via Admin API (contourne getUser() stale sur mobile)
+  // Action "get" : retourner user_metadata directement (pas de 2e appel Supabase)
   if (req.body?.action === "get") {
-    try {
-      const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: svcHeaders });
-      if (!adminRes.ok) return res.status(500).json({ error: "Erreur lecture profil" });
-      const adminUser = await adminRes.json();
-      return res.status(200).json({ user_metadata: adminUser.user_metadata || {} });
-    } catch (e) {
-      console.error("[update-profile] get exception:", e);
-      return res.status(500).json({ error: "Erreur serveur" });
-    }
+    return res.status(200).json({ user_metadata: currentMeta });
   }
 
   const { profileData } = req.body || {};
@@ -46,23 +40,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "profileData requis" });
   }
 
-  // Fetch current user_metadata via Admin API (service role → no JWT size issue)
-  let currentMeta = {};
-  try {
-    const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: svcHeaders });
-    if (adminRes.ok) {
-      const adminUser = await adminRes.json();
-      currentMeta = adminUser.user_metadata || {};
-    }
-  } catch { /* keep currentMeta empty, don't block */ }
-
-  // Merge: keep existing fields (secteur, metier, bio, kbis, etc.) + apply new profileData
-  // photo_url kept from existing unless explicitly provided in this request
+  // Merge : conserver les champs existants (secteur, metier, bio, kbis, photo_url…) + appliquer profileData
   const { photo_url: newPhoto, ...restNew } = profileData;
   const merged = { ...currentMeta, ...restNew };
   if (newPhoto !== undefined) merged.photo_url = newPhoto;
 
-  // Persist via Admin API
+  // Écriture via Admin API
   try {
     const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: "PUT",
@@ -71,12 +54,12 @@ export default async function handler(req, res) {
     });
     if (!updateRes.ok) {
       const err = await updateRes.text();
-      console.error("[update-profile] admin error:", updateRes.status, err);
-      return res.status(500).json({ error: "Erreur mise à jour profil" });
+      console.error("[update-profile] admin PUT error:", updateRes.status, err);
+      return res.status(500).json({ error: "Erreur mise à jour profil (" + updateRes.status + ")" });
     }
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error("[update-profile] exception:", e);
-    return res.status(500).json({ error: "Erreur serveur" });
+    console.error("[update-profile] PUT exception:", e?.message);
+    return res.status(500).json({ error: "Erreur serveur: " + (e?.message || "inconnue") });
   }
 }
