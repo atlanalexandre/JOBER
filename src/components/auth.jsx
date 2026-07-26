@@ -1219,10 +1219,17 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       await supabase.from("profiles").upsert({
         id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
       });
+      const _simpleToken = data.session?.access_token || "";
+      const _simpleAuthH = { "Content-Type": "application/json", "Authorization": `Bearer ${_simpleToken}` };
       await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${data.session?.access_token || ""}` },
+        headers: _simpleAuthH,
         body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
+      }).catch(() => {});
+      await fetch("/api/support", {
+        method: "POST",
+        headers: _simpleAuthH,
+        body: JSON.stringify({ action: "welcome", email, prenom: prenom.trim(), nom: nom.trim(), role }),
       }).catch(() => {});
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
