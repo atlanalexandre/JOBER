@@ -1362,7 +1362,6 @@ export default function App() {
     try {
       const sp = new URLSearchParams(window.location.search);
       if(sp.has("code")){
-        // Attendre brièvement que Supabase échange le code et fire PASSWORD_RECOVERY
         await new Promise(res => setTimeout(res, 1200));
         if(isRecoveryRef.current){ setScreen("reset_password"); return; }
       }
