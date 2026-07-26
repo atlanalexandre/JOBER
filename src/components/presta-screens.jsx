@@ -986,7 +986,8 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
   const [photoUrl, setPhotoUrl]       = useState(null);
-  const [previewUrl, setPreviewUrl]   = useState(null); // aperçu local immédiat (Data URL)
+  const [photoChanged, setPhotoChanged] = useState(false);
+  const [previewUrl, setPreviewUrl]   = useState(null);
   const [photoAuth, setPhotoAuth]     = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
 
@@ -1047,6 +1048,7 @@ export function PrestaProfileEditScreen({ onBack }) {
       });
       setPreviewUrl(dataUrl);
       setPhotoUrl(dataUrl);
+      setPhotoChanged(true);
       showToast("Photo prête — pensez à enregistrer");
     } catch (err) {
       showToast("Erreur traitement photo : " + (err?.message || "inconnue"));
@@ -1056,16 +1058,22 @@ export function PrestaProfileEditScreen({ onBack }) {
 
   const handleSave = async () => {
     setSaving(true); setSaveError(false);
-    const { error } = await supabase.auth.updateUser({ data: {
+    const updateData = {
       dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
       dispon_jours_creneaux: dispos,
       dispo_immediat: dispoImmediat,
       tarif_net: Number(tarifNet), langues, competences, statut_pro: statutPro, zone_km: rayon,
-      telephone, rib: iban, cv: meta?.cv || null,
-      photo_url: photoUrl, photo_public_auth: photoAuth,
-    }});
+      telephone, rib: iban,
+      photo_public_auth: photoAuth,
+    };
+    // photo_url (base64) uniquement si changée dans cette session — évite un payload >64KB
+    if (photoChanged) updateData.photo_url = photoUrl;
+    const { error } = await supabase.auth.updateUser({ data: updateData });
     setSaving(false);
-    if (error) { setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return; }
+    if (error) {
+      console.error("[handleSave] updateUser error:", error);
+      setSaveError(true); setTimeout(()=>setSaveError(false), 4000); return;
+    }
     setSaved(true);
     setTimeout(()=>{ setSaved(false); onBack(); }, 1200);
   };
@@ -2534,8 +2542,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       // refresh_plan utilise service role key côté serveur — lit + écrit plan en DB
       const sess = await supabase.auth.getSession();
       const token = sess.data?.session?.access_token || "";
-      const [{data:prof},{data:mData},{data:rData},planJson]=await Promise.all([
-        supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id",u.id).single(),
+      const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
+        fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():null).catch(()=>null),
         supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
@@ -2584,8 +2592,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const { data: uploadedDocs } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
-      const uploaded = (uploadedDocs||[]).map(d=>d.type);
+      const docsRes = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+      const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
       setUploadedDocIds(uploaded);

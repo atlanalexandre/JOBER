@@ -19,21 +19,18 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,role,status,missions_enabled,plan_abonnement&limit=1`,
+      `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${encodeURIComponent(userId)}&select=type,verified,storage_path`,
       { headers }
     );
     if (!r.ok) {
       const err = await r.text();
-      console.error("[get-profile] fetch error:", r.status, err);
-      return res.status(500).json({ error: "Erreur lecture profil" });
+      console.error("[get-documents] fetch error:", r.status, err);
+      return res.status(500).json({ error: "Erreur lecture documents" });
     }
     const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(404).json({ error: "Profil introuvable" });
-    }
-    return res.status(200).json(rows[0]);
+    return res.status(200).json(Array.isArray(rows) ? rows : []);
   } catch (e) {
-    console.error("[get-profile] error:", e);
+    console.error("[get-documents] error:", e);
     return res.status(500).json({ error: "Erreur serveur" });
   }
 }
