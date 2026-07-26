@@ -817,12 +817,21 @@ export function BOComptes() {
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontWeight:700, color:"#fff", fontSize:14 }}>{previewDoc.icon} {previewDoc.label}</div>
               <div style={{ display:"flex", gap:8 }}>
-                <a href={previewDoc.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:C.violet, fontWeight:700, textDecoration:"none", padding:"5px 12px", border:`1px solid ${C.violet}44`, borderRadius:8 }}>↗ Ouvrir</a>
+                {previewDoc.url && <a href={previewDoc.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:C.violet, fontWeight:700, textDecoration:"none", padding:"5px 12px", border:`1px solid ${C.violet}44`, borderRadius:8 }}>↗ Ouvrir</a>}
                 <button onClick={()=>setPreviewDoc(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:13, fontFamily:"inherit", fontWeight:700 }}>✕</button>
               </div>
             </div>
-            <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300 }}>
-              {previewDoc.isImg ? (
+            <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              {previewDoc.isDemo ? (
+                <div style={{ textAlign:"center", padding:40 }}>
+                  <div style={{ fontSize:56, marginBottom:16 }}>{previewDoc.icon}</div>
+                  <div style={{ color:"#fff", fontWeight:700, fontSize:17, marginBottom:8 }}>{previewDoc.label}</div>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:20 }}>Document de démonstration</div>
+                  <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:10, padding:"10px 20px", display:"inline-block" }}>
+                    <span style={{ color:"#22C55E", fontWeight:700, fontSize:13 }}>✓ Vérifié et validé</span>
+                  </div>
+                </div>
+              ) : previewDoc.isImg ? (
                 <img src={previewDoc.url} alt={previewDoc.label} style={{ maxWidth:"100%", maxHeight:"75vh", display:"block", margin:"0 auto", borderRadius:8 }} />
               ) : (
                 <iframe src={previewDoc.url} title={previewDoc.label} style={{ width:"100%", height:"75vh", border:"none", borderRadius:8, background:"#fff" }} />
@@ -905,13 +914,19 @@ export function BOComptes() {
                             Documents uploadés ({userDocs.filter(d=>d.verified).length}/{userDocs.length} validés)
                           </div>
                           {userDocs.map(doc => {
+                            const isDemo = doc.storage_path?.startsWith("demo/");
                             const isImg = doc.signedUrl && (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl) || doc.signedUrl.startsWith("data:image"));
+                            const handleClick = doc.signedUrl
+                              ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })
+                              : isDemo
+                                ? ()=>setPreviewDoc({ url:null, isImg:false, isDemo:true, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" })
+                                : undefined;
                             return (
-                              <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
+                              <div key={doc.id} onClick={handleClick} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:8, border:`1px solid ${doc.verified?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.07)"}`, cursor:handleClick?"pointer":"default" }}>
                                 <span style={{ fontSize:20 }}>{DOC_ICON[doc.type]||"📄"}</span>
                                 <div style={{ flex:1, minWidth:0 }}>
                                   <div style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
-                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}{doc.signedUrl?" · Appuyer pour voir":""}</div>
+                                  <div style={{ fontSize:11, color:doc.verified?C.success:"#F0B429", fontWeight:700, marginTop:2 }}>{doc.verified?"✓ Vérifié":"⏳ En attente"}{(doc.signedUrl||isDemo)?" · Appuyer pour voir":""}</div>
                                 </div>
                                 <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:6 }}>
                                   {doc.signedUrl && !doc.isVirtual && (
