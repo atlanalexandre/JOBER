@@ -60,7 +60,7 @@ export default async function handler(req, res) {
   // Générer une URL d'upload signée — le navigateur uploadera le fichier directement
   const signRes = await fetch(
     `${SUPABASE_URL}/storage/v1/object/upload/sign/Documents/${storagePath}`,
-    { method: "POST", headers: svcHeaders, body: JSON.stringify({ expiresIn: 300 }) }
+    { method: "POST", headers: svcHeaders, body: JSON.stringify({ upsert: true }) }
   );
 
   if (!signRes.ok) {
@@ -70,8 +70,9 @@ export default async function handler(req, res) {
   }
 
   const sd = await signRes.json();
-  // sd.signedURL est un chemin relatif comme "/storage/v1/object/upload/sign/..."
-  const signedUrl = `${SUPABASE_URL}${sd.signedURL}`;
+  // sd.signedURL peut être relatif ("/storage/v1/...") ou absolu
+  let signedUrl = sd.signedURL || sd.url || "";
+  if (signedUrl && !signedUrl.startsWith("http")) signedUrl = `${SUPABASE_URL}${signedUrl}`;
 
   // Pré-enregistrer le document en base (avant upload, le fichier arrivera juste après)
   try {
