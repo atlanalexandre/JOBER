@@ -169,8 +169,8 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       // Insert DB direct Supabase REST (même approche que le storage — iOS compatible)
       const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: doc.id, storagePath }),
       });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");

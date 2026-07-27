@@ -7135,10 +7135,10 @@ export function DocUploadScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+      const dbRes = await fetch("/api/save-document", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: docId, storagePath }),
       });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");
@@ -7278,10 +7278,10 @@ export function ClientProDocScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+      const dbRes = await fetch("/api/save-document", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: docId, storagePath }),
       });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");
