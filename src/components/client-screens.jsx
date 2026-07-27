@@ -7093,6 +7093,7 @@ export function DocUploadScreen({ onBack }) {
   const [uploading, setUploading] = useState(null);
   const [uploadOk, setUploadOk]   = useState(null);
   const [uploadErr, setUploadErr] = useState(null);
+  const [pendingInsert, setPendingInsert] = useState(null);
   const fileRefs = useRef({});
 
   useEffect(() => {
@@ -7102,6 +7103,24 @@ export function DocUploadScreen({ onBack }) {
     supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
       .then(({ data: rows }) => setDbDocs(rows || []));
   }, []);
+
+  // DB insert dans useEffect — hors contexte file-input, iOS Safari ne l'annule pas
+  useEffect(() => {
+    if (!pendingInsert) return;
+    const { docId, storagePath, at, now } = pendingInsert;
+    fetch("/api/save-document", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type: docId, storagePath }),
+    }).then(r => {
+      if (r.ok) {
+        setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
+        setUploadOk(docId);
+        setTimeout(()=>setUploadOk(null), 3000);
+      } else r.text().then(t => console.warn("save-document error", r.status, t));
+    }).catch(e => console.warn("save-document failed", e))
+      .finally(() => setPendingInsert(null));
+  }, [pendingInsert]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpload = (docId) => {
     const input = fileRefs.current[docId];
@@ -7125,31 +7144,19 @@ export function DocUploadScreen({ onBack }) {
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-        }),
-      ]);
+      // Storage uniquement dans le handler (iOS compatible)
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+        body: fileBlob,
+      });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const errBody = await dbRes.text().catch(() => "");
-        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
-      }
 
-      const now = new Date().toISOString();
-      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
-      setUploadOk(docId);
-      setTimeout(()=>setUploadOk(null), 3000);
+      // DB insert délégué au useEffect (hors handler, pas annulé par iOS)
+      setPendingInsert({ docId, storagePath, at, now: new Date().toISOString() });
     } catch(err) {
       setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
       setTimeout(() => setUploadErr(null), 5000);
@@ -7242,6 +7249,7 @@ export function ClientProDocScreen({ onBack }) {
   const [uploading, setUploading] = useState(null);
   const [uploadOk, setUploadOk]   = useState(null);
   const [uploadErr, setUploadErr] = useState(null);
+  const [pendingInsert, setPendingInsert] = useState(null);
   const fileRefs = useRef({});
 
   useEffect(() => {
@@ -7251,6 +7259,23 @@ export function ClientProDocScreen({ onBack }) {
     supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
       .then(({ data: rows }) => setDbDocs(rows || []));
   }, []);
+
+  useEffect(() => {
+    if (!pendingInsert) return;
+    const { docId, storagePath, at, now } = pendingInsert;
+    fetch("/api/save-document", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type: docId, storagePath }),
+    }).then(r => {
+      if (r.ok) {
+        setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
+        setUploadOk(docId);
+        setTimeout(()=>setUploadOk(null), 3000);
+      } else r.text().then(t => console.warn("save-document error", r.status, t));
+    }).catch(e => console.warn("save-document failed", e))
+      .finally(() => setPendingInsert(null));
+  }, [pendingInsert]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpload = (docId) => { const input = fileRefs.current[docId]; if(input) input.click(); };
 
@@ -7285,15 +7310,8 @@ export function ClientProDocScreen({ onBack }) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const errBody = await dbRes.text().catch(() => "");
-        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
-      }
 
-      const now = new Date().toISOString();
-      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
-      setUploadOk(docId);
-      setTimeout(()=>setUploadOk(null), 3000);
+      setPendingInsert({ docId, storagePath, at, now: new Date().toISOString() });
     } catch(err) {
       setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
       setTimeout(() => setUploadErr(null), 5000);

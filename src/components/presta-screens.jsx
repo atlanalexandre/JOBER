@@ -124,8 +124,26 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   const [renewed, setRenewed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  // pendingInsert : { type, storagePath, at } — traité dans useEffect hors du handler iOS
+  const [pendingInsert, setPendingInsert] = useState(null);
   const fileInputRef = useRef(null);
   const valid = isValid || renewed;
+
+  // DB insert dans useEffect — hors contexte file-input, iOS Safari ne l'annule pas
+  // Appelle le serverless avec service_role_key → bypass total de la RLS
+  useEffect(() => {
+    if (!pendingInsert) return;
+    const { type, storagePath, at } = pendingInsert;
+    fetch("/api/save-document", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type, storagePath }),
+    }).then(r => {
+      if (!r.ok) r.text().then(t => console.warn("save-document error", r.status, t));
+      else { setRenewed(true); onUploaded?.(); }
+    }).catch(e => console.warn("save-document fetch failed", e))
+      .finally(() => setPendingInsert(null));
+  }, [pendingInsert]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUploadClick = () => {
     setUploadError(null);
@@ -155,32 +173,20 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const SB_URL = import.meta.env.VITE_SUPABASE_URL;
       const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Lance storage + DB insert en parallèle — iOS Safari annule les fetch séquentiels
-      // lancés après un gros upload ; Promise.all démarre les deux avant que Safari annule
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-          body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-        }),
-      ]);
+      // Storage upload uniquement dans le handler (iOS compatible)
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+        body: fileBlob,
+      });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const errBody = await dbRes.text().catch(() => "");
-        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
-      }
 
+      // DB insert délégué au useEffect (hors handler, pas annulé par iOS)
       notifyDocUpload(doc.id, true);
-      setRenewed(true);
-      onUploaded?.();
+      setPendingInsert({ type: doc.id, storagePath, at });
     } catch (err) {
       console.error("Upload error", err);
       setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
