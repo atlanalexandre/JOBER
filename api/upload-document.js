@@ -3,6 +3,14 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  try { return await _handler(req, res); }
+  catch (e) {
+    console.error("[upload-document] unhandled:", e?.message);
+    if (!res.headersSent) res.status(500).json({ error: "Erreur inattendue: " + (e?.message || "inconnue") });
+  }
+}
+
+async function _handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const authHeader = req.headers.authorization || "";
@@ -57,11 +65,11 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
-  // Générer une URL d'upload signée — timeout 8s pour éviter que Vercel ferme la connexion sans réponse
+  // Générer une URL d'upload signée — timeout 5s (cold start ~3s + 5s < limite Vercel Hobby 10s)
   let signedUrl;
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 5000);
     const signRes = await fetch(
       `${SUPABASE_URL}/storage/v1/object/upload/sign/Documents/${storagePath}`,
       { method: "POST", headers: svcHeaders, body: JSON.stringify({ expiresIn: 300, upsert: true }), signal: ctrl.signal }
