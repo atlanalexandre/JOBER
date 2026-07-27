@@ -130,6 +130,9 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       if (!at) throw new Error("Session expirée — reconnectez-vous.");
       if (!userId) throw new Error("Identifiant utilisateur manquant");
 
+      // Synchroniser le SDK avec le token valide (await — pas fire-and-forget)
+      await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
 
