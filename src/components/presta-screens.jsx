@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabase.js";
+import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
@@ -106,9 +106,10 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
-      const sess = await supabase.auth.getSession();
-      const token = sess.data?.session?.access_token || "";
-      if (!token) throw new Error("Session expirée");
+      const rawSess = getRawSession();
+      const token = rawSess?.access_token || "";
+      const refreshToken = rawSess?.refresh_token || "";
+      if (!token && !refreshToken) throw new Error("Session expirée");
 
       // Pour les images : compresser avant envoi (évite timeout Vercel sur gros fichiers iOS)
       const fileBase64 = await new Promise((resolve, reject) => {
@@ -138,7 +139,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
 
       const uploadRes = await fetch("/api/upload-document", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-refresh-token": refreshToken },
         body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: doc.id }),
       });
       if (!uploadRes.ok) {
@@ -1016,9 +1017,9 @@ export function PrestaProfileEditScreen({ onBack }) {
 
   useEffect(()=>{
     (async () => {
-      // Chargement via Admin API (service role) — évite les user_metadata stales avec flowType implicit
-      const sess = await supabase.auth.getSession();
-      const token = sess.data?.session?.access_token || "";
+      // Chargement via Admin API (service role) — lecture brute localStorage, pas de SDK auto-refresh
+      const rawSessLoad = getRawSession();
+      const token = rawSessLoad?.access_token || "";
       let m = {};
       if (token) {
         try {
@@ -1032,7 +1033,7 @@ export function PrestaProfileEditScreen({ onBack }) {
       }
       // Fallback : lit directement depuis la session locale (pas d'appel réseau)
       if (Object.keys(m).length === 0) {
-        m = sess.data?.session?.user?.user_metadata || {};
+        m = rawSessLoad?.user?.user_metadata || {};
       }
       setMeta(m);
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
@@ -1110,51 +1111,36 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
+      // Lire la session brute sans déclencher le SDK (évite _removeSession sur token expiré)
+      const rawSess = getRawSession();
+      const accessToken = rawSess?.access_token || "";
+      const refreshToken = rawSess?.refresh_token || "";
+      if (!accessToken && !refreshToken) {
         setSaving(false);
         setSaveError("Session expirée — reconnectez-vous.");
         return;
       }
 
-      // Appel direct à l'API Supabase auth — pas de fonction Vercel, pas de timeout, pas de machinerie SDK
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
-        method: "PUT",
+      // L'API gère le refresh côté serveur si le JWT est expiré
+      const res = await fetch("/api/update-profile", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-          "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${accessToken}`,
+          "x-refresh-token": refreshToken,
         },
-        body: JSON.stringify({ data: profileData }),
+        body: JSON.stringify({ profileData }),
       });
+
+      // Si l'API a émis de nouveaux tokens, mettre à jour la session locale via SDK
+      const newAt = res.headers.get("x-new-access-token");
+      const newRt = res.headers.get("x-new-refresh-token");
+      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
+
       if (!res.ok) {
-        if (res.status === 401) {
-          // Token expiré — rafraîchir et réessayer une fois
-          const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-          if (!refreshErr && refreshed?.session?.access_token) {
-            const retryRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${refreshed.session.access_token}`,
-                "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
-              },
-              body: JSON.stringify({ data: profileData }),
-            });
-            if (retryRes.ok) {
-              setSaving(false); setSaved(true);
-              setTimeout(() => { setSaved(false); onBack(); }, 1200);
-              return;
-            }
-          }
-          setSaving(false);
-          setSaveError("Session expirée — reconnectez-vous.");
-          return;
-        }
         const err = await res.json().catch(() => ({}));
         setSaving(false);
-        setSaveError(err.message || err.error_description || "Erreur lors de l'enregistrement.");
+        setSaveError(err.error || "Erreur lors de l'enregistrement.");
         setTimeout(() => setSaveError(null), 5000);
         return;
       }
@@ -2618,8 +2604,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     else if(activeScreen==="p_missions"||activeScreen==="p_home") setTab("prestations");
   },[activeScreen]);
   useEffect(()=>{
-    supabase.auth.getUser().then(async ({data})=>{
-      const u=data?.user; if(!u) return;
+    (async()=>{
+      // Lire la session brute depuis localStorage : pas de SDK, pas de risque de _removeSession
+      const rawSess = getRawSession();
+      const u = rawSess?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
@@ -2630,9 +2618,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const tourKey=`alane_presta_tour_done_${u.id}`;
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch { /* ignore */ }
       if(!prestaTourDone) setShowTour(true);
-      // refresh_plan utilise service role key côté serveur — lit + écrit plan en DB
-      const sess = await supabase.auth.getSession();
-      const token = sess.data?.session?.access_token || "";
+      const token = rawSess?.access_token || "";
       const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
         fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(async r=>{
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
@@ -2687,7 +2673,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const _docsTok = sess.data?.session?.access_token || "";
+      const _docsTok = rawSess?.access_token || "";
       const docsRes = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_docsTok}`},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
       const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
@@ -2695,7 +2681,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setUploadedDocIds(uploaded);
       const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
-    });
+    })();
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
       .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
@@ -2705,10 +2691,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   useEffect(() => {
     const refresh = async () => {
       if (document.visibilityState !== "visible") return;
-      const { data } = await supabase.auth.getUser();
-      const u = data?.user; if (!u) return;
-      const sess = await supabase.auth.getSession();
-      const token = sess.data?.session?.access_token || "";
+      const rawSess2 = getRawSession();
+      const u = rawSess2?.user; if (!u) return;
+      const token = rawSess2?.access_token || "";
       const [profRes, planJson] = await Promise.all([
         supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single(),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
@@ -2857,8 +2842,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>Espace prestataire</p>
             <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"2px 0 5px" }}>{userName||"Mon espace"}</h2>
             <div style={{ display:"flex", gap:6 }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:C.accentGold }} />
-              <span style={{ color:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:C.accentGold, fontSize:11, fontWeight:700 }}>{userStatus==="approved"?"Compte validé":userStatus==="rejected"?"Compte refusé":"En attente de validation"}</span>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:userStatus===null?"rgba(255,255,255,0.3)":C.accentGold }} />
+              <span style={{ color:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:userStatus===null?"rgba(255,255,255,0.4)":C.accentGold, fontSize:11, fontWeight:700 }}>{userStatus==="approved"?"Compte validé":userStatus==="rejected"?"Compte refusé":userStatus===null?"…":"En attente de validation"}</span>
             </div>
           </div>
           <button onClick={()=>onNavigate("notifications")} style={{ position:"relative", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:12, width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, cursor:"pointer", flexShrink:0 }}>

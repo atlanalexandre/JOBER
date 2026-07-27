@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabase.js";
+import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
@@ -7058,21 +7058,20 @@ export function DocUploadScreen({ onBack }) {
   const [dbDocs, setDbDocs]   = useState([]);  // [{type, storage_path, created_at}]
   const [uploading, setUploading] = useState(null);
   const [uploadOk, setUploadOk]   = useState(null);
+  const [uploadErr, setUploadErr] = useState(null);
   const fileRefs = useRef({});
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const u = data?.user; if(!u) return;
-      setUserId(u.id);
-      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
-      setDbDocs(rows || []);
-    });
+    const rawSess = getRawSession();
+    const u = rawSess?.user; if(!u) return;
+    setUserId(u.id);
+    supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
+      .then(({ data: rows }) => setDbDocs(rows || []));
   }, []);
 
-  const handleUpload = async (docId) => {
+  const handleUpload = (docId) => {
     const input = fileRefs.current[docId];
-    if(!input) return;
-    input.click();
+    if(input) input.click();
   };
 
   const handleFileChange = async (docId, e) => {
@@ -7081,15 +7080,38 @@ export function DocUploadScreen({ onBack }) {
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    setUploading(docId); setUploadOk(null);
-    const ext = file.name.split(".").pop();
-    const path = `${userId}/${docId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
-    if(!error) {
-      await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
-      setDbDocs(prev => { const filtered = prev.filter(d=>d.type!==docId); return [...filtered, { type:docId, storage_path:path, created_at:new Date().toISOString() }]; });
+    setUploading(docId); setUploadOk(null); setUploadErr(null);
+    try {
+      const rawSess = getRawSession();
+      const accessToken = rawSess?.access_token || "";
+      const refreshToken = rawSess?.refresh_token || "";
+      const reader = new FileReader();
+      const fileBase64 = await new Promise((resolve, reject) => {
+        reader.onload = ev => resolve(ev.target.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/upload-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
+        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: docId }),
+      });
+      const newAt = res.headers.get("x-new-access-token");
+      const newRt = res.headers.get("x-new-refresh-token");
+      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
+      if(!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setUploadErr(err.error || "Erreur lors de l'envoi.");
+        setTimeout(() => setUploadErr(null), 5000);
+        setUploading(null); e.target.value = ""; return;
+      }
+      const now = new Date().toISOString();
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
+    } catch(err) {
+      setUploadErr("Erreur réseau. Vérifiez votre connexion.");
+      setTimeout(() => setUploadErr(null), 5000);
     }
     setUploading(null);
     e.target.value = "";
@@ -7158,6 +7180,11 @@ export function DocUploadScreen({ onBack }) {
           </div>
         ))}
 
+        {uploadErr && (
+          <div style={{ background:"rgba(231,76,60,0.15)", border:"1px solid rgba(231,76,60,0.4)", borderRadius:r, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#FF6B6B", fontWeight:600 }}>
+            ❌ {uploadErr}
+          </div>
+        )}
         <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}30`, borderRadius:r, padding:"12px 14px", marginTop:8, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
           💡 Les documents sont vérifiés par notre équipe sous <strong style={{ color:C.text }}>24h ouvrées</strong>. Formats acceptés : PDF, JPG, PNG.
         </div>
@@ -7173,15 +7200,15 @@ export function ClientProDocScreen({ onBack }) {
   const [dbDocs, setDbDocs]   = useState([]);
   const [uploading, setUploading] = useState(null);
   const [uploadOk, setUploadOk]   = useState(null);
+  const [uploadErr, setUploadErr] = useState(null);
   const fileRefs = useRef({});
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const u = data?.user; if(!u) return;
-      setUserId(u.id);
-      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
-      setDbDocs(rows || []);
-    });
+    const rawSess = getRawSession();
+    const u = rawSess?.user; if(!u) return;
+    setUserId(u.id);
+    supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
+      .then(({ data: rows }) => setDbDocs(rows || []));
   }, []);
 
   const handleUpload = (docId) => { const input = fileRefs.current[docId]; if(input) input.click(); };
@@ -7190,15 +7217,38 @@ export function ClientProDocScreen({ onBack }) {
     const file = e.target.files?.[0]; if(!file||!userId) return;
     const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    setUploading(docId); setUploadOk(null);
-    const ext = file.name.split(".").pop();
-    const path = `${userId}/${docId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
-    if(!error) {
-      await supabase.from("documents").upsert({ prestataire_id:userId, type:docId, storage_path:path, created_at:new Date().toISOString() });
-      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:path, created_at:new Date().toISOString() }]);
+    setUploading(docId); setUploadOk(null); setUploadErr(null);
+    try {
+      const rawSess = getRawSession();
+      const accessToken = rawSess?.access_token || "";
+      const refreshToken = rawSess?.refresh_token || "";
+      const reader = new FileReader();
+      const fileBase64 = await new Promise((resolve, reject) => {
+        reader.onload = ev => resolve(ev.target.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/upload-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
+        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: docId }),
+      });
+      const newAt = res.headers.get("x-new-access-token");
+      const newRt = res.headers.get("x-new-refresh-token");
+      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
+      if(!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setUploadErr(err.error || "Erreur lors de l'envoi.");
+        setTimeout(() => setUploadErr(null), 5000);
+        setUploading(null); e.target.value = ""; return;
+      }
+      const now = new Date().toISOString();
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
+    } catch {
+      setUploadErr("Erreur réseau. Vérifiez votre connexion.");
+      setTimeout(() => setUploadErr(null), 5000);
     }
     setUploading(null);
     e.target.value = "";
@@ -7236,6 +7286,12 @@ export function ClientProDocScreen({ onBack }) {
           <input key={def.id} type="file" accept=".pdf,.jpg,.jpeg,.png" ref={el=>fileRefs.current[def.id]=el}
             onChange={e=>handleFileChange(def.id,e)} style={{ display:"none" }} />
         ))}
+
+        {uploadErr && (
+          <div style={{ background:"rgba(231,76,60,0.15)", border:"1px solid rgba(231,76,60,0.4)", borderRadius:r, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#FF6B6B", fontWeight:600 }}>
+            ❌ {uploadErr}
+          </div>
+        )}
 
         {docs.map(d => (
           <div key={d.id} style={{ background:"#0D1B3E", border:`1px solid ${d.status==="valid"?C.border:"#F0B42940"}`, borderRadius:r, padding:"14px 15px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>

@@ -7,24 +7,41 @@ export default async function handler(req, res) {
 
   const authHeader = req.headers.authorization || "";
   const token = authHeader.replace("Bearer ", "").trim();
-  if (!token) return res.status(401).json({ error: "Token requis" });
+  const refreshToken = (req.headers["x-refresh-token"] || "").trim();
+  if (!token && !refreshToken) return res.status(401).json({ error: "Token requis" });
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration manquante" });
 
-  // Verify JWT → get userId
+  // Vérifier le JWT, ou rafraîchir si expiré
   let userId;
-  try {
-    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
-    });
-    if (!userRes.ok) return res.status(401).json({ error: "Token invalide" });
-    const u = await userRes.json();
-    userId = u.id;
-  } catch {
-    return res.status(401).json({ error: "Erreur vérification token" });
+  if (token) {
+    try {
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
+      });
+      if (userRes.ok) userId = (await userRes.json()).id;
+    } catch { /* continue */ }
   }
+  if (!userId && refreshToken) {
+    try {
+      const refreshRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "apikey": SERVICE_ROLE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (refreshRes.ok) {
+        const rd = await refreshRes.json();
+        userId = rd.user?.id;
+        if (rd.access_token) {
+          res.setHeader("x-new-access-token", rd.access_token);
+          res.setHeader("x-new-refresh-token", rd.refresh_token);
+        }
+      }
+    } catch { /* continue */ }
+  }
+  if (!userId) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
 
   const { fileBase64, fileName, mimeType, docType } = req.body || {};
   if (!fileBase64 || !docType) return res.status(400).json({ error: "fileBase64 + docType requis" });
