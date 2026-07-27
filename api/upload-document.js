@@ -60,7 +60,7 @@ export default async function handler(req, res) {
   // Générer une URL d'upload signée — le navigateur uploadera le fichier directement
   const signRes = await fetch(
     `${SUPABASE_URL}/storage/v1/object/upload/sign/Documents/${storagePath}`,
-    { method: "POST", headers: svcHeaders, body: JSON.stringify({ upsert: true }) }
+    { method: "POST", headers: svcHeaders, body: JSON.stringify({ expiresIn: 300, upsert: true }) }
   );
 
   if (!signRes.ok) {
