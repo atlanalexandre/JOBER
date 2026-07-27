@@ -1082,7 +1082,9 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
+      // Spread meta en premier pour préserver tous les champs existants (kbis, societe_nom, etc.)
       const profileData = {
+        ...(meta || {}),
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
         dispo_immediat: dispoImmediat,
@@ -1093,45 +1095,26 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // Appel direct Supabase Auth — aucune fonction Vercel, pas de cold start ni timeout
       const rawSess = getRawSession();
-      let at = (rawSess?.access_token || "").trim();
-      let rt = (rawSess?.refresh_token || "").trim();
+      const at = (rawSess?.access_token || "").trim();
+      const rt = (rawSess?.refresh_token || "").trim();
       if (!at && !rt) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
 
-      const SB = import.meta.env.VITE_SUPABASE_URL;
-      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      // Valide si le JWT est bien formé et non expiré
-      const jwtValid = (tok) => {
-        if (!tok) return false;
-        try { const p = JSON.parse(atob(tok.split(".")[1])); return !!p?.sub && p.exp * 1000 > Date.now() + 10000; }
-        catch { return false; }
-      };
-
-      // Si token invalide ou expiré → rafraîchir d'abord (évite "This endpoint requires a valid Bearer token")
-      if (!jwtValid(at) && rt) {
-        try {
-          const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": KEY },
-            body: JSON.stringify({ refresh_token: rt }),
-          });
-          if (rr.ok) { const rd = await rr.json(); at = rd.access_token; rt = rd.refresh_token; supabase.auth.setSession({ access_token: at, refresh_token: rt }).catch(() => {}); }
-        } catch { /* continue */ }
-      }
-      if (!jwtValid(at)) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
-
-      const res = await fetch(`${SB}/auth/v1/user`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "apikey": KEY, "Authorization": `Bearer ${at}` },
-        body: JSON.stringify({ data: profileData }),
+      // Passe par /api/update-profile : service role key côté serveur → indépendant du token utilisateur
+      const res = await fetch("/api/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}`, "x-refresh-token": rt },
+        body: JSON.stringify({ profileData }),
       });
+
+      const newAt = res.headers.get("x-new-access-token");
+      const newRt = res.headers.get("x-new-refresh-token");
+      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         setSaving(false);
-        setSaveError(err.msg || err.message || err.error || "Erreur lors de l'enregistrement.");
+        setSaveError(err.error || "Erreur lors de l'enregistrement.");
         setTimeout(() => setSaveError(null), 5000);
         return;
       }
