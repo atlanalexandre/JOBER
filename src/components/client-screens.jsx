@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
@@ -7083,44 +7082,40 @@ export function DocUploadScreen({ onBack }) {
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const SB  = import.meta.env.VITE_SUPABASE_URL;
-      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const rawSess = getRawSession();
-      let at = rawSess?.access_token || "";
-      let rt = rawSess?.refresh_token || "";
+      const at = rawSess?.access_token || "";
+      const rt = rawSess?.refresh_token || "";
 
-      const expOf = (tok) => { try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; } catch { return 0; } };
-      if (!at || expOf(at) < Date.now() + 10000) {
-        if (!rt) throw new Error("Session expirée — reconnectez-vous.");
-        const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST", headers: { "Content-Type": "application/json", "apikey": KEY },
-          body: JSON.stringify({ refresh_token: rt }),
+      // Étape 1 : obtenir l'URL signée via Vercel (service role key → bypass total RLS)
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      let signRes;
+      try {
+        signRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}`, "x-refresh-token": rt },
+          body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
+          signal: ctrl.signal,
         });
-        if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
-        const rd = await rr.json();
-        at = rd.access_token || ""; rt = rd.refresh_token || "";
+      } finally { clearTimeout(timer); }
+
+      if (!signRes.ok) {
+        const e = await signRes.json().catch(() => ({}));
+        throw new Error(e.error || `Erreur serveur (${signRes.status})`);
       }
-      if (!at) throw new Error("Session expirée — reconnectez-vous.");
+      const { signedUrl, storagePath } = await signRes.json();
+      if (!signedUrl) throw new Error("URL signée manquante");
 
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
-
-      // Client jetable avec token baked-in — contourne totalement la gestion de session du SDK
-      const anonClient = createClient(SB, KEY, {
-        global: { headers: { Authorization: `Bearer ${at}` } },
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      // Étape 2 : upload direct vers Supabase via l'URL signée (aucune auth requise)
+      const upRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
       });
-      const { error: storageErr } = await anonClient.storage
-        .from("Documents")
-        .upload(storagePath, file, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
-
-      // Enregistrement en base (direct, zéro Vercel)
-      fetch(`${SB}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-      }).catch(() => {});
+      if (!upRes.ok) {
+        const err = await upRes.text().catch(() => "?");
+        throw new Error("Erreur upload (" + upRes.status + "): " + err.slice(0, 100));
+      }
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
