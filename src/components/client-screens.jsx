@@ -7082,37 +7082,48 @@ export function DocUploadScreen({ onBack }) {
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
+      const SB  = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const rawSess = getRawSession();
-      const accessToken = rawSess?.access_token || "";
-      const refreshToken = rawSess?.refresh_token || "";
+      let at = rawSess?.access_token || "";
+      let rt = rawSess?.refresh_token || "";
 
-      // 1. URL signée (rapide, pas de données fichier)
-      const urlRes = await fetch("/api/upload-document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
-      });
-      const newAt = urlRes.headers.get("x-new-access-token");
-      const newRt = urlRes.headers.get("x-new-refresh-token");
-      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
-      if(!urlRes.ok) {
-        const err = await urlRes.json().catch(() => ({}));
-        setUploadErr(err.error || "Erreur lors de l'envoi.");
-        setTimeout(() => setUploadErr(null), 5000);
-        setUploading(null); e.target.value = ""; return;
+      const expOf = (tok) => { try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; } catch { return 0; } };
+      if (!at || expOf(at) < Date.now() + 10000) {
+        if (!rt) throw new Error("Session expirée — reconnectez-vous.");
+        const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST", headers: { "Content-Type": "application/json", "apikey": KEY },
+          body: JSON.stringify({ refresh_token: rt }),
+        });
+        if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
+        const rd = await rr.json();
+        at = rd.access_token;
+        supabase.auth.setSession({ access_token: at, refresh_token: rd.refresh_token }).catch(() => {});
       }
-      const { signedUrl } = await urlRes.json();
 
-      // 2. Upload direct navigateur → Supabase (binaire, sans passer par Vercel)
-      const uploadRes = await fetch(signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+
+      // Upload direct navigateur → Supabase Storage (zéro Vercel)
+      const uploadRes = await fetch(`${SB}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
         body: file,
       });
-      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => "?");
+        throw new Error("Erreur upload (" + uploadRes.status + "): " + errText.slice(0, 100));
+      }
+
+      // Enregistrement en base via Supabase REST (direct, zéro Vercel)
+      fetch(`${SB}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+      }).catch(() => {});
 
       const now = new Date().toISOString();
-      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
     } catch(err) {
