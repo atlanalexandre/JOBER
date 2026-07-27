@@ -106,43 +106,49 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
+      const SB  = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
       const rawSess = getRawSession();
-      const token = rawSess?.access_token || "";
-      const refreshToken = rawSess?.refresh_token || "";
-      if (!token && !refreshToken) throw new Error("Session expirée");
+      let at = rawSess?.access_token || "";
+      let rt = rawSess?.refresh_token || "";
+      let userId = rawSess?.user?.id || "";
 
-      // 1. Obtenir l'URL signée du serveur (rapide, pas de données fichier)
-      let signedUrl;
-      try {
-        const urlRes = await fetch("/api/upload-document", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-refresh-token": refreshToken },
-          body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
+      // Refresh si token expiré (décodage base64url → base64 standard pour atob)
+      const expOf = (tok) => { try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; } catch { return 0; } };
+      if (!at || expOf(at) < Date.now() + 10000) {
+        if (!rt) throw new Error("Session expirée — reconnectez-vous.");
+        const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST", headers: { "Content-Type": "application/json", "apikey": KEY },
+          body: JSON.stringify({ refresh_token: rt }),
         });
-        if (!urlRes.ok) {
-          const errData = await urlRes.json().catch(() => ({}));
-          throw new Error(errData.error || "HTTP " + urlRes.status);
-        }
-        ({ signedUrl } = await urlRes.json());
-      } catch (e) {
-        throw new Error("Étape 1 (URL signée): " + (e?.message || "erreur réseau"));
+        if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
+        const rd = await rr.json();
+        at = rd.access_token; userId = rd.user?.id || userId;
+        supabase.auth.setSession({ access_token: at, refresh_token: rd.refresh_token }).catch(() => {});
       }
-      if (!signedUrl || !signedUrl.startsWith("http")) throw new Error("URL signée invalide reçue du serveur");
+      if (!userId) throw new Error("Identifiant utilisateur manquant");
 
-      // 2. Upload direct navigateur → Supabase (binaire, sans passer par Vercel)
-      try {
-        const uploadRes = await fetch(signedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
-        if (!uploadRes.ok) {
-          const errText = await uploadRes.text().catch(() => "?");
-          throw new Error("HTTP " + uploadRes.status + ": " + errText.slice(0, 80));
-        }
-      } catch (e) {
-        throw new Error("Étape 2 (envoi Supabase): " + (e?.message || "erreur réseau"));
+      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+      const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
+
+      // Upload direct navigateur → Supabase Storage (zéro Vercel)
+      const uploadRes = await fetch(`${SB}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => "?");
+        throw new Error("Erreur upload (" + uploadRes.status + "): " + errText.slice(0, 100));
       }
+
+      // Enregistrement en base via Supabase REST (direct, zéro Vercel)
+      fetch(`${SB}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+      }).catch(() => {});
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
