@@ -21,6 +21,16 @@ function validateDocSync(file) {
   return null;
 }
 
+function validateDocSync(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
+    return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
+  }
+  if (file.size > 10 * 1024 * 1024) return "Fichier trop lourd (max 10 Mo).";
+  if (file.size < 1 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
+  return null;
+}
+
 async function validateDoc(file) {
   const ext = file.name.split(".").pop().toLowerCase();
   if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
