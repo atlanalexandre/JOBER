@@ -103,7 +103,7 @@
       <li><strong>« ALANE »</strong> : la société éditrice de la plateforme www.alane.fr.</li>
       <li><strong>« Client »</strong> : toute personne physique ou morale, professionnelle ou non, qui utilise la Plateforme afin d'obtenir les services d'un Prestataire.</li>
       <li><strong>« Prestataire »</strong> : toute personne physique inscrite sur la Plateforme en qualité d'auto-entrepreneur ou de micro-entrepreneur, disposant d'un numéro SIRET valide et dûment immatriculée auprès de l'URSSAF, qui propose ses services via la Plateforme.</li>
-      <li><strong>« Mission »</strong> : la prestation de services définie conjointement par le Client et le Prestataire via la Plateforme (secteur d'activité, métier, date, durée, lieu, tarif horaire).</li>
+      <li><strong>« Mission »</strong> : la prestation de services définie conjointement par le Client et le Prestataire via la Plateforme (description de la prestation, résultat attendu, lieu d'exécution et conditions financières convenues).</li>
       <li><strong>« Contrat de prestation »</strong> : l'accord conclu directement entre le Client et le Prestataire, matérialisé par la confirmation de la Mission sur la Plateforme.</li>
       <li><strong>« Compte »</strong> : l'espace personnel sécurisé créé par l'utilisateur sur la Plateforme.</li>
       <li><strong>« Stripe »</strong> : le prestataire de services de paiement en ligne utilisé par la Plateforme pour sécuriser les transactions financières entre Clients et Prestataires.</li>
@@ -147,7 +147,7 @@
   <div class="article" id="art5">
     <h3>Article 5 — Fonctionnement des Missions</h3>
     <p><strong>5.1 Publication d'une Mission</strong><br>
-    Le Client publie une Mission sur la Plateforme en renseignant le secteur d'activité, le métier recherché, la date, la durée estimée, le lieu d'intervention et le tarif horaire proposé. La Mission est alors rendue visible aux Prestataires correspondant au profil recherché.</p>
+    Le Client publie une Mission sur la Plateforme en renseignant la description de la prestation, le résultat attendu, la date, le lieu d'exécution et les conditions financières convenues. La Mission est alors rendue visible aux Prestataires correspondant au profil recherché.</p>
     <p><strong>5.2 Candidature et acceptation</strong><br>
     Les Prestataires intéressés peuvent postuler à une Mission. <strong>Chaque Prestataire est libre de postuler ou non à chaque Mission proposée, et peut refuser toute Mission sans avoir à se justifier et sans pénalité.</strong> Le Client reçoit les candidatures et sélectionne le Prestataire de son choix. L'acceptation d'une candidature par le Client vaut conclusion du Contrat de prestation entre les deux parties. ALANE n'intervient pas dans ce choix et n'est pas partie au contrat ainsi formé.</p>
     <p><strong>5.3 Confirmation et paiement</strong><br>
@@ -192,7 +192,7 @@
     <h3>Article 7 — Paiement et sécurisation des fonds</h3>
     <p><strong>7.1 Prestataire de paiement</strong><br>
     Tous les paiements effectués sur la Plateforme sont traités et sécurisés par Stripe (Stripe Payments Europe Ltd), prestataire de services de paiement agréé et certifié PCI-DSS. ALANE n'a à aucun moment accès aux coordonnées bancaires complètes des utilisateurs.</p>
-    <p><strong>7.2 Séquestre des fonds</strong><br>
+    <p><strong>7.2 Sécurisation des fonds via Stripe Connect</strong><br>
     Dès la confirmation d'une Mission, le montant de la prestation est sécurisé et conservé par Stripe Connect dans le cadre de son service de paiement agréé. ALANE n'est pas un établissement de paiement et ne détient à aucun moment les fonds pour son propre compte. Les fonds sécurisés ne sont ni la propriété d'ALANE ni du Prestataire pendant cette période ; ils restent sous la responsabilité de Stripe jusqu'à la validation de la Mission. Dès la validation (double validation Client/Prestataire ou validation automatique après 72h ouvrées), Stripe procède au virement de la rémunération sur le compte bancaire du Prestataire dans un délai de 2 à 7 jours ouvrés.</p>
     <p><strong>7.3 Interdiction de paiement hors plateforme</strong><br>
     Tout paiement de prestation en dehors de la Plateforme est strictement interdit. Les utilisateurs contrevenants s'exposent à la suspension immédiate de leur compte. Cette obligation s'applique pour toute prestation ayant fait l'objet d'une mise en relation via la Plateforme, pendant une durée de 12 mois à compter du premier contact entre les parties initié via ALANE.</p>
@@ -288,7 +288,7 @@
     <p><strong>14.5 Destinataires</strong><br>
     Les données peuvent être transmises à : Stripe (paiements), Supabase (hébergement base de données), Vercel (hébergement applicatif), Resend (emails transactionnels), et le cas échéant aux autorités judiciaires ou administratives sur réquisition légale. Aucune donnée n'est vendue à des tiers.</p>
     <p><strong>14.6 Transferts hors UE</strong><br>
-    Certains prestataires techniques (Stripe, Vercel) sont établis aux États-Unis. Ces transferts sont encadrés par les garanties appropriées (clauses contractuelles types de la Commission européenne).</p>
+    Certains prestataires techniques (Stripe, Vercel) sont établis aux États-Unis. Ces transferts sont encadrés par les garanties appropriées prévues par le RGPD.</p>
     <p><strong>14.7 Droits des utilisateurs</strong><br>
     Conformément au RGPD, tout utilisateur dispose d'un droit d'accès, de rectification, d'effacement, de limitation, de portabilité et d'opposition. Ces droits peuvent être exercés en contactant ALANE à l'adresse <a href="mailto:rgpd@alane.fr">rgpd@alane.fr</a>. En cas de réponse insatisfaisante, l'utilisateur peut introduire une réclamation auprès de la CNIL (www.cnil.fr).</p>
   </div>

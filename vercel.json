@@ -7,8 +7,7 @@
     "api/missions.js":         { "maxDuration": 60 },
     "api/invoice.js":          { "maxDuration": 60 },
     "api/stripe-webhook.js":   { "maxDuration": 30 },
-    "api/bo-action.js":        { "maxDuration": 30 },
-    "api/upload-document.js":  { "maxDuration": 30 }
+    "api/bo-action.js":        { "maxDuration": 30 }
   },
   "headers": [
     {
