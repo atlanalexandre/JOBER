@@ -158,7 +158,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       // Upload direct au REST Supabase Storage avec le token rafraîchi (bypass session SDK)
       const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
         body: fileBlob,
       });
       if (!upRes.ok) {

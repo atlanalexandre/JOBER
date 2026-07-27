@@ -7127,7 +7127,7 @@ export function DocUploadScreen({ onBack }) {
 
       const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
         body: fileBlob,
       });
       if (!upRes.ok) {
@@ -7266,7 +7266,7 @@ export function ClientProDocScreen({ onBack }) {
 
       const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
         body: fileBlob,
       });
       if (!upRes.ok) {
