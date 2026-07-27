@@ -8,6 +8,8 @@ import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divi
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
 
+const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
+
 function ContractModal({ title, contractText, onSign, onClose, onViewCgps }) {
   const [accepted, setAccepted] = useState(false);
   return (
@@ -7100,9 +7102,33 @@ export function DocUploadScreen({ onBack }) {
     const rawSess = getRawSession();
     const u = rawSess?.user; if(!u) return;
     setUserId(u.id);
-    supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
-      .then(({ data: rows }) => setDbDocs(rows || []));
     getValidAccessToken().then(t => { cachedTokenRef.current = t; });
+    (async () => {
+      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
+      const current = rows || [];
+      const existingTypes = new Set(current.map(r=>r.type));
+      // Réessayer les inserts en attente (annulés par iOS)
+      try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+        const mine = pending.filter(e=>e.uid===u.id && !existingTypes.has(e.type));
+        if (mine.length) {
+          const pAt = await getValidAccessToken();
+          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
+          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const now = new Date().toISOString();
+          const done = [];
+          await Promise.all(mine.map(e =>
+            fetch(`${SB_URL_P}/rest/v1/documents`, {
+              method:"POST",
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
+            }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
+          ));
+          if (done.length) localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
+        }
+      } catch {}
+      setDbDocs(current);
+    })();
   }, []);
 
   const handleUpload = (docId) => {
@@ -7128,6 +7154,12 @@ export function DocUploadScreen({ onBack }) {
     const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
     const now = new Date().toISOString();
 
+    try {
+      const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+      p.push({ uid: userId, type: docId, sp: storagePath });
+      localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p));
+    } catch {}
+
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
       const [upRes, dbRes] = await Promise.all([
@@ -7146,17 +7178,22 @@ export function DocUploadScreen({ onBack }) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      if (dbRes.ok) {
+        try {
+          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+        } catch {}
       }
-
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
     } catch(err) {
-      setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
-      setTimeout(() => setUploadErr(null), 5000);
+      if (!err?.message?.includes("Load failed") && !err?.message?.includes("Failed to fetch")) {
+        setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
+        setTimeout(() => setUploadErr(null), 5000);
+      } else {
+        setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
+      }
     }
     setUploading(null);
     e.target.value = "";
@@ -7253,9 +7290,32 @@ export function ClientProDocScreen({ onBack }) {
     const rawSess = getRawSession();
     const u = rawSess?.user; if(!u) return;
     setUserId(u.id);
-    supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
-      .then(({ data: rows }) => setDbDocs(rows || []));
     getValidAccessToken().then(t => { cachedTokenRef.current = t; });
+    (async () => {
+      const { data: rows } = await supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id);
+      const current = rows || [];
+      const existingTypes = new Set(current.map(r=>r.type));
+      try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+        const mine = pending.filter(e=>e.uid===u.id && !existingTypes.has(e.type));
+        if (mine.length) {
+          const pAt = await getValidAccessToken();
+          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
+          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const now = new Date().toISOString();
+          const done = [];
+          await Promise.all(mine.map(e =>
+            fetch(`${SB_URL_P}/rest/v1/documents`, {
+              method:"POST",
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
+            }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
+          ));
+          if (done.length) localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
+        }
+      } catch {}
+      setDbDocs(current);
+    })();
   }, []);
 
   const handleUpload = (docId) => {
@@ -7278,6 +7338,12 @@ export function ClientProDocScreen({ onBack }) {
     const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
     const now = new Date().toISOString();
 
+    try {
+      const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+      p.push({ uid: userId, type: docId, sp: storagePath });
+      localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p));
+    } catch {}
+
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
       const [upRes, dbRes] = await Promise.all([
@@ -7296,17 +7362,22 @@ export function ClientProDocScreen({ onBack }) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      if (dbRes.ok) {
+        try {
+          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+        } catch {}
       }
-
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
     } catch(err) {
-      setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
-      setTimeout(() => setUploadErr(null), 5000);
+      if (!err?.message?.includes("Load failed") && !err?.message?.includes("Failed to fetch")) {
+        setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
+        setTimeout(() => setUploadErr(null), 5000);
+      } else {
+        setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
+      }
     }
     setUploading(null);
     e.target.value = "";
