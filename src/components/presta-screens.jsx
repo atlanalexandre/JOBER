@@ -166,15 +166,15 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // Insert DB via serverless (service_role_key, bypass RLS)
-      const dbRes = await fetch("/api/save-document", {
+      // Insert DB direct Supabase REST (même approche que le storage — iOS compatible)
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
         body: JSON.stringify({ type: doc.id, storagePath }),
       });
       if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+        const errBody = await dbRes.text().catch(() => "");
+        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
       }
 
       notifyDocUpload(doc.id, true);
@@ -3011,8 +3011,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
               const rawSessDoc = getRawSession();
               if(!rawSessDoc?.user) return;
-              const _t = rawSessDoc?.access_token || "";
-              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_t}`},body:JSON.stringify({userId:rawSessDoc.user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+              const _at2 = await getValidAccessToken();
+              let _uid2; try { _uid2 = JSON.parse(atob(_at2.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
+              const _SB = import.meta.env.VITE_SUPABASE_URL;
+              const _KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+              const docs = _uid2 ? await fetch(`${_SB}/rest/v1/documents?prestataire_id=eq.${_uid2}&select=type,verified,storage_path`,{headers:{"Authorization":`Bearer ${_at2}`,"apikey":_KEY}}).then(r=>r.ok?r.json():[]).catch(()=>[]) : [];
               const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
               if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
               setUploadedDocIds(uploaded);

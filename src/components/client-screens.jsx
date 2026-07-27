@@ -7141,8 +7141,8 @@ export function DocUploadScreen({ onBack }) {
         body: JSON.stringify({ type: docId, storagePath }),
       });
       if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+        const errBody = await dbRes.text().catch(() => "");
+        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
       }
 
       const now = new Date().toISOString();
@@ -7284,8 +7284,8 @@ export function ClientProDocScreen({ onBack }) {
         body: JSON.stringify({ type: docId, storagePath }),
       });
       if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+        const errBody = await dbRes.text().catch(() => "");
+        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
       }
 
       const now = new Date().toISOString();
