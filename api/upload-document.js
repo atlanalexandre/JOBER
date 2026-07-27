@@ -1,5 +1,5 @@
 export const config = {
-  api: { bodyParser: { sizeLimit: "1mb" } }, // plus besoin de gros corps : plus de base64
+  api: { bodyParser: { sizeLimit: "1mb" } },
 };
 
 export default async function handler(req, res) {
@@ -57,33 +57,40 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
-  // Générer une URL d'upload signée — le navigateur uploadera le fichier directement
-  const signRes = await fetch(
-    `${SUPABASE_URL}/storage/v1/object/upload/sign/Documents/${storagePath}`,
-    { method: "POST", headers: svcHeaders, body: JSON.stringify({ expiresIn: 300, upsert: true }) }
-  );
-
-  if (!signRes.ok) {
-    const err = await signRes.text();
-    console.error("[upload-document] sign error:", signRes.status, err);
-    return res.status(500).json({ error: "Erreur génération URL upload" });
-  }
-
-  const sd = await signRes.json();
-  // sd.signedURL peut être relatif ("/storage/v1/...") ou absolu
-  let signedUrl = sd.signedURL || sd.url || "";
-  if (signedUrl && !signedUrl.startsWith("http")) signedUrl = `${SUPABASE_URL}${signedUrl}`;
-
-  // Pré-enregistrer le document en base (avant upload, le fichier arrivera juste après)
+  // Générer une URL d'upload signée — timeout 8s pour éviter que Vercel ferme la connexion sans réponse
+  let signedUrl;
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
-      method: "POST",
-      headers: { ...svcHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify({ prestataire_id: userId, type: docType, storage_path: storagePath, verified: false }),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const signRes = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/upload/sign/Documents/${storagePath}`,
+      { method: "POST", headers: svcHeaders, body: JSON.stringify({ expiresIn: 300, upsert: true }), signal: ctrl.signal }
+    );
+    clearTimeout(timer);
+
+    if (!signRes.ok) {
+      const err = await signRes.text().catch(() => "?");
+      console.error("[upload-document] sign error:", signRes.status, err);
+      return res.status(500).json({ error: "Erreur génération URL upload (" + signRes.status + ")" });
+    }
+
+    const sd = await signRes.json();
+    signedUrl = sd.signedURL || sd.url || "";
+    if (signedUrl && !signedUrl.startsWith("http")) signedUrl = `${SUPABASE_URL}${signedUrl}`;
   } catch (e) {
-    console.error("[upload-document] db pre-insert error:", e);
+    const msg = e?.name === "AbortError" ? "Timeout Supabase Storage (>8s)" : (e?.message || "erreur réseau");
+    console.error("[upload-document] sign fetch error:", msg);
+    return res.status(500).json({ error: "Impossible de contacter Supabase Storage: " + msg });
   }
+
+  if (!signedUrl) return res.status(500).json({ error: "URL signée vide — réponse inattendue de Supabase" });
+
+  // Pré-enregistrer le document en base (non bloquant)
+  fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+    method: "POST",
+    headers: { ...svcHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ prestataire_id: userId, type: docType, storage_path: storagePath, verified: false }),
+  }).catch(e => console.error("[upload-document] db insert error:", e));
 
   return res.status(200).json({ signedUrl, storagePath });
 }
