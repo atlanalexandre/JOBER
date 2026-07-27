@@ -14,16 +14,17 @@ export default async function handler(req, res) {
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration manquante" });
 
-  // Vérifier le JWT, ou rafraîchir si expiré
+  // Décoder le JWT localement (pas d'appel réseau) pour extraire userId + vérifier expiry
   let userId;
   if (token) {
     try {
-      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
-      });
-      if (userRes.ok) userId = (await userRes.json()).id;
+      const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+      if (payload?.sub && payload?.exp * 1000 > Date.now() + 10000) {
+        userId = payload.sub;
+      }
     } catch { /* continue */ }
   }
+  // Si token expiré ou absent, rafraîchir via Supabase
   if (!userId && refreshToken) {
     try {
       const refreshRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {

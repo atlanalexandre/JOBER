@@ -1017,16 +1017,14 @@ export function PrestaProfileEditScreen({ onBack }) {
 
   useEffect(()=>{
     (async () => {
-      // Chargement via Admin API (service role) — lecture brute localStorage, pas de SDK auto-refresh
+      // Lecture directe Supabase Auth — pas de Vercel function, pas de timeout
       const rawSessLoad = getRawSession();
       const token = rawSessLoad?.access_token || "";
       let m = {};
       if (token) {
         try {
-          const r = await fetch("/api/update-profile", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({ action: "get" }),
+          const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
+            headers: { "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY, "Authorization": `Bearer ${token}` },
           });
           if (r.ok) { const rd = await r.json(); m = rd.user_metadata || {}; }
         } catch { /* fallback ci-dessous */ }
@@ -1111,9 +1109,9 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // Lire la session brute sans déclencher le SDK (évite _removeSession sur token expiré)
+      // Appel direct Supabase Auth — aucune fonction Vercel, pas de cold start ni timeout
       const rawSess = getRawSession();
-      const accessToken = rawSess?.access_token || "";
+      let accessToken = rawSess?.access_token || "";
       const refreshToken = rawSess?.refresh_token || "";
       if (!accessToken && !refreshToken) {
         setSaving(false);
@@ -1121,26 +1119,35 @@ export function PrestaProfileEditScreen({ onBack }) {
         return;
       }
 
-      // L'API gère le refresh côté serveur si le JWT est expiré
-      const res = await fetch("/api/update-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`,
-          "x-refresh-token": refreshToken,
-        },
-        body: JSON.stringify({ profileData }),
+      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const doUpdate = (tok) => fetch(`${SB_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${tok}` },
+        body: JSON.stringify({ data: profileData }),
       });
 
-      // Si l'API a émis de nouveaux tokens, mettre à jour la session locale via SDK
-      const newAt = res.headers.get("x-new-access-token");
-      const newRt = res.headers.get("x-new-refresh-token");
-      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
+      let res = await doUpdate(accessToken);
+
+      // Si 401, rafraîchir le token puis réessayer
+      if (res.status === 401 && refreshToken) {
+        const rr = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": SB_KEY },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (rr.ok) {
+          const rd = await rr.json();
+          accessToken = rd.access_token;
+          supabase.auth.setSession({ access_token: rd.access_token, refresh_token: rd.refresh_token }).catch(() => {});
+          res = await doUpdate(accessToken);
+        }
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         setSaving(false);
-        setSaveError(err.error || "Erreur lors de l'enregistrement.");
+        setSaveError(err.msg || err.message || err.error || "Erreur lors de l'enregistrement.");
         setTimeout(() => setSaveError(null), 5000);
         return;
       }
@@ -2984,13 +2991,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </div>
           {DOCS_REQUIS.map((doc,i)=>(
             <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
-              const { data:{ user } } = await supabase.auth.getUser();
-              if(!user) return;
-              const _s = await supabase.auth.getSession();
-              const _t = _s.data?.session?.access_token || "";
-              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_t}`},body:JSON.stringify({userId:user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+              const rawSessDoc = getRawSession();
+              if(!rawSessDoc?.user) return;
+              const _t = rawSessDoc?.access_token || "";
+              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_t}`},body:JSON.stringify({userId:rawSessDoc.user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
               const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
-              if(user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
+              if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
               setUploadedDocIds(uploaded);
             }} />
           ))}
