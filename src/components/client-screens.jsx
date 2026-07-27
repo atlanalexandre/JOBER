@@ -7125,21 +7125,22 @@ export function DocUploadScreen({ onBack }) {
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-      });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");
         throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
@@ -7268,21 +7269,22 @@ export function ClientProDocScreen({ onBack }) {
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-      });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");
         throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
