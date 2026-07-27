@@ -7126,24 +7126,22 @@ export function DocUploadScreen({ onBack }) {
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
       const now = new Date().toISOString();
 
-      // 1. Storage upload (fetch direct Supabase — iOS compatible)
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-        keepalive: true,
-      });
       if (!dbRes.ok) {
         const err = await dbRes.json().catch(() => ({}));
         throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
@@ -7272,24 +7270,22 @@ export function ClientProDocScreen({ onBack }) {
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
       const now = new Date().toISOString();
 
-      // 1. Storage upload (fetch direct Supabase — iOS compatible)
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
-        keepalive: true,
-      });
       if (!dbRes.ok) {
         const err = await dbRes.json().catch(() => ({}));
         throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
