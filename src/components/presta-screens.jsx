@@ -3019,10 +3019,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               const rawSessDoc = getRawSession();
               if(!rawSessDoc?.user) return;
               const _at2 = await getValidAccessToken();
-              let _uid2; try { _uid2 = JSON.parse(atob(_at2.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
-              const _SB = import.meta.env.VITE_SUPABASE_URL;
-              const _KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-              const docs = _uid2 ? await fetch(`${_SB}/rest/v1/documents?prestataire_id=eq.${_uid2}&select=type,verified,storage_path`,{headers:{"Authorization":`Bearer ${_at2}`,"apikey":_KEY}}).then(r=>r.ok?r.json():[]).catch(()=>[]) : [];
+              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_at2}`},body:JSON.stringify({userId:rawSessDoc.user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
               const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
               if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
               setUploadedDocIds(uploaded);
