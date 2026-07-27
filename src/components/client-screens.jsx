@@ -7081,6 +7081,9 @@ export function DocUploadScreen({ onBack }) {
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    // Lire le fichier en mémoire immédiatement — iOS révoque la référence fichier si on attend trop
+    let fileBuffer;
+    try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
       const rawSess = getRawSession();
@@ -7089,7 +7092,7 @@ export function DocUploadScreen({ onBack }) {
 
       // Étape 1 : obtenir l'URL signée via Vercel (service role key → bypass total RLS)
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 20000);
+      const timer = setTimeout(() => ctrl.abort(), 25000);
       let signRes;
       try {
         signRes = await fetch("/api/upload-document", {
@@ -7098,7 +7101,11 @@ export function DocUploadScreen({ onBack }) {
           body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
           signal: ctrl.signal,
         });
-      } finally { clearTimeout(timer); }
+      } catch (err) {
+        clearTimeout(timer);
+        throw new Error("Connexion interrompue — réessayez (étape 1)");
+      }
+      clearTimeout(timer);
 
       if (!signRes.ok) {
         const e = await signRes.json().catch(() => ({}));
@@ -7107,12 +7114,22 @@ export function DocUploadScreen({ onBack }) {
       const { signedUrl, storagePath } = await signRes.json();
       if (!signedUrl) throw new Error("URL signée manquante");
 
-      // Étape 2 : upload direct vers Supabase via l'URL signée (aucune auth requise)
-      const upRes = await fetch(signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
+      // Étape 2 : upload direct vers Supabase via l'URL signée (ArrayBuffer en mémoire, aucune auth requise)
+      const upCtrl = new AbortController();
+      const upTimer = setTimeout(() => upCtrl.abort(), 60000);
+      let upRes;
+      try {
+        upRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: fileBuffer,
+          signal: upCtrl.signal,
+        });
+      } catch (err) {
+        clearTimeout(upTimer);
+        throw new Error("Upload interrompu — réessayez (étape 2)");
+      }
+      clearTimeout(upTimer);
       if (!upRes.ok) {
         const err = await upRes.text().catch(() => "?");
         throw new Error("Erreur upload (" + upRes.status + "): " + err.slice(0, 100));
@@ -7230,17 +7247,30 @@ export function ClientProDocScreen({ onBack }) {
     const file = e.target.files?.[0]; if(!file||!userId) return;
     const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
+    // Lire le fichier en mémoire immédiatement — iOS révoque la référence fichier si on attend trop
+    let fileBuffer;
+    try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
       const rawSess = getRawSession();
       const accessToken = rawSess?.access_token || "";
       const refreshToken = rawSess?.refresh_token || "";
 
-      const urlRes = await fetch("/api/upload-document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
-      });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25000);
+      let urlRes;
+      try {
+        urlRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
+          body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
+          signal: ctrl.signal,
+        });
+      } catch {
+        clearTimeout(timer);
+        throw new Error("Connexion interrompue — réessayez (étape 1)");
+      }
+      clearTimeout(timer);
       const newAt = urlRes.headers.get("x-new-access-token");
       const newRt = urlRes.headers.get("x-new-refresh-token");
       if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
@@ -7252,12 +7282,23 @@ export function ClientProDocScreen({ onBack }) {
       }
       const { signedUrl } = await urlRes.json();
 
-      const uploadRes = await fetch(signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
+      // Étape 2 : upload via ArrayBuffer (évite la révocation de référence iOS)
+      const upCtrl = new AbortController();
+      const upTimer = setTimeout(() => upCtrl.abort(), 60000);
+      let uploadRes;
+      try {
+        uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: fileBuffer,
+          signal: upCtrl.signal,
+        });
+      } catch {
+        clearTimeout(upTimer);
+        throw new Error("Upload interrompu — réessayez (étape 2)");
+      }
+      clearTimeout(upTimer);
+      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier (" + uploadRes.status + ")");
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
