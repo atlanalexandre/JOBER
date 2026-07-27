@@ -152,16 +152,26 @@ function DocRowItem({ doc, isValid, onUploaded }) {
 
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
+      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
+      // Upload direct au REST Supabase Storage avec le token rafraîchi (bypass session SDK)
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        body: fileBlob,
+      });
+      if (!upRes.ok) {
+        const err = await upRes.json().catch(() => ({}));
+        throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
+      }
 
-      await supabase.from("documents").upsert(
-        { prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false },
-        { onConflict: "prestataire_id,type" }
-      );
+      // Insert DB avec le token rafraîchi
+      await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+      });
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
