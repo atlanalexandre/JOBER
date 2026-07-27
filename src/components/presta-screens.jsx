@@ -112,24 +112,37 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       if (!token && !refreshToken) throw new Error("Session expirée");
 
       // 1. Obtenir l'URL signée du serveur (rapide, pas de données fichier)
-      const urlRes = await fetch("/api/upload-document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
-      });
-      if (!urlRes.ok) {
-        const errData = await urlRes.json().catch(() => ({}));
-        throw new Error(errData.error || "Erreur lors de l'envoi");
+      let signedUrl;
+      try {
+        const urlRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-refresh-token": refreshToken },
+          body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
+        });
+        if (!urlRes.ok) {
+          const errData = await urlRes.json().catch(() => ({}));
+          throw new Error(errData.error || "HTTP " + urlRes.status);
+        }
+        ({ signedUrl } = await urlRes.json());
+      } catch (e) {
+        throw new Error("Étape 1 (URL signée): " + (e?.message || "erreur réseau"));
       }
-      const { signedUrl } = await urlRes.json();
+      if (!signedUrl || !signedUrl.startsWith("http")) throw new Error("URL signée invalide reçue du serveur");
 
       // 2. Upload direct navigateur → Supabase (binaire, sans passer par Vercel)
-      const uploadRes = await fetch(signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
+      try {
+        const uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!uploadRes.ok) {
+          const errText = await uploadRes.text().catch(() => "?");
+          throw new Error("HTTP " + uploadRes.status + ": " + errText.slice(0, 80));
+        }
+      } catch (e) {
+        throw new Error("Étape 2 (envoi Supabase): " + (e?.message || "erreur réseau"));
+      }
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
@@ -1082,9 +1095,8 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      // Spread meta en premier pour préserver tous les champs existants (kbis, societe_nom, etc.)
+      // Ne pas inclure photo_url sauf si elle a changé — le serveur merge avec le metadata existant
       const profileData = {
-        ...(meta || {}),
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
         dispo_immediat: dispoImmediat,

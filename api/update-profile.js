@@ -9,6 +9,12 @@ export default async function handler(req, res) {
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration manquante" });
 
+  const svcHeaders = {
+    "apikey": SERVICE_ROLE_KEY,
+    "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
   // Décoder le JWT localement — pas d'appel réseau sur le chemin normal
   let userId;
   if (token) {
@@ -46,26 +52,32 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "profileData requis" });
   }
 
-  // Mise à jour via Admin API (service role key — indépendant de la validité du token utilisateur)
-  // Le frontend envoie { ...meta, ...newFields } donc le metadata est déjà complet côté client
+  // Récupérer le metadata actuel pour merge côté serveur
+  // (le frontend n'envoie pas la photo_url sauf si elle a changé — évite les gros corps de requête)
+  let currentMeta = {};
+  try {
+    const cur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: svcHeaders });
+    if (cur.ok) currentMeta = (await cur.json())?.user_metadata || {};
+  } catch { /* continuer avec currentMeta vide */ }
+
+  // Merge : données existantes + nouvelles (les nouvelles ont priorité)
+  const merged = { ...currentMeta, ...profileData };
+
+  // Mise à jour via Admin API
   try {
     const updateRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
       method: "PUT",
-      headers: {
-        "apikey": SERVICE_ROLE_KEY,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user_metadata: profileData }),
+      headers: svcHeaders,
+      body: JSON.stringify({ user_metadata: merged }),
     });
     if (!updateRes.ok) {
       const err = await updateRes.text();
-      console.error("[update-profile] admin error:", updateRes.status, err);
-      return res.status(500).json({ error: "Erreur mise à jour profil" });
+      console.error("[update-profile] admin PUT error:", updateRes.status, err);
+      return res.status(500).json({ error: "Erreur mise à jour profil (" + updateRes.status + ")" });
     }
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error("[update-profile] exception:", e?.message);
-    return res.status(500).json({ error: "Erreur serveur" });
+    return res.status(500).json({ error: "Erreur serveur: " + (e?.message || "inconnue") });
   }
 }
