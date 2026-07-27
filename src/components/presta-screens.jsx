@@ -155,24 +155,24 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const SB_URL = import.meta.env.VITE_SUPABASE_URL;
       const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // 1. Storage upload (fetch direct Supabase — iOS compatible)
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      // Les deux fetches démarrés dans le même bloc synchrone — iOS ne peut pas
+      // fermer le contexte réseau entre les deux. C'est la seule garantie sur iOS.
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-        keepalive: true,
-      });
       if (!dbRes.ok) {
         const err = await dbRes.json().catch(() => ({}));
         throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
@@ -197,10 +197,10 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
-          <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":"En attente"}</div>
+          <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":(doc.required===false?"Recommandé":"En attente")}</div>
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
+          <Badge color={valid?C.success:(doc.required===false?C.textSub:C.accent)} small>{valid?"OK":(doc.required===false?"Optionnel":"Requis")}</Badge>
           {!isValid && !renewed && (
             <button onClick={handleUploadClick} disabled={uploading} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:uploading?"not-allowed":"pointer", fontFamily:"inherit", opacity:uploading?0.6:1 }}>{uploading?"...":"+ Charger"}</button>
           )}
