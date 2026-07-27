@@ -111,41 +111,25 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const refreshToken = rawSess?.refresh_token || "";
       if (!token && !refreshToken) throw new Error("Session expirée");
 
-      // Pour les images : compresser avant envoi (évite timeout Vercel sur gros fichiers iOS)
-      const fileBase64 = await new Promise((resolve, reject) => {
-        const isImage = file.type.startsWith("image/") || ["jpg","jpeg","png","webp","heic","heif"].includes(file.name.split(".").pop().toLowerCase());
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error("Erreur lecture fichier"));
-        reader.onload = (ev) => {
-          if (!isImage || file.type === "application/pdf") {
-            resolve(ev.target.result.split(",")[1]);
-            return;
-          }
-          const img = new Image();
-          img.onerror = () => resolve(ev.target.result.split(",")[1]); // fallback sans compression
-          img.onload = () => {
-            const MAX = 1500;
-            const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
-            const canvas = document.createElement("canvas");
-            canvas.width  = Math.round(img.width  * ratio);
-            canvas.height = Math.round(img.height * ratio);
-            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
-          };
-          img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-
-      const uploadRes = await fetch("/api/upload-document", {
+      // 1. Obtenir l'URL signée du serveur (rapide, pas de données fichier)
+      const urlRes = await fetch("/api/upload-document", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: doc.id }),
+        body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
       });
-      if (!uploadRes.ok) {
-        const errData = await uploadRes.json().catch(() => ({}));
+      if (!urlRes.ok) {
+        const errData = await urlRes.json().catch(() => ({}));
         throw new Error(errData.error || "Erreur lors de l'envoi");
       }
+      const { signedUrl } = await urlRes.json();
+
+      // 2. Upload direct navigateur → Supabase (binaire, sans passer par Vercel)
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
@@ -1111,38 +1095,38 @@ export function PrestaProfileEditScreen({ onBack }) {
 
       // Appel direct Supabase Auth — aucune fonction Vercel, pas de cold start ni timeout
       const rawSess = getRawSession();
-      let accessToken = rawSess?.access_token || "";
-      const refreshToken = rawSess?.refresh_token || "";
-      if (!accessToken && !refreshToken) {
-        setSaving(false);
-        setSaveError("Session expirée — reconnectez-vous.");
-        return;
-      }
+      let at = (rawSess?.access_token || "").trim();
+      let rt = (rawSess?.refresh_token || "").trim();
+      if (!at && !rt) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
 
-      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const doUpdate = (tok) => fetch(`${SB_URL}/auth/v1/user`, {
+      const SB = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Valide si le JWT est bien formé et non expiré
+      const jwtValid = (tok) => {
+        if (!tok) return false;
+        try { const p = JSON.parse(atob(tok.split(".")[1])); return !!p?.sub && p.exp * 1000 > Date.now() + 10000; }
+        catch { return false; }
+      };
+
+      // Si token invalide ou expiré → rafraîchir d'abord (évite "This endpoint requires a valid Bearer token")
+      if (!jwtValid(at) && rt) {
+        try {
+          const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": KEY },
+            body: JSON.stringify({ refresh_token: rt }),
+          });
+          if (rr.ok) { const rd = await rr.json(); at = rd.access_token; rt = rd.refresh_token; supabase.auth.setSession({ access_token: at, refresh_token: rt }).catch(() => {}); }
+        } catch { /* continue */ }
+      }
+      if (!jwtValid(at)) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
+
+      const res = await fetch(`${SB}/auth/v1/user`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${tok}` },
+        headers: { "Content-Type": "application/json", "apikey": KEY, "Authorization": `Bearer ${at}` },
         body: JSON.stringify({ data: profileData }),
       });
-
-      let res = await doUpdate(accessToken);
-
-      // Si 401, rafraîchir le token puis réessayer
-      if (res.status === 401 && refreshToken) {
-        const rr = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": SB_KEY },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        if (rr.ok) {
-          const rd = await rr.json();
-          accessToken = rd.access_token;
-          supabase.auth.setSession({ access_token: rd.access_token, refresh_token: rd.refresh_token }).catch(() => {});
-          res = await doUpdate(accessToken);
-        }
-      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
