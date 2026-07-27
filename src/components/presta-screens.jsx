@@ -9,6 +9,7 @@ import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressA
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
 const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
+const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
 function validateDocSync(file) {
   const ext = file.name.split(".").pop().toLowerCase();
@@ -164,11 +165,18 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     const SB_URL = import.meta.env.VITE_SUPABASE_URL;
     const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+    // Écriture synchrone dans localStorage AVANT tout fetch.
+    // iOS peut annuler les fetches mais ne peut pas annuler une écriture localStorage.
+    // Le chargement suivant de la page réessaiera l'insert DB si nécessaire.
+    try {
+      const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+      p.push({ uid: userId, type: doc.id, sp: storagePath });
+      localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p));
+    } catch {}
+
     setUploading(true);
     setUploadError(null);
     try {
-      // Les deux fetches démarrent dans le même bloc synchrone, avant tout await.
-      // iOS engage les deux dans la même fenêtre réseau — aucun ne peut être annulé séparément.
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
@@ -185,17 +193,28 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      if (dbRes.ok) {
+        // DB insert réussi — nettoyer le localStorage
+        try {
+          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+        } catch {}
       }
+      // Si dbRes n'est pas ok, on laisse l'entrée dans localStorage pour retry au prochain chargement
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.();
     } catch (err) {
       console.error("Upload error", err);
-      setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
+      // Même en cas d'erreur réseau, le localStorage a l'entrée → retry au prochain chargement
+      // On affiche quand même un message si ce n'est pas une annulation iOS silencieuse
+      if (err?.message && !err.message.includes("Load failed") && !err.message.includes("Failed to fetch")) {
+        setUploadError(err.message);
+      } else {
+        // iOS a probablement annulé le fetch — le doc sera retardé au prochain chargement
+        setRenewed(true);
+      }
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2715,6 +2734,29 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
+
+      // Réessayer les inserts en attente (docs uploadés sur iOS dont le fetch DB a été annulé)
+      try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+        const mine = pending.filter(e=>e.uid===u.id && !uploaded.includes(e.type));
+        if (mine.length) {
+          const pAt = await getValidAccessToken();
+          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
+          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const done = [];
+          await Promise.all(mine.map(e =>
+            fetch(`${SB_URL_P}/rest/v1/documents`, {
+              method:"POST",
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
+            }).then(r=>{ if(r.ok){ done.push(e.sp); uploaded.push(e.type); } }).catch(()=>{})
+          ));
+          if (done.length) {
+            localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
+          }
+        }
+      } catch {}
+
       setUploadedDocIds(uploaded);
       const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
