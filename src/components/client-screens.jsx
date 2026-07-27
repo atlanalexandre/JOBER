@@ -7085,32 +7085,38 @@ export function DocUploadScreen({ onBack }) {
       const rawSess = getRawSession();
       const accessToken = rawSess?.access_token || "";
       const refreshToken = rawSess?.refresh_token || "";
-      const reader = new FileReader();
-      const fileBase64 = await new Promise((resolve, reject) => {
-        reader.onload = ev => resolve(ev.target.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch("/api/upload-document", {
+
+      // 1. URL signée (rapide, pas de données fichier)
+      const urlRes = await fetch("/api/upload-document", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: docId }),
+        body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
       });
-      const newAt = res.headers.get("x-new-access-token");
-      const newRt = res.headers.get("x-new-refresh-token");
+      const newAt = urlRes.headers.get("x-new-access-token");
+      const newRt = urlRes.headers.get("x-new-refresh-token");
       if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
-      if(!res.ok) {
-        const err = await res.json().catch(() => ({}));
+      if(!urlRes.ok) {
+        const err = await urlRes.json().catch(() => ({}));
         setUploadErr(err.error || "Erreur lors de l'envoi.");
         setTimeout(() => setUploadErr(null), 5000);
         setUploading(null); e.target.value = ""; return;
       }
+      const { signedUrl } = await urlRes.json();
+
+      // 2. Upload direct navigateur → Supabase (binaire, sans passer par Vercel)
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
+
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
     } catch(err) {
-      setUploadErr("Erreur réseau. Vérifiez votre connexion.");
+      setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
       setTimeout(() => setUploadErr(null), 5000);
     }
     setUploading(null);
@@ -7222,32 +7228,36 @@ export function ClientProDocScreen({ onBack }) {
       const rawSess = getRawSession();
       const accessToken = rawSess?.access_token || "";
       const refreshToken = rawSess?.refresh_token || "";
-      const reader = new FileReader();
-      const fileBase64 = await new Promise((resolve, reject) => {
-        reader.onload = ev => resolve(ev.target.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch("/api/upload-document", {
+
+      const urlRes = await fetch("/api/upload-document", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "x-refresh-token": refreshToken },
-        body: JSON.stringify({ fileBase64, fileName: file.name, mimeType: file.type, docType: docId }),
+        body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
       });
-      const newAt = res.headers.get("x-new-access-token");
-      const newRt = res.headers.get("x-new-refresh-token");
+      const newAt = urlRes.headers.get("x-new-access-token");
+      const newRt = urlRes.headers.get("x-new-refresh-token");
       if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
-      if(!res.ok) {
-        const err = await res.json().catch(() => ({}));
+      if(!urlRes.ok) {
+        const err = await urlRes.json().catch(() => ({}));
         setUploadErr(err.error || "Erreur lors de l'envoi.");
         setTimeout(() => setUploadErr(null), 5000);
         setUploading(null); e.target.value = ""; return;
       }
+      const { signedUrl } = await urlRes.json();
+
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier");
+
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
-    } catch {
-      setUploadErr("Erreur réseau. Vérifiez votre connexion.");
+    } catch(err) {
+      setUploadErr(err?.message || "Erreur réseau. Vérifiez votre connexion.");
       setTimeout(() => setUploadErr(null), 5000);
     }
     setUploading(null);
