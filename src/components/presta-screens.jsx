@@ -160,7 +160,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         });
       } catch (e) {
         clearTimeout(timer);
-        throw new Error("Connexion interrompue — réessayez (étape 1)");
+        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${e?.name}: ${e?.message})`);
       }
       clearTimeout(timer);
 
