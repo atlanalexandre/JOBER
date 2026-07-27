@@ -7135,7 +7135,7 @@ export function DocUploadScreen({ onBack }) {
         });
       } catch (err) {
         clearTimeout(timer);
-        throw new Error("Connexion interrompue — réessayez (étape 1)");
+        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${err?.name}: ${err?.message})`);
       }
       clearTimeout(timer);
 
@@ -7297,9 +7297,9 @@ export function ClientProDocScreen({ onBack }) {
           body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
           signal: ctrl.signal,
         });
-      } catch {
+      } catch (err2) {
         clearTimeout(timer);
-        throw new Error("Connexion interrompue — réessayez (étape 1)");
+        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${err2?.name}: ${err2?.message})`);
       }
       clearTimeout(timer);
       if(!urlRes.ok) {
