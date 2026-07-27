@@ -10,6 +10,16 @@ const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","imag
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
 const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
 
+function validateDocSync(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
+    return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
+  }
+  if (file.size > 10 * 1024 * 1024) return "Fichier trop lourd (max 10 Mo).";
+  if (file.size < 1 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
+  return null;
+}
+
 async function validateDoc(file) {
   const ext = file.name.split(".").pop().toLowerCase();
   if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
@@ -125,43 +135,45 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
+  const cachedTokenRef = useRef(null);
   const valid = isValid || renewed;
 
   const handleUploadClick = () => {
     setUploadError(null);
+    // Pré-charger le token AVANT que le file picker s'ouvre.
+    // Quand handleFileChange s'exécute, cachedTokenRef.current est prêt — aucun await nécessaire.
+    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const validErr = await validateDoc(file);
+
+    // Validation synchrone — aucun await, la fenêtre réseau iOS reste ouverte.
+    const validErr = validateDocSync(file);
     if (validErr) { setUploadError(validErr); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
-    let fileBlob;
-    try {
-      const buf = await file.arrayBuffer();
-      fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" });
-    } catch { setUploadError("Impossible de lire le fichier. Réessayez."); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
+
+    const at = cachedTokenRef.current || getRawSession()?.access_token || "";
+    let userId;
+    try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
+    if (!userId || !at) { setUploadError("Session expirée — reconnectez-vous."); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
+
+    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+    const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
+    const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
     setUploading(true);
     setUploadError(null);
     try {
-      const at = await getValidAccessToken();
-      let userId;
-      try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
-      if (!userId) throw new Error("Session expirée — reconnectez-vous.");
-
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
-      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      // Les deux fetches démarrés dans le même bloc synchrone — iOS ne peut pas
-      // fermer le contexte réseau entre les deux. C'est la seule garantie sur iOS.
+      // Les deux fetches démarrent dans le même bloc synchrone, avant tout await.
+      // iOS engage les deux dans la même fenêtre réseau — aucun ne peut être annulé séparément.
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
+          body: file,
         }),
         fetch(`${SB_URL}/rest/v1/documents`, {
           method: "POST",
