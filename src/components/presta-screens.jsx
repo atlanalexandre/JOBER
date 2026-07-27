@@ -1101,7 +1101,6 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      // Ne pas inclure photo_url sauf si elle a changé — le serveur merge avec le metadata existant
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
@@ -1113,29 +1112,10 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      const rawSess = getRawSession();
-      const at = (rawSess?.access_token || "").trim();
-      const rt = (rawSess?.refresh_token || "").trim();
-      if (!at && !rt) { setSaving(false); setSaveError("Session expirée — reconnectez-vous."); return; }
+      // Mise à jour directe via SDK — merge automatique, zéro Vercel, zéro cold start
+      const { error } = await supabase.auth.updateUser({ data: profileData });
+      if (error) throw error;
 
-      // Passe par /api/update-profile : service role key côté serveur → indépendant du token utilisateur
-      const res = await fetch("/api/update-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}`, "x-refresh-token": rt },
-        body: JSON.stringify({ profileData }),
-      });
-
-      const newAt = res.headers.get("x-new-access-token");
-      const newRt = res.headers.get("x-new-refresh-token");
-      if (newAt && newRt) supabase.auth.setSession({ access_token: newAt, refresh_token: newRt }).catch(() => {});
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setSaving(false);
-        setSaveError(err.error || "Erreur lors de l'enregistrement.");
-        setTimeout(() => setSaveError(null), 5000);
-        return;
-      }
       setSaving(false);
       setSaved(true);
       setTimeout(() => { setSaved(false); onBack(); }, 1200);
