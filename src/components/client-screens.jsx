@@ -7119,18 +7119,27 @@ export function DocUploadScreen({ onBack }) {
     catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
+      const at = await getValidAccessToken();
+      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        body: fileBlob,
+      });
+      if (!upRes.ok) {
+        const err = await upRes.json().catch(() => ({}));
+        throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
+      }
 
-      await supabase.from("documents").upsert(
-        { prestataire_id: userId, type: docId, storage_path: storagePath, verified: false },
-        { onConflict: "prestataire_id,type" }
-      );
+      await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+      });
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
@@ -7249,18 +7258,27 @@ export function ClientProDocScreen({ onBack }) {
     catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
+      const at = await getValidAccessToken();
+      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+        body: fileBlob,
+      });
+      if (!upRes.ok) {
+        const err = await upRes.json().catch(() => ({}));
+        throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
+      }
 
-      await supabase.from("documents").upsert(
-        { prestataire_id: userId, type: docId, storage_path: storagePath, verified: false },
-        { onConflict: "prestataire_id,type" }
-      );
+      await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+      });
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
