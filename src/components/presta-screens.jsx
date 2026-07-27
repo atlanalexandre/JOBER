@@ -79,6 +79,39 @@ function ContractModal({ title, contractText, onSign, onClose }) {
 }
 
 
+// Retourne un access token valide (refresh manuel si expiré, sans déclencher le SDK)
+async function getValidAccessToken() {
+  const SB  = import.meta.env.VITE_SUPABASE_URL;
+  const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const rawSess = getRawSession();
+  let at = rawSess?.access_token || "";
+  const rt = rawSess?.refresh_token || "";
+  const expOf = (tok) => {
+    try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; }
+    catch { return 0; }
+  };
+  if (at && expOf(at) > Date.now() + 10000) return at;
+  if (!rt) return at;
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { "apikey": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt }),
+      signal: ctrl.signal,
+    });
+    if (r.ok) {
+      const rd = await r.json();
+      if (rd.access_token) {
+        at = rd.access_token;
+        supabase.auth.setSession({ access_token: rd.access_token, refresh_token: rd.refresh_token }).catch(() => {});
+      }
+    }
+  } catch { /* continuer avec l'ancien token */ }
+  return at;
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2-lat1)*Math.PI/180;
@@ -111,18 +144,17 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
-      const rawSess = getRawSession();
-      const at = rawSess?.access_token || "";
-      const rt = rawSess?.refresh_token || "";
+      // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
+      const at = await getValidAccessToken();
 
       // Étape 1 : obtenir l'URL signée via Vercel (service role key → bypass total RLS)
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 25000);
+      const timer = setTimeout(() => ctrl.abort(), 15000);
       let signRes;
       try {
         signRes = await fetch("/api/upload-document", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}`, "x-refresh-token": rt },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}` },
           body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
           signal: ctrl.signal,
         });
