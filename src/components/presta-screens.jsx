@@ -133,16 +133,22 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   // Appelle le serverless avec service_role_key → bypass total de la RLS
   useEffect(() => {
     if (!pendingInsert) return;
+    setUploading(true);
     const { type, storagePath, at } = pendingInsert;
     fetch("/api/save-document", {
       method: "POST",
       headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
       body: JSON.stringify({ type, storagePath }),
-    }).then(r => {
-      if (!r.ok) r.text().then(t => console.warn("save-document error", r.status, t));
-      else { setRenewed(true); onUploaded?.(); }
-    }).catch(e => console.warn("save-document fetch failed", e))
-      .finally(() => setPendingInsert(null));
+    }).then(async r => {
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        setUploadError(`Sauvegarde échouée (${r.status}): ${t.slice(0, 100)}`);
+      } else {
+        setRenewed(true);
+        onUploaded?.();
+      }
+    }).catch(e => setUploadError(`Connexion erreur: ${e?.message || "réseau"}`))
+      .finally(() => { setUploading(false); setPendingInsert(null); });
   }, [pendingInsert]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUploadClick = () => {
