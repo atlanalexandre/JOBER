@@ -166,12 +166,13 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // Insert DB avec le token rafraîchi
-      await fetch(`${SB_URL}/rest/v1/documents`, {
+      // Insert DB
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
         body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
       });
+      if (!dbRes.ok) console.warn("DB insert échoué", dbRes.status, await dbRes.text().catch(() => ""));
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
