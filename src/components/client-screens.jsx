@@ -7097,25 +7097,23 @@ export function DocUploadScreen({ onBack }) {
         });
         if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
         const rd = await rr.json();
-        at = rd.access_token;
-        supabase.auth.setSession({ access_token: at, refresh_token: rd.refresh_token }).catch(() => {});
+        at = rd.access_token || ""; rt = rd.refresh_token || "";
       }
+      if (!at) throw new Error("Session expirée — reconnectez-vous.");
+
+      // Synchroniser le SDK avec le token valide
+      await supabase.auth.setSession({ access_token: at, refresh_token: rt });
 
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
 
-      // Upload direct navigateur → Supabase Storage (zéro Vercel)
-      const uploadRes = await fetch(`${SB}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
-        body: file,
-      });
-      if (!uploadRes.ok) {
-        const errText = await uploadRes.text().catch(() => "?");
-        throw new Error("Erreur upload (" + uploadRes.status + "): " + errText.slice(0, 100));
-      }
+      // Upload via SDK Storage — le SDK gère les headers auth correctement
+      const { error: storageErr } = await supabase.storage
+        .from("Documents")
+        .upload(storagePath, file, { upsert: true, contentType: file.type || "application/octet-stream" });
+      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
 
-      // Enregistrement en base via Supabase REST (direct, zéro Vercel)
+      // Enregistrement en base (direct, zéro Vercel)
       fetch(`${SB}/rest/v1/documents`, {
         method: "POST",
         headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
