@@ -1101,6 +1101,25 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
+      const SB  = import.meta.env.VITE_SUPABASE_URL;
+      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const rawSess = getRawSession();
+      let at = rawSess?.access_token || "";
+      const rt = rawSess?.refresh_token || "";
+
+      const expOf = (tok) => { try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; } catch { return 0; } };
+      if (!at || expOf(at) < Date.now() + 10000) {
+        if (!rt) throw new Error("Session expirée — reconnectez-vous.");
+        const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST", headers: { "Content-Type": "application/json", "apikey": KEY },
+          body: JSON.stringify({ refresh_token: rt }),
+        });
+        if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
+        const rd = await rr.json();
+        at = rd.access_token;
+        supabase.auth.setSession({ access_token: at, refresh_token: rd.refresh_token }).catch(() => {});
+      }
+
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
@@ -1112,9 +1131,16 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // Mise à jour directe via SDK — merge automatique, zéro Vercel, zéro cold start
-      const { error } = await supabase.auth.updateUser({ data: profileData });
-      if (error) throw error;
+      // Fetch direct vers Supabase auth — zéro Vercel, zéro cold start, merge automatique
+      const updateRes = await fetch(`${SB}/auth/v1/user`, {
+        method: "PUT",
+        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ data: profileData }),
+      });
+      if (!updateRes.ok) {
+        const errText = await updateRes.text().catch(() => "?");
+        throw new Error("Erreur (" + updateRes.status + "): " + errText.slice(0, 120));
+      }
 
       setSaving(false);
       setSaved(true);
