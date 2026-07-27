@@ -7094,6 +7094,7 @@ export function DocUploadScreen({ onBack }) {
   const [uploadOk, setUploadOk]   = useState(null);
   const [uploadErr, setUploadErr] = useState(null);
   const fileRefs = useRef({});
+  const cachedTokenRef = useRef(null);
 
   useEffect(() => {
     const rawSess = getRawSession();
@@ -7101,9 +7102,11 @@ export function DocUploadScreen({ onBack }) {
     setUserId(u.id);
     supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
       .then(({ data: rows }) => setDbDocs(rows || []));
+    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
   }, []);
 
   const handleUpload = (docId) => {
+    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
     const input = fileRefs.current[docId];
     if(input) input.click();
   };
@@ -7114,23 +7117,24 @@ export function DocUploadScreen({ onBack }) {
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    let fileBlob;
-    try { const buf = await file.arrayBuffer(); fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" }); }
-    catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
+    if(file.size > 10*1024*1024){ showToast("Fichier trop lourd (max 10 Mo)."); e.target.value=""; return; }
+
+    const at = cachedTokenRef.current || getRawSession()?.access_token || "";
+    if(!at){ showToast("Session expirée — reconnectez-vous."); e.target.value=""; return; }
+
+    const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+    const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+    const now = new Date().toISOString();
+
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const at = await getValidAccessToken();
-      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
-      const now = new Date().toISOString();
-
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
+          body: file,
         }),
         fetch(`${SB_URL}/rest/v1/documents`, {
           method: "POST",
@@ -7243,6 +7247,7 @@ export function ClientProDocScreen({ onBack }) {
   const [uploadOk, setUploadOk]   = useState(null);
   const [uploadErr, setUploadErr] = useState(null);
   const fileRefs = useRef({});
+  const cachedTokenRef = useRef(null);
 
   useEffect(() => {
     const rawSess = getRawSession();
@@ -7250,31 +7255,36 @@ export function ClientProDocScreen({ onBack }) {
     setUserId(u.id);
     supabase.from("documents").select("type,storage_path,created_at").eq("prestataire_id", u.id)
       .then(({ data: rows }) => setDbDocs(rows || []));
+    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
   }, []);
 
-  const handleUpload = (docId) => { const input = fileRefs.current[docId]; if(input) input.click(); };
+  const handleUpload = (docId) => {
+    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
+    const input = fileRefs.current[docId]; if(input) input.click();
+  };
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
     const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    let fileBlob;
-    try { const buf = await file.arrayBuffer(); fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" }); }
-    catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
+    if(file.size > 10*1024*1024){ showToast("Fichier trop lourd (max 10 Mo)."); e.target.value=""; return; }
+
+    const at = cachedTokenRef.current || getRawSession()?.access_token || "";
+    if(!at){ showToast("Session expirée — reconnectez-vous."); e.target.value=""; return; }
+
+    const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+    const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+    const now = new Date().toISOString();
+
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const at = await getValidAccessToken();
-      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
-      const now = new Date().toISOString();
-
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
+          body: file,
         }),
         fetch(`${SB_URL}/rest/v1/documents`, {
           method: "POST",
