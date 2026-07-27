@@ -144,6 +144,10 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
+      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
+      // (sans ce délai, fetch() lève TypeError: Load failed immédiatement sur iOS)
+      await new Promise(r => setTimeout(r, 300));
+
       // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
       const at = await getValidAccessToken();
 

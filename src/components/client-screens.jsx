@@ -7119,6 +7119,9 @@ export function DocUploadScreen({ onBack }) {
     try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
+      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
+      await new Promise(r => setTimeout(r, 300));
+
       // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
       const at = await getValidAccessToken();
 
@@ -7284,6 +7287,9 @@ export function ClientProDocScreen({ onBack }) {
     try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
+      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
+      await new Promise(r => setTimeout(r, 300));
+
       // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
       const accessToken = await getValidAccessToken();
 
