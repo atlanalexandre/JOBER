@@ -155,28 +155,22 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const SB_URL = import.meta.env.VITE_SUPABASE_URL;
       const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Storage + DB insert en parallèle — tous deux via Supabase REST (*.supabase.co), jamais annulés par iOS
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: fileBlob,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-          body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-        }),
-      ]);
-
+      // 1. Storage upload (fetch direct Supabase — iOS compatible)
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+        body: fileBlob,
+      });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
-      }
+
+      // 2. DB insert via client supabase (gère l'auth + session automatiquement)
+      const { error: dbErr } = await supabase
+        .from("documents")
+        .insert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false });
+      if (dbErr) throw new Error("Erreur sauvegarde: " + dbErr.message);
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
