@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
       method: "POST",
-      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+      headers: { ...headers, "Prefer": "return=minimal" },
       body: JSON.stringify({ prestataire_id: userId, type, storage_path: storagePath, verified: false }),
     });
     if (!r.ok) {

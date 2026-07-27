@@ -166,13 +166,16 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // Insert DB
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+      // Insert DB via serverless (service_role_key, bypass RLS)
+      const dbRes = await fetch("/api/save-document", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: doc.id, storagePath }),
       });
-      if (!dbRes.ok) console.warn("DB insert échoué", dbRes.status, await dbRes.text().catch(() => ""));
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+      }
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
