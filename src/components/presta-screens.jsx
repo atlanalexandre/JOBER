@@ -137,64 +137,31 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     if (!file) return;
     const validErr = await validateDoc(file);
     if (validErr) { setUploadError(validErr); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
-    // Lire le fichier en mémoire immédiatement — iOS révoque la référence fichier
-    // si on attend trop longtemps (pendant l'appel réseau pour l'URL signée)
-    let fileBuffer;
-    try { fileBuffer = await file.arrayBuffer(); } catch { setUploadError("Impossible de lire le fichier. Réessayez."); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
+    let fileBlob;
+    try {
+      const buf = await file.arrayBuffer();
+      fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" });
+    } catch { setUploadError("Impossible de lire le fichier. Réessayez."); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
     setUploading(true);
     setUploadError(null);
     try {
-      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
-      // (sans ce délai, fetch() lève TypeError: Load failed immédiatement sur iOS)
-      await new Promise(r => setTimeout(r, 300));
-
-      // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
       const at = await getValidAccessToken();
+      let userId;
+      try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
+      if (!userId) throw new Error("Session expirée — reconnectez-vous.");
 
-      // Étape 1 : obtenir l'URL signée via Vercel (service role key → bypass total RLS)
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 15000);
-      let signRes;
-      try {
-        signRes = await fetch("/api/upload-document", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}` },
-          body: JSON.stringify({ docType: doc.id, fileName: file.name, mimeType: file.type }),
-          signal: ctrl.signal,
-        });
-      } catch (e) {
-        clearTimeout(timer);
-        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${e?.name}: ${e?.message})`);
-      }
-      clearTimeout(timer);
+      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+      const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
 
-      if (!signRes.ok) {
-        const e = await signRes.json().catch(() => ({}));
-        throw new Error(e.error || `Erreur serveur (${signRes.status})`);
-      }
-      const { signedUrl, storagePath } = await signRes.json();
-      if (!signedUrl) throw new Error("URL signée manquante");
+      const { error: storageErr } = await supabase.storage
+        .from("Documents")
+        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
+      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
 
-      // Étape 2 : upload direct vers Supabase via l'URL signée (ArrayBuffer en mémoire, aucune auth requise)
-      const upCtrl = new AbortController();
-      const upTimer = setTimeout(() => upCtrl.abort(), 60000);
-      let upRes;
-      try {
-        upRes = await fetch(signedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: fileBuffer,
-          signal: upCtrl.signal,
-        });
-      } catch (e) {
-        clearTimeout(upTimer);
-        throw new Error("Upload interrompu — réessayez (étape 2)");
-      }
-      clearTimeout(upTimer);
-      if (!upRes.ok) {
-        const err = await upRes.text().catch(() => "?");
-        throw new Error("Erreur upload (" + upRes.status + "): " + err.slice(0, 100));
-      }
+      await supabase.from("documents").upsert(
+        { prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false },
+        { onConflict: "prestataire_id,type" }
+      );
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
