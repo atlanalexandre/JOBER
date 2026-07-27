@@ -7114,23 +7114,61 @@ export function DocUploadScreen({ onBack }) {
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    let fileBlob;
-    try { const buf = await file.arrayBuffer(); fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" }); }
-    catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
+    // Lire le fichier en mémoire immédiatement — iOS révoque la référence fichier si on attend trop
+    let fileBuffer;
+    try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
+      await new Promise(r => setTimeout(r, 300));
 
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
+      // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
+      const at = await getValidAccessToken();
 
-      await supabase.from("documents").upsert(
-        { prestataire_id: userId, type: docId, storage_path: storagePath, verified: false },
-        { onConflict: "prestataire_id,type" }
-      );
+      // Étape 1 : obtenir l'URL signée via Vercel (service role key → bypass total RLS)
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      let signRes;
+      try {
+        signRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${at}` },
+          body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
+          signal: ctrl.signal,
+        });
+      } catch (err) {
+        clearTimeout(timer);
+        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${err?.name}: ${err?.message})`);
+      }
+      clearTimeout(timer);
+
+      if (!signRes.ok) {
+        const e = await signRes.json().catch(() => ({}));
+        throw new Error(e.error || `Erreur serveur (${signRes.status})`);
+      }
+      const { signedUrl, storagePath } = await signRes.json();
+      if (!signedUrl) throw new Error("URL signée manquante");
+
+      // Étape 2 : upload direct vers Supabase via l'URL signée (ArrayBuffer en mémoire, aucune auth requise)
+      const upCtrl = new AbortController();
+      const upTimer = setTimeout(() => upCtrl.abort(), 60000);
+      let upRes;
+      try {
+        upRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: fileBuffer,
+          signal: upCtrl.signal,
+        });
+      } catch (err) {
+        clearTimeout(upTimer);
+        throw new Error("Upload interrompu — réessayez (étape 2)");
+      }
+      clearTimeout(upTimer);
+      if (!upRes.ok) {
+        const err = await upRes.text().catch(() => "?");
+        throw new Error("Erreur upload (" + upRes.status + "): " + err.slice(0, 100));
+      }
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
@@ -7244,26 +7282,60 @@ export function ClientProDocScreen({ onBack }) {
     const file = e.target.files?.[0]; if(!file||!userId) return;
     const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
-    let fileBlob;
-    try { const buf = await file.arrayBuffer(); fileBlob = new Blob([buf], { type: file.type || "application/octet-stream" }); }
-    catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
+    // Lire le fichier en mémoire immédiatement — iOS révoque la référence fichier si on attend trop
+    let fileBuffer;
+    try { fileBuffer = await file.arrayBuffer(); } catch { showToast("Impossible de lire le fichier. Réessayez."); e.target.value=""; return; }
     setUploading(docId); setUploadOk(null); setUploadErr(null);
     try {
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+      // Délai pour laisser iOS Safari stabiliser son contexte après fermeture du file picker
+      await new Promise(r => setTimeout(r, 300));
 
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, fileBlob, { upsert: true, contentType: file.type || "application/octet-stream" });
-      if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
+      // Refresh du token côté client si expiré (évite l'appel réseau dans la fonction Vercel)
+      const accessToken = await getValidAccessToken();
 
-      await supabase.from("documents").upsert(
-        { prestataire_id: userId, type: docId, storage_path: storagePath, verified: false },
-        { onConflict: "prestataire_id,type" }
-      );
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      let urlRes;
+      try {
+        urlRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+          body: JSON.stringify({ docType: docId, fileName: file.name, mimeType: file.type }),
+          signal: ctrl.signal,
+        });
+      } catch (err2) {
+        clearTimeout(timer);
+        throw new Error(`Connexion interrompue — réessayez (étape 1 · ${err2?.name}: ${err2?.message})`);
+      }
+      clearTimeout(timer);
+      if(!urlRes.ok) {
+        const err = await urlRes.json().catch(() => ({}));
+        setUploadErr(err.error || "Erreur lors de l'envoi.");
+        setTimeout(() => setUploadErr(null), 5000);
+        setUploading(null); e.target.value = ""; return;
+      }
+      const { signedUrl } = await urlRes.json();
+
+      // Étape 2 : upload via ArrayBuffer (évite la révocation de référence iOS)
+      const upCtrl = new AbortController();
+      const upTimer = setTimeout(() => upCtrl.abort(), 60000);
+      let uploadRes;
+      try {
+        uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: fileBuffer,
+          signal: upCtrl.signal,
+        });
+      } catch {
+        clearTimeout(upTimer);
+        throw new Error("Upload interrompu — réessayez (étape 2)");
+      }
+      clearTimeout(upTimer);
+      if (!uploadRes.ok) throw new Error("Erreur lors de l'envoi du fichier (" + uploadRes.status + ")");
 
       const now = new Date().toISOString();
-      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
+      setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:`${userId}/${docId}`, created_at:now }]);
       setUploadOk(docId);
       setTimeout(()=>setUploadOk(null), 3000);
     } catch(err) {
