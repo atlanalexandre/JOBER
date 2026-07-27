@@ -7137,11 +7137,17 @@ export function DocUploadScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // 2. DB insert via client supabase (gère l'auth + session automatiquement)
-      const { error: dbErr } = await supabase
-        .from("documents")
-        .insert({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false });
-      if (dbErr) throw new Error("Erreur sauvegarde: " + dbErr.message);
+      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        keepalive: true,
+      });
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      }
 
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);
@@ -7277,11 +7283,17 @@ export function ClientProDocScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // 2. DB insert via client supabase (gère l'auth + session automatiquement)
-      const { error: dbErr } = await supabase
-        .from("documents")
-        .insert({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false });
-      if (dbErr) throw new Error("Erreur sauvegarde: " + dbErr.message);
+      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
+        keepalive: true,
+      });
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      }
 
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
       setUploadOk(docId);

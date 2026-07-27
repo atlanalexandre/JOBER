@@ -166,11 +166,17 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // 2. DB insert via client supabase (gère l'auth + session automatiquement)
-      const { error: dbErr } = await supabase
-        .from("documents")
-        .insert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false });
-      if (dbErr) throw new Error("Erreur sauvegarde: " + dbErr.message);
+      // 2. DB insert — keepalive:true garantit l'envoi même si iOS suspend le contexte
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+        keepalive: true,
+      });
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
+      }
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
@@ -2693,8 +2699,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const _docsTok = rawSess?.access_token || "";
-      const docsRes = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_docsTok}`},body:JSON.stringify({userId:u.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
+      const { data: docsRes } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
       const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
@@ -3006,9 +3011,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
               const rawSessDoc = getRawSession();
               if(!rawSessDoc?.user) return;
-              const _at2 = await getValidAccessToken();
-              const docs = await fetch("/api/get-documents",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${_at2}`},body:JSON.stringify({userId:rawSessDoc.user.id})}).then(r=>r.ok?r.json():[]).catch(()=>[]);
-              const uploaded = (Array.isArray(docs)?docs:[]).map(d=>d.type);
+              const { data: rows } = await supabase.from("documents").select("type").eq("prestataire_id", rawSessDoc.user.id);
+              const uploaded = (Array.isArray(rows)?rows:[]).map(d=>d.type);
               if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
               setUploadedDocIds(uploaded);
             }} />
