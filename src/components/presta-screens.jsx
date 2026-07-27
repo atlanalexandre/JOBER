@@ -155,23 +155,24 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const SB_URL = import.meta.env.VITE_SUPABASE_URL;
       const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Upload direct au REST Supabase Storage avec le token rafraîchi (bypass session SDK)
-      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-        body: fileBlob,
-      });
+      // Lance storage + DB insert en parallèle — iOS Safari annule les fetch séquentiels
+      // lancés après un gros upload ; Promise.all démarre les deux avant que Safari annule
+      const [upRes, dbRes] = await Promise.all([
+        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          body: fileBlob,
+        }),
+        fetch(`${SB_URL}/rest/v1/documents`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+        }),
+      ]);
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-
-      // Insert DB direct Supabase REST (même approche que le storage — iOS compatible)
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-      });
       if (!dbRes.ok) {
         const errBody = await dbRes.text().catch(() => "");
         throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
