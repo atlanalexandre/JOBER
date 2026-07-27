@@ -7135,11 +7135,12 @@ export function DocUploadScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      await fetch(`${SB_URL}/rest/v1/documents`, {
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
         body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
       });
+      if (!dbRes.ok) console.warn("DB insert échoué", dbRes.status, await dbRes.text().catch(() => ""));
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
@@ -7274,11 +7275,12 @@ export function ClientProDocScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      await fetch(`${SB_URL}/rest/v1/documents`, {
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
         body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
       });
+      if (!dbRes.ok) console.warn("DB insert échoué", dbRes.status, await dbRes.text().catch(() => ""));
 
       const now = new Date().toISOString();
       setDbDocs(prev => [...prev.filter(d=>d.type!==docId), { type:docId, storage_path:storagePath, created_at:now }]);
