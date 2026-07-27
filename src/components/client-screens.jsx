@@ -7135,14 +7135,14 @@ export function DocUploadScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      const dbRes = await fetch("/api/save-document", {
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ type: docId, storagePath }),
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
       });
       if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+        const errBody = await dbRes.text().catch(() => "");
+        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
       }
 
       const now = new Date().toISOString();
@@ -7278,14 +7278,14 @@ export function ClientProDocScreen({ onBack }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      const dbRes = await fetch("/api/save-document", {
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ type: docId, storagePath }),
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
       });
       if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.error || dbRes.status));
+        const errBody = await dbRes.text().catch(() => "");
+        throw new Error(`Erreur sauvegarde (${dbRes.status}): ${errBody.slice(0, 120)}`);
       }
 
       const now = new Date().toISOString();
