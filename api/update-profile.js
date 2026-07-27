@@ -3,7 +3,9 @@ export default async function handler(req, res) {
 
   const authHeader = req.headers.authorization || "";
   const token = authHeader.replace("Bearer ", "").trim();
-  if (!token) return res.status(401).json({ error: "Token requis" });
+  const refreshToken = (req.headers["x-refresh-token"] || "").trim();
+
+  if (!token && !refreshToken) return res.status(401).json({ error: "Token requis" });
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
@@ -15,22 +17,49 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
-  // Un seul appel : vérification JWT + récupération user_metadata courante
-  let userId, currentMeta;
-  try {
-    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
-    });
-    if (!userRes.ok) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
-    const u = await userRes.json();
-    userId = u.id;
-    currentMeta = u.user_metadata || {};
-  } catch (e) {
-    console.error("[update-profile] JWT verification error:", e?.message);
-    return res.status(401).json({ error: "Erreur vérification session" });
+  let userId, currentMeta, newAt, newRt;
+
+  // 1. Vérifier le JWT courant
+  if (token) {
+    try {
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
+      });
+      if (userRes.ok) {
+        const u = await userRes.json();
+        userId = u.id;
+        currentMeta = u.user_metadata || {};
+      }
+    } catch { /* continue vers refresh */ }
   }
 
-  // Action "get" : retourner user_metadata directement (pas de 2e appel Supabase)
+  // 2. Si JWT expiré/invalide, rafraîchir via Supabase REST (sans SDK, sans side-effects)
+  if (!userId && refreshToken) {
+    try {
+      const refreshRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "apikey": SERVICE_ROLE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (refreshRes.ok) {
+        const rd = await refreshRes.json();
+        userId = rd.user?.id;
+        currentMeta = rd.user?.user_metadata || {};
+        newAt = rd.access_token;
+        newRt = rd.refresh_token;
+      }
+    } catch { /* continue */ }
+  }
+
+  if (!userId) return res.status(401).json({ error: "Session expirée — reconnectez-vous." });
+
+  // Retourner les nouveaux tokens au client si on a rafraîchi
+  if (newAt) {
+    res.setHeader("x-new-access-token", newAt);
+    res.setHeader("x-new-refresh-token", newRt);
+  }
+
+  // Action "get" : retourner user_metadata directement
   if (req.body?.action === "get") {
     return res.status(200).json({ user_metadata: currentMeta });
   }
@@ -40,8 +69,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "profileData requis" });
   }
 
-  // Merge léger : conserver les champs existants SAUF photo_url (déjà en Supabase, inutile de le renvoyer).
-  // L'Admin API Supabase fait un merge de user_metadata → les champs absents du body sont préservés.
+  // Merge : conserver les champs existants, exclure photo_url sauf si explicitement fournie
   const { photo_url: newPhoto, ...restNew } = profileData;
   const { photo_url: _oldPhoto, ...restCurrent } = currentMeta;
   const merged = { ...restCurrent, ...restNew };
