@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
@@ -135,8 +136,12 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
       const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
 
-      // Upload via SDK Storage — le SDK gère les headers auth correctement
-      const { error: storageErr } = await supabase.storage
+      // Client jetable avec token baked-in — contourne totalement la gestion de session du SDK
+      const anonClient = createClient(SB, KEY, {
+        global: { headers: { Authorization: `Bearer ${at}` } },
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      });
+      const { error: storageErr } = await anonClient.storage
         .from("Documents")
         .upload(storagePath, file, { upsert: true, contentType: file.type || "application/octet-stream" });
       if (storageErr) throw new Error("Erreur upload: " + storageErr.message);
