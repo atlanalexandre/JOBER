@@ -1023,7 +1023,14 @@ export function BOComptes() {
               ) : previewDoc.isImg ? (
                 <img src={previewDoc.url} alt={previewDoc.label} style={{ maxWidth:"100%", maxHeight:"75vh", display:"block", margin:"0 auto", borderRadius:8 }} />
               ) : (
-                <iframe src={previewDoc.url} title={previewDoc.label} style={{ width:"100%", height:"75vh", border:"none", borderRadius:8, background:"#fff" }} />
+                <div style={{ textAlign:"center", padding:40 }}>
+                  <div style={{ fontSize:48, marginBottom:16 }}>📄</div>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:14, marginBottom:24 }}>Prévisualisation non disponible dans le navigateur</div>
+                  <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
+                    <a href={previewDoc.url} target="_blank" rel="noopener noreferrer" style={{ display:"inline-block", padding:"10px 20px", background:`${C.violet}22`, border:`1px solid ${C.violet}55`, color:C.violet, borderRadius:10, fontWeight:700, fontSize:13, textDecoration:"none" }}>↗ Ouvrir dans un nouvel onglet</a>
+                    <a href={previewDoc.url} download style={{ display:"inline-block", padding:"10px 20px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.15)", color:"#fff", borderRadius:10, fontWeight:700, fontSize:13, textDecoration:"none" }}>⬇ Télécharger</a>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -2300,7 +2307,14 @@ export function BODocuments() {
             <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300 }}>
               {preview.isImg
                 ? <img src={preview.signedUrl} alt={preview.name} style={{ maxWidth:"100%", maxHeight:"80vh", display:"block", margin:"0 auto", borderRadius:8 }} />
-                : <iframe src={preview.signedUrl} title={preview.name} style={{ width:"100%", height:"78vh", border:"none", borderRadius:8, background:"#fff" }} />
+                : <div style={{ textAlign:"center", padding:40 }}>
+                    <div style={{ fontSize:48, marginBottom:16 }}>📄</div>
+                    <div style={{ color:"rgba(255,255,255,0.7)", fontSize:14, marginBottom:24 }}>Prévisualisation non disponible — ouvrez dans un nouvel onglet</div>
+                    <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
+                      <a href={preview.signedUrl} target="_blank" rel="noopener noreferrer" style={{ display:"inline-block", padding:"10px 20px", background:`${C.violet}22`, border:`1px solid ${C.violet}55`, color:C.violet, borderRadius:10, fontWeight:700, fontSize:13, textDecoration:"none" }}>↗ Ouvrir dans un nouvel onglet</a>
+                      <a href={preview.signedUrl} download style={{ display:"inline-block", padding:"10px 20px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.15)", color:"#fff", borderRadius:10, fontWeight:700, fontSize:13, textDecoration:"none" }}>⬇ Télécharger</a>
+                    </div>
+                  </div>
               }
             </div>
           </div>
