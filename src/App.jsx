@@ -6,9 +6,10 @@ import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
-import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen } from "./components/payment.jsx";
+import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
 import { PrestaOnboarding, PrestaProfileEditScreen, PrestaPointageScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
-import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen } from "./components/client-screens.jsx";
+import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
+setUseProviders(useProviders);
 
 export class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -329,6 +330,7 @@ function PublicContactScreen({ onBack }) {
   const [email, setEmail]     = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [hp, setHp]           = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent]       = useState(false);
   const [error, setError]     = useState("");
@@ -345,7 +347,7 @@ function PublicContactScreen({ onBack }) {
       const res = await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), userId: "", _hp: "" }),
+        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), userId: "", _hp: hp }),
       });
       if (!res.ok) {
         const d = await res.json().catch(()=>({}));
@@ -388,8 +390,8 @@ function PublicContactScreen({ onBack }) {
               <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>Question, partenariat, problème technique… remplissez le formulaire et nous vous répondrons par email.</p>
             </div>
 
-            {/* Champ honeypot anti-spam — invisible pour les humains */}
-            <input aria-hidden="true" tabIndex={-1} name="_hp" style={{ position:"absolute", left:"-9999px", width:1, height:1, overflow:"hidden" }} />
+            {/* Champ honeypot anti-spam — invisible pour les humains, rempli uniquement par les bots */}
+            <input aria-hidden="true" tabIndex={-1} name="_hp" value={hp} onChange={e=>setHp(e.target.value)} style={{ position:"absolute", left:"-9999px", width:1, height:1, overflow:"hidden" }} />
 
             <div style={{ marginBottom:16 }}>
               <label htmlFor="pc-name" style={{ display:"block", fontSize:11, color:C.textSub, fontWeight:600, marginBottom:7, textTransform:"uppercase", letterSpacing:0.8 }}>Votre nom *</label>
