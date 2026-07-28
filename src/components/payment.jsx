@@ -362,7 +362,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       timestamp: Date.now(),
     };
     // A — localStorage (reprise in-app immédiate)
-    try { localStorage.setItem("jober_booking_draft", JSON.stringify(draft)); } catch { /* ignore */ }
+    try { localStorage.setItem("alane_booking_draft", JSON.stringify(draft)); } catch { /* ignore */ }
     // B+C — Supabase (push + email via cron après 30 min)
     supabase.auth.getSession().then(({ data: sd }) => {
       const token = sd?.session?.access_token;
@@ -475,7 +475,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   }, [applePayAvailable]);
 
   const clearDraft = () => {
-    try { localStorage.removeItem("jober_booking_draft"); } catch { /* ignore */ }
+    try { localStorage.removeItem("alane_booking_draft"); } catch { /* ignore */ }
     supabase.auth.getSession().then(({ data: sd }) => {
       const token = sd?.session?.access_token;
       if (!token) return;

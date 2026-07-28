@@ -1132,11 +1132,9 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         });
         if (pRes.ok) {
           profile = await pRes.json();
-        } else if (pRes.status !== 404) {
-          console.error("[login] get-profile error:", pRes.status);
         }
-      } catch (pErr) {
-        console.error("[login] get-profile fetch error:", pErr);
+      } catch {
+        // fetch échoue → profile reste null → reconstruction depuis user_metadata ci-dessous
       }
 
       if (!profile) {

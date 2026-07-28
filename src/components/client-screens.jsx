@@ -5658,7 +5658,6 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       }
       setPrestaHistoire(ids.map(id => ({ ...byPresta[id], ...(nameMap[id]||{name:"Prestataire",initials:"P"}) })).sort((a,b)=>(b.missions||[]).length-(a.missions||[]).length));
     } catch(e) {
-      console.error("prestaHistoire build error:", e);
       setPrestaHistoire([]);
     }
   }, [tab, prestations]);
@@ -7741,7 +7740,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
         }).select().single();
         if(data) prestation.id = data.id;
       }
-    } catch(e){ console.error("prestation insert error", e); }
+    } catch(e){ /* insert échoue silencieusement — onSubmit reçoit quand même la prestation locale */ }
     setSending(false);
     onSubmit(prestation);
   };
