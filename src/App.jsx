@@ -660,59 +660,6 @@ function PrestaNav({ active, onNavigate, unreadCount }) {
 // ── MODE ÉQUIPE ───────────────────────────────────────────────────
 // ── MINI COMPOSANTS (évite useState dans .map) ───────────────────
 
-// DocRow — onglet docs prestataire
-function DocRowItem({ doc, isValid }) {
-  const [renewed, setRenewed] = useState(false);
-  const valid = isValid || renewed;
-  return (
-    <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", marginBottom:8, display:"flex", gap:10, alignItems:"center", border:`1px solid ${valid?C.border:C.accent+"30"}` }}>
-      <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
-      <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
-        <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":"En attente"}</div>
-      </div>
-      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-        <Badge color={valid?C.success:C.accent} small>{valid?"OK":"Requis"}</Badge>
-        {!isValid && !renewed && (
-          <button onClick={()=>setRenewed(true)} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>+ Charger</button>
-        )}
-        {isValid && (
-          <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// PendingDocRow — backoffice validation dossiers
-function PendingDocRow({ u }) {
-  const [validated, setValidated] = useState(false);
-  const [docRequested, setDocRequested] = useState(false);
-  return (
-    <div style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, border:`1px solid ${C.border}`, opacity:validated?0.6:1, transition:"opacity 0.3s" }}>
-      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:8 }}>
-        <div style={{ width:40, height:40, borderRadius:12, background:`${C.violet}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{u.avatar}</div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{u.name}</div>
-          <div style={{ color:C.textSub, fontSize:11 }}>{u.role} · {u.sector}</div>
-        </div>
-        <div>
-          {validated ? <Badge color={C.success} small>✓ Validé</Badge>
-            : <Badge color={u.missing===0?C.success:C.accent} small>{u.missing===0?"Complet":`${u.missing} manquant${u.missing>1?"s":""}`}</Badge>}
-        </div>
-      </div>
-      {!validated && (
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={()=>setValidated(false)} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"default", fontFamily:"inherit" }}>👁️ {u.docs} doc{u.docs>1?"s":""}</button>
-          {u.missing===0
-            ? <button onClick={()=>setValidated(true)} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:C.success, color:C.white, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Valider</button>
-            : <button onClick={()=>setDocRequested(true)} style={{ flex:2, padding:"8px", borderRadius:10, border:"none", background:docRequested?`${C.success}22`:`${C.accentGold}22`, color:docRequested?C.success:C.warning, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>{docRequested?"✓ Envoyé":"⚠️ Demander docs"}</button>}
-        </div>
-      )}
-      {validated && <div style={{ textAlign:"center", color:C.success, fontSize:12, fontWeight:700, padding:"4px 0" }}>✅ Compte activé</div>}
-    </div>
-  );
-}
 
 // ── COMMENT ÇA MARCHE ────────────────────────────────────────────
 // ── ONBOARDING CLIENT COMPLET ─────────────────────────────────────
@@ -1123,7 +1070,7 @@ export default function App() {
     if(!supaUser || role!=="prestataire") return;
     (async()=>{
       try {
-        const { data:{ user } } = await supabase.auth.getUser();
+        await supabase.auth.getUser();
         // profiles est la source de vérité pour plan_abonnement (le webhook Stripe y écrit en priorité)
         const { data:pr } = await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",supaUser.id).single();
         const plan = pr?.plan_abonnement || "free";
@@ -1235,7 +1182,7 @@ export default function App() {
   useEffect(()=>{
     if(screen !== "home" || role !== "client") return;
     try {
-      const raw = localStorage.getItem("jober_booking_draft");
+      const raw = localStorage.getItem("alane_booking_draft");
       if (!raw) return;
       const draft = JSON.parse(raw);
       // Afficher uniquement si le brouillon a plus de 10 min
@@ -1377,21 +1324,8 @@ export default function App() {
       ? initSessionRef.current
       : (await supabase.auth.getSession()).data.session;
     if(session){
-      let stayLoggedIn; try {
-        stayLoggedIn = localStorage.getItem("alane_stay_logged_in");
-        // Migration one-time depuis l'ancienne clé "jober_*" (renommée "alane_*")
-        if (!stayLoggedIn) {
-          const legacy = localStorage.getItem("jober_stay_logged_in");
-          if (legacy) { localStorage.setItem("alane_stay_logged_in", legacy); localStorage.removeItem("jober_stay_logged_in"); stayLoggedIn = legacy; }
-        }
-      } catch(e) {}
-      let sessionActive; try {
-        sessionActive = sessionStorage.getItem("alane_session_active");
-        if (!sessionActive) {
-          const legacy = sessionStorage.getItem("jober_session_active");
-          if (legacy) { sessionStorage.setItem("alane_session_active", legacy); sessionStorage.removeItem("jober_session_active"); sessionActive = legacy; }
-        }
-      } catch(e) {}
+      let stayLoggedIn; try { stayLoggedIn = localStorage.getItem("alane_stay_logged_in"); } catch(e) {}
+      let sessionActive; try { sessionActive = sessionStorage.getItem("alane_session_active"); } catch(e) {}
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
         await supabase.auth.signOut();
@@ -1488,7 +1422,7 @@ export default function App() {
             style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
           >Reprendre</button>
           <button
-            onClick={()=>{ setBookingDraftBanner(null); try { localStorage.removeItem("jober_booking_draft"); } catch {} }}
+            onClick={()=>{ setBookingDraftBanner(null); try { localStorage.removeItem("alane_booking_draft"); } catch {} }}
             style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", lineHeight:1, flexShrink:0 }}
           >×</button>
         </div>
@@ -1545,7 +1479,6 @@ export default function App() {
 
       {/* Onboarding complet — uniquement pour les nouveaux */}
       {screen==="client_onboarding" && <ClientOnboarding onComplete={()=>setScreen("home")} onBack={()=>setScreen("how_client")} />}
-      {screen==="client_auth"       && <AuthScreen role="client" onLogin={()=>setScreen("home")} onRegister={()=>setScreen("how_client")} onBack={()=>setScreen("role")} />}
       {screen==="home"              && <HomeScreen onNavigate={navigate} notifCount={notifCount} />}
       {screen==="catalogue"         && <CatalogueScreen onNavigate={navigate} />}
       {screen==="sector_detail"     && <SectorDetailScreen sector={selectedSector} onNavigate={navigate} clientCoords={clientCoords} />}
@@ -1635,7 +1568,7 @@ export default function App() {
       {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
       {screen==="invoice"           && <InvoiceScreen prestation={invoiceMission} onBack={()=>setScreen("mission_history")} />}
-      {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentAmount?.date||null} onNavigate={navigate} onBack={()=>setScreen("mission_history")} />}
+      {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentDate||null} onNavigate={navigate} onBack={()=>setScreen("mission_history")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("home")} openMissionId={notifOpenMissionId} />}
       {screen==="chat"              && <ChatScreen provider={selectedProvider} chatClientId={chatClientId} onBack={()=>setScreen(role==="prestataire"?"p_missions":"search_filters")} />}

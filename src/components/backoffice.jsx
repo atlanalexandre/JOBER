@@ -67,8 +67,6 @@ export function BackofficeLogin({ onLogin, onBack }) {
   const [show, setShow]         = useState(false);
   const [error, setError]       = useState("");
   const [tempPwd, setTempPwd]   = useState(null);
-  const [boPwdLen, setBoPwdLen] = useState(null);
-  const [boDebug, setBoDebug]   = useState(null);
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
@@ -92,8 +90,6 @@ export function BackofficeLogin({ onLogin, onBack }) {
         if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
         else {
           if (j.tempPassword) setTempPwd(j.tempPassword);
-          if (j._debug_boPwdLen !== undefined) setBoPwdLen(j._debug_boPwdLen);
-          if (j._debug_vercelEnv || j._debug_boKeys) setBoDebug({ env: j._debug_vercelEnv, keys: j._debug_boKeys });
           setError(j.error || "Mot de passe incorrect");
           setPwd(""); setAttempts(a => a + 1);
         }
@@ -118,17 +114,6 @@ export function BackofficeLogin({ onLogin, onBack }) {
           <button onClick={() => { setPwd(tempPwd); setError(""); }} style={{ width:"100%", padding:"8px", borderRadius:8, border:"1px solid rgba(196,169,107,0.6)", background:"rgba(196,169,107,0.2)", color:"rgba(196,169,107,1)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"monospace" }}>
             👆 Utiliser ce mot de passe
           </button>
-          {boPwdLen !== null && (
-            <p style={{ color:"rgba(196,169,107,0.5)", fontSize:10, margin:"6px 0 0", fontFamily:"monospace" }}>
-              Diagnostic — BO_PASSWORD : {boPwdLen === -1 ? "absent (undefined)" : boPwdLen === 0 ? "vide (\"\")" : `${boPwdLen} caractères ✓`}
-            </p>
-          )}
-          {boDebug && (
-            <div style={{ color:"rgba(196,169,107,0.5)", fontSize:10, margin:"4px 0 0", fontFamily:"monospace", lineHeight:1.5 }}>
-              <div>Vercel ENV : {boDebug.env || "?"}</div>
-              <div>Vars BO/PASSWORD présentes : {boDebug.keys?.length ? boDebug.keys.join(", ") : "aucune"}</div>
-            </div>
-          )}
         </div>
       )}
       {!locked && !error && !tempPwd && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
