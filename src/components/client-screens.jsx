@@ -849,11 +849,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   useEffect(() => {
     let mounted = true;
     const loadValidations = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      if (!user || !mounted) return;
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
+      const user = sd?.session?.user;
+      if (!user || !token || !mounted) return;
       try {
         const res = await fetch("/api/missions", {
           method: "POST",
@@ -5492,8 +5491,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
   useEffect(() => {
     const poll = async () => {
-      const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
-      const user = data?.user; if (!user) return;
+      const { data: sd } = await supabase.auth.getSession();
+      const user = sd?.session?.user; if (!user) return;
       const token = sd?.session?.access_token;
       const res = await fetch("/api/missions", {
         method: "POST",
@@ -5541,6 +5540,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const pollPosition = async () => {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
+      if (!token) return;
       const r = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
@@ -5604,6 +5604,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   useEffect(() => {
     if (!selected?.id || selected.status !== "assigned" || selected.validation_prestataire) return;
     const poll = async () => {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!sd?.session) return;
       const { data } = await supabase
         .from("missions")
         .select("validation_prestataire,status,started_at,arrived_at,actual_hours,montant_total,hours,delay_status")
@@ -7881,6 +7883,8 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
   useEffect(()=>{
     if(!m.id) return;
     const poll = async () => {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!sd?.session) return;
       const { data } = await supabase.from("candidatures")
         .select("id,prestataire_id,status,created_at")
         .eq("mission_id", m.id)
