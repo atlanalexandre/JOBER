@@ -1,252 +1,240 @@
-# JOBER — Documentation technique
+# CLAUDE.md — Règles de travail sur JOBER / ALANE
 
-App React/Vite connectant clients et prestataires. Supabase pour l'auth et la DB, Vercel pour le déploiement et les fonctions serverless.
+Ce fichier est lu automatiquement par Claude Code à chaque session. Il définit **comment**
+travailler sur ce projet. La description du projet lui-même est dans [DOCUMENTATION.md](DOCUMENTATION.md).
 
-## Stack
+> **Contexte important** : le propriétaire du projet (Alexandre) n'est pas développeur.
+> Les demandes arrivent en langage courant. Ta responsabilité est donc double : faire ce qui
+> est demandé, **et** protéger le projet des dégâts qu'une demande imprécise pourrait causer.
+> Quand une demande est ambiguë ou risquée, pose la question avant d'agir.
 
-- **Frontend** : React (hooks), Vite, inline styles (pas de Tailwind ni CSS modules)
-- **Auth + DB** : Supabase (anon key côté client, service role key côté serveur uniquement)
-- **Serverless** : `/api/*.js` — fonctions Vercel (ES modules, `export default async function handler`)
-- **Déploiement** : Vercel, branche `main` protégée → toujours passer par une PR
+---
 
-## Variables d'environnement Vercel (toutes requises)
+## 1. Les règles non négociables
 
-| Variable | Usage |
+Ces règles viennent toutes de pannes réelles survenues en production. Chacune a coûté des
+heures de diagnostic. Ne les enfreins pas, même si ça paraît plus simple sur le moment.
+
+### 1.1 Ne jamais stocker de données volumineuses dans `user_metadata`
+
+`user_metadata` (Supabase Auth) est **encodé dans le jeton d'authentification**, envoyé en
+en-tête HTTP à chaque requête. Cloudflare plafonne les en-têtes à 16 Ko.
+
+Une photo de profil y avait été stockée en base64 : 60 Ko. Résultat, **toutes** les requêtes
+du compte étaient rejetées avec une erreur 520, y compris la déconnexion. Le compte était
+totalement inutilisable, et l'erreur affichée dans la console parlait de CORS — sans aucun
+rapport avec la vraie cause.
+
+- `user_metadata` : uniquement des valeurs courtes (nom, ville, préférences). Vise < 2 Ko.
+- Fichiers, images, documents → **Supabase Storage**, et on ne garde que le chemin.
+- Une photo de profil va dans `profiles.avatar_url`, jamais dans `user_metadata`.
+
+### 1.2 Ne jamais avaler une erreur en silence
+
+C'est le défaut le plus coûteux de ce projet. Un `catch {}` vide transforme une panne franche
+en comportement dégradé invisible, impossible à diagnostiquer.
+
+Exemples réels : la suppression de compte ne supprimait aucun fichier (mauvaise casse dans un
+nom de dossier, échec avalé) ; une liste restait vide parce qu'elle interrogeait une table
+inexistante ; l'envoi d'un document échouait en laissant le bouton bloqué sur « Envoi… ».
+
+```js
+// ❌ jamais
+try { await faireQuelqueChose(); } catch {}
+
+// ✅ toujours : soit on remonte à l'utilisateur, soit on journalise avec le contexte
+try {
+  await faireQuelqueChose();
+} catch (err) {
+  console.error("[contexte] échec de X :", err.message);
+  throw new Error("Message clair pour l'utilisateur");
+}
+```
+
+Si un `catch` doit vraiment rester vide (cas légitime : `localStorage` indisponible en
+navigation privée), **écris un commentaire expliquant pourquoi**. Sinon eslint le refuse.
+
+### 1.3 Ne jamais appeler Supabase depuis `onAuthStateChange`
+
+supabase-js détient un verrou pendant l'exécution de ce callback. Toute requête lancée
+dedans part **sans en-tête d'authentification**, donc en rôle anonyme, et la RLS la rejette.
+
+C'était la cause de la déconnexion à chaque rechargement de page.
+
+```js
+// ✅ sortir du callback
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === "INITIAL_SESSION" && session?.user) {
+    setTimeout(() => { supabase.from("profiles").select(/* … */); }, 0);
+  }
+});
+```
+
+### 1.4 Toujours nettoyer les variables d'environnement
+
+Les variables Vercel de ce projet contiennent des espaces invisibles (collés depuis un iPad).
+Un en-tête HTTP ne peut pas contenir de retour à la ligne : `fetch` lève une exception **avant
+même d'émettre la requête**. Symptômes constatés : 401 sur `/api/missions`, 500 sur
+`/api/prestataires`, le tout sans message exploitable.
+
+```js
+// ✅ dans TOUT nouveau fichier /api
+const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+```
+
+Exception : `RESEND_FROM` et `ADMIN_EMAIL` contiennent des espaces **significatifs**
+(`JOBER <no-reply@…>`). Ne jamais leur appliquer ce nettoyage.
+
+### 1.5 La clé service role ne sort jamais du dossier `/api`
+
+`SUPABASE_SERVICE_ROLE_KEY` contourne toute la sécurité RLS. Elle n'apparaît que dans
+`/api/*.js` (fonctions serverless). Jamais dans `src/`, jamais dans un composant, jamais
+dans une variable préfixée `VITE_` (qui serait embarquée dans le bundle public).
+
+### 1.6 Avant d'ajouter une contrainte, relever TOUTES les valeurs utilisées
+
+Une contrainte `CHECK` sur `documents.type` avait été ajoutée en oubliant `photo`,
+`diplomes` et `tva`. Conséquence : la photo de profil montait bien dans le storage, mais son
+enregistrement en base était rejeté — sans message.
+
+Avant tout `CHECK` ou `NOT NULL` : cherche dans `src/` **et** `api/` toutes les valeurs
+réellement écrites. Une contrainte trop étroite casse la production silencieusement.
+
+### 1.7 Une modification de schéma passe par une migration
+
+Utilise l'outil de migration Supabase, jamais des modifications manuelles depuis le dashboard.
+Les migrations sont tracées et relisables ; une modification manuelle est invisible et
+irrattrapable. Nomme-les en français, explicitement :
+`secu_fermer_documents_presta_insert`, `perf_index_fk_et_nettoyage`.
+
+---
+
+## 2. Comment on travaille
+
+### 2.1 Toujours vérifier avant d'affirmer
+
+Ne dis jamais « c'est corrigé » sans preuve. Les vérifications attendues, selon le cas :
+
+- **Base** : rejouer une requête qui confirme l'état attendu.
+- **API** : appeler l'endpoint et lire le code HTTP réel.
+- **Front** : lancer le serveur local et regarder la page, ou vérifier que le bundle déployé
+  contient bien la correction.
+- **Déploiement** : attendre que Vercel passe au vert, et le confirmer.
+
+Si une vérification est impossible, **dis-le explicitement** plutôt que de laisser croire que
+c'est validé.
+
+### 2.2 Diagnostiquer avant de corriger
+
+Ce projet a beaucoup souffert de correctifs appliqués sur des symptômes. Un exemple : une
+policy de sécurité a été ouverte en grand (`WITH CHECK (true)`) pour contourner un bug de
+session — la faille est restée des semaines, et le vrai bug n'était pas corrigé.
+
+Face à un symptôme : cherche la cause, prouve-la, corrige la cause. Si tu dois contourner
+temporairement, écris-le en commentaire avec la raison et ce qu'il faudra faire ensuite.
+
+### 2.3 Ne pas élargir le périmètre sans le dire
+
+Si tu repères un problème en dehors de la demande, deux cas :
+- **c'est bloquant ou dangereux** → corrige-le, et signale-le clairement dans ta réponse ;
+- **sinon** → signale-le, et laisse Alexandre décider.
+
+Ne fais jamais de refonte non demandée.
+
+### 2.4 Actions destructrices : demander avant
+
+Suppression de tables, de colonnes, de données, de fichiers du storage, ou toute modification
+du schéma `auth` : **demander confirmation**, même si ça semble découler de la demande.
+
+Sauvegarde d'abord quand c'est possible (exemple : copier une photo dans `profiles.avatar_url`
+avant de la retirer de `user_metadata`).
+
+### 2.5 Git et déploiement
+
+- Une branche par sujet, jamais de commit direct sur `main` sans raison explicite.
+- Messages de commit **en français**, expliquant le *pourquoi* et pas seulement le *quoi*.
+- Un push sur `main` déclenche un déploiement en production. Vérifie que la CI est verte.
+- `npm run lint` doit rester à **0 erreur**. La CI a été rouge en permanence pendant des
+  semaines, ce qui l'a rendue inutile : ne recommence pas.
+
+### 2.6 Répondre à un non-développeur
+
+- Explique en français courant ce que tu as fait et pourquoi c'était cassé.
+- Donne le résultat concret (« la photo s'affiche à nouveau »), pas seulement la technique.
+- Quand une action lui revient (réglage dans un dashboard), donne le chemin exact des clics.
+- Signale les décisions qui lui appartiennent (produit, argent, données personnelles).
+
+---
+
+## 3. Conventions de code
+
+### 3.1 Style
+
+- React avec hooks, **styles en ligne** (pas de Tailwind, pas de CSS modules).
+- Pas de TypeScript. Pas de nouvelle dépendance sans validation préalable.
+- Nommage et commentaires **en français**, comme le reste du projet.
+- On suit le style du fichier qu'on modifie, même s'il diffère de ses préférences.
+
+### 3.2 Ajouter un écran
+
+L'application n'a pas de routeur : l'écran affiché vient d'un état `screen` dans `App.jsx`,
+et [`src/lib/routes.js`](src/lib/routes.js) le reflète dans l'URL.
+
+Pour ajouter un écran, il faut **toujours** :
+1. ajouter l'entrée dans `SCREEN_TO_PATH` (URL en anglais, minuscules, tirets) ;
+2. le classer : `PUBLIC_SCREENS` s'il est accessible sans compte, `NEEDS_DATA` s'il reçoit un
+   objet via `navigate(to, data)` ;
+3. l'ajouter à `PRESTA_SCREENS` ou `CLIENT_SCREENS` dans `App.jsx` s'il est réservé à un rôle.
+
+Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
+
+### 3.3 Requêtes vers la base
+
+- Depuis le front : `supabase.from(...)` avec la clé anonyme. **La RLS est la sécurité.**
+- Depuis `/api` : `fetch` sur l'API REST avec la clé service role, après vérification de
+  l'appelant via `verifyUser` (voir `api/_auth.js`).
+- Toute opération sensible (argent, statut de mission, cashback) passe **obligatoirement**
+  par `/api`. Jamais directement depuis le front.
+
+### 3.4 Documents et fichiers
+
+- Bucket unique : **`Documents`** — avec une majuscule, la casse compte. Une erreur de casse
+  a empêché toute suppression de fichier pendant des mois.
+- Chemin : `{user_id}/{type}` — **nom stable, sans horodatage ni extension**. Un remplacement
+  écrase l'ancien fichier au lieu d'en accumuler.
+- En base : un seul document par `(prestataire_id, type)`, garanti par une contrainte unique.
+  Les écritures utilisent donc `upsert` avec `onConflict: "prestataire_id,type"`.
+- Le bucket est **privé** : la lecture passe par une URL signée générée côté `/api`.
+
+---
+
+## 4. Pièges connus de ce projet
+
+| Piège | Ce qu'il faut retenir |
 |---|---|
-| `VITE_SUPABASE_URL` | URL du projet Supabase |
-| `VITE_SUPABASE_ANON_KEY` | Clé publique Supabase (client) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service Supabase (fonctions serverless uniquement) |
-| `RESEND_API_KEY` | Clé API Resend pour les emails |
-| `RESEND_FROM` | Adresse d'envoi ex: `JOBER <no-reply@domaine.fr>` (ou `onboarding@resend.dev` pour tests) |
-| `ADMIN_EMAIL` | Email de l'admin pour recevoir les tickets support |
-| `VITE_STRIPE_PUBLIC_KEY` | Clé publique Stripe (`pk_test_...` ou `pk_live_...`) — exposée côté client |
-| `STRIPE_SECRET_KEY` | Clé secrète Stripe — fonctions serverless uniquement |
-| `STRIPE_WEBHOOK_SECRET` | Signing secret du webhook Stripe (`whsec_...`) |
-| `BO_PASSWORD` | Mot de passe alphanumérique du backoffice admin |
-| `BO_SESSION_SECRET` | Secret HMAC pour signer les tokens de session BO (CRITIQUE — doit être aléatoire, ne pas laisser la valeur par défaut) |
-| `CRON_SECRET` | Secret optionnel pour protéger `/api/cron-reset-monthly` (header Authorization) |
-| `APP_URL` | URL publique de l'app ex: `https://www.alane.fr` — fallback automatique si absent |
-| `BREVO_API_KEY` | Clé API Brevo — SMS transactionnels (`missions.js`) et emails (`cron-reset-monthly.js`) |
-| `VAPID_PUBLIC_KEY` | Clé publique VAPID pour les push notifications web (`missions.js`) |
-| `VAPID_PRIVATE_KEY` | Clé privée VAPID pour les push notifications web (`missions.js`) |
-| `BO_ALLOWED_IPS` | IPs autorisées à accéder au backoffice, séparées par des virgules ex: `90.12.34.56,185.20.0.1` — si absent, pas de restriction IP (Edge Middleware `middleware.js`) |
-| `UPSTASH_REDIS_REST_URL` | URL REST Upstash Redis — rate limiting persistant cross-instances (`missions.js`). Si absent, fallback in-memory (non recommandé en prod) |
-| `UPSTASH_REDIS_REST_TOKEN` | Token Bearer Upstash Redis — obligatoire si `UPSTASH_REDIS_REST_URL` est défini |
+| Bucket `Documents` | Majuscule obligatoire |
+| Table des prestations | C'est `missions`, il n'existe pas de table `prestations` |
+| Variables Vercel | Contiennent des espaces invisibles, toujours les nettoyer |
+| `user_metadata` | Encodé dans le jeton, limite ~16 Ko |
+| `onAuthStateChange` | Aucun appel Supabase à l'intérieur |
+| `platform_settings` | Lecture restreinte par clé ; une clé absente provoque une erreur 406 |
+| Réécriture Vercel | La destination doit être `/` et non `/index.html` (à cause de `cleanUrls`) |
+| CI eslint | Doit rester à 0 erreur |
 
-## Base de données Supabase
+---
 
-Le schéma SQL complet est dans `supabase-schema.sql` à la racine du projet.
+## 5. Ce qui reste ouvert
 
-### Table `profiles`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | = auth.user.id |
-| `role` | text | `"client"` ou `"prestataire"` |
-| `prenom` | text | |
-| `nom` | text | |
-| `status` | text | `"pending"`, `"approved"`, `"rejected"` |
-| `cashback_balance` | numeric | Solde cashback client, défaut 0 |
-| `missions_completed_month` | integer | Missions validées ce mois (reset le 1er via cron) |
-| `prepaid_balance` | numeric | Wallet prépayé client (rechargé via Stripe, débité à chaque mission), défaut 0 |
-| `created_at` | timestamp | |
+Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En résumé :
 
-### Table `missions`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `client_id` | uuid | FK auth.users |
-| `prestataire_id` | uuid | FK auth.users, nullable |
-| `sector` | text | |
-| `metier` | text | |
-| `date` | text | |
-| `hours` | numeric | |
-| `ville` | text | |
-| `tarif_horaire` | numeric | |
-| `montant_total` | numeric | Calculé à la validation |
-| `status` | text | `"open"`, `"pending_acceptance"`, `"assigned"`, `"completed"`, `"closed"`, `"rejected"`, `"refused"` |
-| `stripe_payment_intent` | text | ID PaymentIntent Stripe |
-| `created_at` | timestamp | |
-
-### Table `candidatures`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `mission_id` | uuid | FK missions |
-| `prestataire_id` | uuid | FK auth.users |
-| `message` | text | nullable |
-| `status` | text | `"pending"`, `"accepted"`, `"rejected"` |
-| `created_at` | timestamp | |
-
-### Table `notifications`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `user_id` | uuid | FK auth.users |
-| `type` | text | `"mission"`, `"cashback"`, `"system"` |
-| `title` | text | |
-| `body` | text | |
-| `read` | boolean | défaut false |
-| `created_at` | timestamp | |
-
-### Table `documents`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `prestataire_id` | uuid | FK auth.users |
-| `type` | text | `"kbis"`, `"rib"`, `"cni"`, `"autre"` |
-| `storage_path` | text | Chemin dans le bucket Supabase Storage `documents` |
-| `verified` | boolean | Validé par le BO, défaut false |
-| `created_at` | timestamp | |
-
-### Table `support_tickets`
-| Colonne | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `subject` | text | |
-| `message` | text | |
-| `user_email` | text | nullable |
-| `user_name` | text | nullable |
-| `user_id` | uuid | nullable |
-| `status` | text | `"open"`, `"closed"` |
-| `created_at` | timestamp | |
-
-### Données auth (user_metadata — stockées dans Supabase Auth)
-Champs stockés dans `user_metadata` lors du signUp :
-`role`, `prenom`, `nom`, `telephone`, `type_compte`, `societe_nom`, `kbis`, `rib`
-
-## Architecture App.jsx
-
-Fichier unique ~11500 lignes. Tous les composants sont dans ce fichier.
-
-### Composants clés et ce qu'ils font
-
-**`AuthScreen`** (ligne ~715)
-- Gère connexion ET inscription pour client et prestataire selon la prop `role`
-- Inscription : prénom, nom, téléphone*, type compte, société+KBIS (si pro), IBAN*, email*, mot de passe*
-- Après inscription : `signOut()` puis `onRegister()` — l'utilisateur doit se reconnecter manuellement après validation BO
-- Connexion : vérifie que le rôle du compte = rôle de la page, vérifie le status (pending/rejected bloque)
-- Checkbox "Rester connecté" : si cochée → `localStorage.setItem("jober_stay_logged_in","1")`, si non → `sessionStorage.setItem("jober_session_active","1")`
-
-**`App` (export default)** (ligne ~6948)
-- `handleSplashNext` : vérifie les flags `jober_stay_logged_in` (localStorage) et `jober_session_active` (sessionStorage). Si session Supabase existe mais aucun flag → `signOut()` + écran "role". C'est le mécanisme de déconnexion automatique à la fermeture.
-- `onAuthStateChange SIGNED_OUT` : efface les deux flags + redirige vers "role"
-- `navigate(to)` : bloque les clients sur `PRESTA_SCREENS` et les prestataires sur `CLIENT_SCREENS`
-
-**`ResponsiveLayout`** (ligne ~6076)
-- Mobile (`< 768px`) : `width:"100%"`, PAS de `maxWidth`, PAS de `margin:0 auto`, PAS de `boxShadow` — plein écran sur tous les téléphones
-- Desktop : sidebar si connecté, contenu centré avec `maxWidth: 900` (avec sidebar) ou `480` (sans)
-
-**`HomeScreen`** (ligne ~1283)
-- Récupère le `prenom` depuis la table `profiles` via Supabase
-- Affiche `{userName || "Mon espace"}` — JAMAIS de nom en dur
-
-**`PendingApprovalScreen`** (ligne ~1114)
-- Récupère l'email via `supabase.auth.getUser()`
-- Affiche l'email de l'utilisateur sous le badge de statut
-
-**`BackofficeDashboard`** (ligne ~4800)
-- Tabs : `comptes` → `<BOComptes />`, `support` → `<BOSupport />`, puis KPIs, Secteurs, Utilisateurs, Finance, Modération
-
-**`BOComptes`** (ligne ~4631)
-- Appelle `/api/bo-action` action `"list"` qui fusionne `profiles` + `auth.users`
-- Affiche : email, téléphone, IBAN, type_compte, societe_nom, KBIS
-- Filtres : statut (pending/approved/rejected/all) + rôle (all/client/prestataire)
-- Actions : approuver, refuser, supprimer
-
-**`BOSupport`** (ligne ~4741)
-- Appelle `/api/bo-action` action `"list_tickets"`
-- Affiche les tickets support avec bouton "Fermer"
-
-## Fonctions serverless (/api)
-
-### `api/bo-action.js`
-Actions disponibles :
-- `list` : fusionne profiles + auth users, retourne email/rib/kbis/societe_nom/type_compte/telephone
-- `approve` : PATCH status="approved" + email Resend à l'utilisateur
-- `reject` : PATCH status="rejected" + email Resend à l'utilisateur
-- `delete` : supprime profile + supprime auth user (admin API)
-- `list_tickets` : retourne tous les tickets support
-- `close_ticket` : PATCH status="closed" sur un ticket
-
-**IMPORTANT** : Le `fetch` Resend est inliné directement dans ce fichier. Ne pas utiliser d'import relatif vers un fichier utilitaire — les imports relatifs ne fonctionnent pas de manière fiable dans les fonctions serverless Vercel.
-
-### `api/support.js`
-- Sauvegarde le ticket dans `support_tickets` (Supabase)
-- Envoie email à `ADMIN_EMAIL` via Resend (fetch inliné)
-- Logs `console.log` présents pour diagnostic (visibles dans Vercel → Functions → Logs)
-
-### `api/missions.js`
-Actions : `list_open`, `list_client`, `list_presta`, `postuler`, `accept`, `reject_candidature`, `complete`, `cancel`, `get_candidatures`
-- Gère le cycle de vie complet des missions + candidatures + notifications + cashback
-
-### `api/stripe-intent.js`
-- Crée un `PaymentIntent` Stripe via REST, retourne `{ clientSecret, intentId }`
-- Montant en euros converti en centimes (× 100)
-
-### `api/stripe-webhook.js`
-- Vérifie la signature HMAC-SHA256 (`STRIPE_WEBHOOK_SECRET`)
-- Sur `payment_intent.succeeded` : PATCH `missions.stripe_payment_intent` + `status="assigned"`
-- `export const config = { api: { bodyParser: false } }` — obligatoire pour lire le raw body
-
-### `api/bo-verify-pin.js`
-- Vérifie le mot de passe BO contre `BO_PASSWORD` (env)
-- Retourne un token HMAC signé valable 24h (signé avec `BO_SESSION_SECRET`)
-- **SECURITY** : `BO_SESSION_SECRET` doit être défini dans Vercel — la valeur par défaut est publique sur GitHub
-
-### `api/welcome-email.js`
-- Envoie un email de bienvenue après inscription via Resend
-- Appelé depuis le frontend juste avant `signOut()` post-inscription
-
-### `api/cron-reset-monthly.js`
-- Mode par défaut : remet `missions_completed_month` à 0 sur tous les profiles (1er de chaque mois)
-- Mode `?action=reminders` : envoie des emails de rappel (via Resend) pour les missions assignées le lendemain
-- Protégé par header `Authorization: Bearer <CRON_SECRET>` si la variable est définie
-- **NOTE** : les crons Vercel nécessitent le plan Pro — sur Hobby, les crons ne s'exécutent pas automatiquement
-
-### `api/verify-docs.js`
-- Valide le format IBAN (algorithme MOD-97)
-
-## Règles importantes à ne pas casser
-
-### Auth et sécurité
-- Ne jamais utiliser `SUPABASE_SERVICE_ROLE_KEY` côté client (uniquement dans `/api/*.js`)
-- La vérification `!profile?.role || profile.role !== role` dans `handleLogin` est intentionnelle — les deux conditions sont nécessaires (un role null doit aussi bloquer)
-- Ne jamais supprimer le `await supabase.auth.signOut()` après l'inscription
-
-### Session
-- Les flags `jober_stay_logged_in` et `jober_session_active` sont le mécanisme de "Rester connecté". Ne pas les renommer ni supprimer la logique dans `handleSplashNext`
-- `sessionStorage` est vidé automatiquement à la fermeture du navigateur — c'est voulu
-
-### Layout
-- `ResponsiveLayout` mobile doit rester `width:"100%"` sans `maxWidth` ni `margin:0 auto`
-- `index.css` : `html, body { background: #050E20 }` et `#root { width: 100% }` — ne pas réintroduire de contraintes de largeur
-
-### Emails
-- Les appels `fetch("https://api.resend.com/emails", ...)` doivent rester inlinés dans chaque fichier API
-- Ne pas réimporter depuis `./send-email.js`
-
-### Navigation cross-role
-- `PRESTA_SCREENS` et `CLIENT_SCREENS` dans `App` définissent la séparation des espaces
-- La double vérification dans `navigate()` + dans les `onLogin` callbacks est intentionnelle
-
-## Flux utilisateur complet
-
-```
-Splash → "Commencer" → handleSplashNext
-  → session + flag présent → home/p_home
-  → session sans flag → signOut → "role"
-  → pas de session → "role"
-
-"role" → choix client/prestataire
-  → "auth_client" ou "auth_presta" → AuthScreen
-
-AuthScreen (connexion)
-  → vérif rôle + status → onLogin() → home/p_home
-
-AuthScreen (inscription)
-  → signUp + upsert profile + signOut → onRegister() → "pending_approval"
-
-BO admin
-  → approuve → status="approved" + email à l'utilisateur
-  → l'utilisateur peut maintenant se connecter normalement
-```
+- **S-06** — l'insertion de notifications reste ouverte aux comptes connectés. Il faut router
+  trois appels du front vers `/api` avant de fermer la policy.
+- **Six tables mortes** conservées volontairement (`prestataires`, `metiers`, `disponibilites`,
+  `abonnements`, `bookings`, `mission_responses`) : à zéro ligne, jamais lues par le code.
+  **Ne pas s'appuyer dessus** pour de nouveaux développements.
+- **`messages`** n'a pas de vrai modèle de conversation : les participants sont extraits d'une
+  chaîne de caractères, y compris dans les règles de sécurité. À refondre avant montée en charge.
+- **Trois fichiers de schéma SQL** divergents à la racine (`supabase-schema.sql`,
+  `supabase_schema.sql`, `supabase_migration.sql`). Aucun ne fait autorité : **la référence,
+  c'est la base**.
