@@ -217,13 +217,20 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       onUploaded?.();
     } catch (err) {
       console.error("Upload error", err);
-      // Même en cas d'erreur réseau, le localStorage a l'entrée → retry au prochain chargement
-      // On affiche quand même un message si ce n'est pas une annulation iOS silencieuse
-      if (err?.message && !err.message.includes("Load failed") && !err.message.includes("Failed to fetch")) {
+      const isStorageErr = err?.message?.includes("Erreur upload");
+      if (isStorageErr) {
+        // Le fichier n'a pas été uploadé — supprimer l'entrée localStorage
+        try {
+          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
+        } catch {}
         setUploadError(err.message);
       } else {
-        // iOS a probablement annulé le fetch — le doc sera retardé au prochain chargement
+        // DB annulé (iOS) ou erreur DB — localStorage garde l'entrée pour retry
+        // onUploaded met à jour uploadedDocIds avec les types du localStorage
+        // pour que le doc reste visible quand l'utilisateur change d'onglet
         setRenewed(true);
+        onUploaded?.();
       }
     } finally {
       setUploading(false);
