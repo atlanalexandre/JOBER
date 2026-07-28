@@ -1164,22 +1164,8 @@ export function PrestaProfileEditScreen({ onBack }) {
     try {
       const SB  = import.meta.env.VITE_SUPABASE_URL;
       const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const rawSess = getRawSession();
-      let at = rawSess?.access_token || "";
-      const rt = rawSess?.refresh_token || "";
-
-      const expOf = (tok) => { try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; } catch { return 0; } };
-      if (!at || expOf(at) < Date.now() + 10000) {
-        if (!rt) throw new Error("Session expirée — reconnectez-vous.");
-        const rr = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST", headers: { "Content-Type": "application/json", "apikey": KEY },
-          body: JSON.stringify({ refresh_token: rt }),
-        });
-        if (!rr.ok) throw new Error("Session expirée — reconnectez-vous.");
-        const rd = await rr.json();
-        at = rd.access_token;
-        supabase.auth.setSession({ access_token: at, refresh_token: rd.refresh_token }).catch(() => {});
-      }
+      const at = await getValidAccessToken();
+      if (!at) throw new Error("Session expirée — reconnectez-vous.");
 
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
