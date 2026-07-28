@@ -194,7 +194,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
-      onUploaded?.();
+      onUploaded?.(doc.id);
     } catch (err) {
       console.error("Upload error", err);
       setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
@@ -3064,19 +3064,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>
           {DOCS_REQUIS.map((doc,i)=>(
-            <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={async()=>{
-              const rawSessDoc = getRawSession();
-              if(!rawSessDoc?.user) return;
-              const { data: rows } = await supabase.from("documents").select("type").eq("prestataire_id", rawSessDoc.user.id);
-              const uploaded = (Array.isArray(rows)?rows:[]).map(d=>d.type);
-              if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
-              // Inclure les types en attente du localStorage — garantit que le doc
-              // reste visible si iOS a annulé le fetch DB pendant l'upload
-              try {
-                const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-                pending.filter(e=>e.uid===rawSessDoc.user.id).forEach(e=>{ if(!uploaded.includes(e.type)) uploaded.push(e.type); });
-              } catch {}
-              setUploadedDocIds(uploaded);
+            <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={(newType)=>{
+              setUploadedDocIds(prev => prev.includes(newType) ? prev : [...prev, newType]);
             }} />
           ))}
         </>}
