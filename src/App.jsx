@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
+import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
 import { useResponsive } from "./hooks/useResponsive.js";
@@ -965,9 +966,19 @@ export default function App() {
       // Flux Supabase implicit (type=recovery dans le hash)
       const hp = new URLSearchParams(window.location.hash.slice(1));
       if(hp.get("type")==="recovery") return "reset_password";
+      // L'URL décide de l'écran, sauf pour ceux qui attendent un objet en mémoire
+      // (prestataire, mission…) : ceux-là ne sont pas reconstructibles depuis un chemin seul.
+      const fromPath = screenForPath(window.location.pathname);
+      if(fromPath && !NEEDS_DATA.has(fromPath)) return fromPath;
     } catch{}
     return "splash";
   });
+  // Passe à true dès que Supabase a tranché sur la session (event INITIAL_SESSION).
+  // Les gardes d'accès attendent ce signal, sinon un utilisateur connecté qui ouvre
+  // /dashboard serait renvoyé vers la connexion avant que sa session soit résolue.
+  const [authReady,setAuthReady]=useState(false);
+  // undefined = profil pas encore résolu (aucune décision à prendre) ; une chaîne = résolu.
+  const [profileStatus,setProfileStatus]=useState(undefined);
   const [role,setRole]=useState(null);
   const [supaUser,setSupaUser]=useState(null);
   const [trialExhausted,setTrialExhausted]=useState(false);
@@ -1233,13 +1244,27 @@ export default function App() {
         initSessionRef.current = session || null;
         setSupaUser(session?.user||null);
         initialized=true;
+        setAuthReady(true);
         // Précharger le profil en arrière-plan pour que le clic "Commencer" soit instantané.
         // setTimeout : supabase-js détient un verrou pendant onAuthStateChange, une requête
         // PostgREST lancée ici partirait sans Authorization valide (donc en rôle anon).
         if(session?.user){
           setTimeout(()=>{
             supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()
-              .then(({data,error})=>{ if(!error && data) initProfileRef.current = data; });
+              .then(({data,error})=>{
+                if(error || !data){ setProfileStatus("unknown"); return; }
+                initProfileRef.current = data;
+                // Nécessaire à l'entrée directe par URL : sans ça, `role` n'était résolu
+                // qu'au clic sur "Commencer" et les gardes d'accès ne pouvaient rien trancher.
+                if(data.role) setRole(data.role);
+                setProfileStatus(data.status || "unknown");
+                if(data.role==="prestataire"){
+                  const p = data.plan_abonnement || "free";
+                  setPrestaPlan(p);
+                  setTrialExhausted(p !== "free" ? false : !!data.trial_exhausted);
+                  setProfileLoaded(true);
+                }
+              });
           },0);
         } else {
           initProfileRef.current = null;
@@ -1375,6 +1400,51 @@ export default function App() {
 
   const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending","invoice"];
+
+  // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
+  // Reflète `screen` dans l'URL : chaque changement empile une entrée d'historique,
+  // ce qui rend le bouton Retour et le rechargement fonctionnels.
+  const skipFirstPush = useRef(true);
+  useEffect(()=>{
+    if(skipFirstPush.current){ skipFirstPush.current=false; return; }
+    const path = pathForScreen(screen);
+    if(window.location.pathname !== path){
+      try { window.history.pushState({ screen }, "", path + window.location.search); } catch{}
+    }
+  },[screen]);
+
+  // Sens inverse : le bouton Retour/Suivant du navigateur repilote l'écran.
+  useEffect(()=>{
+    const onPop = (e)=>{
+      const target = e.state?.screen || screenForPath(window.location.pathname) || "splash";
+      // Un écran à données n'est pas restaurable depuis l'URL seule
+      setScreen(NEEDS_DATA.has(target) ? "splash" : target);
+    };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[]);
+
+  // ── Gardes d'accès ──────────────────────────────────────────────────────────
+  // Attend que Supabase ait tranché sur la session avant de rediriger quoi que ce soit.
+  useEffect(()=>{
+    if(!authReady) return;
+    if(window.location.hostname === "admin.alane.fr") return; // le BO a son propre flux
+    // Pas de session sur un écran protégé → connexion
+    if(!supaUser && !PUBLIC_SCREENS.has(screen)){ setScreen("role"); return; }
+    // Compte pas encore validé par le BO : ne doit pas entrer dans l'app par URL.
+    // profileStatus undefined = profil pas encore chargé → on ne tranche pas.
+    if(supaUser && profileStatus==="pending" && !PUBLIC_SCREENS.has(screen) && screen!=="pending_approval"){
+      setScreen("pending_approval"); return;
+    }
+    // Session active sur un écran de connexion → espace correspondant
+    if(supaUser && role && AUTH_SCREENS.has(screen)){
+      setScreen(role==="prestataire" ? "p_home" : "home"); return;
+    }
+    // Entrée par URL dans l'espace de l'autre rôle
+    if(role==="client"       && PRESTA_SCREENS.includes(screen)){ setScreen("home");   return; }
+    if(role==="prestataire"  && CLIENT_SCREENS.includes(screen)){ setScreen("p_home"); return; }
+  },[authReady, supaUser, role, screen, profileStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;

@@ -3,6 +3,9 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "regions": ["cdg1"],
+  "rewrites": [
+    { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
+  ],
   "functions": {
     "api/missions.js":         { "maxDuration": 60 },
     "api/invoice.js":          { "maxDuration": 60 },
