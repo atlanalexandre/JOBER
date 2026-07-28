@@ -7,10 +7,10 @@ export default async function handler(req, res) {
   if (!email || typeof email !== "string") return res.status(400).json({ error: "Email requis" });
 
   const normalizedEmail = email.trim().toLowerCase();
-  const RESET_SECRET    = (process.env.BO_SESSION_SECRET || "alane-reset-fallback").replace(/\s/g, "");
+  const RESET_SECRET    = ((process.env.BO_SESSION_SECRET || "").replace(/\s/g, "") || "alane-reset-fallback").replace(/\s/g, "");
   const RESEND_KEY      = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM     = process.env.RESEND_FROM || "onboarding@resend.dev";
-  const APP_URL         = (process.env.APP_URL || "https://www.alane.fr").replace(/\/$/, "");
+  const APP_URL         = ((process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr").replace(/\/$/, "");
 
   // Vérifier que l'email existe dans Supabase (sécurité silencieuse)
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");

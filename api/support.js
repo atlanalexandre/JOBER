@@ -33,15 +33,15 @@ export default async function handler(req, res) {
 
   // ── welcome: send welcome email after registration ────────────────
   if (req.body?.action === "welcome") {
-    const _welcomeCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const _welcomeCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
     if (!_welcomeCaller) return res.status(401).json({ error: "Non authentifié" });
     const { email, prenom, nom, role } = req.body;
     if (!email || !prenom) return res.status(200).json({ ok: true });
 
     // Anti-abus : vérifier immédiatement la blacklist dès l'inscription
     // Si un identifiant match, marquer trial_exhausted=true avant même l'approbation BO
-    const SUPABASE_URL2 = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const SERVICE_KEY2  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL2 = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "") || process.env.SUPABASE_URL;
+    const SERVICE_KEY2  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     if (SUPABASE_URL2 && SERVICE_KEY2) {
       try {
         const svcHeaders = {
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
 
   // ── booking_confirm: send booking confirmation email to client ────
   if (req.body?.action === "booking_confirm") {
-    const _bookingCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const _bookingCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
     if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
     const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
     if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
@@ -117,8 +117,8 @@ export default async function handler(req, res) {
 ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["🕐 Heure de début",esc(startTime)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["📍 Lieu",[esc(adresse),esc(ville)].filter(Boolean).join(", ")||"—"],["💶 Total bloqué",total?`${esc(String(total))} €`:"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
 </td></tr></table>
 <p style="color:#10D98F;font-size:13px;font-weight:600;margin:0 0 20px;">🔒 Votre argent est sécurisé en escrow et ne sera libéré qu'après validation mutuelle.</p>
-<div style="text-align:center;margin-top:20px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>
-</td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+<div style="text-align:center;margin-top:20px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>
+</td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
     await sendEmail({ to: clientEmail, subject: `✅ Réservation confirmée — ${esc(job)||"Mission"} · ALANE`, html: bookingHtml });
     return res.status(200).json({ ok: true });
@@ -126,7 +126,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 
   // ── notify_signup: notify admin of new registration ──────────────
   if (req.body?.action === "notify_signup") {
-    const _signupCaller = await verifyUser(req, process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const _signupCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
     if (!_signupCaller) return res.status(401).json({ error: "Non authentifié" });
     const { prenom, nom, email, role } = req.body;
     if (!prenom || !nom || !email || !role) return res.status(400).json({ error: "Missing fields" });
@@ -140,7 +140,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;">Email</td><td style="padding:8px 0;border-bottom:1px solid #eee;">${esc(email)}</td></tr>
         <tr><td style="padding:8px 0;color:#888;">Rôle</td><td style="padding:8px 0;"><span style="background:${role === "prestataire" ? "#7C6FE020" : "#F0B42920"};color:${role === "prestataire" ? "#7C6FE0" : "#F0B429"};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">${esc(roleLabel)}</span></td></tr>
       </table>
-      <p style="text-align:center;margin:24px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}?bo=1' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
+      <p style="text-align:center;margin:24px 0;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}?bo=1' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder au backoffice</a></p>
     `);
 
     const cleanSubject = `Nouvelle inscription ${roleLabel} — ${String(prenom||"").replace(/[\r\n]/g," ")} ${String(nom||"").replace(/[\r\n]/g," ")}`;
@@ -157,8 +157,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     if (newUserId === referrerUUID) return res.status(400).json({ error: "Auto-parrainage interdit" });
 
     // S-09: le parrainage ne peut être enregistré que par le nouvel utilisateur lui-même
-    const SUPABASE_URL_REF = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_KEY_REF = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL_REF = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_KEY_REF = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     if (!SUPABASE_URL_REF || !SERVICE_ROLE_KEY_REF) return res.status(500).json({ error: "Config missing" });
     const callerRef = await verifyUser(req, SUPABASE_URL_REF, SERVICE_ROLE_KEY_REF);
     if (!callerRef) return res.status(401).json({ error: "Non authentifié" });
@@ -219,8 +219,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 
   // ── delete_account: RGPD art. 17 droit à l'effacement ───────────
   if (req.body?.action === "delete_account") {
-    const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration manquante" });
     const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
     if (!caller) return res.status(401).json({ error: "Non authentifié" });
@@ -287,8 +287,8 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   const rlMax = userId ? 20 : 3; // 20/10min pour authentifiés, 3/10min pour anonymes
   if (checkContactRateLimit(rlIp, rlMax)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });

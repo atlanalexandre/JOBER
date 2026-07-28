@@ -17,9 +17,9 @@ const DOC_LABELS = {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const RESEND_API_KEY    = process.env.RESEND_API_KEY;
+  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+  const RESEND_API_KEY    = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM       = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
   const ADMIN_EMAIL       = process.env.ADMIN_EMAIL;
 
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   const esc        = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const docLabel   = DOC_LABELS[docType] || esc(docType);
   const actionWord = isRenewal ? "renouvelé" : "chargé";
-  const boUrl      = (process.env.APP_URL || "https://www.alane.fr") + "/bo";
+  const boUrl      = ((process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr") + "/bo";
 
   try {
     await fetch("https://api.resend.com/emails", {

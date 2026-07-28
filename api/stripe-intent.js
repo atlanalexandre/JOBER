@@ -3,7 +3,7 @@ import { verifyUser } from "./_auth.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+  const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
   if (STRIPE_SECRET_KEY.startsWith("pk_")) {
     return res.status(500).json({ error: "Configuration Stripe incorrecte : STRIPE_SECRET_KEY doit être la clé secrète (sk_test_... ou sk_live_...), pas la clé publique (pk_...). Corrigez dans Vercel → Settings → Environment Variables → STRIPE_SECRET_KEY." });
@@ -19,8 +19,8 @@ export default async function handler(req, res) {
 
   // ── Enregistrer une carte (SetupIntent) ───────────────────────────
   if (action === "setup_card") {
-    const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE);
     if (!caller) return res.status(401).json({ error: "Non authentifié" });
 
@@ -51,8 +51,8 @@ export default async function handler(req, res) {
 
   // ── Récupérer les détails d'un PaymentMethod ──────────────────────
   if (action === "get_pm") {
-    const SUPABASE_URL_PM = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_PM = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL_PM = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_PM = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     const callerPm = await verifyUser(req, SUPABASE_URL_PM, SERVICE_ROLE_PM);
     if (!callerPm) return res.status(401).json({ error: "Non authentifié" });
     const { pmId } = req.body || {};
@@ -69,8 +69,8 @@ export default async function handler(req, res) {
 
   // ── Portail de facturation Stripe (gérer / annuler abonnement) ───────────
   if (action === "billing_portal") {
-    const SUPABASE_URL_BP = process.env.VITE_SUPABASE_URL;
-    const SERVICE_ROLE_BP = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SUPABASE_URL_BP = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_BP = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
     const callerBp = await verifyUser(req, SUPABASE_URL_BP, SERVICE_ROLE_BP);
     if (!callerBp) return res.status(401).json({ error: "Non authentifié" });
     try {
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       const profData = profR.ok ? await profR.json().catch(() => []) : [];
       const customerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
       if (!customerId) return res.status(400).json({ error: "Aucun abonnement Stripe trouvé" });
-      const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || process.env.APP_URL || "https://www.alane.fr";
+      const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
       const portalR = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
@@ -95,8 +95,8 @@ export default async function handler(req, res) {
   }
 
   // ── Créer un PaymentIntent ────────────────────────────────────────
-  const SUPABASE_URL_PI = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_PI = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL_PI = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_PI = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   const callerPi = await verifyUser(req, SUPABASE_URL_PI, SERVICE_ROLE_PI);
   if (!callerPi) return res.status(401).json({ error: "Non authentifié" });
   if (description !== undefined && (typeof description !== "string" || description.length > 500)) return res.status(400).json({ error: "La description ne doit pas dépasser 500 caractères" });

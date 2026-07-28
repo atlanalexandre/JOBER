@@ -22,10 +22,10 @@ function verifyBoToken(token, secret) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const BO_SECRET        = process.env.BO_SESSION_SECRET;
-  const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-  const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const BO_SECRET        = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
+  const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!BO_SECRET) return res.status(500).json({ error: "BO_SESSION_SECRET non configuré" });
 

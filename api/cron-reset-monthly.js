@@ -52,8 +52,8 @@ export default async function handler(req, res) {
 
   const authHeader = req.headers["authorization"] || "";
   const token = authHeader.replace("Bearer ", "");
-  const cronSecret  = process.env.CRON_SECRET;
-  const boSecret    = process.env.BO_SESSION_SECRET;
+  const cronSecret  = (process.env.CRON_SECRET || "").replace(/\s/g, "");
+  const boSecret    = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
 
   if (!cronSecret) {
     console.error("[cron] CRITIQUE: CRON_SECRET non configuré — accès non authentifié bloqué. Configurez CRON_SECRET dans Vercel.");
@@ -68,8 +68,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Action inconnue — valeur acceptée : reminders" });
   }
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
 
   const headers = {
@@ -117,9 +117,9 @@ export default async function handler(req, res) {
 
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
-    const RESEND_API_KEY    = process.env.RESEND_API_KEY;
+    const RESEND_API_KEY    = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM       = process.env.RESEND_FROM || "onboarding@resend.dev";
-    const BREVO_API_KEY = process.env.BREVO_API_KEY;
+    const BREVO_API_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
     const smsEnabled = !!BREVO_API_KEY;
 
     try {
@@ -188,7 +188,7 @@ ${toRole === "prestataire" ? `
   ${(() => { const addr = [m.adresse, m.ville].filter(Boolean).join(", "); return addr ? `<a href="https://www.google.com/maps/dir/?api=1&amp;destination=${encodeURIComponent(addr)}" style="display:inline-block;padding:9px 18px;background:#F0B429;color:#050E20;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px;">📍 Calculer mon itinéraire →</a>` : ""; })()}
 </div>` : ""}
 ${(() => {
-  const appUrl = process.env.APP_URL || "https://www.alane.fr";
+  const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
   const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
   const titleEnc = encodeURIComponent(`Mission ALANE — ${m.metier||"Mission"}`);
   const descEnc  = encodeURIComponent(`Mission via ALANE. Voir détails : ${appUrl}`);
@@ -206,9 +206,9 @@ ${(() => {
 <a href="${icsUrl}" style="display:inline-block;background:#555;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">🗓 Apple / Outlook</a>
 </div>`;
 })()}
-<div style="text-align:center;margin-top:16px;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma mission →</a></div>
+<div style="text-align:center;margin-top:16px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma mission →</a></div>
 </td></tr>
-<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
           const sends = [];
@@ -267,7 +267,7 @@ ${(() => {
             const prestaEmail  = userMap[m.prestataire_id]?.email;
             const clientName   = nameMap[m.client_id]  || "Client";
             const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
-            const appUrl       = process.env.APP_URL || "https://www.alane.fr";
+            const appUrl       = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
             const missionLabel = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.date}`;
 
             // Email prestataire : uniquement s'il n'a pas encore confirmé la fin de mission
@@ -390,7 +390,7 @@ ${(() => {
               const tarif = m.tarif_horaire || 0;
               const montantTotal = Math.round(hours * tarif * 100) / 100;
               const mLabel = esc(m.metier || m.sector || "Mission");
-              const appUrl = process.env.APP_URL || "https://www.alane.fr";
+              const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
               const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
@@ -481,7 +481,7 @@ ${(() => {
           for (const m of ended) {
             try {
               const mLabel = esc(m.metier || m.sector || "Mission");
-              const appUrl2 = process.env.APP_URL || "https://www.alane.fr";
+              const appUrl2 = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
               const prestaEmail2 = userMap[m.prestataire_id]?.email;
               const clientEmail2 = userMap[m.client_id]?.email;
               const prestaName2  = nameMap[m.prestataire_id] || "Prestataire";

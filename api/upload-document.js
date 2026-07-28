@@ -14,8 +14,8 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: 'Token requis', expired: true }), { status: 401 });
     }
 
-    const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || '').replace(/\s/g, '');
-    const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\s/g, '');
+    const SUPABASE_URL     = ((process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "") || '').replace(/\s/g, '');
+    const SERVICE_ROLE_KEY = ((process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "") || '').replace(/\s/g, '');
     if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
       return new Response(JSON.stringify({ error: 'Configuration manquante' }), { status: 500 });
     }

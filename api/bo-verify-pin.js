@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   // BO_SESSION_SECRET optionnel : dérivé de SERVICE_ROLE_KEY si absent
-  const BO_SECRET = process.env.BO_SESSION_SECRET ||
+  const BO_SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "") ||
     crypto.createHmac("sha256", SERVICE_ROLE_KEY).update("bo-session-fallback").digest("hex");
 
   // Si BO_PASSWORD non configuré → mot de passe temporaire affiché à l'admin

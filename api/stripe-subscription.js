@@ -2,9 +2,9 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { plan, billing = "monthly" } = req.body || {};
-  const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-  const SUPABASE_URL      = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
   if (!["premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const priceId = process.env[priceEnvKey];
   if (!priceId) return res.status(500).json({ error: `Variable ${priceEnvKey} manquante dans l'environnement Vercel` });
 
-  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || process.env.APP_URL || "https://www.alane.fr";
+  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
   // Reuse existing Stripe Customer to avoid duplicates
   let existingCustomerId = null;

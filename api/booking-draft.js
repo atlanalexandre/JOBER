@@ -6,8 +6,8 @@ import { verifyUser } from "./_auth.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).end();
 
   const user = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);

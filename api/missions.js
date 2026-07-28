@@ -13,8 +13,8 @@ function frenchOffsetMs(date) {
 
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
 async function sendWebPush(sub, notification) {
-  const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
-  const VAPID_PRV = process.env.VAPID_PRIVATE_KEY;
+  const VAPID_PUB = (process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "");
+  const VAPID_PRV = (process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "");
   if (!VAPID_PUB || !VAPID_PRV) return false;
   if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) return false;
   try {
@@ -138,8 +138,8 @@ function _rlMemory(ip, max, windowMs) {
   return rec.count > max;
 }
 async function checkRateLimit(ip, max = 120, windowMs = 60_000) {
-  const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-  const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const REDIS_URL   = (process.env.UPSTASH_REDIS_REST_URL || "").replace(/\s/g, "");
+  const REDIS_TOKEN = (process.env.UPSTASH_REDIS_REST_TOKEN || "").replace(/\s/g, "");
   if (!REDIS_URL || !REDIS_TOKEN) return _rlMemory(ip, max, windowMs);
   try {
     const key = `rl:missions:${ip}`;
@@ -200,7 +200,7 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
 }
 
 // ── Email one-click action (GET) ────────────────────────────────────────────
-const APP_URL_DEFAULT = process.env.APP_URL || "https://www.alane.fr";
+const APP_URL_DEFAULT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
 function emailActionHtml(title, message, color, icon) {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title} — ALANE</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0A1628;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#162547;border-radius:20px;padding:40px 32px;max-width:420px;width:100%;text-align:center;border:1px solid rgba(255,255,255,0.08)}.icon{font-size:52px;margin-bottom:20px}h1{font-size:22px;font-weight:700;color:${color};margin-bottom:12px}p{color:rgba(255,255,255,0.7);font-size:15px;line-height:1.5;margin-bottom:24px}a{display:inline-block;background:${color};color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:15px}</style></head><body><div class="card"><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p><a href="${APP_URL_DEFAULT}">Ouvrir l'application</a></div></body></html>`;
@@ -209,7 +209,7 @@ function emailActionHtml(title, message, color, icon) {
 async function handleEmailAction(req, res) {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   const { action, m: missionId, p: prestaId, exp, sig } = req.query || {};
-  const SECRET = process.env.BO_SESSION_SECRET;
+  const SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
 
   const isUuidQ = (v) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
   if (!action || !missionId || !prestaId) return res.status(400).send(emailActionHtml("Lien invalide", "Ce lien est incomplet ou corrompu.", "#F25E5E", "❌"));
@@ -230,8 +230,8 @@ async function handleEmailAction(req, res) {
   if (!sigOk) return res.status(401).send(emailActionHtml("Lien invalide", "Ce lien est invalide ou a été modifié.", "#F25E5E", "🔒"));
   if (Math.floor(Date.now() / 1000) > parseInt(exp, 10)) return res.status(410).send(emailActionHtml("Lien expiré", "Ce lien n'est plus valide (validité 24h). Connectez-vous à l'application pour répondre.", "#F5A623", "⏱"));
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) { res.setHeader("Content-Type","text/html; charset=utf-8"); return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️")); }
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
@@ -305,8 +305,8 @@ export default async function handler(req, res) {
     }
   }
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
@@ -687,7 +687,7 @@ export default async function handler(req, res) {
 
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
-      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre,date,heure_debut`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
@@ -808,7 +808,7 @@ export default async function handler(req, res) {
       }
 
       // Email de confirmation au client (awaité pour éviter la coupure Vercel avant envoi)
-      const RESEND_API_KEY_AC = process.env.RESEND_API_KEY;
+      const RESEND_API_KEY_AC = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM_AC    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_API_KEY_AC && missionCheck?.client_id) {
         try {
@@ -1043,7 +1043,7 @@ export default async function handler(req, res) {
           }),
         }).catch(() => {});
 
-        const RESEND_API_KEY = process.env.RESEND_API_KEY;
+        const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
         if (RESEND_API_KEY) {
           try {
@@ -1074,7 +1074,7 @@ export default async function handler(req, res) {
       }
 
       // Virement automatique Stripe Connect
-      const STRIPE_SK_PAYOUT = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_SK_PAYOUT = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       const COMMISSION = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
       if (STRIPE_SK_PAYOUT && montantTotal > 0 && mission.prestataire_id) {
         try {
@@ -1300,8 +1300,8 @@ export default async function handler(req, res) {
         const metier = esc(mission.metier || mission.sector || "Mission");
         const missionDate = esc(mission.date || "");
         const ville = esc(mission.ville || "");
-        const appUrl = process.env.APP_URL || "https://www.alane.fr";
-        const RESEND_API_KEY = process.env.RESEND_API_KEY;
+        const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+        const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         if (clientEmail && RESEND_API_KEY) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
@@ -1640,7 +1640,7 @@ export default async function handler(req, res) {
               console.log("[broadcast] in-app notification sent");
 
               // Email Resend (quand app fermée)
-              const RESEND_KEY_B = process.env.RESEND_API_KEY;
+              const RESEND_KEY_B = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
               const RESEND_FROM_B = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
               if (RESEND_KEY_B && ud.email) {
                 const missionLabel = mission?.metier || sector || "Mission";
@@ -1668,7 +1668,7 @@ export default async function handler(req, res) {
               }
 
               // SMS Brevo (si numéro dispo et clé configurée)
-              const BREVO_KEY = process.env.BREVO_API_KEY;
+              const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
               const phone = meta.telephone;
               console.log("[broadcast] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
               if (BREVO_KEY && phone) {
@@ -1773,7 +1773,7 @@ export default async function handler(req, res) {
       });
 
       // Email Resend (quand app fermée)
-      const RESEND_KEY = process.env.RESEND_API_KEY;
+      const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
       if (RESEND_KEY && recipientEmail) {
         try {
@@ -1801,7 +1801,7 @@ export default async function handler(req, res) {
       }
 
       // SMS Brevo
-      const BREVO_KEY = process.env.BREVO_API_KEY;
+      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
       console.log("[chat_notify] SMS check - BREVO_KEY:", !!BREVO_KEY, "hasPhone:", !!phone);
       if (BREVO_KEY && phone) {
         const digits = phone.replace(/\D/g, "");
@@ -2021,8 +2021,8 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       let stripeRefundError = null;
       let walletRefunded = false;
-      const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
       const isWalletPaid = mission.stripe_payment_intent?.startsWith("wallet_");
@@ -2182,7 +2182,7 @@ export default async function handler(req, res) {
             const prestaRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
             const prestaData = await prestaRes.json();
             const prestaPhone = prestaData.user_metadata?.telephone || null;
-            const BREVO_KEY = process.env.BREVO_API_KEY;
+            const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
             if (BREVO_KEY && prestaPhone) {
               await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                 method: "POST",
@@ -2258,7 +2258,7 @@ export default async function handler(req, res) {
         }
       } else if (refundAmount > 0 && mission.stripe_payment_intent && !isWalletPaidInProgress) {
         // Stripe refund is mandatory when a payment was captured — abort cancellation on failure
-        const STRIPE_SECRET_KEY_CANCEL = process.env.STRIPE_SECRET_KEY;
+        const STRIPE_SECRET_KEY_CANCEL = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
         if (!STRIPE_SECRET_KEY_CANCEL) {
           return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
         }
@@ -2327,7 +2327,7 @@ export default async function handler(req, res) {
       const missionLabel = mission.metier || mission.sector || "Mission";
 
       // Email au prestataire
-      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_API_KEY && prestaEmail) {
         await fetch("https://api.resend.com/emails", {
@@ -2358,7 +2358,7 @@ export default async function handler(req, res) {
       }
 
       // SMS au prestataire via Brevo
-      const BREVO_KEY_CANCEL = process.env.BREVO_API_KEY;
+      const BREVO_KEY_CANCEL = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
       if (BREVO_KEY_CANCEL && prestaPhone) {
         await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
           method: "POST",
@@ -2692,7 +2692,7 @@ export default async function handler(req, res) {
         const phone = ud.user_metadata?.telephone;
         const clientName = ud.user_metadata?.prenom || "Client";
 
-        const RESEND_KEY  = process.env.RESEND_API_KEY;
+        const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
         if (RESEND_KEY && clientEmail) {
           await fetch("https://api.resend.com/emails", {
@@ -2715,7 +2715,7 @@ export default async function handler(req, res) {
           }).catch(() => {});
         }
 
-        const BREVO_KEY = process.env.BREVO_API_KEY;
+        const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
         if (BREVO_KEY && phone) {
           const digits = phone.replace(/\D/g, "");
           const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
@@ -2781,7 +2781,7 @@ export default async function handler(req, res) {
         ? `ALANE - ${presta_name || "Votre prestataire"} a accepté votre mission ${mission_label || ""}. Connectez-vous pour suivre la mission. — alane.fr`
         : `ALANE - ${presta_name || "Le prestataire"} a refusé votre mission ${mission_label || ""}. Connectez-vous pour choisir un autre prestataire. — alane.fr`);
 
-      const RESEND_KEY  = process.env.RESEND_API_KEY;
+      const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_KEY && clientEmail) {
         await fetch("https://api.resend.com/emails", {
@@ -2806,7 +2806,7 @@ export default async function handler(req, res) {
         console.log("[notify_client] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!clientEmail);
       }
 
-      const BREVO_KEY = process.env.BREVO_API_KEY;
+      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
       if (BREVO_KEY && phone) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
@@ -2849,13 +2849,13 @@ export default async function handler(req, res) {
       const phone = ud.user_metadata?.telephone;
       const prestaName = ud.user_metadata?.prenom || "Prestataire";
 
-      const RESEND_KEY  = process.env.RESEND_API_KEY;
+      const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       if (RESEND_KEY && prestaEmail) {
         // Generate one-click action tokens (valid 24h)
-        const EMAIL_SECRET = process.env.BO_SESSION_SECRET;
-        let acceptUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
-        let refuseUrl = `${process.env.APP_URL || "https://www.alane.fr"}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
+        const EMAIL_SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
+        let acceptUrl = `${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
+        let refuseUrl = `${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
         if (EMAIL_SECRET && missionId) {
           const { createHmac } = await import("crypto");
           const exp = Math.floor(Date.now() / 1000) + 86400;
@@ -2895,7 +2895,7 @@ export default async function handler(req, res) {
         console.log("[notify_prestataire] email skipped — RESEND_KEY:", !!RESEND_KEY, "hasEmail:", !!prestaEmail);
       }
 
-      const BREVO_KEY = process.env.BREVO_API_KEY;
+      const BREVO_KEY = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
       if (BREVO_KEY && phone) {
         const digits = phone.replace(/\D/g, "");
         const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
@@ -2976,7 +2976,7 @@ export default async function handler(req, res) {
           const prestaEmailRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } });
           const prestaEmailData = await prestaEmailRes.json();
           const prestaEmail = prestaEmailData?.email;
-          const RESEND_API_KEY = process.env.RESEND_API_KEY;
+          const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
           const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
           if (prestaEmail && RESEND_API_KEY) {
             await fetch("https://api.resend.com/emails", {
@@ -2990,7 +2990,7 @@ export default async function handler(req, res) {
                   <h2 style="color:#A29BFE;margin:0 0 12px">⏱ Heures supplémentaires demandées</h2>
                   <p>Le client souhaite prolonger la prestation de <strong style="color:#fff">${eh}h supplémentaire${eh > 1 ? "s" : ""}</strong>.</p>
                   <p style="margin-top:12px">Ouvrez l'application pour accepter ou refuser cette demande :</p>
-                  <p style="margin-top:16px"><a href="${process.env.APP_URL || "https://www.alane.fr"}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px">Ouvrir ALANE</a></p>
+                  <p style="margin-top:16px"><a href="${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px">Ouvrir ALANE</a></p>
                   <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                 </div>`,
               }),
@@ -3106,14 +3106,14 @@ export default async function handler(req, res) {
             }
           }
         } else {
-          if (!process.env.STRIPE_SECRET_KEY) {
+          if (!(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")) {
             return res.status(500).json({ error: "Stripe non configuré — la mission n'a pas été annulée. Contactez le support." });
           }
           try {
             const refundRes = await fetch("https://api.stripe.com/v1/refunds", {
               method: "POST",
               headers: {
-                "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+                "Authorization": `Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Idempotency-Key": `refund-presta-cancel-${mission_id}`,
               },
@@ -3292,7 +3292,7 @@ export default async function handler(req, res) {
       }).catch(() => {});
 
       // Email admin
-      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
       const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
       if (RESEND_API_KEY && ADMIN_EMAIL) {
@@ -3376,7 +3376,7 @@ export default async function handler(req, res) {
       let trialExhausted = !!profile.trial_exhausted;
 
       // Vérification Stripe directe si un abonnement existe
-      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       if (STRIPE_KEY && profile.stripe_subscription_id) {
         try {
           const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${profile.stripe_subscription_id}`, {
@@ -3438,7 +3438,7 @@ export default async function handler(req, res) {
       if (!profile) return res.status(404).json({ error: "Profil introuvable" });
       if (!profile.stripe_subscription_id) return res.status(400).json({ error: "Aucun abonnement actif trouvé" });
 
-      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       if (!STRIPE_KEY) return res.status(500).json({ error: "Configuration Stripe manquante" });
 
       const cancelRes = await fetch(`https://api.stripe.com/v1/subscriptions/${profile.stripe_subscription_id}`, {
@@ -3474,7 +3474,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Accès interdit" });
       }
 
-      const secret = process.env.BO_SESSION_SECRET;
+      const secret = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
       if (!secret) return res.status(500).json({ error: "Configuration serveur manquante (BO_SESSION_SECRET)" });
 
       const exp = Math.floor(Date.now() / 1000) + 1800; // 30 min

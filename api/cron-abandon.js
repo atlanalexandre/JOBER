@@ -6,8 +6,8 @@
 
 // ── Web Push (copie de missions.js — imports relatifs non fiables sur Vercel) ──
 async function sendWebPush(sub, notification) {
-  const VAPID_PUB = process.env.VAPID_PUBLIC_KEY;
-  const VAPID_PRV = process.env.VAPID_PRIVATE_KEY;
+  const VAPID_PUB = (process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "");
+  const VAPID_PRV = (process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "");
   if (!VAPID_PUB || !VAPID_PRV) return false;
   if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) return false;
   try {
@@ -58,12 +58,12 @@ const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
 
-  const CRON_SECRET      = process.env.CRON_SECRET;
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const RESEND_API_KEY   = process.env.RESEND_API_KEY;
+  const CRON_SECRET      = (process.env.CRON_SECRET || "").replace(/\s/g, "");
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+  const RESEND_API_KEY   = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM      = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-  const APP_URL          = process.env.APP_URL || "https://www.alane.fr";
+  const APP_URL          = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
   if (CRON_SECRET) {
     const auth = req.headers.authorization || "";

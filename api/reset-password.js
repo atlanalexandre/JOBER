@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   if (!resetToken || !newPassword) return res.status(400).json({ error: "Paramètres manquants" });
   if (newPassword.length < 6) return res.status(400).json({ error: "Mot de passe trop court (6 caractères minimum)" });
 
-  const RESET_SECRET     = (process.env.BO_SESSION_SECRET || "alane-reset-fallback").replace(/\s/g, "");
+  const RESET_SECRET     = ((process.env.BO_SESSION_SECRET || "").replace(/\s/g, "") || "alane-reset-fallback").replace(/\s/g, "");
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 

@@ -12,10 +12,10 @@ async function getRawBody(req) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const STRIPE_SECRET_KEY      = process.env.STRIPE_SECRET_KEY;
-  const STRIPE_WEBHOOK_SECRET  = process.env.STRIPE_WEBHOOK_SECRET;
-  const SUPABASE_URL           = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY       = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const STRIPE_SECRET_KEY      = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  const STRIPE_WEBHOOK_SECRET  = (process.env.STRIPE_WEBHOOK_SECRET || "").replace(/\s/g, "");
+  const SUPABASE_URL           = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY       = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!STRIPE_SECRET_KEY) return res.status(500).end();
 
@@ -88,7 +88,7 @@ export default async function handler(req, res) {
             }),
           }).catch(e => console.error("[wallet_topup] notification failed:", e));
           // Email de confirmation de recharge
-          const RESEND_API_KEY_W = process.env.RESEND_API_KEY;
+          const RESEND_API_KEY_W = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
           const RESEND_FROM_W    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
           if (RESEND_API_KEY_W) {
             try {
@@ -285,7 +285,7 @@ export default async function handler(req, res) {
       }).catch(e => console.error("[checkout] profile patch failed:", e.message));
 
       // Email de confirmation d'abonnement
-      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
       const userEmail      = session.customer_details?.email || existingUser?.email;
       const userName       = existingUser?.user_metadata?.prenom || existingUser?.user_metadata?.name || "";
@@ -487,7 +487,7 @@ export default async function handler(req, res) {
     const chargeId  = dispute.charge;
     const amount    = (dispute.amount / 100).toFixed(2) + " €";
     const reason    = dispute.reason || "inconnu";
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
     const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
     if (RESEND_API_KEY && ADMIN_EMAIL) {

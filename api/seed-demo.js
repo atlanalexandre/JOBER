@@ -7,7 +7,7 @@ import crypto from "crypto";
 function verifyBoToken(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
-  const secret = process.env.BO_SESSION_SECRET;
+  const secret = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
   if (!secret) return false;
   const parts = token.split(".");
   const ts      = parts[0];
@@ -71,8 +71,8 @@ async function uploadFile(supabaseUrl, key, path, bytes, contentType) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const SUPABASE_URL     = process.env.VITE_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+  const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   const BO_PASSWORD      = process.env.BO_PASSWORD;
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Config manquante" });

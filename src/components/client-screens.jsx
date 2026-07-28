@@ -4094,8 +4094,10 @@ export function CalendarScreen() {
       const u = data?.user; if (!u) return;
       setMeta(u.user_metadata || {});
       // Charger les prestations depuis la DB
+      // Table "prestations" inexistante → PostgREST répondait 404 et la liste
+      // restait vide en silence. Les colonnes ci-dessous sont toutes sur missions.
       const { data: m } = await supabase
-        .from("prestations")
+        .from("missions")
         .select("id,titre,client_nom,date_debut,date_fin,status,montant_total")
         .eq("prestataire_id", u.id)
         .in("status", ["assigned","open","completed"])

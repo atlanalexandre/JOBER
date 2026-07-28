@@ -28,7 +28,7 @@ export function emailHtml(content) {
         </tr>
         <tr>
           <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
-            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${process.env.APP_URL||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
           </td>
         </tr>
       </table>
@@ -38,7 +38,7 @@ export function emailHtml(content) {
 }
 
 export async function sendEmail({ to, subject, html }) {
-  const key  = process.env.RESEND_API_KEY;
+  const key  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
   if (!key) return;
   for (let attempt = 0; attempt < 2; attempt++) {

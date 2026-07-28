@@ -199,8 +199,8 @@ export default async function handler(req, res) {
       // Stripe Connect — créer un compte Express pour les prestataires
       let connectOnboardingUrl = null;
       const role = userData.user_metadata?.role;
-      const STRIPE_SK = process.env.STRIPE_SECRET_KEY;
-      const APP_URL_CONNECT = process.env.APP_URL || "https://www.alane.fr";
+      const STRIPE_SK = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      const APP_URL_CONNECT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
       if (action === "approve" && role === "prestataire" && STRIPE_SK) {
         try {
           const meta = userData.user_metadata || {};
@@ -258,7 +258,7 @@ export default async function handler(req, res) {
               <p style="color:#888;font-size:13px;margin-bottom:20px;">Ce lien est valable 24h. Il vous suffit de renseigner votre IBAN et signer les conditions générales Stripe (2 min). Sans cette étape, vos paiements ne pourront pas être versés automatiquement.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
-              <p style="text-align:center;margin:28px 0;"><a href='${process.env.APP_URL||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              <p style="text-align:center;margin:28px 0;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
           });
@@ -351,7 +351,7 @@ export default async function handler(req, res) {
       }
 
       // Stripe: rembourser les missions payées assignées + annuler l'abonnement actif
-      const STRIPE_SK_DEL = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_SK_DEL = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       if (STRIPE_SK_DEL) {
         try {
           const paidMissionsRes = await fetch(
@@ -664,7 +664,7 @@ export default async function handler(req, res) {
 
       // Pour resolution="refunded" : déclencher le remboursement Stripe réel avant de fermer
       if (resolution === "refunded" && m.stripe_payment_intent) {
-        const STRIPE_SK = process.env.STRIPE_SECRET_KEY;
+        const STRIPE_SK = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
         if (!STRIPE_SK) return res.status(500).json({ error: "Stripe non configuré — remboursement impossible" });
         try {
           const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
@@ -809,7 +809,7 @@ export default async function handler(req, res) {
       const docsArray = Array.isArray(docs) ? docs : [];
 
       // Vérifie si l'utilisateur a une photo dans user_metadata
-      const authKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const authKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
       let photoEntry = null;
       try {
         const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, {
@@ -855,7 +855,7 @@ export default async function handler(req, res) {
       }
 
       // Récupère les emails depuis auth.users
-      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers: { ...headers, "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
+      const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers: { ...headers, "apikey": (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""), "Authorization": `Bearer ${(process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "")}` } });
       const usersData = await usersRes.json();
       let emailMap = {};
       if (usersData?.users) usersData.users.forEach(u => { emailMap[u.id] = u.email; });
@@ -1059,7 +1059,7 @@ export default async function handler(req, res) {
       if (m.stripe_payment_intent) {
         const stripeRes = await fetch(`https://api.stripe.com/v1/refunds`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          headers: { "Authorization": `Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`, "Content-Type": "application/x-www-form-urlencoded" },
           body: `payment_intent=${m.stripe_payment_intent}`,
         });
         if (!stripeRes.ok) {
@@ -1093,7 +1093,7 @@ export default async function handler(req, res) {
       if (m.stripe_payment_intent) {
         const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          headers: { "Authorization": `Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`, "Content-Type": "application/x-www-form-urlencoded" },
           body: `payment_intent=${m.stripe_payment_intent}`,
         });
         if (!stripeRes.ok) {
@@ -1118,7 +1118,7 @@ export default async function handler(req, res) {
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Mission introuvable" });
       if (refund && m.stripe_payment_intent) {
-        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${process.env.STRIPE_SECRET_KEY}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
+        const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
         if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
       }
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"cancelled" }) });
@@ -1335,7 +1335,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "stripe_stats") {
-      const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+      const STRIPE_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       if (!STRIPE_KEY) {
         return res.status(200).json({ error: "Stripe non configuré" });
       }
