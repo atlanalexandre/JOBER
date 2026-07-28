@@ -1063,6 +1063,13 @@ export function PrestaProfileEditScreen({ onBack }) {
       const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
       const m = session?.user?.user_metadata || {};
       setMeta(m);
+      // La photo vit dans profiles.avatar_url : user_metadata est embarqué dans le JWT,
+      // et un data URI y faisait dépasser la limite d'en-tête HTTP (toute requête en 520).
+      // Repli sur m.photo_url pour les comptes pas encore migrés.
+      if (session?.user?.id) {
+        supabase.from("profiles").select("avatar_url").eq("id", session.user.id).single()
+          .then(({ data }) => setPhotoUrl(data?.avatar_url || m.photo_url || null));
+      }
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
       if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
         setDispos(m.dispon_jours_creneaux);
@@ -1079,7 +1086,6 @@ export function PrestaProfileEditScreen({ onBack }) {
       setRayon(m.zone_km || 20);
       setTelephone(m.telephone||"");
       setIban(m.rib||"");
-      setPhotoUrl(m.photo_url || null);
       setPhotoAuth(m.photo_public_auth || false);
     })();
   },[]);
@@ -1144,8 +1150,8 @@ export function PrestaProfileEditScreen({ onBack }) {
         photo_public_auth: photoAuth,
         cv: meta?.cv || {},
       };
-      if (photoChanged) profileData.photo_url = photoUrl;
-
+      // photo_url ne doit JAMAIS retourner dans user_metadata : ce champ est encodé
+      // dans le JWT, et un data URI de 60 Ko y dépasse la limite d'en-tête HTTP.
       const { error } = await supabase.auth.updateUser({ data: profileData });
       if (error) {
         if (error.status === 401 || error.message?.toLowerCase().includes("token") || error.message?.toLowerCase().includes("session")) {
@@ -1154,6 +1160,15 @@ export function PrestaProfileEditScreen({ onBack }) {
           return;
         }
         throw new Error(error.message);
+      }
+
+      if (photoChanged) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        if (uid) {
+          const { error: photoErr } = await supabase.from("profiles").update({ avatar_url: photoUrl }).eq("id", uid);
+          if (photoErr) throw new Error("Profil enregistré, mais la photo n'a pas pu être sauvegardée.");
+        }
       }
 
       setSaving(false);
@@ -2632,7 +2647,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setUserRib(u.user_metadata?.rib||null);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
-      setDashPhotoUrl(u.user_metadata?.photo_url||null);
+      // profiles.avatar_url d'abord (hors JWT), repli metadata pour les comptes non migrés
+      supabase.from("profiles").select("avatar_url").eq("id", u.id).single()
+        .then(({ data }) => setDashPhotoUrl(data?.avatar_url || u.user_metadata?.photo_url || null));
       const m=u.user_metadata||{};
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
@@ -2696,8 +2713,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setMissionsUsedMonth(doneMois.length + assignedNow);
       const { data: docsArr } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
       const uploaded = (Array.isArray(docsArr)?docsArr:[]).map(d=>d.type);
-      // Photo stockée en data URL dans user_metadata — pas dans la table documents
-      if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
+      // Photo stockée dans profiles.avatar_url — pas dans la table documents
+      const { data: profPhoto } = await supabase.from("profiles").select("avatar_url").eq("id", u.id).single();
+      if ((profPhoto?.avatar_url || u.user_metadata?.photo_url) && !uploaded.includes("photo")) uploaded.push("photo");
 
       // Réessayer les inserts en attente (docs uploadés sur iOS dont le fetch DB a été annulé)
       try {

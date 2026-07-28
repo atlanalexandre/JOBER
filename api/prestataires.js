@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   try {
     // Fetch approved prestataires + verified doc IDs in parallel
     const [profilesRes, verifiedDocsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at,trial_exhausted`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at,trial_exhausted,avatar_url`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
     ]);
     const profiles     = await profilesRes.json();
@@ -116,7 +116,9 @@ export default async function handler(req, res) {
         reviews:          provRatings.length,
         missions_count:   missionCountByProvider[p.id] || 0,
         cv:               meta.cv || null,
-        photo_url:        meta.photo_public_auth ? (meta.photo_url || null) : null,
+        // profiles.avatar_url d'abord : user_metadata est encodé dans le JWT, un data URI
+        // y ferait dépasser la limite d'en-tête HTTP. meta.photo_url = comptes non migrés.
+        photo_url:        meta.photo_public_auth ? (p.avatar_url || meta.photo_url || null) : null,
         zone_km:          Number(meta.zone_km) || 50,
         created_at:       p.created_at,
       };
