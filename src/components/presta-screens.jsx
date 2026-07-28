@@ -12,17 +12,7 @@ const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
 function validateDocSync(file) {
-  const ext = file.name.split(".").pop().toLowerCase();
-  if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
-    return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
-  }
-  if (file.size > 10 * 1024 * 1024) return "Fichier trop lourd (max 10 Mo).";
-  if (file.size < 1 * 1024) return "Fichier trop petit — vérifiez que c'est le bon document.";
-  return null;
-}
-
-function validateDocSync(file) {
-  const ext = file.name.split(".").pop().toLowerCase();
+  const ext = file.name ? file.name.split(".").pop().toLowerCase() : "";
   if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
     return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
   }
@@ -145,96 +135,71 @@ function DocRowItem({ doc, isValid, onUploaded }) {
   const [renewed, setRenewed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
   const fileInputRef = useRef(null);
-  const cachedTokenRef = useRef(null);
   const valid = isValid || renewed;
 
-  const handleUploadClick = () => {
+  // Étape 1 : sélection du fichier — AUCUN réseau, juste stocker le fichier en mémoire.
+  // iOS ne peut pas interférer avec des opérations purement locales.
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!file) return;
+    const validErr = validateDocSync(file);
+    if (validErr) { setUploadError(validErr); return; }
     setUploadError(null);
-    // Pré-charger le token AVANT que le file picker s'ouvre.
-    // Quand handleFileChange s'exécute, cachedTokenRef.current est prêt — aucun await nécessaire.
-    getValidAccessToken().then(t => { cachedTokenRef.current = t; });
-    if (fileInputRef.current) fileInputRef.current.click();
+    setPendingFile(file);
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validation synchrone — aucun await, la fenêtre réseau iOS reste ouverte.
-    const validErr = validateDocSync(file);
-    if (validErr) { setUploadError(validErr); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
-
-    const at = cachedTokenRef.current || getRawSession()?.access_token || "";
-    let userId;
-    try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
-    if (!userId || !at) { setUploadError("Session expirée — reconnectez-vous."); if (fileInputRef.current) fileInputRef.current.value = ""; return; }
-
-    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-    const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
-    const SB_URL = import.meta.env.VITE_SUPABASE_URL;
-    const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    // Écriture synchrone dans localStorage AVANT tout fetch.
-    // iOS peut annuler les fetches mais ne peut pas annuler une écriture localStorage.
-    // Le chargement suivant de la page réessaiera l'insert DB si nécessaire.
-    try {
-      const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-      p.push({ uid: userId, type: doc.id, sp: storagePath });
-      localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p));
-    } catch {}
-
+  // Étape 2 : envoi — déclenché par un clic bouton, contexte réseau normal (pas file-picker).
+  // iOS ne restreint PAS les fetch initiés depuis un événement click standard.
+  const handleSend = async () => {
+    if (!pendingFile) return;
+    const file = pendingFile;
+    setPendingFile(null);
     setUploading(true);
     setUploadError(null);
     try {
-      const [upRes, dbRes] = await Promise.all([
-        fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-          body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-        }),
-      ]);
+      const at = await getValidAccessToken();
+      let userId;
+      try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
+      if (!userId || !at) throw new Error("Session expirée — reconnectez-vous.");
+
+      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
+      const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
+      const SB_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Storage upload
+      const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
       if (!upRes.ok) {
         const err = await upRes.json().catch(() => ({}));
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
-      if (dbRes.ok) {
-        // DB insert réussi — nettoyer le localStorage
-        try {
-          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
-        } catch {}
+
+      // DB insert — contexte click bouton, iOS ne peut pas annuler ça
+      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
+      });
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
       }
-      // Si dbRes n'est pas ok, on laisse l'entrée dans localStorage pour retry au prochain chargement
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.();
     } catch (err) {
       console.error("Upload error", err);
-      const isStorageErr = err?.message?.includes("Erreur upload");
-      if (isStorageErr) {
-        // Le fichier n'a pas été uploadé — supprimer l'entrée localStorage
-        try {
-          const p = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
-          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(p.filter(e=>e.sp!==storagePath)));
-        } catch {}
-        setUploadError(err.message);
-      } else {
-        // DB annulé (iOS) ou erreur DB — localStorage garde l'entrée pour retry
-        // onUploaded met à jour uploadedDocIds avec les types du localStorage
-        // pour que le doc reste visible quand l'utilisateur change d'onglet
-        setRenewed(true);
-        onUploaded?.();
-      }
+      setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -245,15 +210,35 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
-          <div style={{ color:valid?C.success:C.textSub, fontSize:11, fontWeight:valid?700:400 }}>{valid?"✓ Validé":(doc.required===false?"Recommandé":"En attente")}</div>
+          <div style={{ color:valid?C.success:(pendingFile?C.accentGold:C.textSub), fontSize:11, fontWeight:valid?700:400 }}>
+            {valid?"✓ Validé":pendingFile?(pendingFile.name||"Fichier prêt"):(doc.required===false?"Recommandé":"En attente")}
+          </div>
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <Badge color={valid?C.success:(doc.required===false?C.textSub:C.accent)} small>{valid?"OK":(doc.required===false?"Optionnel":"Requis")}</Badge>
-          {!isValid && !renewed && (
-            <button onClick={handleUploadClick} disabled={uploading} style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:uploading?"not-allowed":"pointer", fontFamily:"inherit", opacity:uploading?0.6:1 }}>{uploading?"...":"+ Charger"}</button>
+          {!valid && !pendingFile && (
+            <button onClick={()=>{ setUploadError(null); fileInputRef.current?.click(); }} disabled={uploading}
+              style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              + Charger
+            </button>
           )}
-          {isValid && (
-            <span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span>
+          {pendingFile && !uploading && (
+            <>
+              <button onClick={handleSend}
+                style={{ padding:"4px 10px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                Envoyer
+              </button>
+              <button onClick={()=>setPendingFile(null)}
+                style={{ padding:"4px 8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>
+                ✕
+              </button>
+            </>
+          )}
+          {uploading && <span style={{ fontSize:10, color:C.textSub }}>Envoi…</span>}
+          {valid && !pendingFile && (
+            <><Badge color={C.success} small>OK</Badge><span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span></>
+          )}
+          {!valid && !pendingFile && (
+            <Badge color={doc.required===false?C.textSub:C.accent} small>{doc.required===false?"Optionnel":"Requis"}</Badge>
           )}
         </div>
       </div>
