@@ -460,8 +460,9 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
     const onApprovedRef = { current: onApproved };
     onApprovedRef.current = onApproved;
     const interval = setInterval(async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: sd } = await supabase.auth.getSession();
+      const user = sd?.session?.user;
+      if (!user) { clearInterval(interval); return; }
       const { data: profile } = await supabase.from("profiles").select("status,role").eq("id", user.id).single();
       if (profile?.status === "approved") {
         clearInterval(interval);
@@ -1529,7 +1530,7 @@ export default function App() {
               body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null }),
             }).catch(()=>{});
             fetch("/api/support", {
-              method:"POST", headers:{"Content-Type":"application/json"},
+              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
               body: JSON.stringify({
                 action: "booking_confirm",
                 clientEmail: ud?.user?.email||null,

@@ -127,10 +127,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       return;
     }
     if (data?.user) {
-      await supabase.from("profiles").upsert({
+      const { error: profileErr } = await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
       });
+      if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await fetch("/api/support", {
@@ -143,7 +144,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: _authH,
           body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
         }).catch(() => {});
         try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}
@@ -821,11 +822,12 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       return;
     }
     if (data?.user) {
-      await supabase.from("profiles").upsert({
+      const { error: profileErr } = await supabase.from("profiles").upsert({
         id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "approved",
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
       });
+      if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await fetch("/api/support", {
@@ -838,7 +840,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: _authH,
           body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
         }).catch(() => {});
         try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}

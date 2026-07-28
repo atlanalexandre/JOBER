@@ -88,7 +88,7 @@ export default async function handler(req, res) {
                 headers: { ...svcHeaders, "Prefer": "return=minimal" },
                 body: JSON.stringify({ trial_exhausted: true }),
               }).catch(() => {});
-              console.log(`[welcome] Compte blacklisté détecté à l'inscription — email=${email} trial_exhausted=true`);
+              console.log("[welcome] Compte blacklisté détecté à l'inscription — trial_exhausted=true");
             }
           }
         }

@@ -1736,13 +1736,16 @@ export function PMissionsTab({ onNavigate }) {
       return;
     }
     if (!navigator.geolocation) { showToast("Géolocalisation non supportée par votre navigateur."); return; }
-    const { data: sd } = await supabase.auth.getSession();
-    const token = sd?.session?.access_token;
-    const sendPos = (lat, lng) => fetch("/api/missions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token || ""}` },
-      body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
-    }).catch(() => {});
+    const sendPos = async (lat, lng) => {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      if (!token) return;
+      fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
+      }).catch(() => {});
+    };
     let last = null;
     const watchId = navigator.geolocation.watchPosition(p => { last = p.coords; }, null, { enableHighAccuracy: true });
     const intervalId = setInterval(() => { if (last) sendPos(last.latitude, last.longitude); }, 15000);
@@ -1804,9 +1807,10 @@ export function PMissionsTab({ onNavigate }) {
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
     const t = setInterval(loadPending, 30000);
     return () => clearInterval(t);
-  }, []);
+  }, [userId]);
 
   // Ticker 30s pour recalculer isPast / badge sans attendre un refresh
   useEffect(() => {

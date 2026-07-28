@@ -44,7 +44,6 @@ export default async function handler(req, res) {
   const resetToken  = `${emailB64}.${timestamp}.${hmac}`;
   const resetUrl    = `${APP_URL}?reset_token=${resetToken}`;
 
-  console.log("[forgot-password] resetUrl domain:", APP_URL);
 
   if (!RESEND_KEY) {
     console.error("[forgot-password] RESEND_API_KEY not set");
@@ -103,7 +102,6 @@ export default async function handler(req, res) {
           html,
         }),
       });
-      console.log("[forgot-password] Resend status:", r.status);
       if (r.ok) break;
       const body = await r.text();
       console.error("[forgot-password] Resend error:", r.status, body);

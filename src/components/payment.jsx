@@ -56,6 +56,8 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
     if (!missionId || phase !== "waiting") return;
     let mounted = true;
     const poll = async () => {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!mounted || !sd?.session) return;
       const { data } = await supabase.from("missions").select("status").eq("id", missionId).single();
       if (!mounted || !data) return;
       if (data.status === "assigned") setPhase("accepted");
