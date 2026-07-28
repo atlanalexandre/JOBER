@@ -4,7 +4,7 @@
   "cleanUrls": true,
   "regions": ["cdg1"],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/" }
   ],
   "functions": {
     "api/missions.js":         { "maxDuration": 60 },
