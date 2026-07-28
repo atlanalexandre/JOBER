@@ -130,7 +130,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       const { data: sd } = await supabase.auth.getSession();
       const at = sd?.session?.access_token || "";
       let userId;
-      try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
+      try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch { /* JWT illisible → userId reste undefined, rejeté juste après */ }
       if (!userId || !at) throw new Error("Session expirée — reconnectez-vous.");
 
       const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
@@ -156,7 +156,7 @@ function DocRowItem({ doc, isValid, onUploaded }) {
           const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
           pending.push({ uid: userId, type: doc.id, sp: storagePath });
           localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending));
-        } catch {}
+        } catch { /* localStorage indisponible (Safari privé) → pas de réessai, l'erreur ci-dessous suffit */ }
         throw new Error("Erreur sauvegarde: " + (dbErr.message || dbErr.hint || dbErr.code));
       }
 
@@ -1812,7 +1812,7 @@ export function PMissionsTab({ onNavigate }) {
             else if (pr?.trial_exhausted) setTrialExhausted(true);
           });
         await loadPending();
-      } catch (e) {
+      } catch { /* profil ou docs en attente indisponibles → l'écran s'affiche quand même */
       } finally {
         setLoading(false);
       }
@@ -1908,7 +1908,7 @@ export function PMissionsTab({ onNavigate }) {
         } catch { /* ignore */ }
         autoCheckinLockRef.current.delete(m.id);
       }
-    }, (err) => {
+    }, (_err) => {
       // GPS denied/unavailable → mark all as error so fallback button shows
       watchable.forEach(m => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
     }, { enableHighAccuracy: true, maximumAge: 20000 });
@@ -2720,7 +2720,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
           }
         }
-      } catch {}
+      } catch { /* file d'attente illisible → on repart de la liste serveur ci-dessous */ }
 
       setUploadedDocIds(uploaded);
       const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);

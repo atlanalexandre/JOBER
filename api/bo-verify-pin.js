@@ -74,7 +74,9 @@ export default async function handler(req, res) {
 
   await new Promise(r => setTimeout(r, Math.min(attempts * 400, 3000)));
 
-  const sanitize = s => s.replace(/[﻿  ⁠]/g, "").trim();
+  // BOM, espace insécable, espace insécable étroit, gluon de mots — ajoutés par
+  // certains gestionnaires de mots de passe au copier-coller.
+  const sanitize = s => s.replace(/[\uFEFF\u00A0\u202F\u2060]/g, "").trim();
   const expected = sanitize(effectivePassword);
   const received = sanitize(pin);
   let pinOk = false;
