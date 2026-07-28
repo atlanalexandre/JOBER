@@ -1158,19 +1158,21 @@ export default function App() {
     const userId = supaUser.id;
     const poll = async()=>{
       let lastSeen; try { lastSeen = localStorage.getItem("alane_msg_last_seen"); } catch(e) {}
-      lastSeen = lastSeen || new Date(0).toISOString();
-      const { data, error } = await supabase
+      // Fallback borné : sans repère, ne pas balayer tout l'historique depuis 1970
+      lastSeen = lastSeen || new Date(Date.now() - 30*24*3600*1000).toISOString();
+      // head:true → seul le compteur est renvoyé, pas les lignes
+      const { count, error } = await supabase
         .from("messages")
-        .select("id", { count:"exact" })
+        .select("id", { count:"exact", head:true })
         .ilike("conversation_key", `%${userId}%`)
         .neq("sender_tag","client")
         .gt("created_at", lastSeen);
-      if(!error && mounted) setUnreadCount(data?.length || 0);
+      if(!error && mounted) setUnreadCount(count || 0);
     };
     poll();
     const interval = setInterval(poll, 10000);
     return ()=>{ mounted=false; clearInterval(interval); };
-  },[supaUser]);
+  },[supaUser?.id]);
 
   // Onboarding : affiché une seule fois après le premier login
   useEffect(()=>{
@@ -1212,7 +1214,7 @@ export default function App() {
     pollNotifs();
     const iv = setInterval(pollNotifs,30000);
     return ()=>{ mounted=false; clearInterval(iv); };
-  },[supaUser]);
+  },[supaUser?.id]);
 
   // Synchroniser onlineStatus depuis user_metadata quand le prestataire se connecte
   useEffect(()=>{
@@ -1231,10 +1233,14 @@ export default function App() {
         initSessionRef.current = session || null;
         setSupaUser(session?.user||null);
         initialized=true;
-        // Précharger le profil en arrière-plan pour que le clic "Commencer" soit instantané
+        // Précharger le profil en arrière-plan pour que le clic "Commencer" soit instantané.
+        // setTimeout : supabase-js détient un verrou pendant onAuthStateChange, une requête
+        // PostgREST lancée ici partirait sans Authorization valide (donc en rôle anon).
         if(session?.user){
-          supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()
-            .then(({data})=>{ initProfileRef.current = data || null; });
+          setTimeout(()=>{
+            supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()
+              .then(({data,error})=>{ if(!error && data) initProfileRef.current = data; });
+          },0);
         } else {
           initProfileRef.current = null;
         }
@@ -1336,10 +1342,17 @@ export default function App() {
         return;
       }
       setSupaUser(session.user);
-      // Utiliser le profil préchargé si disponible, sinon fetch réseau
-      const profile = initProfileRef.current !== undefined
-        ? initProfileRef.current
-        : (await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single()).data;
+      // Utiliser le profil préchargé si disponible, sinon fetch réseau.
+      // Test sur la valeur et non sur `!== undefined` : un préchargement échoué
+      // ne doit pas court-circuiter le fallback réseau.
+      let profile = initProfileRef.current || null;
+      let profileErr = null;
+      if(!profile){
+        const r = await supabase.from("profiles").select("role,status,trial_exhausted,plan_abonnement").eq("id",session.user.id).single();
+        profile = r.data; profileErr = r.error;
+      }
+      // Échec réseau/auth (≠ PGRST116 "aucune ligne") : ne pas détruire la session
+      if(profileErr && profileErr.code !== "PGRST116"){ setScreen("role"); return; }
       if(profile?.role){
         setRole(profile.role);
         if(profile.role==="prestataire"){

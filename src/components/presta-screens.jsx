@@ -231,8 +231,14 @@ export function DocUploadCard({ doc, value, onChange, required }) {
     const validErr = await validateDoc(file);
     if (validErr) { setUploadErr(validErr); if (inputRef.current) inputRef.current.value = ""; return; }
     setUploading(true);
-    await onChange(file);
-    setUploading(false);
+    try {
+      await onChange(file);
+    } catch (err) {
+      setUploadErr(err?.message || "Échec de l'envoi — réessayez.");
+      if (inputRef.current) inputRef.current.value = "";
+    } finally {
+      setUploading(false);
+    }
   };
 
   const acceptAttr = doc.id === "photo" ? "image/*" : ACCEPT_ATTR;
@@ -491,28 +497,35 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           {DOCS_REQUIS.filter(d=>d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
-              const { data:_ud } = await supabase.auth.getUser();
-              const user = _ud?.user;
-              const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
+              // getSession() rafraîchit le token expiré ; getUser() renvoyait un user
+              // alors que la requête suivante partait avec un JWT périmé, donc en rôle
+              // anon, et la RLS de `documents` la rejetait silencieusement.
+              const { data:_sd } = await supabase.auth.getSession();
+              const user = _sd?.session?.user;
+              if(!user) throw new Error("Session expirée — reconnectez-vous pour envoyer vos documents.");
+              const path = `${user.id}/${doc.id}_${Date.now()}_${file.name}`;
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
-              if(!error){
-                setDocs(prev=>({...prev,[doc.id]:path}));
-                if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
-              }
+              if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
+              setDocs(prev=>({...prev,[doc.id]:path}));
+              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
+              notifyDocUpload(doc.id, false);
             }} required />
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>Documents optionnels</p>
           {DOCS_REQUIS.filter(d=>!d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
-              const { data:_ud } = await supabase.auth.getUser();
-              const user = _ud?.user;
-              const path = `${user?.id||"anon"}/${doc.id}_${Date.now()}_${file.name}`;
+              const { data:_sd } = await supabase.auth.getSession();
+              const user = _sd?.session?.user;
+              if(!user) throw new Error("Session expirée — reconnectez-vous pour envoyer vos documents.");
+              const path = `${user.id}/${doc.id}_${Date.now()}_${file.name}`;
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
-              if(!error){
-                setDocs(prev=>({...prev,[doc.id]:path}));
-                if(user) { await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }); notifyDocUpload(doc.id, false); }
-              }
+              if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
+              setDocs(prev=>({...prev,[doc.id]:path}));
+              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
+              notifyDocUpload(doc.id, false);
             }} required={false} />
           ))}
         </>}

@@ -257,7 +257,13 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       const docs = await docsRes.json();
       if (Array.isArray(docs) && docs.length > 0) {
         const paths = docs.map(d => d.storage_path).filter(Boolean);
-        if (paths.length > 0) await fetch(`${SUPABASE_URL}/storage/v1/object/documents`, { method: "DELETE", headers: hdrs, body: JSON.stringify({ prefixes: paths }) }).catch(() => {});
+        // Bucket = "Documents" (casse significative). L'ancienne valeur en minuscules
+        // échouait silencieusement : les pièces d'identité restaient en ligne après
+        // une demande de suppression de compte.
+        if (paths.length > 0) {
+          const delRes = await fetch(`${SUPABASE_URL}/storage/v1/object/Documents`, { method: "DELETE", headers: hdrs, body: JSON.stringify({ prefixes: paths }) }).catch(() => null);
+          if (!delRes || !delRes.ok) console.error("delete_account: suppression storage échouée", delRes?.status, paths.length, "fichier(s)");
+        }
         await fetch(`${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${userId}`, { method: "DELETE", headers: hdrs });
       }
       await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { method: "DELETE", headers: hdrs });
