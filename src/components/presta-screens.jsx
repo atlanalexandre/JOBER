@@ -1041,6 +1041,7 @@ export function PrestaProfileEditScreen({ onBack }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [telephone, setTelephone] = useState("");
   const [iban, setIban]           = useState("");
   const [photoUrl, setPhotoUrl]       = useState(null);
@@ -1116,8 +1117,16 @@ export function PrestaProfileEditScreen({ onBack }) {
   };
 
   const handleSave = async () => {
-    setSaving(true); setSaveError(null);
+    setSaving(true); setSaveError(null); setSessionExpired(false);
     try {
+      // Force-refresh session before update to ensure valid token
+      const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+      if (refreshErr || !refreshData?.session) {
+        setSaving(false);
+        setSessionExpired(true);
+        return;
+      }
+
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
@@ -1129,9 +1138,15 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // SDK Supabase — gère le refresh token automatiquement, pas besoin de gérer le token manuellement
       const { error } = await supabase.auth.updateUser({ data: profileData });
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (error.status === 401 || error.message?.toLowerCase().includes("token") || error.message?.toLowerCase().includes("session")) {
+          setSaving(false);
+          setSessionExpired(true);
+          return;
+        }
+        throw new Error(error.message);
+      }
 
       setSaving(false);
       setSaved(true);
@@ -1335,8 +1350,16 @@ export function PrestaProfileEditScreen({ onBack }) {
           <CvEditor cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
 
+        {sessionExpired && (
+          <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.5)", borderRadius:12, padding:"14px 16px", marginBottom:12, textAlign:"center" }}>
+            <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:10 }}>⚠️ Session expirée — vous devez vous reconnecter</div>
+            <button onClick={async () => { await supabase.auth.signOut(); }} style={{ padding:"10px 20px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              Se déconnecter
+            </button>
+          </div>
+        )}
         {saveError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#F25E5E", textAlign:"center" }}>❌ {saveError}</div>}
-        <Btn full onClick={handleSave} disabled={saving} style={{ background:saveError?C.accent:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
+        <Btn full onClick={handleSave} disabled={saving || sessionExpired} style={{ background:saveError?C.accent:color, boxShadow:`0 8px 24px ${color}44`, padding:"16px", fontSize:15 }}>
           {saving ? "Enregistrement…" : saved ? "✅ Sauvegardé !" : "Enregistrer les modifications"}
         </Btn>
       </div>
@@ -2661,12 +2684,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const _docsAt = await getValidAccessToken();
-      const _SB = import.meta.env.VITE_SUPABASE_URL;
-      const _KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const docsArr = await fetch(`${_SB}/rest/v1/documents?select=type&prestataire_id=eq.${u.id}`, {
-        headers: { "Authorization": `Bearer ${_docsAt}`, "apikey": _KEY },
-      }).then(r => r.ok ? r.json() : []).catch(() => []);
+      const { data: docsArr } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
       const uploaded = (Array.isArray(docsArr)?docsArr:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
@@ -2706,9 +2724,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   useEffect(() => {
     const refresh = async () => {
       if (document.visibilityState !== "visible") return;
-      const rawSess2 = getRawSession();
-      const u = rawSess2?.user; if (!u) return;
-      const token = rawSess2?.access_token || "";
+      const { data: { session: sess2 } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+      const u = sess2?.user; if (!u) return;
+      const token = sess2?.access_token || "";
       const [profRes, planJson] = await Promise.all([
         supabase.from("profiles").select("status,missions_enabled,plan_abonnement").eq("id", u.id).single(),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
