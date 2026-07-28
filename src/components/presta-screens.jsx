@@ -3078,6 +3078,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               const { data: rows } = await supabase.from("documents").select("type").eq("prestataire_id", rawSessDoc.user.id);
               const uploaded = (Array.isArray(rows)?rows:[]).map(d=>d.type);
               if(rawSessDoc.user.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
+              // Inclure les types en attente du localStorage — garantit que le doc
+              // reste visible si iOS a annulé le fetch DB pendant l'upload
+              try {
+                const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+                pending.filter(e=>e.uid===rawSessDoc.user.id).forEach(e=>{ if(!uploaded.includes(e.type)) uploaded.push(e.type); });
+              } catch {}
               setUploadedDocIds(uploaded);
             }} />
           ))}
