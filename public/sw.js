@@ -33,6 +33,13 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Ne rien intercepter hors de notre origine : les extensions de navigateur
+  // émettent des requêtes chrome-extension:// et cross-origin que Cache.put
+  // refuse, ce qui polluait la console d'erreurs sans rapport avec l'app.
+  if (url.origin !== self.location.origin || !url.protocol.startsWith("http")) {
+    return;
+  }
+
   // Ne pas intercepter les requêtes API Supabase/Stripe/Resend
   if (
     url.pathname.startsWith("/api/") ||
