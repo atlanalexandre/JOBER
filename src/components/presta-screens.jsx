@@ -133,15 +133,17 @@ function DocRowItem({ doc, isValid, onUploaded }) {
       try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch { /* JWT illisible → userId reste undefined, rejeté juste après */ }
       if (!userId || !at) throw new Error("Session expirée — reconnectez-vous.");
 
-      const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-      const storagePath = `${userId}/${doc.id}_${Date.now()}.${ext}`;
+      // Nom stable par (prestataire, type) : un remplacement écrase le fichier
+      // précédent au lieu d'en accumuler. Pas d'extension : le Content-Type stocké
+      // suffit à l'affichage (les URLs signées du BO ignorent l'extension).
+      const storagePath = `${userId}/${doc.id}`;
       const SB_URL = import.meta.env.VITE_SUPABASE_URL;
       const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      // Storage upload
+      // Storage upload — x-upsert écrase le fichier existant (même chemin)
       const upRes = await fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
         body: file,
       });
       if (!upRes.ok) {
@@ -149,8 +151,8 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // DB insert via SDK — en cas d'échec, mettre en queue pour réessai au prochain chargement
-      const { error: dbErr } = await supabase.from("documents").insert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false });
+      // Upsert sur (prestataire_id, type) — met à jour la ligne existante
+      const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }, { onConflict: "prestataire_id,type" });
       if (dbErr) {
         try {
           const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
@@ -503,11 +505,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { data:_sd } = await supabase.auth.getSession();
               const user = _sd?.session?.user;
               if(!user) throw new Error("Session expirée — reconnectez-vous pour envoyer vos documents.");
-              const path = `${user.id}/${doc.id}_${Date.now()}_${file.name}`;
+              const path = `${user.id}/${doc.id}`;
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
               setDocs(prev=>({...prev,[doc.id]:path}));
-              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }, { onConflict:"prestataire_id,type" });
               if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
               notifyDocUpload(doc.id, false);
             }} required />
@@ -519,11 +521,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { data:_sd } = await supabase.auth.getSession();
               const user = _sd?.session?.user;
               if(!user) throw new Error("Session expirée — reconnectez-vous pour envoyer vos documents.");
-              const path = `${user.id}/${doc.id}_${Date.now()}_${file.name}`;
+              const path = `${user.id}/${doc.id}`;
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
               setDocs(prev=>({...prev,[doc.id]:path}));
-              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path });
+              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }, { onConflict:"prestataire_id,type" });
               if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
               notifyDocUpload(doc.id, false);
             }} required={false} />
@@ -2728,9 +2730,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
           const done = [];
           await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents`, {
+            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
               method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
               body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
             }).then(r=>{ if(r.ok){ done.push(e.sp); uploaded.push(e.type); } }).catch(()=>{})
           ));

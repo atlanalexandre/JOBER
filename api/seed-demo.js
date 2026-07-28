@@ -209,9 +209,9 @@ export default async function handler(req, res) {
     verified: true,
   }));
 
-  await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
     method: "POST",
-    headers: { ...hdrs, "Prefer": "return=minimal" },
+    headers: { ...hdrs, "Prefer": "return=minimal,resolution=merge-duplicates" },
     body: JSON.stringify(docs),
   });
 

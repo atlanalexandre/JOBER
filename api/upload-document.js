@@ -40,8 +40,9 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error: 'docType requis' }), { status: 400 });
     }
 
-    const ext = fileName ? fileName.split('.').pop().toLowerCase() : (mimeType === 'application/pdf' ? 'pdf' : 'jpg');
-    const storagePath = `${userId}/${docType}_${Date.now()}.${ext}`;
+    // Nom stable par (prestataire, type) : le remplacement écrase le fichier
+    // précédent (upsert plus bas), aucune accumulation d'orphelins.
+    const storagePath = `${userId}/${docType}`;
 
     const svcHeaders = {
       'apikey': SERVICE_ROLE_KEY,
@@ -81,7 +82,7 @@ export default async function handler(req) {
     }
 
     // Pré-enregistrer le document en base (non bloquant)
-    fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+    fetch(`${SUPABASE_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ prestataire_id: userId, type: docType, storage_path: storagePath, verified: false }),

@@ -7121,9 +7121,9 @@ export function DocUploadScreen({ onBack }) {
           const now = new Date().toISOString();
           const done = [];
           await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents`, {
+            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
               method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
               body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
             }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
           ));
@@ -7153,8 +7153,8 @@ export function DocUploadScreen({ onBack }) {
 
     const SB_URL = import.meta.env.VITE_SUPABASE_URL;
     const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-    const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+    // Nom stable par (prestataire, type) — le remplacement écrase, pas d'accumulation
+    const storagePath = `${userId}/${docId}`;
     const now = new Date().toISOString();
 
     try {
@@ -7168,12 +7168,12 @@ export function DocUploadScreen({ onBack }) {
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
           body: file,
         }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
+        fetch(`${SB_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
           body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
         }),
       ]);
@@ -7308,9 +7308,9 @@ export function ClientProDocScreen({ onBack }) {
           const now = new Date().toISOString();
           const done = [];
           await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents`, {
+            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
               method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal"},
+              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
               body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
             }).then(r=>{ if(r.ok){ done.push(e.sp); current.push({ type:e.type, storage_path:e.sp, created_at:now }); } }).catch(()=>{})
           ));
@@ -7337,8 +7337,8 @@ export function ClientProDocScreen({ onBack }) {
 
     const SB_URL = import.meta.env.VITE_SUPABASE_URL;
     const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const ext = file.name ? file.name.split(".").pop().toLowerCase() : (file.type === "application/pdf" ? "pdf" : "jpg");
-    const storagePath = `${userId}/${docId}_${Date.now()}.${ext}`;
+    // Nom stable par (prestataire, type) — le remplacement écrase, pas d'accumulation
+    const storagePath = `${userId}/${docId}`;
     const now = new Date().toISOString();
 
     try {
@@ -7352,12 +7352,12 @@ export function ClientProDocScreen({ onBack }) {
       const [upRes, dbRes] = await Promise.all([
         fetch(`${SB_URL}/storage/v1/object/Documents/${storagePath}`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": file.type || "application/octet-stream" },
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
           body: file,
         }),
-        fetch(`${SB_URL}/rest/v1/documents`, {
+        fetch(`${SB_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal,resolution=merge-duplicates" },
           body: JSON.stringify({ prestataire_id: userId, type: docId, storage_path: storagePath, verified: false }),
         }),
       ]);

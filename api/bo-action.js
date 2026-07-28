@@ -1425,7 +1425,7 @@ export default async function handler(req, res) {
         storage_path: d.storage_path,
         verified: true,
       }));
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
         method: "POST",
         headers: { ...headers, "Prefer": "resolution=ignore-duplicates,return=minimal" },
         body: JSON.stringify(inserts),

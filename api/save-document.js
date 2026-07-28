@@ -32,9 +32,9 @@ export default async function handler(req, res) {
   if (!type || !storagePath) return res.status(400).json({ error: "type + storagePath requis" });
 
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/documents`, {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/documents?on_conflict=prestataire_id,type`, {
       method: "POST",
-      headers: { ...headers, "Prefer": "return=minimal" },
+      headers: { ...headers, "Prefer": "return=minimal,resolution=merge-duplicates" },
       body: JSON.stringify({ prestataire_id: userId, type, storage_path: storagePath, verified: false }),
     });
     if (!r.ok) {
