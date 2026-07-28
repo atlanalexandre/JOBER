@@ -92,45 +92,12 @@ function ContractModal({ title, contractText, onSign, onClose }) {
 
 // Retourne un access token valide (refresh manuel si expiré, sans déclencher le SDK)
 async function getValidAccessToken() {
-  const SB  = import.meta.env.VITE_SUPABASE_URL;
-  const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const expOf = (tok) => {
-    try { return JSON.parse(atob(tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.exp * 1000; }
-    catch { return 0; }
-  };
-  // 1. Lecture brute localStorage
-  const rawSess = getRawSession();
-  let at = rawSess?.access_token || "";
-  const rt = rawSess?.refresh_token || "";
-  if (at && expOf(at) > Date.now() + 10000) return at;
-  // 2. Refresh manuel si token expiré
-  if (rt) {
-    try {
-      const ctrl = new AbortController();
-      setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
-        method: "POST",
-        headers: { "apikey": KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: rt }),
-        signal: ctrl.signal,
-      });
-      if (r.ok) {
-        const rd = await r.json();
-        if (rd.access_token) {
-          at = rd.access_token;
-          supabase.auth.setSession({ access_token: rd.access_token, refresh_token: rd.refresh_token }).catch(() => {});
-          return at;
-        }
-      }
-    } catch { /* continuer */ }
-  }
-  if (at && expOf(at) > Date.now() - 300000) return at; // tolérance 5 min si refresh échoue
-  // 3. Fallback SDK Supabase (getSession gère le refresh automatiquement)
+  // SDK Supabase comme source unique — gère le refresh token automatiquement
   try {
     const { data } = await supabase.auth.getSession();
     if (data?.session?.access_token) return data.session.access_token;
   } catch {}
-  return at;
+  return "";
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -1084,22 +1051,8 @@ export function PrestaProfileEditScreen({ onBack }) {
 
   useEffect(()=>{
     (async () => {
-      // Lecture directe Supabase Auth — pas de Vercel function, pas de timeout
-      const rawSessLoad = getRawSession();
-      const token = rawSessLoad?.access_token || "";
-      let m = {};
-      if (token) {
-        try {
-          const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/user`, {
-            headers: { "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY, "Authorization": `Bearer ${token}` },
-          });
-          if (r.ok) { const rd = await r.json(); m = rd.user_metadata || {}; }
-        } catch { /* fallback ci-dessous */ }
-      }
-      // Fallback : lit directement depuis la session locale (pas d'appel réseau)
-      if (Object.keys(m).length === 0) {
-        m = rawSessLoad?.user?.user_metadata || {};
-      }
+      const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+      const m = session?.user?.user_metadata || {};
       setMeta(m);
       // Charge le nouvel objet par jour, ou reconstruit depuis l'ancien format plat
       if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
@@ -2641,9 +2594,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   },[activeScreen]);
   useEffect(()=>{
     (async()=>{
-      // Lire la session brute depuis localStorage : pas de SDK, pas de risque de _removeSession
-      const rawSess = getRawSession();
-      const u = rawSess?.user; if(!u) return;
+      const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+      const u = session?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
@@ -2654,7 +2606,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const tourKey=`alane_presta_tour_done_${u.id}`;
       let prestaTourDone; try { prestaTourDone = localStorage.getItem(tourKey); } catch { /* ignore */ }
       if(!prestaTourDone) setShowTour(true);
-      const token = rawSess?.access_token || "";
+      const token = session?.access_token || "";
       const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
         fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(async r=>{
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
