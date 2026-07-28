@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { supabase, getRawSession } from "../lib/supabase.js";
+import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
@@ -90,15 +89,6 @@ function ContractModal({ title, contractText, onSign, onClose }) {
 }
 
 
-// Retourne un access token valide (refresh manuel si expiré, sans déclencher le SDK)
-async function getValidAccessToken() {
-  // SDK Supabase comme source unique — gère le refresh token automatiquement
-  try {
-    const { data } = await supabase.auth.getSession();
-    if (data?.session?.access_token) return data.session.access_token;
-  } catch {}
-  return "";
-}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -137,7 +127,8 @@ function DocRowItem({ doc, isValid, onUploaded }) {
     setUploading(true);
     setUploadError(null);
     try {
-      const at = await getValidAccessToken();
+      const { data: sd } = await supabase.auth.getSession();
+      const at = sd?.session?.access_token || "";
       let userId;
       try { userId = JSON.parse(atob(at.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))?.sub; } catch {}
       if (!userId || !at) throw new Error("Session expirée — reconnectez-vous.");
@@ -158,15 +149,21 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // DB insert via SDK — gère le token automatiquement
+      // DB insert via SDK — en cas d'échec, mettre en queue pour réessai au prochain chargement
       const { error: dbErr } = await supabase.from("documents").insert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false });
-      if (dbErr) throw new Error("Erreur sauvegarde: " + (dbErr.message || dbErr.hint || dbErr.code));
+      if (dbErr) {
+        try {
+          const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
+          pending.push({ uid: userId, type: doc.id, sp: storagePath });
+          localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending));
+        } catch {}
+        throw new Error("Erreur sauvegarde: " + (dbErr.message || dbErr.hint || dbErr.code));
+      }
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.(doc.id);
     } catch (err) {
-      console.error("Upload error", err);
       setUploadError(err?.message || "Erreur lors de l'envoi. Réessayez.");
     } finally {
       setUploading(false);
@@ -366,7 +363,6 @@ export function PrestaOnboarding({ onComplete, onBack }) {
         },
       });
     } catch(e){
-      console.error("Supabase submit error",e);
       setSubmitError("Une erreur est survenue lors de l'envoi. Réessayez.");
       setSubmitting(false);
       return;
@@ -454,7 +450,6 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             <div style={{ marginBottom:14 }}>
               {[
                 { id:"legalstart", nom:"LegalStart",        logo:"⚖️", color:"#4F46E5", badge:"Recommandé", info:"0€ · SIRET en 48h · Validation juridique incluse", lien:"https://www.legalstart.fr/micro-entreprise/" },
-                { id:"urssaf2",    nom:"URSSAF (officiel)", logo:"🏛️", color:"#7C3AED", badge:"100% gratuit", info:"Gratuit · Site officiel de l'État · SIRET en 24h", lien:"https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html" },
                 { id:"urssaf",     nom:"URSSAF (officiel)", logo:"🏛️", color:"#059669", badge:"100% gratuit", info:"Gratuit · Site officiel de l’État · SIRET 24h", lien:"https://www.autoentrepreneur.urssaf.fr/" },
               ].map(p=>(
                 <div key={p.id} onClick={()=>setChoixAE(choixAE===p.id?null:p.id)} style={{ background:choixAE===p.id?p.color+"15":"#0D1B3E", border:`2px solid ${choixAE===p.id?p.color:C.border}`, borderRadius:r+2, padding:"13px", marginBottom:8, cursor:"pointer" }}>
@@ -1152,7 +1147,6 @@ export function PrestaProfileEditScreen({ onBack }) {
       setSaved(true);
       setTimeout(() => { setSaved(false); onBack(); }, 1200);
     } catch (e) {
-      console.error("[handleSave] exception:", e);
       setSaving(false);
       setSaveError(e?.message || "Erreur lors de l'enregistrement.");
       setTimeout(() => setSaveError(null), 5000);
@@ -1803,7 +1797,6 @@ export function PMissionsTab({ onNavigate }) {
           });
         await loadPending();
       } catch (e) {
-        console.error("[PMissionsTab] load error:", e);
       } finally {
         setLoading(false);
       }
@@ -1899,7 +1892,6 @@ export function PMissionsTab({ onNavigate }) {
         autoCheckinLockRef.current.delete(m.id);
       }
     }, (err) => {
-      console.log("[auto-checkin] GPS error:", err.code);
       // GPS denied/unavailable → mark all as error so fallback button shows
       watchable.forEach(m => setMissionCoordCache(prev => ({ ...prev, [m.id]: "error" })));
     }, { enableHighAccuracy: true, maximumAge: 20000 });
@@ -2156,7 +2148,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
                     : new Date(m.date + 'T23:59:00').getTime())
                 : 0;
-            const renderNow = Date.now() + renderTick * 0;
+            void renderTick; // forces re-render every 30s via state change
+            const renderNow = Date.now();
             const isStarted = missionStart > 0 && missionStart < renderNow;
             const isPast = missionEnd > 0 && missionEnd < renderNow;
             const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
@@ -2694,7 +2687,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
         const mine = pending.filter(e=>e.uid===u.id && !uploaded.includes(e.type));
         if (mine.length) {
-          const pAt = await getValidAccessToken();
+          const { data: pd } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+          const pAt = pd?.session?.access_token || "";
           const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
           const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
           const done = [];
