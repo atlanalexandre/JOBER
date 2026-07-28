@@ -3,6 +3,16 @@
 Ce fichier est lu automatiquement par Claude Code à chaque session. Il définit **comment**
 travailler sur ce projet. La description du projet lui-même est dans [DOCUMENTATION.md](DOCUMENTATION.md).
 
+> ## ⚠️ À FAIRE EN PREMIER, À CHAQUE SESSION
+>
+> **Lis [DOCUMENTATION.md](DOCUMENTATION.md) avant toute chose.** Ce fichier-ci ne contient
+> que des règles ; la documentation contient le schéma des tables, la logique Supabase, les
+> parcours utilisateur et les pièges de structure. Travailler sans l'avoir lue, c'est
+> reproduire les erreurs qu'elle documente : interroger une table qui n'existe pas, écrire
+> dans une table morte, ou se tromper sur l'emplacement d'une donnée.
+>
+> Et **tiens-la à jour** dès que tu modifies la base — voir la règle 1.8.
+
 > **Contexte important** : le propriétaire du projet (Alexandre) n'est pas développeur.
 > Les demandes arrivent en langage courant. Ta responsabilité est donc double : faire ce qui
 > est demandé, **et** protéger le projet des dégâts qu'une demande imprécise pourrait causer.
@@ -107,6 +117,36 @@ Utilise l'outil de migration Supabase, jamais des modifications manuelles depuis
 Les migrations sont tracées et relisables ; une modification manuelle est invisible et
 irrattrapable. Nomme-les en français, explicitement :
 `secu_fermer_documents_presta_insert`, `perf_index_fk_et_nettoyage`.
+
+### 1.8 Toute modification de la base met à jour la documentation
+
+Une migration n'est **pas terminée** tant que [DOCUMENTATION.md](DOCUMENTATION.md) ne
+correspond pas au nouvel état. C'est dans le même travail, pas « plus tard ».
+
+Ce fichier est la seule référence lisible du projet : s'il ment, la session suivante
+construira sur des informations fausses. Le `CLAUDE.md` précédent décrivait un schéma qui
+n'existait plus depuis longtemps — c'est précisément ce qu'il faut éviter.
+
+**Déclenche une mise à jour** toute modification de :
+
+| Modification | À mettre à jour dans DOCUMENTATION.md |
+|---|---|
+| Table créée, supprimée, renommée | §4 « La base de données » |
+| Colonne ajoutée ou supprimée | §4, et §4 « Où vivent les données » si ça déplace une donnée |
+| Valeurs autorisées d'un statut ou d'un type | §4 (liste des statuts) et §6 (cycle de vie) |
+| Règle RLS, droits de lecture ou d'écriture | §5 « La logique Supabase » |
+| Réglage `platform_settings` ajouté ou retiré | §4 (liste des clés) |
+| Fonction `/api` créée ou supprimée | §5 (tableau des fonctions) |
+| Écran ajouté, URL modifiée | §7 « Navigation et URLs » |
+| Variable d'environnement | §8 |
+
+Corrige aussi ce qui devient **faux ailleurs dans le fichier**, pas seulement la section
+concernée. Une table supprimée peut être citée dans un parcours utilisateur.
+
+Si le changement rend une règle de ce `CLAUDE.md` obsolète, mets à jour ce fichier aussi.
+
+Et si tu découvres en travaillant que la documentation est déjà fausse : **corrige-la**, même
+si ça ne fait pas partie de la demande, et signale-le dans ta réponse.
 
 ---
 
