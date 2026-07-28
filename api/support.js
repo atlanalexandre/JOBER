@@ -1,4 +1,5 @@
 import { esc, emailHtml, sendEmail, hashPii } from "./_email.js";
+import { verifyUser } from "./_auth.js";
 
 // Rate limiting anti-spam pour les soumissions de contact publiques
 const _contactRl = new Map();
@@ -9,19 +10,6 @@ function checkContactRateLimit(ip, max = 3) {
   rec.count++;
   _contactRl.set(ip, rec);
   return rec.count > max;
-}
-
-async function verifyUser(req, supabaseUrl, serviceRoleKey) {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  try {
-    const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
 }
 
 export default async function handler(req, res) {

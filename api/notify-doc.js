@@ -1,3 +1,5 @@
+import { verifyUser } from "./_auth.js";
+
 const DOC_LABELS = {
   kbis:     "KBIS / Extrait Kbis",
   rib:      "RIB / IBAN",
@@ -11,19 +13,6 @@ const DOC_LABELS = {
   diplomes: "Diplômes",
   autre:    "Autre document",
 };
-
-async function verifyUser(req, supabaseUrl, serviceRoleKey) {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  try {
-    const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();

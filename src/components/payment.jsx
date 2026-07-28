@@ -776,10 +776,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   );
 }
 
-// ── Informations légales ALANE (à renseigner) ────────────────────
-const ALANE_SIRET   = ""; // ex: "123 456 789 00010"
-const ALANE_ADRESSE = ""; // ex: "12 rue du Commerce, 75015 Paris"
-const ALANE_FORME   = "SAS";
+// ── Informations légales ALANE ────────────────────────────────────
+const ALANE_SIRET   = import.meta.env.VITE_ALANE_SIRET   || "";
+const ALANE_ADRESSE = import.meta.env.VITE_ALANE_ADRESSE || "";
+const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "SAS";
 
 // ── WALLET TOP-UP MODAL ───────────────────────────────────────────
 const TOPUP_AMOUNTS = [20, 50, 100, 200];
