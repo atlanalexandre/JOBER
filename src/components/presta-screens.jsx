@@ -2709,8 +2709,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const { data: docsRes } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
-      const uploaded = (Array.isArray(docsRes)?docsRes:[]).map(d=>d.type);
+      const _docsAt = await getValidAccessToken();
+      const _SB = import.meta.env.VITE_SUPABASE_URL;
+      const _KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const docsArr = await fetch(`${_SB}/rest/v1/documents?select=type&prestataire_id=eq.${u.id}`, {
+        headers: { "Authorization": `Bearer ${_docsAt}`, "apikey": _KEY },
+      }).then(r => r.ok ? r.json() : []).catch(() => []);
+      const uploaded = (Array.isArray(docsArr)?docsArr:[]).map(d=>d.type);
       // Photo stockée en data URL dans user_metadata — pas dans la table documents
       if (u.user_metadata?.photo_url && !uploaded.includes("photo")) uploaded.push("photo");
 
