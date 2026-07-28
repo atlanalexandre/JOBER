@@ -191,16 +191,9 @@ function DocRowItem({ doc, isValid, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // DB insert — contexte click bouton, iOS ne peut pas annuler ça
-      const dbRes = await fetch(`${SB_URL}/rest/v1/documents`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${at}`, "apikey": SB_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }),
-      });
-      if (!dbRes.ok) {
-        const err = await dbRes.json().catch(() => ({}));
-        throw new Error("Erreur sauvegarde: " + (err.message || err.hint || dbRes.status));
-      }
+      // DB insert via SDK — gère le token automatiquement
+      const { error: dbErr } = await supabase.from("documents").insert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false });
+      if (dbErr) throw new Error("Erreur sauvegarde: " + (dbErr.message || dbErr.hint || dbErr.code));
 
       notifyDocUpload(doc.id, true);
       setRenewed(true);
@@ -1172,11 +1165,6 @@ export function PrestaProfileEditScreen({ onBack }) {
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      const SB  = import.meta.env.VITE_SUPABASE_URL;
-      const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const at = await getValidAccessToken();
-      if (!at) throw new Error("Session expirée — reconnectez-vous.");
-
       const profileData = {
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0),
         dispon_jours_creneaux: dispos,
@@ -1188,16 +1176,9 @@ export function PrestaProfileEditScreen({ onBack }) {
       };
       if (photoChanged) profileData.photo_url = photoUrl;
 
-      // Fetch direct vers Supabase auth — zéro Vercel, zéro cold start, merge automatique
-      const updateRes = await fetch(`${SB}/auth/v1/user`, {
-        method: "PUT",
-        headers: { "apikey": KEY, "Authorization": `Bearer ${at}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ data: profileData }),
-      });
-      if (!updateRes.ok) {
-        const errText = await updateRes.text().catch(() => "?");
-        throw new Error("Erreur (" + updateRes.status + "): " + errText.slice(0, 120));
-      }
+      // SDK Supabase — gère le refresh token automatiquement, pas besoin de gérer le token manuellement
+      const { error } = await supabase.auth.updateUser({ data: profileData });
+      if (error) throw new Error(error.message);
 
       setSaving(false);
       setSaved(true);
