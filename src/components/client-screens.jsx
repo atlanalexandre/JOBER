@@ -637,7 +637,7 @@ export function ResetPasswordScreen({ onDone, resetToken }) {
   }, []);
 
   const handleReset = async () => {
-    if(!password || password.length < 6){ setError("Minimum 6 caractères"); return; }
+    if(!password || password.length < 8){ setError("Minimum 8 caractères"); return; }
     if(password !== confirm){ setError("Les mots de passe ne correspondent pas"); return; }
     setLoading(true); setError("");
 
