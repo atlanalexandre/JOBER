@@ -45,15 +45,15 @@ export default async function handler(req, res) {
     `${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&select=stripe_payment_intent`,
     { headers: { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` } }
   ).catch(() => null);
-  if (!checkRes?.ok) return res.status(500).json({ error: "Impossible de vérifier la mission" });
+  if (!checkRes?.ok) return res.status(500).json({ error: "Impossible de vérifier la prestation" });
   const checkData = await checkRes.json().catch(() => []);
   const missionCheck = Array.isArray(checkData) && checkData[0];
-  if (!missionCheck) return res.status(404).json({ error: "Mission introuvable" });
+  if (!missionCheck) return res.status(404).json({ error: "Prestation introuvable" });
   if (!missionCheck.stripe_payment_intent) {
-    return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette mission" });
+    return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette prestation" });
   }
   if (missionCheck.stripe_payment_intent !== paymentIntentId) {
-    return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette mission" });
+    return res.status(400).json({ error: "paymentIntentId ne correspond pas à cette prestation" });
   }
 
   // Fetch stripe_transfer_id before refunding so we can reverse the payout to the prestataire

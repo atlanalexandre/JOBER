@@ -110,15 +110,15 @@ export default async function handler(req, res) {
   const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
-  if (!mission) return res.status(404).json({ error: "Mission introuvable" });
-  if (mission.client_id !== callerPi.id) return res.status(403).json({ error: "Accès interdit — vous n'êtes pas le client de cette mission" });
+  if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+  if (mission.client_id !== callerPi.id) return res.status(403).json({ error: "Accès interdit — vous n'êtes pas le client de cette prestation" });
   if (!["open", "pending_acceptance"].includes(mission.status)) {
-    return res.status(400).json({ error: "Un paiement ne peut être créé que pour une mission ouverte ou en attente d'attribution" });
+    return res.status(400).json({ error: "Un paiement ne peut être créé que pour une prestation ouverte ou en attente d'attribution" });
   }
   const computed = mission.montant_total
     ? Number(mission.montant_total)
     : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
-  if (!computed || computed <= 0) return res.status(400).json({ error: "Montant de la mission invalide ou non défini" });
+  if (!computed || computed <= 0) return res.status(400).json({ error: "Montant de la prestation invalide ou non défini" });
   const amount = computed;
   const missionMetaId = intentMissionId;
 

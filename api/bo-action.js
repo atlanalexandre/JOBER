@@ -253,7 +253,7 @@ export default async function handler(req, res) {
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               ${connectOnboardingUrl ? `
-              <p style="margin-top:20px;">Pour recevoir vos paiements automatiquement après chaque mission validée, configurez votre compte de virement en 2 minutes :</p>
+              <p style="margin-top:20px;">Pour recevoir vos paiements automatiquement après chaque prestation validée, configurez votre compte de virement en 2 minutes :</p>
               <p style="text-align:center;margin:24px 0;"><a href='${connectOnboardingUrl}' style="background:#10D98F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Configurer mes virements →</a></p>
               <p style="color:#888;font-size:13px;margin-bottom:20px;">Ce lien est valable 24h. Il vous suffit de renseigner votre IBAN et signer les conditions générales Stripe (2 min). Sans cette étape, vos paiements ne pourront pas être versés automatiquement.</p>
               ` : ""}
@@ -389,7 +389,7 @@ export default async function handler(req, res) {
                   user_id: affectedClient,
                   type: "system",
                   title: "Prestation annulée — remboursement en cours",
-                  body: `La mission "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
+                  body: `La prestation "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
                   read: false,
                 }),
               }).catch(() => {});
@@ -659,8 +659,8 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,stripe_payment_intent,montant_total`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
-      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
 
       // Pour resolution="refunded" : déclencher le remboursement Stripe réel avant de fermer
       if (resolution === "refunded" && m.stripe_payment_intent) {
@@ -681,10 +681,10 @@ export default async function handler(req, res) {
             console.error("[resolve_dispute] Stripe refund failed:", JSON.stringify(rfData));
             return res.status(500).json({ error: `Remboursement Stripe échoué : ${rfData?.error?.message || "erreur inconnue"}` });
           }
-          console.log(`[resolve_dispute] Stripe refund OK: ${rfData.id} pour mission ${mission_id}`);
+          console.log(`[resolve_dispute] Stripe refund OK: ${rfData.id} pour prestation ${mission_id}`);
         } catch (e) {
           console.error("[resolve_dispute] Stripe refund exception:", e.message);
-          return res.status(500).json({ error: "Erreur lors du remboursement Stripe — mission non fermée" });
+          return res.status(500).json({ error: "Erreur lors du remboursement Stripe — prestation non fermée" });
         }
       }
 
@@ -1024,8 +1024,8 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,tarif_horaire,metier,sector,recurrence,date,heure_debut,ville`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
-      if (!["assigned","pending_acceptance"].includes(m.status)) return res.status(400).json({ error: `Statut ${m.status} — seules les missions assigned/pending_acceptance peuvent être validées` });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (!["assigned","pending_acceptance"].includes(m.status)) return res.status(400).json({ error: `Statut ${m.status} — seules les prestations assigned/pending_acceptance peuvent être validées` });
       const montantTotal = Math.round((m.hours||0) * (m.tarif_horaire||0) * 100) / 100;
       // PATCH atomique — garde le guard status=eq.assigned pour éviter double-crédit
       const patchStatus = m.status === "pending_acceptance" ? "pending_acceptance" : "assigned";
@@ -1035,7 +1035,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_prestataire: true, validation_client: true }),
       });
       const patched = await patchRes.json().catch(() => []);
-      if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Mission déjà validée ou statut changé" });
+      if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Prestation déjà validée ou statut changé" });
       // Cashback client
       let CASHBACK_TIERS = [{ min:0,max:2,rate:0.005 },{ min:3,max:5,rate:0.0075 },{ min:6,max:9,rate:0.01 },{ min:10,max:999,rate:0.015 }];
       try { const cbR = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`,{headers}); const cbD = await cbR.json(); if(Array.isArray(cbD)&&Array.isArray(cbD[0]?.value)) CASHBACK_TIERS=cbD[0].value; } catch {}
@@ -1049,10 +1049,10 @@ export default async function handler(req, res) {
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement est en cours.`, read:false }) }).catch(()=>{});
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement est en cours.`, read:false }) }).catch(()=>{});
       }
       // Notification client
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Mission validée ✅", body:`Votre mission "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
       // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
       if (m.prestataire_id) {
         const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
@@ -1075,8 +1075,8 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
-      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
 
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
@@ -1103,8 +1103,8 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const missions = await mr.json();
       const m = Array.isArray(missions) && missions[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
-      if (m.status !== "disputed") return res.status(400).json({ error: "La mission n'est pas en litige" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
 
       // Remboursement Stripe si un PaymentIntent existe
       if (m.stripe_payment_intent) {
@@ -1140,7 +1140,7 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (m.stripe_payment_intent) {
         const stripeRes = await fetch("https://api.stripe.com/v1/refunds", {
           method: "POST",
@@ -1167,7 +1167,7 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (refund && m.stripe_payment_intent) {
         const stripeRes = await fetch("https://api.stripe.com/v1/refunds", { method:"POST", headers:{"Authorization":`Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`,"Content-Type":"application/x-www-form-urlencoded"}, body:`payment_intent=${m.stripe_payment_intent}` });
         if (!stripeRes.ok) { const err = await stripeRes.json().catch(()=>({})); return res.status(500).json({ error: err?.error?.message || "Erreur Stripe" }); }
@@ -1188,7 +1188,7 @@ export default async function handler(req, res) {
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,client_id`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
-      if (!m) return res.status(404).json({ error: "Mission introuvable" });
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       // Trouver le nouveau prestataire par email
       const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
       const authData = await authRes.json();

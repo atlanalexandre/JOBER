@@ -104,7 +104,7 @@ export default async function handler(req, res) {
                 user_id: z.client_id,
                 type: "mission",
                 title: "Prestataire non disponible",
-                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre mission"}". Elle est remise en recherche — vous pouvez la re-diffuser depuis votre espace.`,
+                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}". Elle est remise en recherche — vous pouvez la re-diffuser depuis votre espace.`,
                 read: false,
               }),
             }).catch(() => {});
@@ -166,12 +166,12 @@ export default async function handler(req, res) {
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
 <tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:28px;text-align:center;">
 <div style="font-size:40px;margin-bottom:10px;">⏰</div>
-<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Rappel : mission demain !</h1>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Rappel : prestation demain !</h1>
 <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0;">${missionInfo}</p>
 </td></tr>
 <tr><td style="padding:28px;">
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(toName)}</strong>,</p>
-<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre mission est prévue <strong style="color:#F0B429;">demain</strong>. Voici un rappel des détails :</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestation est prévue <strong style="color:#F0B429;">demain</strong>. Voici un rappel des détails :</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#162547;border-radius:12px;padding:16px 20px;border:1px solid rgba(124,111,224,0.2);">
 ${[
   ["💼 Poste", m.metier||"—"],
@@ -191,7 +191,7 @@ ${(() => {
   const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
   const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
   const titleEnc = encodeURIComponent(`Mission ALANE — ${m.metier||"Mission"}`);
-  const descEnc  = encodeURIComponent(`Mission via ALANE. Voir détails : ${appUrl}`);
+  const descEnc  = encodeURIComponent(`Prestation via ALANE. Voir détails : ${appUrl}`);
   const heureDebut = m.heure_debut || "08:00";
   const [hd, md2] = heureDebut.split(":").map(Number);
   const endMin = hd * 60 + md2 + Math.round(Number(m.hours) * 60);
@@ -206,7 +206,7 @@ ${(() => {
 <a href="${icsUrl}" style="display:inline-block;background:#555;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">🗓 Apple / Outlook</a>
 </div>`;
 })()}
-<div style="text-align:center;margin-top:16px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma mission →</a></div>
+<div style="text-align:center;margin-top:16px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma prestation →</a></div>
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
@@ -216,18 +216,18 @@ ${(() => {
             fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(clientName, "client") }),
+              body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `⏰ Rappel prestation demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(clientName, "client") }),
             }).catch(()=>{})
           );
           if (prestaEmail) sends.push(
             fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel mission demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
+              body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `⏰ Rappel prestation demain — ${m.metier||"Mission"} · ALANE`, html: emailBody(prestaName, "prestataire") }),
             }).catch(()=>{})
           );
           if (smsEnabled) {
-            const smsBody = `⏰ ALANE - Rappel : votre mission ${m.metier||"Mission"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne mission ! — alane.fr`;
+            const smsBody = `⏰ ALANE - Rappel : votre prestation ${m.metier||"Prestation"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne prestation ! — alane.fr`;
             const clientPhone = userMap[m.client_id]?.meta?.telephone;
             const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
             if (clientPhone) sends.push(sendSms(BREVO_API_KEY, clientPhone, smsBody));
@@ -277,14 +277,14 @@ ${(() => {
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
 <tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:28px;text-align:center;">
 <div style="font-size:40px;margin-bottom:10px;">📋</div>
-<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Confirmez la fin de votre mission</h1>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Confirmez la fin de votre prestation</h1>
 <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0;">${missionLabel}</p>
 </td></tr>
 <tr><td style="padding:28px;">
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(prestaName)}</strong>,</p>
-<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre mission du <strong style="color:#A29BFE;">${m.date}</strong> est terminée mais vous n'avez pas encore confirmé la fin de prestation depuis votre espace.<br/><br/>Cette confirmation est <strong style="color:#fff;">indispensable pour déclencher votre paiement</strong>.</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestation du <strong style="color:#A29BFE;">${m.date}</strong> est terminée mais vous n'avez pas encore confirmé la fin de prestation depuis votre espace.<br/><br/>Cette confirmation est <strong style="color:#fff;">indispensable pour déclencher votre paiement</strong>.</p>
 <div style="text-align:center;margin-top:20px;">
-<a href="${appUrl}" style="display:inline-block;background:#7C6FE0;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Confirmer ma mission →</a>
+<a href="${appUrl}" style="display:inline-block;background:#7C6FE0;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Confirmer ma prestation →</a>
 </div>
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
@@ -297,14 +297,14 @@ ${(() => {
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#0D1B3E;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
 <tr><td style="background:linear-gradient(135deg,#F0B429,#E09B10);padding:28px;text-align:center;">
 <div style="font-size:40px;margin-bottom:10px;">✅</div>
-<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Validez votre mission</h1>
+<h1 style="color:#fff;font-size:20px;font-weight:800;margin:0 0 6px;">Validez votre prestation</h1>
 <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0;">${missionLabel}</p>
 </td></tr>
 <tr><td style="padding:28px;">
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(clientName)}</strong>,</p>
-<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestataire a confirmé la fin de la mission du <strong style="color:#F0B429;">${m.date}</strong>. Il ne vous reste plus qu'à valider depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
+<p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestataire a confirmé la fin de la prestation du <strong style="color:#F0B429;">${m.date}</strong>. Il ne vous reste plus qu'à valider depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
 <div style="text-align:center;margin-top:20px;">
-<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider la mission →</a>
+<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider la prestation →</a>
 </div>
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
@@ -313,13 +313,13 @@ ${(() => {
             const vSends = [];
             // Relance prestataire seulement s'il n'a pas encore confirmé
             if (!m.validation_prestataire && prestaEmail)
-              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`📋 Confirmez la fin de votre mission du ${m.date} — ALANE`, html: prestaHtml }) }).catch(()=>{}));
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail], subject:`📋 Confirmez la fin de votre prestation du ${m.date} — ALANE`, html: prestaHtml }) }).catch(()=>{}));
             // Relance client seulement si prestataire a confirmé mais client n'a pas encore validé
             if (m.validation_prestataire && !m.validation_client && clientEmail)
-              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre mission du ${m.date} — ALANE`, html: clientHtml }) }).catch(()=>{}));
+              vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre prestation du ${m.date} — ALANE`, html: clientHtml }) }).catch(()=>{}));
             if (smsEnabled) {
-              const smsPresta  = `📋 ALANE - Confirmez la fin de votre mission ${m.metier||"Mission"} du ${m.date} pour recevoir votre paiement. — alane.fr`;
-              const smsCashback = `✅ ALANE - Votre prestataire a confirmé la mission du ${m.date}. Validez-la pour obtenir votre cashback. — alane.fr`;
+              const smsPresta  = `📋 ALANE - Confirmez la fin de votre prestation ${m.metier||"Prestation"} du ${m.date} pour recevoir votre paiement. — alane.fr`;
+              const smsCashback = `✅ ALANE - Votre prestataire a confirmé la prestation du ${m.date}. Validez-la pour obtenir votre cashback. — alane.fr`;
               const clientPhone = userMap[m.client_id]?.meta?.telephone;
               const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
               if (!m.validation_prestataire && prestaPhone) vSends.push(sendSms(BREVO_API_KEY, prestaPhone, smsPresta));
@@ -389,7 +389,7 @@ ${(() => {
               const hours = m.actual_hours ?? m.hours ?? 0;
               const tarif = m.tarif_horaire || 0;
               const montantTotal = Math.round(hours * tarif * 100) / 100;
-              const mLabel = esc(m.metier || m.sector || "Mission");
+              const mLabel = esc(m.metier || m.sector || "Prestation");
               const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
@@ -420,12 +420,12 @@ ${(() => {
                 // Notification client
                 fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Mission validée automatiquement ✅", body: `Votre mission "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${cashbackEarned.toFixed(2)} €` : ""}`, read: false }),
+                  body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${mLabel}" a été validée automatiquement (délai 24h dépassé).${cashbackEarned > 0 ? ` Cashback crédité : +${cashbackEarned.toFixed(2)} €` : ""}`, read: false }),
                 }).catch(()=>{}),
                 // Notification prestataire
                 m.prestataire_id && fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Mission validée ✅", body: `Votre mission "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
+                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
                 }).catch(()=>{}),
                 // Email prestataire — réutilise userMap déjà chargé
                 (async () => {
@@ -436,7 +436,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `Mission validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Mission validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre mission <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: JSON.stringify({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
                 // Email client — confirmation auto-validation
@@ -448,7 +448,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `Mission validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Mission validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre mission <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${cashbackEarned.toFixed(2)} €</strong> a été crédité sur votre wallet.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: JSON.stringify({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${cashbackEarned.toFixed(2)} €</strong> a été crédité sur votre wallet.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
               ]);
@@ -480,7 +480,7 @@ ${(() => {
           });
           for (const m of ended) {
             try {
-              const mLabel = esc(m.metier || m.sector || "Mission");
+              const mLabel = esc(m.metier || m.sector || "Prestation");
               const appUrl2 = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
               const prestaEmail2 = userMap[m.prestataire_id]?.email;
               const clientEmail2 = userMap[m.client_id]?.email;
@@ -491,16 +491,16 @@ ${(() => {
               if (m.prestataire_id)
                 sends2.push(fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Confirmez la fin de votre mission ✅", body: `Votre mission "${mLabel}" est terminée. Confirmez depuis votre espace pour déclencher votre paiement.`, read: false }),
+                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Confirmez la fin de votre prestation ✅", body: `Votre prestation "${mLabel}" est terminée. Confirmez depuis votre espace pour déclencher votre paiement.`, read: false }),
                 }).catch(() => {}));
               if (RESEND_API_KEY && prestaEmail2)
-                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Mission terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Mission terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre mission <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[prestaEmail2], subject:`🎉 Prestation terminée — confirmez pour être payé(e) · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#10D98F">Prestation terminée !</h2><p>Bonjour ${esc(prestaName2)},</p><p>Votre prestation <strong>${mLabel}</strong> vient de se terminer. <strong>Confirmez la fin</strong> depuis votre espace ALANE pour déclencher votre paiement.</p><a href="${appUrl2}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Confirmer ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
               if (smsEnabled && m.prestataire_id) {
                 const prestaPhone2 = userMap[m.prestataire_id]?.meta?.telephone;
-                if (prestaPhone2) sends2.push(sendSms(BREVO_API_KEY, prestaPhone2, `✅ ALANE - Votre mission ${mLabel} est terminée. Confirmez depuis l'app pour recevoir votre paiement. — alane.fr`));
+                if (prestaPhone2) sends2.push(sendSms(BREVO_API_KEY, prestaPhone2, `✅ ALANE - Votre prestation ${mLabel} est terminée. Confirmez depuis l'app pour recevoir votre paiement. — alane.fr`));
               }
               if (RESEND_API_KEY && clientEmail2)
-                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Mission terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Mission terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La mission <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma mission →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
+                sends2.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail2], subject:`✅ Prestation terminée — validation en attente · ALANE`, html:`<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429">Prestation terminée</h2><p>Bonjour ${esc(clientName2)},</p><p>La prestation <strong>${mLabel}</strong> vient de se terminer. Votre prestataire va confirmer la fin depuis son espace. Vous serez notifié(e) pour valider.</p><a href="${appUrl2}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:16px">Suivre ma prestation →</a><p style="margin-top:24px;color:rgba(255,255,255,0.4);font-size:11px">L'équipe ALANE · <a href="${appUrl2}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }) }).catch(()=>{}));
               await Promise.all(sends2);
               endNotifSent += sends2.length;
               await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
@@ -540,7 +540,7 @@ ${(() => {
             body: JSON.stringify({
               user_id: zm.client_id, type: "mission",
               title: "Prestataire non disponible ⏱️",
-              body: `Le prestataire n'a pas répondu à temps pour la mission "${zm.titre || zm.metier || ""}". Elle est de nouveau disponible.`,
+              body: `Le prestataire n'a pas répondu à temps pour la prestation "${zm.titre || zm.metier || ""}". Elle est de nouveau disponible.`,
               read: false,
             }),
           }).catch(() => {});
@@ -579,8 +579,8 @@ ${(() => {
               body: JSON.stringify({
                 user_id: m.client_id,
                 type: "mission",
-                title: "Mission clôturée automatiquement",
-                body: `Votre mission "${m.titre || m.metier || "mission"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
+                title: "Prestation clôturée automatiquement",
+                body: `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
                 read: false,
               }),
             }).catch(() => {});
@@ -641,7 +641,7 @@ ${(() => {
       }
     } catch (e) { console.error("cron downgrade error:", e); }
 
-    console.log(`cron-reset-monthly: missions reset, ${downgrades} abonnements expirés downgradés`);
+    console.log(`cron-reset-monthly: prestations reset, ${downgrades} abonnements expirés downgradés`);
     return res.status(200).json({ success: true, downgrades });
   } catch (e) {
     console.error("cron-reset-monthly:", e);

@@ -680,7 +680,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             {[
               { title:"1. Objet", text:"Les présentes CGPS régissent les relations entre ALANE (la plateforme), les clients et les prestataires auto-entrepreneurs inscrits. ALANE agit en tant qu'intermédiaire de mise en relation et ne prend pas part à l'exécution des prestations." },
               { title:"2. Statut prestataire & indépendance", text:"Vous intervenez en qualité d'auto-entrepreneur indépendant (art. L8221-6 Code du travail). Aucun lien de subordination n'existe entre ALANE et vous. ALANE agit exclusivement comme intermédiaire de mise en relation et n'est pas une entreprise de mise à disposition de personnel au sens de l'art. L8241-1 CT. Pour préserver votre statut d'indépendant, il est fortement recommandé de ne pas réaliser plus de 75 % de votre chiffre d'affaires via ALANE (principe de multi-clientèle). Vous êtes seul responsable du respect de vos obligations légales, fiscales et sociales." },
-              { title:"3. Prestations", text:"Les prestations sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client. Vous êtes libre de postuler ou non à chaque Mission, et de refuser toute Mission sans avoir à vous justifier et sans pénalité." },
+              { title:"3. Prestations", text:"Les prestations sont proposées par les clients via la plateforme. Vous postulez librement et acceptez les conditions définies par le client. Le contrat de prestation est conclu directement entre vous et le client. Vous êtes libre de postuler ou non à chaque Prestation, et de refuser toute Prestation sans avoir à vous justifier et sans pénalité." },
               { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. ALANE ne détient pas les fonds — ils sont directement réglés entre les parties selon les conditions convenues. ALANE prélève une commission de mise en relation selon les conditions de votre abonnement." },
               { title:"5. Annulations", text:"En cas d'annulation, les frais de service engagés restent dus. Aucune retenue n'est appliquée sur le montant de la prestation. En cas de litige, ALANE propose une médiation." },
               { title:"6. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'exécution des prestations, des retards, ou de tout différend entre client et prestataire. Vous êtes couvert par votre propre assurance RC Pro (obligatoire)." },
@@ -933,7 +933,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Fréquence de vos besoins *</label>
           <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
             {[
-              { id:"ponctuel",  label:"Ponctuel",           desc:"Missions occasionnelles selon les besoins",  icon:"⏱" },
+              { id:"ponctuel",  label:"Ponctuel",           desc:"Prestations occasionnelles selon les besoins",  icon:"⏱" },
               { id:"regulier",  label:"Régulier",           desc:"Besoin récurrent chaque semaine ou mois",    icon:"📅" },
               { id:"les-deux",  label:"Ponctuel & Régulier",desc:"Mix de prestations récurrentes et ponctuelles", icon:"🔄" },
             ].map(f => (

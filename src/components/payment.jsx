@@ -189,7 +189,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
           Vous recevrez un email vous proposant de :
           <ul style={{ margin:"6px 0 0", paddingLeft:18, display:"flex", flexDirection:"column", gap:3 }}>
             <li><strong style={{ color:C.text }}>Choisir un autre prestataire</strong> disponible pour le même métier</li>
-            <li><strong style={{ color:C.text }}>Diffuser la mission</strong> à l'ensemble des prestataires {p.jobTitle||p.role ? `(${p.jobTitle||p.role})` : "du même métier"} — le premier à accepter prend la prestation</li>
+            <li><strong style={{ color:C.text }}>Diffuser la prestation</strong> à l'ensemble des prestataires {p.jobTitle||p.role ? `(${p.jobTitle||p.role})` : "du même métier"} — le premier à accepter prend la prestation</li>
           </ul>
         </div>
 
@@ -243,7 +243,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
           <strong style={{ color:C.text }}>{p.name}</strong> a décliné la mission. Votre paiement est intégralement remboursé.
         </p>
         <div style={{ background:C.accentGold+"10", border:"1px solid "+C.accentGold+"30", borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:13, color:C.textSub, lineHeight:1.6 }}>
-          💡 Pas de panique — il y a <strong style={{ color:C.text }}>d'autres prestataires disponibles</strong> dans ce secteur. Choisissez-en un autre pour votre mission.
+          💡 Pas de panique — il y a <strong style={{ color:C.text }}>d'autres prestataires disponibles</strong> dans ce secteur. Choisissez-en un autre pour votre prestation.
         </div>
         {(()=>{
           const alts = allProviders.filter(ap => ap.sector === p.sector && ap.id !== p.id && ap.available).slice(0,3);
@@ -456,7 +456,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         try {
           const { data: { session: apSess } } = await supabase.auth.getSession();
           const apToken = apSess?.access_token;
-          if (!missionId) { ev.complete("fail"); setStripeError("Identifiant de mission manquant. Veuillez fermer et rouvrir le paiement."); setProcessing(false); return; }
+          if (!missionId) { ev.complete("fail"); setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); setProcessing(false); return; }
           const r = await fetch("/api/stripe-intent", {
             method: "POST",
             headers: { "Content-Type": "application/json", ...(apToken ? { "Authorization": `Bearer ${apToken}` } : {}) },
@@ -508,7 +508,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 
   const handlePayFromWallet = async () => {
     if (walletProcessing) return;
-    if (!missionId) { setStripeError("Identifiant de mission manquant. Veuillez fermer et rouvrir le paiement."); return; }
+    if (!missionId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
     setWalletProcessing(true);
     setStripeError(null);
     try {
@@ -547,7 +547,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     setProcessing(true);
     try {
       const { data: { session: piSession } } = await supabase.auth.getSession();
-      if (!missionId) throw new Error("Identifiant de mission manquant. Veuillez fermer et rouvrir le paiement.");
+      if (!missionId) throw new Error("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement.");
       const r = await fetch("/api/stripe-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
@@ -574,7 +574,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la mission.
       </p>
       <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 18px", marginBottom:24, fontSize:13, color:"rgba(255,255,255,0.85)" }}>
-        ⏳ Mission en cours d'activation — vous serez notifié(e) dès la confirmation.
+        ⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation.
       </div>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", width:"100%", maxWidth:300, marginBottom:24, textAlign:"left" }}>
         {[
@@ -643,7 +643,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                 <span style={{ fontSize:20 }}>💰</span>
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Payer depuis mon wallet</div>
-                  <div style={{ color:"#10D98F", fontSize:11, fontWeight:600 }}>✅ 0 frais Stripe fixes sur cette mission</div>
+                  <div style={{ color:"#10D98F", fontSize:11, fontWeight:600 }}>✅ 0 frais Stripe fixes sur cette prestation</div>
                 </div>
               </div>
               <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useWallet?C.violet:C.border}`, background:useWallet?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -820,8 +820,8 @@ export function WalletTopupModal({ onClose, onSuccess }) {
   // Savings message: one Stripe fixed fee (0,25€) per top-up vs per mission
   // For N missions from one top-up: savings = (N-1) × 0,25€
   const savingsHint = amount >= 50
-    ? `Avec ${amount} €, couvrez plusieurs missions et ne payez les 0,25 € de frais fixes Stripe qu'une seule fois — au lieu d'une fois par prestation.`
-    : "Chaque recharge = un seul paiement Stripe, quelle que soit la quantité de missions financées.";
+    ? `Avec ${amount} €, couvrez plusieurs prestations et ne payez les 0,25 € de frais fixes Stripe qu'une seule fois — au lieu d'une fois par prestation.`
+    : "Chaque recharge = un seul paiement Stripe, quelle que soit la quantité de prestations financées.";
 
   // Load saved card from user_metadata on mount
   useEffect(() => {
@@ -918,7 +918,7 @@ export function WalletTopupModal({ onClose, onSuccess }) {
             <h4 style={{ color:"#10D98F", fontWeight:800, fontSize:20, margin:"0 0 10px" }}>Wallet rechargé !</h4>
             <p style={{ color:"rgba(255,255,255,0.7)", fontSize:14, lineHeight:1.6, margin:"0 0 24px" }}>
               <strong style={{ color:"#fff" }}>{amount} €</strong> ont été ajoutés à votre wallet ALANE.<br/>
-              Vous pouvez maintenant payer vos prochaines missions sans frais supplémentaires.
+              Vous pouvez maintenant payer vos prochaines prestations sans frais supplémentaires.
             </p>
             <button onClick={onClose} style={{ background:C.violet, border:"none", borderRadius:12, padding:"14px 28px", color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>Fermer</button>
           </div>
@@ -1273,7 +1273,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
       <div style={{ fontSize:72, marginBottom:20 }}>{chosen ? "🔄" : "💶"}</div>
       <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 12px" }}>{chosen ? "Remplaçant confirmé !" : "Remboursement initié"}</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 28px" }}>
-        {chosen ? `${chosen.name} prendra en charge votre mission.` : "Vous serez remboursé sous 3-5 jours ouvrés."}
+        {chosen ? `${chosen.name} prendra en charge votre prestation.` : "Vous serez remboursé sous 3-5 jours ouvrés."}
       </p>
       <Btn full variant="secondary" onClick={()=>onNavigate("home")} style={{ color:C.success }}>Retour à l'accueil</Btn>
       <button onClick={()=>onNavigate("rating",p)} style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:12, padding:"11px 24px", color:"rgba(255,255,255,0.9)", cursor:"pointer", marginTop:10, fontSize:13, fontFamily:"inherit", width:"100%", fontWeight:600 }}>⭐ Noter {p.name}</button>

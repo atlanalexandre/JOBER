@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     }
   );
   if (!missionRes.ok) {
-    return res.status(500).send("<h1>Erreur lors de la récupération de la mission</h1>");
+    return res.status(500).send("<h1>Erreur lors de la récupération de la prestation</h1>");
   }
   const missions = await missionRes.json();
   const mission = missions[0];
@@ -492,7 +492,7 @@ export default async function handler(req, res) {
       <div class="payment-badge">
         <div class="payment-badge-icon">✅</div>
         <div>
-          <div class="payment-badge-title">Mission validée — Paiement reçu</div>
+          <div class="payment-badge-title">Prestation validée — Paiement reçu</div>
           <div class="payment-badge-sub">Paiement sécurisé via Stripe · Plateforme ALANE</div>
         </div>
       </div>

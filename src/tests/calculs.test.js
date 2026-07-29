@@ -108,7 +108,7 @@ describe("Calcul montant total mission", () => {
   const calculMontant = (tarifHoraire, heures, nbJours = 1) =>
     tarifHoraire * heures * nbJours;
 
-  it("mission simple 8h à 14€/h = 112€", () => {
+  it("prestation simple 8h à 14€/h = 112€", () => {
     expect(calculMontant(14, 8)).toBe(112);
   });
   it("mission 3 jours × 8h × 12€ = 288€", () => {

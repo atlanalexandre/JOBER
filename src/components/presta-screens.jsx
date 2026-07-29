@@ -1665,7 +1665,7 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
     <div onClick={() => onNavigate("abonnement_presta")} style={{ background:`linear-gradient(135deg,${C.violet}20,${C.accentGold}15)`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"13px 16px", marginBottom:14, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
       <div>
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Missions illimitées · Badge vérifié · Urgences</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Prestations illimitées · Badge vérifié · Urgences</div>
       </div>
       <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
     </div>
@@ -2054,7 +2054,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </div>
             <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
               {[
-                ["Mission",   validatedSummary.metier || validatedSummary.sector || "—"],
+                ["Prestation",   validatedSummary.metier || validatedSummary.sector || "—"],
                 ["Date",      validatedSummary.date || (validatedSummary.date_debut ? `${validatedSummary.date_debut} → ${validatedSummary.date_fin||""}` : "—")],
                 ["Durée",     validatedSummary.actual_hours != null ? `${validatedSummary.actual_hours}h (réelles)` : validatedSummary.hours ? `${validatedSummary.hours}h` : "—"],
                 ["Tarif",     validatedSummary.tarif_horaire ? `${validatedSummary.tarif_horaire} €/h` : "—"],
@@ -2407,7 +2407,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                 )}
                 <div style={{ display:"flex", gap:8, flexDirection:"column" }}>
-                  {/* Bouton "Je suis là" — visible si mission démarrée, pas encore validée, pas encore checké */}
+                  {/* Bouton "Je suis là" — visible si prestation démarrée, pas encore validée, pas encore checké */}
                   {isStarted && !isPast && !m.arrived_at && (
                     <button onClick={async () => {
                       const { data:{ session } } = await supabase.auth.getSession();
@@ -2461,7 +2461,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
                   </button>
                   <button onClick={async()=>{
-                    if(!await showConfirm("Annuler cette mission ?")) return;
+                    if(!await showConfirm("Annuler cette prestation ?")) return;
                     const { data:{ session } } = await supabase.auth.getSession();
                     // La mission n'est retirée de la liste que si le serveur a
                     // réellement annulé. Elle disparaissait auparavant quoi qu'il
@@ -2474,7 +2474,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       else showToast(j.error || "Annulation refusée — la prestation reste à votre charge.");
                     } catch { showToast("Annulation impossible — vérifiez votre connexion."); }
                   }} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    ✕ Annuler la mission
+                    ✕ Annuler la prestation
                   </button>
                 </div>
               </div>
@@ -2850,7 +2850,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   {sector?.icon || "✅"}
                 </div>
                 <div style={{ textAlign:"left" }}>
-                  <h2 style={{ color:"#10D98F", fontSize:18, fontWeight:900, margin:"0 0 2px", fontFamily:"inherit" }}>Mission validée ! 🎉</h2>
+                  <h2 style={{ color:"#10D98F", fontSize:18, fontWeight:900, margin:"0 0 2px", fontFamily:"inherit" }}>Prestation validée ! 🎉</h2>
                   <p style={{ color:C.textSub, fontSize:12, margin:0 }}>{recapCard.metier || sector?.label || "Prestation"} · {dateLabel}</p>
                 </div>
               </div>

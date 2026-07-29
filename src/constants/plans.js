@@ -5,14 +5,14 @@ export const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 
 export const ABONNEMENTS_PRESTA = [
   { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
-    features:["2 missions/mois","Profil visible par les clients"],
-    locked:["10 missions/mois","Badge ✓ Certifié — les clients te font davantage confiance","Missions urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
-    note:"🎁 Offre de lancement : 10 missions/mois offertes aux 100 premiers inscrits." },
+    features:["2 prestations/mois","Profil visible par les clients"],
+    locked:["10 prestations/mois","Badge ✓ Certifié — les clients te font davantage confiance","Prestations urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
+    note:"🎁 Offre de lancement : 10 prestations/mois offertes aux 100 premiers inscrits." },
   { id:"premium", label:"Premium", price:29.99, color:"#7C6FE0", icon:"💎", missions:10, popular:true,
-    features:["10 missions/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Missions urgentes (tarif majoré de 30%)"],
+    features:["10 prestations/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients","Prestations urgentes (tarif majoré de 30%)"],
     locked:["Badge 👑 Elite et position #1 garantie dans les résultats"] },
   { id:"elite",   label:"Elite",   price:79.99, color:"#F0B429", icon:"👑", missions:999, popular:false,
-    features:["Missions illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats","Missions urgentes (tarif majoré de 30%)","Position #1 dans les recherches (attribuée selon note moyenne et avis)"],
+    features:["Prestations illimitées","Badge 👑 Elite — ton profil apparaît en tête des résultats","Prestations urgentes (tarif majoré de 30%)","Position #1 dans les recherches (attribuée selon note moyenne et avis)"],
     locked:[],
     note:"La position #1 est attribuée parmi les membres Elite selon la note moyenne et les avis clients." },
 ];

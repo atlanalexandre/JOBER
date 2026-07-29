@@ -633,7 +633,7 @@ function ClientNav({ active, onNavigate, unreadCount }) {
 function PrestaNav({ active, onNavigate, unreadCount }) {
   const tabs = [
     {id:"p_home",          icon:"🏠", label:"Accueil"   },
-    {id:"p_missions",      icon:"📋", label:"Missions"  },
+    {id:"p_missions",      icon:"📋", label:"Prestations"  },
     {id:"abonnement_presta",icon:"💎", label:"Abonnement"},
     {id:"p_dashboard",     icon:"👤", label:"Profil"    },
     {id:"settings",        icon:"⚙️", label:"Réglages"  },
@@ -893,7 +893,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             {[
               { icon:"✅", text:"Prestataires vérifiés et approuvés" },
               { icon:"🔒", text:"Paiement sécurisé via Stripe" },
-              { icon:"⭐", text:"Notes et avis après chaque mission" },
+              { icon:"⭐", text:"Notes et avis après chaque prestation" },
               { icon:<AlaneIcon size={15}/>, text:"Tarif transparent — prix affiché = prix réel" },
             ].map((v,i) => (
               <div key={i} style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>

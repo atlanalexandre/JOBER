@@ -95,16 +95,16 @@ export default async function handler(req, res) {
     );
     const mData = await mRes.json().catch(() => []);
     const mission = Array.isArray(mData) && mData[0];
-    if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+    if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
     if (mission.client_id !== caller.id) return res.status(403).json({ error: "Accès interdit" });
     if (!["open", "pending_acceptance"].includes(mission.status)) {
-      return res.status(400).json({ error: "La mission n'est pas dans un état permettant le paiement" });
+      return res.status(400).json({ error: "La prestation n'est pas dans un état permettant le paiement" });
     }
 
     const amount = mission.montant_total
       ? Number(mission.montant_total)
       : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
-    if (!amount || amount <= 0) return res.status(400).json({ error: "Montant de la mission invalide" });
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Montant de la prestation invalide" });
 
     // 2. Fetch current balance
     const profRes = await fetch(
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
         headers: { ...hdrs, "Prefer": "return=minimal" },
         body:    JSON.stringify({ prepaid_balance: currentBalance }),
       }).catch(() => {});
-      return res.status(400).json({ error: "Mission déjà traitée ou état invalide" });
+      return res.status(400).json({ error: "Prestation déjà traitée ou état invalide" });
     }
 
     // 5. Candidature + notification (secondary — non-blocking)
@@ -168,7 +168,7 @@ export default async function handler(req, res) {
           user_id: mission.prestataire_id,
           type:    "mission",
           title:   "Candidature acceptée ✅",
-          body:    "Votre candidature a été acceptée. Préparez-vous pour la mission !",
+          body:    "Votre candidature a été acceptée. Préparez-vous pour la prestation !",
           read:    false,
         }),
       }).catch(() => {});

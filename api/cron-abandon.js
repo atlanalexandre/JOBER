@@ -141,7 +141,7 @@ export default async function handler(req, res) {
       const subs = psRes.ok ? await psRes.json().catch(() => []) : [];
       if (Array.isArray(subs) && subs.length > 0) {
         const pushBody = presta
-          ? `${presta} est toujours disponible — finalisez votre mission en quelques secondes.`
+          ? `${presta} est toujours disponible — finalisez votre prestation en quelques secondes.`
           : "Votre demande n'a pas été finalisée — reprenez où vous en étiez.";
         await Promise.all(subs.map(s => sendWebPush(s, {
           title: "Vous n'avez pas finalisé votre réservation 🔔",
@@ -166,7 +166,7 @@ export default async function handler(req, res) {
             : "Vous n'avez pas finalisé votre réservation";
           const detailRows = [
             presta  ? `<tr><td style="padding:6px 0;color:#666;width:120px">Prestataire</td><td style="font-weight:700">${presta}</td></tr>` : "",
-            metier  ? `<tr><td style="padding:6px 0;color:#666">Mission</td><td style="font-weight:700">${metier}</td></tr>` : "",
+            metier  ? `<tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-weight:700">${metier}</td></tr>` : "",
             draft.date  ? `<tr><td style="padding:6px 0;color:#666">Date</td><td>${esc(draft.date)}</td></tr>` : "",
             draft.ville ? `<tr><td style="padding:6px 0;color:#666">Lieu</td><td>${esc(draft.ville)}</td></tr>` : "",
             draft.montant ? `<tr><td style="padding:6px 0;color:#666">Montant</td><td style="font-weight:700;color:#7C6FE0">${Number(draft.montant).toFixed(2).replace(".",",")} €</td></tr>` : "",
