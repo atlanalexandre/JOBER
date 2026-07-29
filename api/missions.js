@@ -1353,6 +1353,52 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Affectation d'un prestataire à une prestation dont le paiement vient d'aboutir.
+    // Le front faisait ce PATCH lui-même : c'est précisément ce qu'interdit le
+    // trigger prevent_missions_field_tampering (audit B-01), d'où l'échec
+    // « Erreur lors de l'affectation de la prestation » alors que le paiement
+    // était encaissé. L'écriture se fait donc ici, en service role, après
+    // vérification que l'appelant est bien le client de cette prestation.
+    if (action === "assign_after_payment") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, prestataire_id, acceptance_deadline, stripe_payment_intent } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id invalide" });
+
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,prestataire_id`, { headers });
+      const mData = await mRes.json().catch(() => []);
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (!["open", "pending_acceptance"].includes(mission.status)) {
+        return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
+      }
+
+      // Le prestataire doit exister, être approuvé, et avoir accès aux prestations
+      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&role=eq.prestataire&status=eq.approved&select=id`, { headers });
+      const pData = await pRes.json().catch(() => []);
+      if (!Array.isArray(pData) || !pData[0]) return res.status(400).json({ error: "Prestataire indisponible" });
+
+      const patch = { prestataire_id, status: "pending_acceptance" };
+      if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
+      if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
+
+      // Filtre sur le statut : ne pas écraser une prestation traitée entre-temps
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify(patch),
+      });
+      const patched = await patchRes.json().catch(() => []);
+      if (!Array.isArray(patched) || patched.length === 0) {
+        const txt = patchRes.ok ? "" : await patchRes.text().catch(() => "");
+        console.error("[assign_after_payment] échec du PATCH:", patchRes.status, txt);
+        return res.status(500).json({ error: "Affectation impossible" });
+      }
+      return res.status(200).json({ success: true, mission_id });
+    }
+
     // Refus automatique quand le prestataire n'a pas répondu dans le délai (S-06).
     // Déclenché par le compte à rebours du client, mais le délai est revérifié ici :
     // le front ne peut pas décider seul qu'il est écoulé. Il écrivait auparavant
