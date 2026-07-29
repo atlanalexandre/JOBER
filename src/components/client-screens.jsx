@@ -3069,7 +3069,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   const j = await res.json().catch(()=>({}));
                   if (res.ok) {
                     setWalletInfo(w => ({ ...w, balance: 0 }));
-                    showToast(`${Number(j.transfered||0).toFixed(2).replace(".",",")} € transférés sur votre portefeuille.`);
+                    showToast(`${Number(j.transfered||0).toFixed(2).replace(".",",")} € transférés sur votre portefeuille.`, "success");
                   } else {
                     showToast(j.error || "Transfert impossible — réessayez.");
                   }
