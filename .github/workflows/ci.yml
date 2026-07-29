@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build & Lint
+    name: Build, Lint & Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -24,6 +24,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Les tests couvrent les calculs qui touchent à l'argent (cashback, tarifs,
+      # montants de mission) et la signature du webhook Stripe. Ils doivent bloquer
+      # la CI : c'est le seul filet automatique du projet.
+      - name: Tests
+        run: npm test
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
