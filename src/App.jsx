@@ -1715,8 +1715,19 @@ export default function App() {
             const deadline=new Date(Date.now()+(paymentIsUrgent?20:isSameDay?60:240)*60000).toISOString();
             let missionId = selectedMissionId;
             if(missionId){
-              const { error:updateErr } = await supabase.from("missions").update({ prestataire_id:selectedProvider.id, status:"pending_acceptance", acceptance_deadline:deadline, ...(intentId ? { stripe_payment_intent: intentId } : {}) }).eq("id",missionId);
-              if(updateErr) throw new Error("Erreur lors de l'affectation de la prestation.");
+              // L'affectation passe par le serveur : le trigger
+              // prevent_missions_field_tampering interdit au client de modifier
+              // prestataire_id et status depuis le navigateur (audit B-01).
+              const { data:sdA } = await supabase.auth.getSession();
+              const rA = await fetch("/api/missions", {
+                method:"POST",
+                headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
+                body: JSON.stringify({ action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }),
+              });
+              if(!rA.ok){
+                const jA = await rA.json().catch(()=>({}));
+                throw new Error(jA.error || "Erreur lors de l'affectation de la prestation.");
+              }
             } else {
               const newMissionId = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
               const { error:insertErr } = await supabase.from("missions").insert({
@@ -1762,7 +1773,13 @@ export default function App() {
           }
           setScreen("mission_pending");
         } catch(e) {
-          setBookingError(e.message || "Une erreur est survenue. Contactez le support si le paiement a été prélevé.");
+          // Le paiement est encaissé à ce stade : ne jamais laisser l'utilisateur
+          // bloqué sur l'écran de règlement, qui n'a plus de retour une fois en
+          // état « Paiement sécurisé ». On l'emmène sur ses prestations avec un
+          // message explicite, la prestation existe déjà en base.
+          setBookingError((e.message || "Une erreur est survenue.")
+            + " Votre paiement a bien été enregistré — retrouvez la prestation dans « Mes prestations ». Contactez le support si elle n'y figure pas.");
+          setScreen("mission_history");
         }
       }} onBack={()=>setScreen("booking")} />}
       {bookingError && (
