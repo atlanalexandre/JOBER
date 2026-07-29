@@ -82,7 +82,7 @@ export default async function handler(req, res) {
   // Brouillons > 30 min, pas encore notifiés
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
-  // Purge des prestations créées pour un paiement qui n'a jamais abouti.
+  // Annulation des prestations créées pour un paiement qui n'a jamais abouti.
   // Depuis que la prestation est créée AVANT le paiement (contrainte de
   // /api/stripe-intent, qui recalcule le montant depuis la base), un tunnel
   // abandonné laisse une ligne orpheline visible dans l'espace du client.
@@ -96,11 +96,18 @@ export default async function handler(req, res) {
       + `&prestataire_id=is.null`
       + `&stripe_payment_intent=is.null`
       + `&created_at=lt.${encodeURIComponent(purgeCutoff)}`,
-      { method: "DELETE", headers: { ...hdrs, "Prefer": "return=representation" } }
+      {
+        method: "PATCH",
+        headers: { ...hdrs, "Prefer": "return=representation" },
+        // Annulation plutôt que suppression : si le paiement a abouti mais que
+        // l'affectation a échoué, la ligne porte les mêmes marqueurs qu'un tunnel
+        // abandonné. La supprimer effacerait la trace d'une prestation réglée.
+        body: JSON.stringify({ status: "cancelled" }),
+      }
     );
     const purgees = purgeRes.ok ? await purgeRes.json().catch(() => []) : [];
     if (Array.isArray(purgees) && purgees.length) {
-      console.log(`[cron-abandon] ${purgees.length} prestation(s) non payée(s) purgée(s)`);
+      console.log(`[cron-abandon] ${purgees.length} prestation(s) non finalisée(s) annulée(s)`);
     }
   } catch (e) {
     console.error("[cron-abandon] purge des prestations non payées échouée :", e.message);
