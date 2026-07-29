@@ -7813,7 +7813,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                     <span style={{ color:C.textSub, fontSize:11 }}>
                       {plan.id==="premium"
                         ? `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€`
-                        : `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€ · Position #1 + Manager dédié`
+                        : `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€ · Position #1 + Accompagnement dédié`
                       }
                     </span>
                   </div>
