@@ -110,6 +110,22 @@ Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes
 **`visits`** — compteur de visites anonymes. Une ligne est insérée au premier chargement de
 chaque session (`App.jsx:1103`), avec un simple `session_id` et aucune donnée personnelle.
 
+**`booking_drafts`** — réservations abandonnées en cours de tunnel. Écrites par
+`booking-draft.js` à l'entrée du tunnel et effacées à la fin ; `cron-abandon.js` les relit
+pour envoyer les relances.
+
+**`contracts`** — contrats de prestation générés et signés (`client-screens.jsx:4756`).
+
+### Fonctions SQL (RPC)
+
+Deux procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
+
+- `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
+- `increment_cashback` — crédite le cashback de façon atomique.
+
+Comme elles ne sont pas visibles dans les fichiers SQL du dépôt, une modification de leur
+signature casse le code sans que rien ne le signale. **La référence, c'est la base.**
+
 **`platform_settings`** — les réglages modifiables depuis le backoffice, stockés en clé/valeur :
 `commission_rate`, `cashback_rates`, `subscription_prices`, `plan_limits`, `frais_service`,
 `urgency_surcharge`, `launch_phase`, `disabled_sectors`, `sector_min_prestataires`,
@@ -189,8 +205,40 @@ Les 27 fichiers de `/api`. Les principaux :
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
 
-Toutes suivent le même schéma : vérifier l'appelant avec `verifyUser`, contrôler ses droits,
-puis agir en service role.
+### Comment l'appelant est vérifié
+
+Il n'y a **pas** un seul schéma d'authentification mais quatre, selon la nature de l'appel.
+Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichier.
+
+| Mécanisme | Fichiers | Principe |
+|---|---|---|
+| `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
+| Vérification inline équivalente | `save-document`, `update-profile`, `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js` |
+| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund`, `reset-password`, `forgot-password`, `seed-demo` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
+| `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
+
+`missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
+du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
+
+### Deux endpoints sans aucune authentification
+
+Ce sont les seules exceptions, et elles méritent d'être connues avant d'être copiées comme
+modèle :
+
+- **`get-profile.js`** — reçoit un `userId` dans le corps de la requête et renvoie `role`,
+  `status`, `missions_enabled` et `plan_abonnement` de ce compte, en service role, donc
+  **hors RLS**. Quiconque connaît un identifiant peut lire ces champs. Les données restent
+  limitées (ni nom, ni email, ni téléphone) mais la lecture n'est pas contrôlée.
+- **`prestataires.js`** — sert le catalogue complet des prestataires approuvés (identifiant,
+  prénom, nom, photo) sans vérifier l'appelant. À noter : cela **contourne la décision S-11**
+  de l'audit, qui avait fermé ce catalogue aux comptes connectés en retirant les policies RLS
+  publiques. La restriction porte sur l'accès direct à la table, pas sur cet endpoint.
+  La route allégée `?action=count`, elle, doit rester publique : l'écran d'accueil s'en sert
+  avant toute connexion.
+
+Refermer ces deux points est une décision produit, pas une correction évidente : `get-profile`
+est appelé pendant la connexion, et le catalogue sert aussi les liens de partage `?profil=`
+qui fonctionnent aujourd'hui sans compte.
 
 ---
 
