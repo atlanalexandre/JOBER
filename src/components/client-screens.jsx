@@ -932,7 +932,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
             <div>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
-                Prestation à valider ({missionsToValidate.length})
+                Prestation à valider ({prestationsToValidate.length})
               </div>
               <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
                 {missionsToValidate[0].metier || "Prestation"} — le prestataire a confirmé la fin
@@ -1172,7 +1172,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               </div>
               <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.6)" }}>
                 {nextTier
-                  ? <>{missionsToNext} prestation{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
+                  ? <>{missionsToNext} prestation{prestationsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
                   : <>Vous êtes au palier maximum 🎉</>}
               </div>
             </div>
@@ -2009,7 +2009,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                           <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</span>
                           {p.plan==="elite"   && <span style={{ fontSize:10, fontWeight:700, color:"#F0B429", background:"#F0B42918", borderRadius:6, padding:"1px 6px" }}>👑 Elite</span>}
                           {p.plan==="premium" && <span style={{ fontSize:10, fontWeight:700, color:"#7C6FE0", background:"#7C6FE018", borderRadius:6, padding:"1px 6px" }}>✓ Certifié</span>}
-                          {hasCv && <Badge color={C.violet} small>CV</Badge>}
+                          {hasCv && <Badge color={C.violet} small>Parcours</Badge>}
                         </div>
                         <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
@@ -2029,7 +2029,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                     <div style={{ display:"flex", gap:0, borderTop:`1px solid ${C.border}` }}>
                       {hasCv && (
                         <button onClick={()=>onNavigate("cv", p)} style={{ flex:1, padding:"10px", background:"transparent", border:"none", borderRight:`1px solid ${C.border}`, color:C.violet, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
-                          📄 Voir CV
+                          📄 Voir le parcours
                         </button>
                       )}
                       <button onClick={()=>onNavigate("profile", p)} style={{ flex:1, padding:"10px", background:"transparent", border:"none", borderRight: p.available ? `1px solid ${C.border}` : "none", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
@@ -2189,9 +2189,9 @@ export function CVScreen({ provider, onBack, onNavigate }) {
   if(!cv) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
       <div style={{ fontSize:60, marginBottom:16 }}>📄</div>
-      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>CV non disponible</h3>
+      <h3 style={{ color:C.text, fontSize:18, fontWeight:700, margin:"0 0 10px", fontFamily:font.display }}>Parcours non disponible</h3>
       <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:260, margin:"0 auto 28px" }}>
-        {p.name} n'a pas encore renseigné son CV sur ALANE.
+        {p.name} n'a pas encore renseigné son parcours professionnel sur ALANE.
       </p>
       <Btn onClick={onBack} variant="ghost">← Retour au profil</Btn>
     </div>
@@ -2449,7 +2449,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             className="card-hover">
             <div style={{ width:40, height:40, borderRadius:11, background:`${C.violet}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📄</div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Voir le CV complet</div>
+              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Voir le parcours complet</div>
               <div style={{ color:C.textSub, fontSize:12, marginTop:1 }}>Expériences · Formations · Langues</div>
             </div>
             <span style={{ color:C.violet, fontSize:16, fontWeight:300 }}>›</span>
@@ -2674,8 +2674,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               {!cv ? (
                 <div style={{ textAlign:"center", padding:"40px 20px", color:C.textSub, fontSize:14, lineHeight:1.7 }}>
                   <div style={{ fontSize:50, marginBottom:14 }}>📄</div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>CV en cours de rédaction</div>
-                  {p.name} n'a pas encore renseigné son CV complet.<br/>Consultez son profil et ses avis pour vous décider.
+                  <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>Parcours en cours de rédaction</div>
+                  {p.name} n'a pas encore renseigné son parcours complet.<br/>Consultez son profil et ses avis pour vous décider.
                 </div>
               ) : (<>
                 <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
@@ -2744,7 +2744,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
           {/* Bouton CV */}
           <button onClick={()=>setCvOpen(true)} style={{ width:"100%", background:`${p.color}14`, border:`1px solid ${p.color}44`, borderRadius:12, padding:"11px 16px", marginBottom:14, color:p.color, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-            <span>📄</span> Consulter le CV de {p.name}
+            <span>📄</span> Consulter le parcours de {p.name}
           </button>
 
           {launchPhaseBooking && <LaunchBadge context="booking" />}
@@ -2857,7 +2857,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {/* Durée par jour */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:10, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>
-              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la prestation"}
+              {isUrgent ? "⏱️ Durée (mode urgence)" : prestationType==="range" ? "Heures par jour" : "Durée de la prestation"}
             </label>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
@@ -2889,7 +2889,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               style={{ width:"100%", padding:"13px 15px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.6 }} />
           </div>
 
-          {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
+          {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {prestationType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
           {tooSoonError && !isUrgent && (
             <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
@@ -3022,7 +3022,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ["Date", isUrgent ? `Aujourd’hui — ${urgentStartDate}` : missionType==="range" && startDate && endDate ? `${formatDate(startDate)} → ${formatDate(endDate)}` : formatDate(startDate)],
               ["Heure de début", isUrgent ? `${urgentStartTime} (~30 min)` : startTime||"—"],
               ["Heure de fin", (()=>{ const t = isUrgent ? urgentStartTime : (startTime||"08:00"); const [h,m] = t.split(":").map(Number); const endMin = h*60 + m + hours*60; return `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`; })()],
-              ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
+              ...(prestationType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
@@ -3038,7 +3038,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{prestationType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
@@ -3597,7 +3597,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <div><div style={{ fontWeight:800, color:C.text }}>{p.name}</div><div style={{ color:C.textSub, fontSize:13 }}>{p.role}</div></div>
           </div>
           <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {missionHours}h prévues)</label>
+            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {prestationHours}h prévues)</label>
             <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
           </div>
           <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
@@ -4858,7 +4858,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const articles = [
     {
       title:"Article 1 — Objet du contrat",
-      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
+      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${prestationDate}\nDurée estimée : ${prestationHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
     },
     {
       title:"Article 2 — Indépendance du prestataire",
@@ -4866,7 +4866,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${prestationHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
@@ -4948,7 +4948,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 {[
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
-                  ["Durée", `${missionHours} heures`],
+                  ["Durée", `${prestationHours} heures`],
                   ["Montant client total", `${totalAmount} €`],
                   ["Montant net prestataire", `${prestaNet} €`],
                 ].map(([l,v])=>(
@@ -5185,11 +5185,11 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 5 — Fonctionnement des Prestations",
-          text:"5.1 Publication d'une Prestation\nLe Client publie une Prestation sur la Plateforme en renseignant le secteur d'activité, le métier recherché, la date, la durée estimée, le lieu d'intervention et le tarif horaire proposé. La Prestation est alors rendue visible aux Prestataires correspondant au profil recherché.\n\n5.2 Candidature et acceptation\nLes Prestataires intéressés peuvent postuler à une Mission. Chaque Prestataire est libre de postuler ou non à chaque Prestation proposée, et peut refuser toute Prestation sans avoir à se justifier et sans pénalité. Le Client reçoit les candidatures et sélectionne le Prestataire de son choix. L'acceptation d'une candidature par le Client vaut conclusion du Contrat de prestation entre les deux parties. ALANE n'intervient pas dans ce choix et n'est pas partie au contrat ainsi formé.\n\n5.3 Confirmation et paiement\nDès l'acceptation d'une candidature, le Client procède au paiement sécurisé via Stripe. Les fonds sont sécurisés par Stripe Connect jusqu'à la validation de la Mission. Le Prestataire reçoit une confirmation de la Prestation et les informations nécessaires à son exécution.\n\n5.4 Exécution et validation\nÀ l'issue de la Prestation, le Prestataire et le Client valident mutuellement la bonne exécution de la prestation via la Plateforme. La double validation déclenche le versement de la rémunération au Prestataire. À défaut de validation par le Client dans un délai de 72 heures ouvrées après la fin de la Prestation, celle-ci est réputée validée et les fonds sont automatiquement libérés au Prestataire."
+          text:"5.1 Publication d'une Prestation\nLe Client publie une Prestation sur la Plateforme en renseignant le secteur d'activité, le métier recherché, la date, la durée estimée, le lieu d'intervention et le tarif horaire proposé. La Prestation est alors rendue visible aux Prestataires correspondant au profil recherché.\n\n5.2 Candidature et acceptation\nLes Prestataires intéressés peuvent postuler à une Prestation. Chaque Prestataire est libre de postuler ou non à chaque Prestation proposée, et peut refuser toute Prestation sans avoir à se justifier et sans pénalité. Le Client reçoit les propositions et sélectionne le Prestataire de son choix. L'acceptation d'une candidature par le Client vaut conclusion du Contrat de prestation entre les deux parties. ALANE n'intervient pas dans ce choix et n'est pas partie au contrat ainsi formé.\n\n5.3 Confirmation et paiement\nDès l'acceptation d'une proposition, le Client procède au paiement sécurisé via Stripe. Les fonds sont sécurisés par Stripe Connect jusqu'à la validation de la Prestation. Le Prestataire reçoit une confirmation de la Prestation et les informations nécessaires à son exécution.\n\n5.4 Exécution et validation\nÀ l'issue de la Prestation, le Prestataire et le Client valident mutuellement la bonne exécution de la prestation via la Plateforme. La double validation déclenche le versement de la rémunération au Prestataire. À défaut de validation par le Client dans un délai de 72 heures ouvrées après la fin de la Prestation, celle-ci est réputée validée et les fonds sont automatiquement libérés au Prestataire."
         },
         {
           title:"Article 5B — Programme de parrainage et cashback",
-          text:"ALANE propose à ses Clients un programme de fidélité sous forme de cashback sur les Prestations réalisées via la Plateforme.\n\n5B.1 Cashback sur les Prestations\nLe Client bénéficie d'un retour en crédit ALANE calculé sur le montant net des prestations validées, selon les paliers suivants :\n• 0,5 % du montant net de la prestation pour les Clients ayant validé moins de 10 prestations\n• 1 % du montant net de la prestation pour les Clients ayant validé entre 10 et 29 prestations\n• 1,5 % du montant net de la prestation pour les Clients ayant validé 30 prestations ou plus\n\nLe crédit cashback est crédité sur le solde du compte ALANE du Client dans un délai de 48 heures ouvrées suivant la validation de la Mission. Ce crédit est utilisable pour le paiement total ou partiel de futures Prestations sur la Plateforme.\n\n5B.2 Programme de parrainage\nTout utilisateur inscrit sur la Plateforme peut parrainer de nouveaux utilisateurs en partageant son lien ou code de parrainage. Les conditions et avantages du programme de parrainage sont précisés dans la section dédiée de la Plateforme et peuvent être modifiés à tout moment par ALANE.\n\n5B.3 Conditions générales\nLe cashback et les avantages de parrainage ne sont pas convertibles en espèces, ne sont pas cessibles et ne peuvent pas faire l'objet d'un remboursement en cas de résiliation du compte. ALANE se réserve le droit de modifier ou de supprimer ce programme à tout moment, sous réserve d'un préavis raisonnable communiqué via la Plateforme."
+          text:"ALANE propose à ses Clients un programme de fidélité sous forme de cashback sur les Prestations réalisées via la Plateforme.\n\n5B.1 Cashback sur les Prestations\nLe Client bénéficie d'un retour en crédit ALANE calculé sur le montant net des prestations validées, selon les paliers suivants :\n• 0,5 % du montant net de la prestation pour les Clients ayant validé moins de 10 prestations\n• 1 % du montant net de la prestation pour les Clients ayant validé entre 10 et 29 prestations\n• 1,5 % du montant net de la prestation pour les Clients ayant validé 30 prestations ou plus\n\nLe crédit cashback est crédité sur le solde du compte ALANE du Client dans un délai de 48 heures ouvrées suivant la validation de la Prestation. Ce crédit est utilisable pour le paiement total ou partiel de futures Prestations sur la Plateforme.\n\n5B.2 Programme de parrainage\nTout utilisateur inscrit sur la Plateforme peut parrainer de nouveaux utilisateurs en partageant son lien ou code de parrainage. Les conditions et avantages du programme de parrainage sont précisés dans la section dédiée de la Plateforme et peuvent être modifiés à tout moment par ALANE.\n\n5B.3 Conditions générales\nLe cashback et les avantages de parrainage ne sont pas convertibles en espèces, ne sont pas cessibles et ne peuvent pas faire l'objet d'un remboursement en cas de résiliation du compte. ALANE se réserve le droit de modifier ou de supprimer ce programme à tout moment, sous réserve d'un préavis raisonnable communiqué via la Plateforme."
         },
         {
           title:"Article 6 — Tarifs et commission ALANE",
@@ -5201,7 +5201,7 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 8 — Annulations et remboursements",
-          text:"8.1 Annulation par le Client\nEn cas d'annulation d'une Prestation par le Client avant le début de la prestation :\n• Les frais de service ALANE sont en principe retenus et non remboursables car ils couvrent des coûts déjà engagés. Par exception, en cas d'annulation directement imputable à un dysfonctionnement avéré de la Plateforme ou à une erreur d'ALANE, les frais de service pourront être remboursés ou crédités sur le compte du Client.\n• Le montant de la prestation (tarif horaire × durée) est remboursé intégralement au Client si l'annulation intervient plus de 24 heures avant le début prévu de la Mission.\n• Si l'annulation intervient moins de 24 heures avant le début prévu, les frais de service ALANE (4,90 €) sont retenus à titre d'indemnité d'annulation ; le reste du montant de la prestation est remboursé intégralement au Client.\n• Si le Client ne se présente pas ou annule après le début de la prestation, le montant intégral de la prestation est dû au Prestataire.\n\n8.2 Annulation par le Prestataire\nEn cas d'annulation d'une Prestation par le Prestataire après acceptation de la candidature, le Client est intégralement remboursé (montant de la prestation + frais de service). ALANE se réserve le droit de prendre toute mesure contractuelle proportionnée, incluant des restrictions d'accès au service temporaires ou définitives, en cas d'annulations répétées ou abusives, après notification écrite au Prestataire.\n\n8.3 Remboursements\nLes remboursements sont traités via Stripe et crédités sur le moyen de paiement initialement utilisé par le Client dans un délai de 5 à 10 jours ouvrés selon l'établissement bancaire."
+          text:"8.1 Annulation par le Client\nEn cas d'annulation d'une Prestation par le Client avant le début de la prestation :\n• Les frais de service ALANE sont en principe retenus et non remboursables car ils couvrent des coûts déjà engagés. Par exception, en cas d'annulation directement imputable à un dysfonctionnement avéré de la Plateforme ou à une erreur d'ALANE, les frais de service pourront être remboursés ou crédités sur le compte du Client.\n• Le montant de la prestation (tarif horaire × durée) est remboursé intégralement au Client si l'annulation intervient plus de 24 heures avant le début prévu de la Mission.\n• Si l'annulation intervient moins de 24 heures avant le début prévu, les frais de service ALANE (4,90 €) sont retenus à titre d'indemnité d'annulation ; le reste du montant de la prestation est remboursé intégralement au Client.\n• Si le Client ne se présente pas ou annule après le début de la prestation, le montant intégral de la prestation est dû au Prestataire.\n\n8.2 Annulation par le Prestataire\nEn cas d'annulation d'une Prestation par le Prestataire après acceptation de la proposition, le Client est intégralement remboursé (montant de la prestation + frais de service). ALANE se réserve le droit de prendre toute mesure contractuelle proportionnée, incluant des restrictions d'accès au service temporaires ou définitives, en cas d'annulations répétées ou abusives, après notification écrite au Prestataire.\n\n8.3 Remboursements\nLes remboursements sont traités via Stripe et crédités sur le moyen de paiement initialement utilisé par le Client dans un délai de 5 à 10 jours ouvrés selon l'établissement bancaire."
         },
         {
           title:"Article 9 — Obligations du Prestataire",
@@ -6067,7 +6067,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           })()}
           {(selected.status === "open" || selected.status === "needs_replacement") && (<>
           <p style={{ color:C.text, fontWeight:700, fontSize:14, marginBottom:12 }}>
-            {candidatures.length === 0 ? "Aucune candidature reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
+            {candidatures.length === 0 ? "Aucune proposition reçue" : `${candidatures.length} candidature${candidatures.length > 1 ? "s" : ""} reçue${candidatures.length > 1 ? "s" : ""}`}
           </p>
           {candidatures.map(c => (
             <div key={c.id} style={{ background:"#0D1B3E", borderRadius:14, padding:"14px", marginBottom:10, border:`1px solid ${c.status==="accepted"?C.success:c.status==="rejected"?"rgba(242,94,94,0.3)":C.border}` }}>
@@ -6101,7 +6101,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           {candidatures.length === 0 && (
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"28px", textAlign:"center" }}>
               <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
-              <div style={{ color:C.textSub, fontSize:13 }}>En attente de candidatures…</div>
+              <div style={{ color:C.textSub, fontSize:13 }}>En attente de propositions…</div>
             </div>
           )}
           {selected.status === "open" && candidatures.length > 0 && candidatures.every(c => c.status === "rejected") && (
@@ -6109,7 +6109,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ fontSize:24, marginBottom:6 }}>🔍</div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>Aucun prestataire disponible pour l'instant</div>
               <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-                Toutes les candidatures ont été refusées. Votre prestation reste active — vous pouvez aussi chercher un prestataire directement.
+                Toutes les propositions ont été refusées. Votre prestation reste active — vous pouvez aussi chercher un prestataire directement.
               </div>
               <button onClick={() => onNavigate("search_filters")} style={{ padding:"10px 20px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Trouver un prestataire →
@@ -6603,7 +6603,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
           // Couleur et libellé du badge statut
           const badgeColor = pending>0 ? C.violet : statusColor[m.status] || C.textMuted;
-          const badgeLabel = pending>0 ? `${pending} candidature${pending>1?"s":""}` : statusLabel[m.status] || m.status;
+          const badgeLabel = pending>0 ? `${pending} proposition${pending>1?"s":""}` : statusLabel[m.status] || m.status;
 
           // Ligne info condensée : "3 juil. · 08:00–09:00 · Paris"
           const infoParts = [
@@ -6845,7 +6845,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
           {nextTier ? (
             <p style={{ color:C.textSub, fontSize:12 }}>
-              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
+              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{prestationsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
               <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({(nextTier.rate*100).toFixed(0)}%)</strong>
             </p>
           ) : (
@@ -8074,7 +8074,7 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
             <div style={{ width:32, height:32, borderRadius:"50%", border:`3px solid ${C.violet}`, borderTopColor:"transparent", animation:"alaneSpin 0.9s linear infinite", flexShrink:0 }} />
             <div>
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{loading ? "Diffusion en cours…" : `En attente de réponses (${notifiedCount} notifié${notifiedCount>1?"s":""})`}</div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les candidatures apparaissent dès que des prestataires postulent.</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Les propositions apparaissent dès que des prestataires se positionnent.</div>
             </div>
           </div>
         )}
@@ -8122,11 +8122,11 @@ export function MissionBroadcastScreen({ prestation, onChoose, onCancel }) {
           <div style={{ textAlign:"center", padding:"48px 20px" }}>
             <div style={{ fontSize:52, marginBottom:16 }}>📱</div>
             <div style={{ fontWeight:700, color:C.text, fontSize:16, marginBottom:8 }}>
-              {loading ? "Diffusion en cours…" : "En attente de candidatures"}
+              {loading ? "Diffusion en cours…" : "En attente de propositions"}
             </div>
             <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7 }}>
               {notifiedCount > 0
-                ? `${notifiedCount} prestataire${notifiedCount>1?"s":""} notifié${notifiedCount>1?"s":""}. Les candidatures apparaissent ici dès réception.`
+                ? `${notifiedCount} prestataire${notifiedCount>1?"s":""} notifié${notifiedCount>1?"s":""}. Les propositions apparaissent ici dès réception.`
                 : "Envoi des notifications aux prestataires disponibles…"
               }
             </div>
@@ -8158,7 +8158,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
   const prestaSteps = [
-    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et uploadez votre CV. Un profil complet reçoit 3× plus de prestations.", color:C.violet },
+    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et complétez votre parcours. Un profil complet reçoit 3× plus de prestations.", color:C.violet },
     { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
     { icon:"📦", title:"Recevez des prestations", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque prestation proposée. Votre plan définit votre quota mensuel.", color:C.success },
     { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les prestations proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },

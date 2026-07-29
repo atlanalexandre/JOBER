@@ -240,7 +240,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
         <div style={{ width:100, height:100, borderRadius:"50%", background:C.accent+"15", border:"3px solid "+C.accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48, margin:"0 auto 24px" }}>❌</div>
         <h2 style={{ color:C.accent, fontSize:24, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Prestation refusée</h2>
         <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:8 }}>
-          <strong style={{ color:C.text }}>{p.name}</strong> a décliné la mission. Votre paiement est intégralement remboursé.
+          <strong style={{ color:C.text }}>{p.name}</strong> a décliné la prestation. Votre paiement est intégralement remboursé.
         </p>
         <div style={{ background:C.accentGold+"10", border:"1px solid "+C.accentGold+"30", borderRadius:r, padding:"13px 15px", marginBottom:24, fontSize:13, color:C.textSub, lineHeight:1.6 }}>
           💡 Pas de panique — il y a <strong style={{ color:C.text }}>d'autres prestataires disponibles</strong> dans ce secteur. Choisissez-en un autre pour votre prestation.
@@ -508,7 +508,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 
   const handlePayFromWallet = async () => {
     if (walletProcessing) return;
-    if (!missionId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
+    if (!prestationId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
     setWalletProcessing(true);
     setStripeError(null);
     try {
@@ -547,7 +547,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     setProcessing(true);
     try {
       const { data: { session: piSession } } = await supabase.auth.getSession();
-      if (!missionId) throw new Error("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement.");
+      if (!prestationId) throw new Error("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement.");
       const r = await fetch("/api/stripe-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
@@ -571,7 +571,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       <div style={{ width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:44, marginBottom:20 }}>✓</div>
       <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Paiement sécurisé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>
-        <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la mission.
+        <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la prestation.
       </p>
       <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 18px", marginBottom:24, fontSize:13, color:"rgba(255,255,255,0.85)" }}>
         ⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation.
@@ -1293,7 +1293,7 @@ export function CancellationScreen({ provider, missionId, missionDate, onNavigat
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:10 }}>📋 Politique d'annulation ALANE</div>
           <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7 }}>
-            L'annulation est <strong style={{ color:C.success }}>sans retenue</strong> sur le montant de la mission. Seuls les <strong style={{ color:C.text }}>frais de service</strong> engagés restent dus.
+            L'annulation est <strong style={{ color:C.success }}>sans retenue</strong> sur le montant de la prestation. Seuls les <strong style={{ color:C.text }}>frais de service</strong> engagés restent dus.
           </div>
           <div style={{ marginTop:10, background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:10, padding:"10px 14px", fontSize:12, color:C.textSub }}>
             ✅ Aucun frais d'annulation sur le montant de la prestation

@@ -465,7 +465,7 @@ export default async function handler(req, res) {
         <div class="line-desc">
           <div class="line-desc-main">${escHtml(lineItem)}</div>
           ${secteur ? `<div class="line-desc-detail">Secteur : ${escHtml(secteur)}</div>` : ""}
-          ${missionDate ? `<div class="line-desc-detail">Date : ${escHtml(missionDate)}${heureDebut ? " à " + escHtml(heureDebut) : ""}</div>` : ""}
+          ${missionDate ? `<div class="line-desc-detail">Date : ${escHtml(prestationDate)}${heureDebut ? " à " + escHtml(heureDebut) : ""}</div>` : ""}
           ${hours > 0 ? `<div class="line-desc-detail">Durée : ${hours}h</div>` : ""}
           ${ville ? `<div class="line-desc-detail">Ville : ${escHtml(ville)}</div>` : ""}
           ${adresse ? `<div class="line-desc-detail">Adresse : ${escHtml(adresse)}</div>` : ""}
