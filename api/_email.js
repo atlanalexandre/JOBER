@@ -40,7 +40,17 @@ export function emailHtml(content) {
 export async function sendEmail({ to, subject, html }) {
   const key  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
-  if (!key) return;
+  // Sans clé, aucun email ne part et rien ne le signalait : ni ici, ni côté
+  // front où les appels sont en .catch(()=>{}). Un envoi manquant devient donc
+  // invisible de bout en bout (règle 1.2).
+  if (!key) {
+    console.error(`[email] RESEND_API_KEY absente — email « ${subject} » NON envoyé.`);
+    return;
+  }
+  if (!process.env.RESEND_FROM) {
+    console.error("[email] RESEND_FROM absente : expéditeur de repli onboarding@resend.dev, "
+      + "que Resend n'autorise qu'à destination du titulaire du compte. Les autres destinataires seront rejetés.");
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const r = await fetch("https://api.resend.com/emails", {
