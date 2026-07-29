@@ -5463,6 +5463,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [disputingId, setDisputingId] = useState(null);
   const [disputeSuccess, setDisputeSuccess] = useState({});
   const [prestaPosition, setPrestaPosition] = useState(null);
+  // Coordonnées géocodées du LIEU de la prestation. La distance affichée était
+  // calculée depuis la position du client alors que le libellé annonce « du lieu
+  // de mission » : un client chez lui voyait « à 30 km du lieu de mission » d'un
+  // prestataire pourtant déjà sur place.
+  const [missionCoords, setMissionCoords] = useState(null);
   const [clientCoords, setClientCoords] = useState(null);
   const trackingPollRef = useRef(null);
   const approachNotifSentRef = useRef(new Set());
@@ -5594,10 +5599,44 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     }
   }, [prestations]);
 
+  // Géocodage de l'adresse de la prestation, via l'API adresse de l'État déjà
+  // utilisée côté prestataire. Sans coordonnées, aucune distance n'est affichée
+  // plutôt qu'une distance fausse.
+  useEffect(() => {
+    setMissionCoords(null);
+    if (!selected) return;
+    const addr = [selected.adresse, selected.ville].filter(Boolean).join(" ");
+    if (!addr) return;
+    let vivant = true;
+    fetch(`https://api-adresse.data.gouv.fr/search/?${new URLSearchParams({ q: addr, limit: "1" })}`)
+      .then(r => r.json())
+      .then(d => {
+        const feat = d.features?.[0];
+        if (vivant && feat) {
+          const [lng, lat] = feat.geometry.coordinates;
+          setMissionCoords({ lat, lng });
+        }
+      })
+      .catch(() => { /* adresse non géocodable : pas de distance affichée */ });
+    return () => { vivant = false; };
+  }, [selected]);
+
   useEffect(() => {
     if (trackingPollRef.current) { clearInterval(trackingPollRef.current); trackingPollRef.current = null; }
     setPrestaPosition(null);
     if (!selected || selected.status !== "assigned" || !selected.prestataire_id) return;
+    // Le suivi n'a de sens qu'à l'approche de la prestation, et l'écran du
+    // prestataire annonce explicitement « s'activera 1h avant le début ». Le
+    // client interrogeait pourtant la position dès l'assignation, parfois
+    // plusieurs jours à l'avance : les deux écrans se contredisaient.
+    if (selected.date && selected.heure_debut) {
+      try {
+        const [yy, mm2, dd] = String(selected.date).split("-").map(Number);
+        const [hh, mi] = String(selected.heure_debut).split(":").map(Number);
+        const debut = new Date(yy, mm2 - 1, dd, hh, mi).getTime();
+        if (Date.now() < debut - 60 * 60 * 1000) return;
+      } catch { /* date illisible → on laisse le suivi actif */ }
+    }
     if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => setClientCoords({ lat: p.coords.latitude, lng: p.coords.longitude }), () => {});
     const pollPosition = async () => {
       const { data: sd } = await supabase.auth.getSession();
@@ -5991,8 +6030,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
               return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             };
-            const dist = (prestaPosition && clientCoords) ? haversine(clientCoords.lat, clientCoords.lng, prestaPosition.lat, prestaPosition.lng) : null;
-            return prestaPosition ? (
+            // Distance depuis le LIEU de la prestation, pas depuis le client.
+            const dist = (prestaPosition && missionCoords) ? haversine(missionCoords.lat, missionCoords.lng, prestaPosition.lat, prestaPosition.lng) : null;
+            // Une position de plus de 15 min n'est plus « en direct » : elle
+            // s'affichait indéfiniment, même partage arrêté depuis longtemps.
+            const ageMin = prestaPosition?.updated_at
+              ? Math.floor((Date.now() - new Date(prestaPosition.updated_at).getTime()) / 60000)
+              : null;
+            const positionFraiche = ageMin != null && ageMin <= 15;
+            return (prestaPosition && positionFraiche) ? (
               <div style={{ background:"linear-gradient(135deg,rgba(16,217,143,0.08),rgba(16,217,143,0.04))", border:"1.5px solid rgba(16,217,143,0.35)", borderRadius:16, padding:"14px 16px", marginBottom:16 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
                   <div style={{ width:8, height:8, borderRadius:"50%", background:"#10D98F", boxShadow:"0 0 8px #10D98F", animation:"pulse 1.5s ease-in-out infinite", flexShrink:0 }} />
@@ -6157,10 +6203,34 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             ) : (
               <div style={{ marginTop:20, background:"rgba(124,111,224,0.08)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:14, padding:"16px" }}>
-                <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
-                <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
-                  Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. La prestation est automatiquement validée sous 24h si le prestataire a confirmé.
-                </div>
+                {/* Le message parlait de « fin de prestation » même pour une
+                    prestation prévue le lendemain, ce qui n'a aucun sens tant
+                    qu'elle n'a pas commencé. */}
+                {(() => {
+                  let commencee = !!selected.started_at;
+                  if (!commencee && selected.date && selected.heure_debut) {
+                    try {
+                      const [yy, mm2, dd] = String(selected.date).split("-").map(Number);
+                      const [hh, mi] = String(selected.heure_debut).split(":").map(Number);
+                      commencee = Date.now() >= new Date(yy, mm2 - 1, dd, hh, mi).getTime();
+                    } catch { /* date illisible */ }
+                  }
+                  return !commencee ? (
+                    <>
+                      <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>📅 Prestation à venir</div>
+                      <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
+                        Votre prestataire est confirmé. Vous pourrez valider la prestation une fois qu'elle aura eu lieu et qu'il l'aura confirmée de son côté.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
+                      <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
+                        Le prestataire n'a pas encore confirmé la fin de prestation. Vous pourrez valider dès qu'il aura confirmé de son côté. La prestation est automatiquement validée sous 24h si le prestataire a confirmé.
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )
           )}
