@@ -1751,7 +1751,19 @@ export function PMissionsTab({ onNavigate }) {
   const [contractAcceptMission, setContractAcceptMission] = useState(null);
   const [validatingMission, setValidatingMission] = useState(null);
   const [validatedSummary, setValidatedSummary] = useState(null);
-  const [sharingLocation, setSharingLocation] = useState({});
+  // Le partage de position était un simple état React : perdu à chaque
+  // rechargement, le bouton réaffichait « Partager ma position » alors que la
+  // dernière position restait visible côté client. Le prestataire pouvait donc
+  // croire avoir coupé le partage sans que ce soit le cas — question de
+  // consentement autant que de cohérence d'affichage.
+  const [sharingLocation, setSharingLocation] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("alane_partage_position") || "{}"); }
+    catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("alane_partage_position", JSON.stringify(sharingLocation)); }
+    catch { /* stockage indisponible : le partage reste actif pour la session */ }
+  }, [sharingLocation]);
   const trackingRefsMap = useRef({});
   const [checkingInId, setCheckingInId] = useState(null);
   const [arrivedAtMap, setArrivedAtMap] = useState({});
