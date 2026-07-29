@@ -1369,20 +1369,6 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
               {loading ? "Connexion…" : "Se connecter →"}
             </Btn>
 
-            {/* Social login */}
-            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
-              <div style={{ flex:1, height:1, background:C.border }} />
-              <span style={{ color:C.textMuted, fontSize:12 }}>ou continuer avec</span>
-              <div style={{ flex:1, height:1, background:C.border }} />
-            </div>
-            <div style={{ display:"flex", gap:10 }}>
-              {[{icon:"🍎",label:"Apple"},{icon:"G",label:"Google"}].map(s=>(
-                <button key={s.label} style={{ flex:1, padding:"13px", border:`1px solid ${C.border}`, borderRadius:r, background:"rgba(255,255,255,0.04)", fontSize:13, cursor:"pointer", fontFamily:"inherit", fontWeight:600, color:C.text, display:"flex", gap:8, alignItems:"center", justifyContent:"center" }}>
-                  <span>{s.icon}</span>{s.label}
-                </button>
-              ))}
-            </div>
-
             <p style={{ textAlign:"center", color:C.textSub, fontSize:13, marginTop:24 }}>
               Pas encore de compte ?{" "}
               <button onClick={()=>setMode("register")} style={{ background:"none", border:"none", color:accentColor, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>

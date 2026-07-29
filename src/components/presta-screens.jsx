@@ -2451,8 +2451,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <button onClick={async()=>{
                     if(!await showConfirm("Annuler cette mission ?")) return;
                     const { data:{ session } } = await supabase.auth.getSession();
-                    await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"presta_cancel", mission_id:m.id }) });
-                    setAssignedMissions(prev => prev.filter(x => x.id !== m.id));
+                    // La mission n'est retirée de la liste que si le serveur a
+                    // réellement annulé. Elle disparaissait auparavant quoi qu'il
+                    // arrive : le prestataire croyait avoir annulé, le client
+                    // l'attendait toujours le jour J.
+                    try {
+                      const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"presta_cancel", mission_id:m.id }) });
+                      const j = await r.json().catch(()=>({}));
+                      if (r.ok) setAssignedMissions(prev => prev.filter(x => x.id !== m.id));
+                      else showToast(j.error || "Annulation refusée — la prestation reste à votre charge.");
+                    } catch { showToast("Annulation impossible — vérifiez votre connexion."); }
                   }} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                     ✕ Annuler la mission
                   </button>
