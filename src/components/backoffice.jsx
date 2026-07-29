@@ -13,6 +13,13 @@ const DOC_LABELS = {
   domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document",
 };
 
+// Icônes des types de documents — même raison que DOC_LABELS ci-dessus : trois
+// copies divergentes coexistaient, dont deux sans `tva`.
+const DOC_ICONS = {
+  kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
+  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄",
+};
+
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
   let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -932,7 +939,7 @@ export function BOComptes() {
 
                   {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
                   {docs[p.id] && docs[p.id].map(doc => {
-                    const DOC_ICON = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+                    const DOC_ICON = DOC_ICONS;
                     const DOC_LABEL = DOC_LABELS;
                     const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
                     return (
@@ -1084,7 +1091,7 @@ export function BOComptes() {
       )}
 
       {docModal && (() => {
-        const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
+        const DOC_ICON = DOC_ICONS;
         const DOC_LABEL = DOC_LABELS;
         const p = profiles.find(x=>x.id===docModal.profileId)||{};
         const REQ = p.role === "client" && p.type_compte === "entreprise"
@@ -1474,8 +1481,14 @@ export function BORatings() {
   const handleDelete = async (id) => {
     if (!await showConfirm("Supprimer cet avis définitivement ?")) return;
     setDeleting(id);
-    await boFetch({ action:"delete_rating", ratingId:id });
-    setRatings(rs => rs.filter(r=>r.id!==id));
+    // L'avis n'est retiré de la liste que si le serveur l'a réellement supprimé :
+    // il disparaissait de l'écran puis réapparaissait au rechargement.
+    try {
+      const r = await boFetch({ action:"delete_rating", ratingId:id });
+      const j = await r.json().catch(()=>({}));
+      if (r.ok) setRatings(rs => rs.filter(x=>x.id!==id));
+      else showToast(j.error || `Erreur ${r.status}`, "error");
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setDeleting(null);
   };
   if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>;
@@ -2266,7 +2279,7 @@ export function BOResetMonthly() {
 }
 
 export function BODocuments() {
-  const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄" };
+  const DOC_ICON = DOC_ICONS;
   const DOC_LABEL = DOC_LABELS;
   const [docs, setDocs]       = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2289,9 +2302,14 @@ export function BODocuments() {
   const handleVerify = async (doc) => {
     setVerifying(doc.id);
     try {
-      await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
-      setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
-    } finally { setVerifying(null); }
+      // Même précaution que dans l'onglet Comptes : l'écran affichait « vérifié »
+      // sans regarder si le serveur avait accepté.
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
+      const j = await r.json().catch(()=>({}));
+      if (r.ok) setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
+      else showToast(j.error || `Erreur ${r.status}`, "error");
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
+    finally { setVerifying(null); }
   };
 
   const displayed = docs.filter(d => {

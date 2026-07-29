@@ -2534,6 +2534,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [showCgpsFromContract, setShowCgpsFromContract] = useState(false);
 
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
+  const [cbTransfer, setCbTransfer] = useState(false);
   const [savedAddress, setSavedAddress] = useState(null);
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
@@ -3054,8 +3055,28 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 <div style={{ fontWeight:700, color:C.success, fontSize:13, marginBottom:2 }}>💰 Cashback disponible</div>
                 <div style={{ color:C.textSub, fontSize:12 }}>Vous avez {walletInfo.balance.toFixed(2)} € à utiliser</div>
               </div>
-              <button style={{ background:`${C.success}25`, border:`1px solid ${C.success}44`, borderRadius:10, padding:"7px 14px", color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                Appliquer
+              <button disabled={cbTransfer} onClick={async()=>{
+                setCbTransfer(true);
+                try {
+                  const { data:sd } = await supabase.auth.getSession();
+                  const token = sd?.session?.access_token;
+                  if (!token) { showToast("Session expirée — reconnectez-vous."); setCbTransfer(false); return; }
+                  const res = await fetch("/api/wallet", {
+                    method:"POST",
+                    headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+                    body: JSON.stringify({ action:"transfer_cashback" }),
+                  });
+                  const j = await res.json().catch(()=>({}));
+                  if (res.ok) {
+                    setWalletInfo(w => ({ ...w, balance: 0 }));
+                    showToast(`${Number(j.transfered||0).toFixed(2).replace(".",",")} € transférés sur votre portefeuille.`);
+                  } else {
+                    showToast(j.error || "Transfert impossible — réessayez.");
+                  }
+                } catch { showToast("Transfert impossible — réessayez."); }
+                setCbTransfer(false);
+              }} style={{ background:`${C.success}25`, border:`1px solid ${C.success}44`, borderRadius:10, padding:"7px 14px", color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:cbTransfer?0.6:1 }}>
+                {cbTransfer ? "Transfert…" : "Vers mon portefeuille"}
               </button>
             </div>
           )}
@@ -3432,8 +3453,16 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                 <button onClick={async()=>{
                   setTrackingCancelling(true);
                   const { data:{ session } } = await supabase.auth.getSession();
-                  await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"cancel_client", mission_id:resolvedMissionId }) });
-                  setStep(4); setShowTrackingCancel(false); setTrackingCancelling(false);
+                  // L'écran ne passe en « annulée » que si le serveur a accepté.
+                  // Il basculait auparavant quoi qu'il arrive : le client repartait
+                  // en croyant sa prestation annulée alors qu'elle courait toujours.
+                  try {
+                    const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"cancel_client", mission_id:resolvedMissionId }) });
+                    const j = await r.json().catch(()=>({}));
+                    if (r.ok) { setStep(4); setShowTrackingCancel(false); }
+                    else showToast(j.error || "Annulation refusée — la prestation est maintenue.");
+                  } catch { showToast("Annulation impossible — vérifiez votre connexion."); }
+                  setTrackingCancelling(false);
                 }} disabled={trackingCancelling} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:trackingCancelling?"default":"pointer", fontFamily:"inherit" }}>
                   {trackingCancelling ? "Annulation…" : "Confirmer"}
                 </button>
@@ -3672,7 +3701,12 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                       method:"POST", headers:{"Content-Type":"application/json"},
                       body: JSON.stringify({ subject:`Litige ${refNum} — ${p.name}`, message: disputeMsg.trim(), userEmail: user?.email, userName: user?.user_metadata?.prenom }),
                     });
-                  } catch(_) {}
+                  } catch(err) {
+                    // Le litige est déjà enregistré en base juste au-dessus : seul
+                    // l'email d'alerte au support a échoué. On journalise plutôt que
+                    // d'inquiéter l'utilisateur, mais on ne l'avale pas en silence.
+                    console.error("[litige] alerte support non envoyée :", err.message);
+                  }
                   setDisputeSending(false);
                   setDisputeDone(true);
                 }}

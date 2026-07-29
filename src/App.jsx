@@ -1010,7 +1010,6 @@ export default function App() {
     try { await supabase.auth.updateUser({ data: { is_online: next } }); } catch {}
   };
   const [pendingMission,setPendingMission]=useState(null);
-  const [bookingSource,setBookingSource]=useState("profile");
   const [invoiceMission,setInvoiceMission]=useState(null);
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
@@ -1452,7 +1451,7 @@ export default function App() {
     if(to==="tracking" && data?._missionId) setSelectedMissionId(data._missionId);
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
-    if(to==="booking") { setSelectedProvider(data); setBookingSource("profile"); }
+    if(to==="booking") { setSelectedProvider(data); }
     if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
@@ -1573,7 +1572,7 @@ export default function App() {
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>{ setBookingSource("profile"); setScreen(bookingSource); }} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>setScreen("profile")} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} missionId={selectedMissionId||null} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
