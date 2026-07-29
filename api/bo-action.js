@@ -902,6 +902,57 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Refuser un document : il est retiré (ligne + fichier) pour que le prestataire
+    // puisse en redéposer un, et une notification lui explique quoi corriger.
+    // Sans colonne dédiée en base, un document « refusé » serait indiscernable
+    // d'un document jamais examiné : le retirer est plus clair pour les deux côtés.
+    if (action === "reject_doc") {
+      if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
+      if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
+      const motif = String(req.body.motif || "").trim().slice(0, 300);
+      if (!motif) return res.status(400).json({ error: "Motif de refus requis" });
+
+      const docRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&prestataire_id=eq.${profileId}&select=id,type,storage_path`, { headers });
+      const docData = await docRes.json().catch(() => []);
+      const doc = Array.isArray(docData) && docData[0];
+      if (!doc) return res.status(403).json({ error: "Document non trouvé pour ce profil" });
+
+      if (doc.storage_path) {
+        await fetch(`${SUPABASE_URL}/storage/v1/object/Documents/${doc.storage_path}`, {
+          method: "DELETE", headers,
+        }).catch(e => console.error("[reject_doc] suppression du fichier échouée :", e.message));
+      }
+
+      const delRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
+        method: "DELETE", headers: { ...headers, "Prefer": "return=minimal" },
+      });
+      if (!delRes.ok) {
+        const txt = await delRes.text().catch(() => "");
+        console.error("[reject_doc] suppression de la ligne échouée :", delRes.status, txt);
+        return res.status(500).json({ error: "Suppression du document échouée" });
+      }
+
+      const LABELS = {
+        kbis:"KBIS / SIRET", rib:"RIB / IBAN", cni:"Pièce d'identité", photo:"Photo de profil",
+        urssaf:"Attestation URSSAF", domicile:"Justificatif de domicile", rc_pro:"RC Professionnelle",
+        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document",
+      };
+      const label = LABELS[doc.type] || doc.type;
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: profileId,
+          type:    "system",
+          title:   `Document à renvoyer : ${label}`,
+          body:    `Votre document « ${label} » n'a pas pu être validé. Motif : ${motif}. Merci de déposer un nouveau document depuis votre espace.`,
+          read:    false,
+        }),
+      }).catch(e => console.error("[reject_doc] notification échouée :", e.message));
+
+      return res.status(200).json({ success: true, type: doc.type });
+    }
+
     if (action === "visits_stats") {
       const now = new Date();
       const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();

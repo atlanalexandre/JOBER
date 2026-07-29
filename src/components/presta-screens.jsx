@@ -98,13 +98,17 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
 }
 
-function DocRowItem({ doc, isValid, onUploaded }) {
+function DocRowItem({ doc, isSent, isVerified, onUploaded }) {
   const [renewed, setRenewed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
   const fileInputRef = useRef(null);
-  const valid = isValid || renewed;
+  // Trois états distincts. « Envoyé » n'est pas « validé » : le backoffice doit
+  // encore examiner le document, et il peut le refuser. Un document renvoyé
+  // (renewed) repart toujours en attente de vérification.
+  const sent     = isSent || renewed;
+  const verified = isVerified && !renewed;
 
   // Étape 1 : sélection du fichier — AUCUN réseau, juste stocker le fichier en mémoire.
   // iOS ne peut pas interférer avec des opérations purement locales.
@@ -174,20 +178,23 @@ function DocRowItem({ doc, isValid, onUploaded }) {
 
   return (
     <div style={{ marginBottom:8 }}>
-      <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", display:"flex", gap:10, alignItems:"center", border:`1px solid ${uploadError?C.danger+"60":valid?C.border:C.accent+"30"}` }}>
+      <div style={{ background:"#0D1B3E", borderRadius:13, padding:"12px", display:"flex", gap:10, alignItems:"center", border:`1px solid ${uploadError?C.danger+"60":verified?C.border:C.accent+"30"}` }}>
         <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} style={{ display:"none" }} onChange={handleFileChange} />
-        <div style={{ width:38, height:38, borderRadius:10, background:valid?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
+        <div style={{ width:38, height:38, borderRadius:10, background:verified?`${C.success}18`:`${C.accent}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{doc.icon}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{doc.label}</div>
-          <div style={{ color:valid?C.success:(pendingFile?C.accentGold:C.textSub), fontSize:11, fontWeight:valid?700:400 }}>
-            {valid?"✓ Validé":pendingFile?(pendingFile.name||"Fichier prêt"):(doc.required===false?"Recommandé":"En attente")}
+          <div style={{ color:verified?C.success:(pendingFile||sent?C.accentGold:C.textSub), fontSize:11, fontWeight:verified?700:400 }}>
+            {verified ? "✓ Validé"
+              : pendingFile ? (pendingFile.name||"Fichier prêt")
+              : sent ? "⏳ En cours de vérification"
+              : (doc.required===false?"Recommandé":"En attente")}
           </div>
         </div>
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          {!valid && !pendingFile && (
+          {!pendingFile && (
             <button onClick={()=>{ setUploadError(null); fileInputRef.current?.click(); }} disabled={uploading}
               style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-              + Charger
+              {sent ? "Remplacer" : "+ Charger"}
             </button>
           )}
           {pendingFile && !uploading && (
@@ -203,10 +210,13 @@ function DocRowItem({ doc, isValid, onUploaded }) {
             </>
           )}
           {uploading && <span style={{ fontSize:10, color:C.textSub }}>Envoi…</span>}
-          {valid && !pendingFile && (
-            <><Badge color={C.success} small>OK</Badge><span style={{ padding:"4px 10px", fontSize:10, color:C.success, fontWeight:600 }}>✓ Validé</span></>
+          {verified && !pendingFile && (
+            <Badge color={C.success} small>OK</Badge>
           )}
-          {!valid && !pendingFile && (
+          {sent && !verified && !pendingFile && (
+            <Badge color={C.accentGold} small>À vérifier</Badge>
+          )}
+          {!sent && !pendingFile && (
             <Badge color={doc.required===false?C.textSub:C.accent} small>{doc.required===false?"Optionnel":"Requis"}</Badge>
           )}
         </div>
@@ -2636,6 +2646,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [profilPct,setProfilPct]=useState(0);
   const [_missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
+  const [verifiedDocIds,setVerifiedDocIds]=useState([]);
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
   useEffect(()=>{
@@ -2713,8 +2724,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
-      const { data: docsArr } = await supabase.from("documents").select("type").eq("prestataire_id", u.id);
+      const { data: docsArr } = await supabase.from("documents").select("type,verified").eq("prestataire_id", u.id);
       const uploaded = (Array.isArray(docsArr)?docsArr:[]).map(d=>d.type);
+      // « Envoyé » et « validé par le backoffice » sont deux états distincts :
+      // l'écran affichait « ✓ Validé » dès le dépôt, alors que le backoffice
+      // affichait encore « En attente ».
+      setVerifiedDocIds((Array.isArray(docsArr)?docsArr:[]).filter(d=>d.verified).map(d=>d.type));
       // Photo stockée dans profiles.avatar_url — pas dans la table documents
       const { data: profPhoto } = await supabase.from("profiles").select("avatar_url").eq("id", u.id).single();
       if ((profPhoto?.avatar_url || u.user_metadata?.photo_url) && !uploaded.includes("photo")) uploaded.push("photo");
@@ -3047,8 +3062,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>
           {DOCS_REQUIS.map((doc,i)=>(
-            <DocRowItem key={i} doc={doc} isValid={uploadedDocIds.includes(doc.id)} onUploaded={(newType)=>{
+            <DocRowItem key={i} doc={doc} isSent={uploadedDocIds.includes(doc.id)} isVerified={verifiedDocIds.includes(doc.id)} onUploaded={(newType)=>{
               setUploadedDocIds(prev => prev.includes(newType) ? prev : [...prev, newType]);
+              // Un renvoi repasse le document en attente de vérification
+              setVerifiedDocIds(prev => prev.filter(t => t !== newType));
             }} />
           ))}
         </>}
