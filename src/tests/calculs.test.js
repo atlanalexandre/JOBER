@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { prixClient, tarifInterim, economiePct, calcCashback, getCashbackTier } from "../constants/plans.js";
+import { prixClient, tarifInterim, economiePct, calcCashback, getCashbackTier, CASHBACK_TIERS } from "../constants/plans.js";
 
 // ── Calcul du tarif client ────────────────────────────────────────
 describe("prixClient", () => {
@@ -76,6 +76,30 @@ describe("calcCashback", () => {
   });
   it("un montant nul ne crédite rien", () => {
     expect(calcCashback(0, 20)).toBe(0);
+  });
+});
+
+// ── Aller-retour de l'écran de réglages du backoffice ─────────────
+// L'écran BO convertit le taux stocké (0,0075) en pourcentage affiché (0,75),
+// puis reconvertit à l'enregistrement. Un arrondi à une seule décimale
+// transformait silencieusement le palier silver en 0,8 % — et l'écrivait en base
+// au premier « Sauvegarder ». Ces deux fonctions reproduisent exactement
+// backoffice.jsx (lecture ligne ~1952, écriture ligne ~2146).
+describe("réglages BO — conversion des taux de cashback", () => {
+  const versAffichage    = (rate) => Math.round(rate * 10000) / 100;
+  const versEnregistrement = (pct) => Number(pct) / 100;
+
+  it("affiche chaque palier sans perte de précision", () => {
+    expect(versAffichage(0.005)).toBe(0.5);
+    expect(versAffichage(0.0075)).toBe(0.75);
+    expect(versAffichage(0.01)).toBe(1);
+    expect(versAffichage(0.015)).toBe(1.5);
+  });
+
+  it("un aller-retour ne modifie aucun taux de la grille", () => {
+    for (const tier of CASHBACK_TIERS) {
+      expect(versEnregistrement(versAffichage(tier.rate))).toBeCloseTo(tier.rate, 6);
+    }
   });
 });
 

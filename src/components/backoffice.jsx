@@ -1949,7 +1949,10 @@ export function BOSettingsTab() {
       if (s.urgency_surcharge != null) setLocalUs(String(s.urgency_surcharge));
       if (s.frais_service) setLocalFs({ single: String(s.frais_service.single ?? "4.90"), range: String(s.frais_service.range ?? "2.90"), urgent: String(s.frais_service.urgent ?? "9.90") });
       if (s.disabled_sectors)        setLocalDs(s.disabled_sectors);
-      if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 1000) / 10) })));
+      // 2 décimales obligatoires : le palier silver vaut 0,75 %, qu'un arrondi à
+      // une décimale transformait en 0,8 % à l'affichage — puis en base au premier
+      // enregistrement, soit 0,8 % réellement crédité au client.
+      if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 10000) / 100) })));
       if (s.sector_min_prestataires != null) setLocalSmp(String(s.sector_min_prestataires));
       if (s.launch_phase != null)    setLaunchPhase(Boolean(s.launch_phase));
       setLoading(false);
@@ -2138,7 +2141,7 @@ export function BOSettingsTab() {
           <div key={tier.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
             <span style={{ color:C.text, fontSize:13, fontWeight:600, width:90 }}>{tier.id}</span>
             <span style={{ color:C.textSub, fontSize:11, width:80 }}>{tier.min}–{tier.max === 999 ? "∞" : tier.max} prestations</span>
-            <input type="number" min={0} max={100} step={0.1} value={tier.rate} onChange={e => setLocalCbr(prev => prev.map((t, j) => j === i ? { ...t, rate: e.target.value } : t))}
+            <input type="number" min={0} max={100} step={0.05} value={tier.rate} onChange={e => setLocalCbr(prev => prev.map((t, j) => j === i ? { ...t, rate: e.target.value } : t))}
               style={{ width:70, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
             <span style={{ color:C.textSub, fontSize:12 }}>%</span>
           </div>
