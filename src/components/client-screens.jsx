@@ -2175,7 +2175,16 @@ export function SearchFiltersScreen({ onNavigate }) {
 export function CVScreen({ provider, onBack, onNavigate }) {
   const p = provider;
   if (!p) return null;
-  const cv = p.cv || CV_DATA[p.id];
+  const cvBrut = p.cv || CV_DATA[p.id];
+  // Un CV jamais rempli est enregistré comme objet vide (presta-screens.jsx:1163),
+  // et un objet vide est « vrai » en JavaScript : le garde-fou ci-dessous le
+  // laissait passer, puis l'affichage plantait sur cv.experiences.map.
+  // On normalise les listes et on ne considère le CV présent que s'il a du contenu.
+  const experiences = Array.isArray(cvBrut?.experiences) ? cvBrut.experiences : [];
+  const formations  = Array.isArray(cvBrut?.formations)  ? cvBrut.formations  : [];
+  const langues     = Array.isArray(cvBrut?.langues)     ? cvBrut.langues     : [];
+  const cv = cvBrut && (cvBrut.titre || cvBrut.accroche || cvBrut.permis
+    || experiences.length || formations.length || langues.length) ? cvBrut : null;
 
   if(!cv) return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
@@ -2220,17 +2229,18 @@ export function CVScreen({ provider, onBack, onNavigate }) {
           <p style={{ color:C.textSub, fontSize:13, lineHeight:1.7, margin:0 }}>{cv.accroche}</p>
         </div>
 
-        {/* Expériences */}
+        {/* Expériences — masquées si le prestataire n'en a saisi aucune */}
+        {experiences.length > 0 && (
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14 }}>
             <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>💼</div>
             <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Expériences professionnelles</span>
           </div>
-          {cv.experiences.map((e,i) => (
-            <div key={i} style={{ paddingBottom:i<cv.experiences.length-1?16:0, marginBottom:i<cv.experiences.length-1?16:0, borderBottom:i<cv.experiences.length-1?`1px solid ${C.border}`:"none", position:"relative", paddingLeft:18 }}>
+          {experiences.map((e,i) => (
+            <div key={i} style={{ paddingBottom:i<experiences.length-1?16:0, marginBottom:i<experiences.length-1?16:0, borderBottom:i<cv.experiences.length-1?`1px solid ${C.border}`:"none", position:"relative", paddingLeft:18 }}>
               {/* Timeline dot */}
               <div style={{ position:"absolute", left:0, top:4, width:8, height:8, borderRadius:"50%", background:C.violet, boxShadow:`0 0 8px ${C.violet}88` }} />
-              {i < cv.experiences.length-1 && (
+              {i < experiences.length-1 && (
                 <div style={{ position:"absolute", left:3, top:12, width:2, height:"calc(100% - 8px)", background:`${C.violet}30` }} />
               )}
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{e.poste}</div>
@@ -2242,15 +2252,17 @@ export function CVScreen({ provider, onBack, onNavigate }) {
             </div>
           ))}
         </div>
+        )}
 
-        {/* Formations */}
+        {/* Formations — masquées si le prestataire n'en a saisi aucune */}
+        {formations.length > 0 && (
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:14 }}>
           <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14 }}>
             <div style={{ width:28, height:28, borderRadius:8, background:`${C.accentGold}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🎓</div>
             <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Formations & Diplômes</span>
           </div>
-          {cv.formations.map((f,i) => (
-            <div key={i} style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:i<cv.formations.length-1?12:0, paddingBottom:i<cv.formations.length-1?12:0, borderBottom:i<cv.formations.length-1?`1px solid ${C.border}`:"none" }}>
+          {formations.map((f,i) => (
+            <div key={i} style={{ display:"flex", gap:12, alignItems:"flex-start", marginBottom:i<formations.length-1?12:0, paddingBottom:i<cv.formations.length-1?12:0, borderBottom:i<cv.formations.length-1?`1px solid ${C.border}`:"none" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:`${C.accentGold}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>📜</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{f.diplome}</div>
@@ -2260,6 +2272,7 @@ export function CVScreen({ provider, onBack, onNavigate }) {
             </div>
           ))}
         </div>
+        )}
 
         {/* Infos complémentaires */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
@@ -2268,13 +2281,16 @@ export function CVScreen({ provider, onBack, onNavigate }) {
             <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Informations</span>
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {langues.length > 0 && (
             <div style={{ display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:16 }}>🌍</span>
               <div>
                 <div style={{ fontSize:11, color:C.textMuted, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>Langues</div>
-                <div style={{ color:C.text, fontSize:13 }}>{cv.langues.join(" · ")}</div>
+                <div style={{ color:C.text, fontSize:13 }}>{langues.join(" · ")}</div>
               </div>
             </div>
+            )}
+            {cv.permis && (
             <div style={{ display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:16 }}>🚗</span>
               <div>
@@ -2282,6 +2298,7 @@ export function CVScreen({ provider, onBack, onNavigate }) {
                 <div style={{ color:C.text, fontSize:13 }}>{cv.permis}</div>
               </div>
             </div>
+            )}
             <div style={{ display:"flex", gap:10, alignItems:"center" }}>
               <span style={{ fontSize:16 }}>💼</span>
               <div>
@@ -2673,8 +2690,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>💼</div>
                     <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Expériences</span>
                   </div>
-                  {cv.experiences.map((e,i)=>(
-                    <div key={i} style={{ paddingBottom:i<cv.experiences.length-1?16:0, marginBottom:i<cv.experiences.length-1?16:0, borderBottom:i<cv.experiences.length-1?`1px solid ${C.border}`:"none", paddingLeft:18, position:"relative" }}>
+                  {(cv.experiences||[]).map((e,i)=>(
+                    <div key={i} style={{ paddingBottom:i<(cv.experiences||[]).length-1?16:0, marginBottom:i<(cv.experiences||[]).length-1?16:0, borderBottom:i<cv.experiences.length-1?`1px solid ${C.border}`:"none", paddingLeft:18, position:"relative" }}>
                       <div style={{ position:"absolute", left:0, top:4, width:8, height:8, borderRadius:"50%", background:C.violet }} />
                       <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{e.poste}</div>
                       <div style={{ color:p.color, fontSize:12, margin:"2px 0" }}>{e.entreprise} · {e.periode}</div>
@@ -2687,8 +2704,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <div style={{ width:28, height:28, borderRadius:8, background:`${C.violet}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🎓</div>
                     <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Formations</span>
                   </div>
-                  {cv.formations.map((f,i)=>(
-                    <div key={i} style={{ marginBottom:i<cv.formations.length-1?10:0, paddingBottom:i<cv.formations.length-1?10:0, borderBottom:i<cv.formations.length-1?`1px solid ${C.border}`:"none" }}>
+                  {(cv.formations||[]).map((f,i)=>(
+                    <div key={i} style={{ marginBottom:i<(cv.formations||[]).length-1?10:0, paddingBottom:i<(cv.formations||[]).length-1?10:0, borderBottom:i<cv.formations.length-1?`1px solid ${C.border}`:"none" }}>
                       <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>{f.diplome}</div>
                       <div style={{ color:C.textSub, fontSize:12 }}>{f.etablissement} · {f.annee}</div>
                     </div>
