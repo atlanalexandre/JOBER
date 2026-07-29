@@ -433,7 +433,7 @@ export function BOComptes() {
       const j = await r.json().catch(() => ({}));
       if (r.ok) {
         setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).filter(doc => doc.id !== docId) }));
-        showToast("Document refusé — le prestataire est prévenu.");
+        showToast("Document refusé — le prestataire est prévenu.", "success");
       } else {
         showToast(j.error || `Erreur ${r.status}`, "error");
       }
