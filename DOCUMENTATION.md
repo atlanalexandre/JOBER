@@ -107,6 +107,9 @@ Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes
 **`tracking_positions`** (géolocalisation en cours de prestation), **`favorites`**,
 **`push_subscriptions`**.
 
+**`visits`** — compteur de visites anonymes. Une ligne est insérée au premier chargement de
+chaque session (`App.jsx:1103`), avec un simple `session_id` et aucune donnée personnelle.
+
 **`platform_settings`** — les réglages modifiables depuis le backoffice, stockés en clé/valeur :
 `commission_rate`, `cashback_rates`, `subscription_prices`, `plan_limits`, `frais_service`,
 `urgency_surcharge`, `launch_phase`, `disabled_sectors`, `sector_min_prestataires`,
@@ -195,18 +198,32 @@ puis agir en service role.
 
 ### Inscription et validation
 
+**Les deux rôles ne suivent pas le même chemin.** C'est une source de confusion fréquente.
+
 ```
-Inscription → compte créé avec status "pending"
+CLIENT
+Inscription → status "approved" directement (auth.jsx:826)
            → email de bienvenue
-           → l'utilisateur ne peut pas encore utiliser l'application
+           → accès immédiat à l'application, aucune validation backoffice
+
+PRESTATAIRE
+Inscription → status "pending" (auth.jsx:131)
+           → email de bienvenue
+           → écran d'attente, l'application est inaccessible
 Backoffice → validation → status "approved" → email de confirmation
-           → pour un prestataire, il faut EN PLUS missions_enabled = true
-             pour accéder aux prestations
+           → il faut EN PLUS missions_enabled = true pour accéder aux prestations
 ```
+
+Autrement dit : **seuls les prestataires passent par une validation manuelle.** Un client
+créé à l'instant peut réserver immédiatement.
 
 `status` et `missions_enabled` sont deux choses différentes : un prestataire peut avoir un
 compte validé tout en n'ayant pas encore accès aux prestations, tant que son dossier
 documentaire n'est pas complet.
+
+Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. Le dernier est
+traité à la connexion (`auth.jsx:1175`) et au démarrage (`App.jsx:1391`) : la session est
+fermée et l'utilisateur renvoyé à l'écran de choix de rôle.
 
 ### Cycle d'une prestation
 
@@ -275,6 +292,11 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `VITE_STRIPE_PUBLIC_KEY` | Clé publique Stripe |
 | `STRIPE_SECRET_KEY` | Clé secrète Stripe |
 | `STRIPE_WEBHOOK_SECRET` | Signature du webhook Stripe |
+| `VITE_SENTRY_DSN` | Remontée d'erreurs — si absente, Sentry est désactivé |
+| `VITE_VAPID_PUBLIC_KEY` | Contrepartie navigateur des clés VAPID, requise pour l'abonnement push |
+| `VITE_ALANE_SIRET` | SIRET affiché sur les factures — **vide = ligne masquée** |
+| `VITE_ALANE_ADRESSE` | Adresse affichée sur les factures — **vide = ligne masquée** |
+| `VITE_ALANE_FORME` | Forme juridique sur les factures (défaut `SAS`) |
 | `RESEND_API_KEY` | Envoi d'emails |
 | `RESEND_FROM` | Expéditeur — **contient une espace significative** |
 | `ADMIN_EMAIL` | Destinataire des tickets support |
@@ -286,6 +308,15 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `CRON_SECRET` | Protection des tâches planifiées |
 | `APP_URL` | URL publique |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Limitation de débit (optionnel) |
+
+Les variables préfixées `VITE_` sont **embarquées dans le code envoyé au navigateur** : elles
+sont publiques par construction. N'y mettre aucun secret. Les autres ne sont lisibles que
+depuis `/api`.
+
+À ce jour `VITE_ALANE_SIRET` et `VITE_ALANE_ADRESSE` ne sont pas renseignées : les factures
+sont donc émises **sans SIRET ni adresse d'émetteur**, ce qui ne satisfait pas les mentions
+légales obligatoires d'une facture française. Les renseigner dans Vercel suffit à les faire
+apparaître, aucun changement de code n'est nécessaire.
 
 ---
 
