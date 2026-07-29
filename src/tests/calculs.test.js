@@ -25,37 +25,57 @@ describe("tarifInterim", () => {
 });
 
 // ── Cashback ──────────────────────────────────────────────────────
+// Grille de référence, confirmée par Alexandre le 29/07/2026 :
+//   Standard  0-2 missions   0,5 %
+//   Silver    3-5 missions   0,75 %
+//   Gold      6-9 missions   1 %
+//   Platinum  10+ missions   1,5 %
+// ATTENTION : ces valeurs ne pilotent que l'affichage. Le cashback réellement
+// crédité est calculé dans api/missions.js, qui lit la clé `cashback_rates` de
+// `platform_settings` et écrase cette grille si elle est renseignée en base.
+// Les deux doivent rester alignées — voir DOCUMENTATION.md §4.
 describe("getCashbackTier", () => {
-  it("0 mission → Bronze", () => {
-    expect(getCashbackTier(0).label).toBe("Bronze");
+  it("0 mission → Standard", () => {
+    expect(getCashbackTier(0).label).toBe("Standard");
   });
   it("5 missions → Silver", () => {
     expect(getCashbackTier(5).label).toBe("Silver");
   });
-  it("10 missions → Gold", () => {
-    expect(getCashbackTier(10).label).toBe("Gold");
+  it("10 missions → Platinum", () => {
+    expect(getCashbackTier(10).label).toBe("Platinum");
   });
   it("20 missions → Platinum", () => {
     expect(getCashbackTier(20).label).toBe("Platinum");
   });
+
+  // Bornes exactes : c'est là que se logent les erreurs de palier
+  it("respecte les bornes de chaque palier", () => {
+    expect(getCashbackTier(2).label).toBe("Standard");
+    expect(getCashbackTier(3).label).toBe("Silver");
+    expect(getCashbackTier(6).label).toBe("Gold");
+    expect(getCashbackTier(9).label).toBe("Gold");
+  });
 });
 
 describe("calcCashback", () => {
-  it("Bronze (0-4 missions) → 1%", () => {
-    expect(calcCashback(100, 0)).toBeCloseTo(1);
+  it("Standard (0-2 missions) → 0,5 %", () => {
+    expect(calcCashback(100, 0)).toBeCloseTo(0.5);
   });
-  it("Silver (5-9 missions) → 2%", () => {
-    expect(calcCashback(100, 5)).toBeCloseTo(2);
+  it("Silver (3-5 missions) → 0,75 %", () => {
+    expect(calcCashback(100, 5)).toBeCloseTo(0.75);
   });
-  it("Gold (10-19 missions) → 3%", () => {
-    expect(calcCashback(100, 10)).toBeCloseTo(3);
+  it("Gold (6-9 missions) → 1 %", () => {
+    expect(calcCashback(100, 6)).toBeCloseTo(1);
   });
-  it("Platinum (20+ missions) → 5%", () => {
-    expect(calcCashback(100, 20)).toBeCloseTo(5);
+  it("Platinum (10+ missions) → 1,5 %", () => {
+    expect(calcCashback(100, 20)).toBeCloseTo(1.5);
   });
   it("cashback proportionnel au montant", () => {
-    expect(calcCashback(200, 0)).toBeCloseTo(2);
-    expect(calcCashback(500, 10)).toBeCloseTo(15);
+    expect(calcCashback(200, 0)).toBeCloseTo(1);
+    expect(calcCashback(500, 10)).toBeCloseTo(7.5);
+  });
+  it("un montant nul ne crédite rien", () => {
+    expect(calcCashback(0, 20)).toBe(0);
   });
 });
 

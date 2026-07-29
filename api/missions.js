@@ -890,7 +890,12 @@ export default async function handler(req, res) {
         const cbRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`, { headers });
         const cbData = await cbRes.json();
         if (Array.isArray(cbData) && Array.isArray(cbData[0]?.value)) CASHBACK_TIERS = cbData[0].value;
-      } catch {}
+      } catch {
+        // Catch volontairement vide (règle CLAUDE.md 1.2) : la grille par défaut
+        // ci-dessus est identique à celle de src/constants/plans.js. Si la lecture
+        // de platform_settings échoue, on crédite donc le taux nominal plutôt que
+        // de faire échouer la clôture de mission — le prestataire serait bloqué.
+      }
       const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
       const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
