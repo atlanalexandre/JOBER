@@ -4,6 +4,15 @@ import { C, font, r, shadow } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
 import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
+// Libellés des types de documents. Déclarés une seule fois : deux copies locales
+// coexistaient dans le rendu, et celle de la liste des comptes avait oublié `tva`,
+// qui s'affichait donc en brut.
+const DOC_LABELS = {
+  kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN",
+  tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil",
+  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document",
+};
+
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
   let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -394,8 +403,14 @@ export function BOComptes() {
 
   const handleVerifyDoc = async (profileId, docId) => {
     setDocVerifying(docId);
-    await boFetch({ action:"verify_doc", profileId, docId });
-    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
+    // L'état n'est mis à jour que si le serveur a réellement validé : l'écran
+    // affichait « vérifié » même quand l'appel échouait.
+    try {
+      const r = await boFetch({ action:"verify_doc", profileId, docId });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
+      else showToast(j.error || `Erreur ${r.status}`, "error");
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setDocVerifying(null);
   };
 
@@ -406,25 +421,49 @@ export function BOComptes() {
     if (motif === null) return;
     if (!String(motif).trim()) { showToast("Motif obligatoire — refus annulé."); return; }
     setDocVerifying(docId);
-    const r = await boFetch({ action:"reject_doc", profileId, docId, motif });
-    if (r?.success) {
-      setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).filter(doc => doc.id !== docId) }));
-      showToast("Document refusé — le prestataire est prévenu.");
-    } else {
-      showToast(r?.error || "Erreur lors du refus.");
-    }
+    try {
+      const r = await boFetch({ action:"reject_doc", profileId, docId, motif });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).filter(doc => doc.id !== docId) }));
+        showToast("Document refusé — le prestataire est prévenu.");
+      } else {
+        showToast(j.error || `Erreur ${r.status}`, "error");
+      }
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setDocVerifying(null);
   };
 
   const handleVerifyAllDocs = async (profileId) => {
     const unverified = (docs[profileId]||[]).filter(d => !d.verified && !d.isVirtual);
     if (!unverified.length) return;
+
+    // Valider en bloc revient à certifier des pièces qu'on n'a pas forcément
+    // ouvertes — un Kbis hors sujet est déjà passé comme ça. La confirmation
+    // nomme les documents concernés pour rendre l'acte conscient.
+    const liste = unverified.map(d => `• ${DOC_LABEL[d.type] || d.type}`).join("\n");
+    const ok = await showConfirm(
+      `Vous allez valider ${unverified.length} document${unverified.length > 1 ? "s" : ""} :\n\n${liste}\n\n`
+      + "Les avez-vous tous ouverts et contrôlés ? Valider un document revient à certifier "
+      + "que vous l'avez vérifié.\n\nConfirmer la validation ?"
+    );
+    if (!ok) return;
+
     setValidatingAll(profileId);
+    const valides = [];
+    const echecs  = [];
     for (const doc of unverified) {
-      await boFetch({ action:"verify_doc", profileId, docId: doc.id });
+      try {
+        const r = await boFetch({ action:"verify_doc", profileId, docId: doc.id });
+        if (r.ok) valides.push(doc.id);
+        else echecs.push(DOC_LABELS[doc.type] || doc.type);
+      } catch { echecs.push(DOC_LABELS[doc.type] || doc.type); }
     }
-    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.isVirtual ? doc : { ...doc, verified:true }) }));
+    // Seuls les documents réellement validés changent d'état : l'ancien code les
+    // marquait tous vérifiés à l'écran, même en cas d'échec côté serveur.
+    setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => valides.includes(doc.id) ? { ...doc, verified:true } : doc) }));
     setValidatingAll(null);
+    if (echecs.length) showToast(`Échec sur : ${echecs.join(", ")}. Réessayez.`);
   };
 
   useEffect(() => {
@@ -894,7 +933,7 @@ export function BOComptes() {
                   {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
                   {docs[p.id] && docs[p.id].map(doc => {
                     const DOC_ICON = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
-                    const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+                    const DOC_LABEL = DOC_LABELS;
                     const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
                     return (
                       <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
@@ -1046,7 +1085,7 @@ export function BOComptes() {
 
       {docModal && (() => {
         const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓" };
-        const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes" };
+        const DOC_LABEL = DOC_LABELS;
         const p = profiles.find(x=>x.id===docModal.profileId)||{};
         const REQ = p.role === "client" && p.type_compte === "entreprise"
           ? [
@@ -2228,7 +2267,7 @@ export function BOResetMonthly() {
 
 export function BODocuments() {
   const DOC_ICON  = { kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", rc_pro:"🛡️", rcpro:"🛡️", photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄" };
-  const DOC_LABEL = { kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil", domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre" };
+  const DOC_LABEL = DOC_LABELS;
   const [docs, setDocs]       = useState([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter]   = useState("all");   // all | pending | verified
