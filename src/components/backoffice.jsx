@@ -1727,6 +1727,21 @@ function SeedDemoButton() {
   const [msg, setMsg]       = useState("");
 
   const run = async () => {
+    // Action IRRÉVERSIBLE : /api/seed-demo supprime tous les prestataires sauf
+    // le compte démo — documents, missions, candidatures, profil et compte
+    // d'authentification. Elle n'avait aucune confirmation, alors que le bouton
+    // est à deux doigts des réglages. Voir CLAUDE.md 2.4.
+    const ok = await showConfirm(
+      "⚠️ Cette action SUPPRIME DÉFINITIVEMENT tous les comptes prestataires existants "
+      + "(documents, prestations, candidatures et comptes de connexion), puis recrée un profil de démonstration.\n\n"
+      + "Elle est irréversible et ne doit jamais être lancée sur la base de production.\n\nContinuer ?"
+    );
+    if (!ok) return;
+    const saisie = await showPrompt('Pour confirmer, tapez SUPPRIMER en majuscules :');
+    if ((saisie || "").trim() !== "SUPPRIMER") {
+      setStatus("error"); setMsg("Confirmation incorrecte — aucune suppression effectuée.");
+      return;
+    }
     setStatus("loading"); setMsg("");
     try {
       let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
@@ -1750,16 +1765,20 @@ function SeedDemoButton() {
 
   return (
     <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
-      <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>🌱 Seed démo prestataire</div>
-      <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px", lineHeight:1.5 }}>
-        Crée (ou recrée) le profil démo complet avec tous les documents validés et 3 missions exemples. Supprime tous les autres prestataires.
+      <div style={{ fontWeight:700, color:C.danger, fontSize:13, marginBottom:4 }}>⚠️ Seed démo prestataire — destructif</div>
+      <p style={{ color:C.textSub, fontSize:12, margin:"0 0 10px", lineHeight:1.5 }}>
+        Crée (ou recrée) le profil démo complet avec tous les documents validés et 3 prestations exemples.
+      </p>
+      <p style={{ color:C.danger, fontSize:12, margin:"0 0 12px", lineHeight:1.5, fontWeight:600 }}>
+        Supprime définitivement TOUS les autres comptes prestataires — documents, prestations,
+        candidatures et comptes de connexion compris. Irréversible. À ne jamais lancer en production.
       </p>
       <button
         onClick={run}
         disabled={status === "loading"}
-        style={{ background: C.violet, border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity: status === "loading" ? 0.6 : 1 }}
+        style={{ background:"transparent", border:`1px solid ${C.danger}`, borderRadius:10, padding:"10px 18px", color:C.danger, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity: status === "loading" ? 0.6 : 1 }}
       >
-        {status === "loading" ? "⏳ En cours…" : "🌱 Lancer le seed"}
+        {status === "loading" ? "⏳ En cours…" : "Supprimer les prestataires et créer la démo"}
       </button>
       {msg && (
         <div style={{ marginTop:10, fontSize:12, color: status === "ok" ? C.success : C.danger, lineHeight:1.5 }}>{msg}</div>
