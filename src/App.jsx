@@ -1547,7 +1547,48 @@ export default function App() {
             </div>
           </div>
           <button
-            onClick={()=>{ navigate("home"); setBookingDraftBanner(null); }}
+            onClick={async()=>{
+              // Ce bouton faisait navigate("home") : l'écran où l'utilisateur se
+              // trouve déjà. Il masquait le bandeau sans rien reprendre.
+              const draft = bookingDraftBanner;
+              setBookingDraftBanner(null);
+              const oublier = () => { try { localStorage.removeItem("alane_booking_draft"); } catch { /* stockage indisponible */ } };
+              if(!draft?.missionId || !draft?.prestataireId){
+                // Brouillon antérieur à l'enregistrement de ces informations :
+                // impossible de reconstituer le tunnel sans repartir du profil.
+                oublier();
+                setBookingError("Cette réservation est trop ancienne pour être reprise. Relancez-la depuis le profil du prestataire.");
+                return;
+              }
+              try {
+                const { data:m } = await supabase.from("missions")
+                  .select("id,montant_total,hours,date,heure_debut,description,adresse,ville,status")
+                  .eq("id", draft.missionId).single();
+                if(!m || !["open","pending_acceptance"].includes(m.status)){
+                  oublier();
+                  setBookingError("Cette réservation n'est plus disponible — elle a peut-être déjà été réglée ou annulée.");
+                  return;
+                }
+                const d = await fetch("/api/prestataires").then(r=>r.json()).catch(()=>null);
+                const prov = (d?.prestataires||[]).find(p=>p.id===draft.prestataireId);
+                if(!prov){
+                  setBookingError("Ce prestataire n'est plus disponible. Choisissez-en un autre.");
+                  return;
+                }
+                setSelectedProvider(prov);
+                setSelectedMissionId(m.id);
+                setPaymentAmount(Number(m.montant_total) || draft.montant || 0);
+                setPaymentHours(m.hours || 8);
+                setPaymentDate(m.date || "");
+                setPaymentStartTime(m.heure_debut || "08:00");
+                setPaymentDescription(m.description || "");
+                setPaymentAdresse(m.adresse || "");
+                setPaymentVille(m.ville || "");
+                setScreen("stripe_pay");
+              } catch(e) {
+                setBookingError(e?.message || "Reprise impossible — réessayez.");
+              }
+            }}
             style={{ background:"#7C6FE0", border:"none", borderRadius:10, padding:"8px 14px", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}
           >Reprendre</button>
           <button
