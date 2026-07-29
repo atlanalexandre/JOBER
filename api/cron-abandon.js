@@ -81,6 +81,30 @@ export default async function handler(req, res) {
 
   // Brouillons > 30 min, pas encore notifiés
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+  // Purge des prestations créées pour un paiement qui n'a jamais abouti.
+  // Depuis que la prestation est créée AVANT le paiement (contrainte de
+  // /api/stripe-intent, qui recalcule le montant depuis la base), un tunnel
+  // abandonné laisse une ligne orpheline visible dans l'espace du client.
+  // Les trois conditions réunies n'existent que dans ce cas : au paiement
+  // réussi, prestataire_id et stripe_payment_intent sont toujours renseignés.
+  try {
+    const purgeCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 h
+    const purgeRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/missions`
+      + `?status=eq.pending_acceptance`
+      + `&prestataire_id=is.null`
+      + `&stripe_payment_intent=is.null`
+      + `&created_at=lt.${encodeURIComponent(purgeCutoff)}`,
+      { method: "DELETE", headers: { ...hdrs, "Prefer": "return=representation" } }
+    );
+    const purgees = purgeRes.ok ? await purgeRes.json().catch(() => []) : [];
+    if (Array.isArray(purgees) && purgees.length) {
+      console.log(`[cron-abandon] ${purgees.length} prestation(s) non payée(s) purgée(s)`);
+    }
+  } catch (e) {
+    console.error("[cron-abandon] purge des prestations non payées échouée :", e.message);
+  }
   let draftsRes;
   try {
     draftsRes = await fetch(

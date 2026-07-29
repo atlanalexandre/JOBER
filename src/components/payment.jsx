@@ -368,6 +368,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   useEffect(() => {
     const draft = {
       prestataireName: (provider || (teamProviders||[])[0])?.name || null,
+      // Identifiant nécessaire pour reconstituer la fiche du prestataire à la
+      // reprise : la prestation est créée sans prestataire_id tant que le
+      // paiement n'a pas abouti, le lien serait donc perdu au rechargement.
+      prestataireId: (provider || (teamProviders||[])[0])?.id || null,
       metier: description || null,
       montant: typeof amount === "object" ? (amount?.amount ?? null) : (amount ?? null),
       missionId: missionId || null,
