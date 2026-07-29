@@ -209,7 +209,7 @@ function SplashScreen({ onNext }) {
   );
 }
 
-function RoleScreen({ onSelect, onBack }) {
+function RoleScreen({ onSelect, onBack, notice }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
@@ -233,6 +233,15 @@ function RoleScreen({ onSelect, onBack }) {
         <h2 style={{ color:C.text, fontSize:32, fontWeight:800, margin:0, lineHeight:1.15, fontFamily:font.display }}>Vous êtes ?</h2>
         <p style={{ color:C.textSub, fontSize:14, marginTop:8 }}>Choisissez votre profil pour commencer</p>
       </div>
+
+      {/* Une déconnexion ne doit jamais être muette : l'utilisateur se retrouvait
+          ici sans savoir pourquoi, et le support n'avait aucune piste. */}
+      {notice && (
+        <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.45)", borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
+          <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>Vous avez été déconnecté</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{notice}</div>
+        </div>
+      )}
 
       <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
         {[
@@ -977,6 +986,8 @@ export default function App() {
   // Les gardes d'accès attendent ce signal, sinon un utilisateur connecté qui ouvre
   // /dashboard serait renvoyé vers la connexion avant que sa session soit résolue.
   const [authReady,setAuthReady]=useState(false);
+  // Raison de la dernière déconnexion involontaire, affichée sur l'écran de choix.
+  const [authNotice,setAuthNotice]=useState(null);
   // undefined = profil pas encore résolu (aucune décision à prendre) ; une chaîne = résolu.
   const [profileStatus,setProfileStatus]=useState(undefined);
   const [role,setRole]=useState(null);
@@ -1280,6 +1291,7 @@ export default function App() {
         if(!initialized) return;
         try { localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
         try { sessionStorage.removeItem("alane_session_active"); sessionStorage.removeItem("bo_token"); } catch(e) {}
+        let ecranAuMomentDeLaDeconnexion = null;
         setBoUnlocked(false);
         setBoTestMode(false);
         setProfileLoaded(false);
@@ -1299,7 +1311,18 @@ export default function App() {
         setPaymentVille("");
         setPaymentStartTime("08:00");
         const preLoginScreens = ["splash","role","auth_client","auth_presta","how_client","how_presta","client_onboarding","presta_onboarding","presta_pending","pending_approval","reset_password","bo_login","bo_dashboard"];
-        setScreen(prev => preLoginScreens.includes(prev) ? prev : "role");
+        // Calculé hors du updater : appeler un setState dans le updater d'un
+        // autre le ferait exécuter deux fois en mode strict.
+        setScreen(prev => {
+          if (preLoginScreens.includes(prev)) return prev;
+          ecranAuMomentDeLaDeconnexion = prev;
+          return "role";
+        });
+        // setScreen applique son updater de façon synchrone ici : la variable
+        // est donc renseignée quand on la lit.
+        if (ecranAuMomentDeLaDeconnexion) {
+          setAuthNotice(`Votre session a été fermée alors que vous étiez sur l'écran « ${ecranAuMomentDeLaDeconnexion} ». (code DECONNEXION_INATTENDUE)`);
+        }
       }
     });
     return ()=>subscription.unsubscribe();
@@ -1361,6 +1384,7 @@ export default function App() {
       let sessionActive; try { sessionActive = sessionStorage.getItem("alane_session_active"); } catch(e) {}
       if (!stayLoggedIn && !sessionActive) {
         // Session Supabase persistée mais l'utilisateur n'a pas coché "Rester connecté"
+        setAuthNotice("Vous n'aviez pas coché « Rester connecté » : la session a été fermée à la fermeture de l'application. (code SESSION_NON_PERSISTEE)");
         await supabase.auth.signOut();
         setScreen("role");
         return;
@@ -1376,7 +1400,10 @@ export default function App() {
         profile = r.data; profileErr = r.error;
       }
       // Échec réseau/auth (≠ PGRST116 "aucune ligne") : ne pas détruire la session
-      if(profileErr && profileErr.code !== "PGRST116"){ setScreen("role"); return; }
+      if(profileErr && profileErr.code !== "PGRST116"){
+        setAuthNotice(`Votre profil n'a pas pu être lu (${profileErr.code || "erreur inconnue"} — ${profileErr.message || "sans détail"}). Réessayez ; si cela persiste, contactez le support. (code PROFIL_ILLISIBLE)`);
+        setScreen("role"); return;
+      }
       if(profile?.role){
         setRole(profile.role);
         if(profile.role==="prestataire"){
@@ -1392,6 +1419,7 @@ export default function App() {
         return;
       }
       // Session active mais profil introuvable → compte supprimé
+      setAuthNotice("Aucun profil n'est associé à ce compte. (code PROFIL_ABSENT)");
       await supabase.auth.signOut();
     }
     setScreen("role");
@@ -1429,7 +1457,10 @@ export default function App() {
     if(!authReady) return;
     if(window.location.hostname === "admin.alane.fr") return; // le BO a son propre flux
     // Pas de session sur un écran protégé → connexion
-    if(!supaUser && !PUBLIC_SCREENS.has(screen)){ setScreen("role"); return; }
+    if(!supaUser && !PUBLIC_SCREENS.has(screen)){
+      setAuthNotice("Votre session n'était plus valide au moment d'ouvrir cet écran. (code SESSION_ABSENTE)");
+      setScreen("role"); return;
+    }
     // Compte pas encore validé par le BO : ne doit pas entrer dans l'app par URL.
     // profileStatus undefined = profil pas encore chargé → on ne tranche pas.
     if(supaUser && profileStatus==="pending" && !PUBLIC_SCREENS.has(screen) && screen!=="pending_approval"){
@@ -1545,16 +1576,16 @@ export default function App() {
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} />}
-      {screen==="role"              && <RoleScreen onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
+      {screen==="role"              && <RoleScreen notice={authNotice} onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
       {screen==="auth_client"       && <AuthScreen role="client"
-          onLogin={()=>{ setRole("client"); setScreen("home"); }}
+          onLogin={()=>{ setAuthNotice(null); setRole("client"); setScreen("home"); }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
       {screen==="auth_presta"       && <AuthScreen role="prestataire"
-          onLogin={async()=>{ setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); const _pl=pr?.plan_abonnement||"free"; setPrestaPlan(_pl); setTrialExhausted(_pl!=="free"?false:!!pr?.trial_exhausted); setProfileLoaded(true); } }}
+          onLogin={async()=>{ setAuthNotice(null); setRole("prestataire"); setScreen("p_home"); const {data:{user}}=await supabase.auth.getUser(); if(user){ const {data:pr}=await supabase.from("profiles").select("trial_exhausted,plan_abonnement").eq("id",user.id).single(); const _pl=pr?.plan_abonnement||"free"; setPrestaPlan(_pl); setTrialExhausted(_pl!=="free"?false:!!pr?.trial_exhausted); setProfileLoaded(true); } }}
           onRegister={()=>setScreen("pending_approval")}
           onBack={()=>setScreen("role")} />}
 
