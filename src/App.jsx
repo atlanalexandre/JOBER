@@ -1608,11 +1608,13 @@ export default function App() {
               if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la prestation.");
               missionId=newMissionId; setSelectedMissionId(newMissionId);
             }
-            await supabase.from("notifications").insert({ user_id:selectedProvider.id, type:"prestation", title:"Nouvelle demande de prestation", body:`Un client vous propose une prestation. Vous avez ${isSameDay?"1 heure":"4 heures"} pour accepter ou refuser.`, read:false });
+            // La notification in-app est désormais insérée par /api/missions
+            // (action notify_prestataire), en service role et après vérification
+            // que l'appelant est bien le client de la mission — voir S-06.
             const { data:sessionData } = await supabase.auth.getSession();
             fetch("/api/missions", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null }),
+              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null, same_day:isSameDay }),
             }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
