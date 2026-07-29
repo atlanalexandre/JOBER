@@ -87,7 +87,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
-      if (password.length < 6)  return "Mot de passe minimum 6 caractères";
+      if (password.length < 8)  return "Mot de passe minimum 8 caractères";
       if (!cgpsAccepted)        return "Vous devez accepter les CGPS pour créer votre compte";
     }
     return null;
@@ -785,7 +785,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (step === 3) {
       if (!email || !password) return "Email et mot de passe requis";
-      if (password.length < 6) return "Mot de passe minimum 6 caractères";
+      if (password.length < 8) return "Mot de passe minimum 8 caractères";
       if (!cgpsAccepted)       return "Vous devez accepter les CGPS pour créer votre compte";
     }
     return null;
@@ -1192,7 +1192,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
 
   const handleRegister = async () => {
     if (!email || !password) { setError("Email et mot de passe requis"); return; }
-    if (password.length < 6) { setError("Mot de passe minimum 6 caractères"); return; }
+    if (password.length < 8) { setError("Mot de passe minimum 8 caractères"); return; }
     if (!prenom.trim() || !nom.trim()) { setError("Prénom et nom obligatoires"); return; }
     const telClean = telephone.replace(/[\s.\-]/g,"");
     if (!telClean || telClean.length < 10) { setError("Numéro de téléphone obligatoire"); return; }
