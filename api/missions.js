@@ -2979,6 +2979,8 @@ export default async function handler(req, res) {
 
       const RESEND_KEY  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      if (!RESEND_KEY) console.error("[notify_prestataire] RESEND_API_KEY absente — email au prestataire NON envoyé.");
+      if (!prestaEmail) console.error("[notify_prestataire] aucune adresse email pour ce prestataire — email NON envoyé.");
       if (RESEND_KEY && prestaEmail) {
         // Generate one-click action tokens (valid 24h)
         const EMAIL_SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
