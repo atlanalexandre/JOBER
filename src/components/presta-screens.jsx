@@ -1379,7 +1379,7 @@ export function PrestaProfileEditScreen({ onBack }) {
 
         {/* CV */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:20 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📄 Mon CV</div>
+          <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>📄 Mon parcours</div>
           <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.5 }}>Renseignez votre parcours pour qu'il soit visible par les clients sur votre profil.</div>
           <CvEditor cv={meta?.cv||{}} onChange={newCv=>setMeta(m=>({...m,cv:newCv}))} color={color} />
         </div>
@@ -2352,7 +2352,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                           <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
                           <div>
                             <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
-                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 1h avant le début de la mission.</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 1h avant le début de la prestation.</div>
                           </div>
                         </div>
                       ) : (
@@ -2394,7 +2394,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         ) : (
                           <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
                             <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
-                            <div style={{ color:C.textMuted, fontSize:12 }}>Le bouton de présence sera disponible à l'heure de début de la mission.</div>
+                            <div style={{ color:C.textMuted, fontSize:12 }}>Le bouton de présence sera disponible à l'heure de début de la prestation.</div>
                           </div>
                         );
                       })()

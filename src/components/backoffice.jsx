@@ -1885,7 +1885,7 @@ export function BOTest({ onNavigate }) {
 
   const clientFlowScreens = [
     { id:"profile",     label:"Profil prestataire",   icon:"👤", data:MOCK_P },
-    { id:"cv",          label:"CV prestataire",        icon:"📄", data:MOCK_P },
+    { id:"cv",          label:"Parcours prestataire",        icon:"📄", data:MOCK_P },
     { id:"booking",     label:"Réservation",           icon:"📅", data:MOCK_P },
     { id:"contract",    label:"Contrat",               icon:"✍️", data:MOCK_P },
     { id:"tracking",    label:"Suivi prestation",         icon:"📍", data:MOCK_P },
@@ -2484,12 +2484,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
+        setResult(r => ({ ...r, [prestationId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
     setValidating(null);
   };
 
@@ -2500,12 +2500,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"release_dispute", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [missionId]: "✅ Fonds libérés — prestation validée" }));
+        setResult(r => ({ ...r, [prestationId]: "✅ Fonds libérés — prestation validée" }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
     setDisputing(null);
   };
 
@@ -2517,7 +2517,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:`🚫 Annulée${withRefund?" + remboursement initié":""}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"cancelled"}:m)); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2529,7 +2529,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:`✅ Réassignée → ${data.new_presta_name}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"assigned"}:m)); setReassignId(null); setReassignEmail(""); setReassignReason(""); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2540,7 +2540,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2551,12 +2551,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [missionId]: "💰 Remboursement initié" }));
+        setResult(r => ({ ...r, [prestationId]: "💰 Remboursement initié" }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"closed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
     setDisputing(null);
   };
 

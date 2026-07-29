@@ -195,7 +195,7 @@ export default async function handler(req, res) {
         if (prestataireId) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST", headers,
-            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
+            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
           }).catch(e => console.error("notification failed:", e));
         }
       }
