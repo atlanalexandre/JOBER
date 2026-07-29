@@ -58,10 +58,10 @@ export async function sendEmail({ to, subject, html }) {
         headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({ from, to: [to], subject, html }),
       });
-      if (r.ok) return;
+      if (r.ok) { console.log(`[email] « ${subject} » accepté par Resend.`); return true; }
       const body = await r.text();
-      console.error(`Resend error (attempt ${attempt + 1}):`, r.status, body);
-      if (r.status < 500) return;
+      console.error(`[email] Resend a REFUSÉ « ${subject} » (essai ${attempt + 1}) :`, r.status, body);
+      if (r.status < 500) return false;
       if (attempt === 0) await new Promise(r2 => setTimeout(r2, 2000));
     } catch (e) {
       console.error(`sendEmail error (attempt ${attempt + 1}):`, e);

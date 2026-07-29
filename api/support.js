@@ -101,7 +101,14 @@ export default async function handler(req, res) {
     const _bookingCaller = await verifyUser(req, (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, ""), (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, ""));
     if (!_bookingCaller) return res.status(401).json({ error: "Non authentifié" });
     const { clientEmail, clientName, prestaName, date, startTime, hours, adresse, ville, total, job } = req.body;
-    if (!clientEmail) return res.status(200).json({ ok: false, reason: "no email" });
+    // Sortie silencieuse historique : la confirmation n'était pas envoyée et rien
+    // ne le disait, ni au client ni dans les journaux. C'est le seul chemin qui
+    // explique une confirmation absente alors que l'email au prestataire part.
+    if (!clientEmail) {
+      console.error("[booking_confirm] aucune adresse client transmise — confirmation NON envoyée. caller:", _bookingCaller.id);
+      return res.status(200).json({ ok: false, reason: "no email" });
+    }
+    console.log("[booking_confirm] envoi de la confirmation au client (domaine:", String(clientEmail).split("@")[1] || "?", ")");
     const bookingHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#0A1628;font-family:'DM Sans',system-ui,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A1628;padding:32px 0;"><tr><td align="center">
