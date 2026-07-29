@@ -399,6 +399,23 @@ export function BOComptes() {
     setDocVerifying(null);
   };
 
+  // Refus d'un document : le motif est obligatoire, il est envoyé au prestataire
+  // dans la notification qui lui demande d'en redéposer un.
+  const handleRejectDoc = async (profileId, docId, label) => {
+    const motif = await showPrompt(`Motif du refus pour « ${label} » — il sera envoyé au prestataire :`);
+    if (motif === null) return;
+    if (!String(motif).trim()) { showToast("Motif obligatoire — refus annulé."); return; }
+    setDocVerifying(docId);
+    const r = await boFetch({ action:"reject_doc", profileId, docId, motif });
+    if (r?.success) {
+      setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).filter(doc => doc.id !== docId) }));
+      showToast("Document refusé — le prestataire est prévenu.");
+    } else {
+      showToast(r?.error || "Erreur lors du refus.");
+    }
+    setDocVerifying(null);
+  };
+
   const handleVerifyAllDocs = async (profileId) => {
     const unverified = (docs[profileId]||[]).filter(d => !d.verified && !d.isVirtual);
     if (!unverified.length) return;
@@ -893,6 +910,11 @@ export function BOComptes() {
                           {!doc.verified && (
                             <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               {docVerifying===doc.id ? "…" : "✓"}
+                            </button>
+                          )}
+                          {!doc.isVirtual && (
+                            <button title="Refuser ce document" onClick={()=>handleRejectDoc(p.id, doc.id, DOC_LABEL[doc.type]||doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.danger, fontWeight:700, background:`${C.danger}15`, border:`1px solid ${C.danger}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                              ✕
                             </button>
                           )}
                           {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
