@@ -407,7 +407,7 @@ export const DonutChart = ({ sectors, size=120 }) => {
         return el;
       })}
       <text x={cx} y={cy-6}  textAnchor="middle" fontSize="14" fontWeight="900" fill="#1A1F36">{sectors.reduce((a,s)=>a+s.missions,0)||""}</text>
-      <text x={cx} y={cy+10} textAnchor="middle" fontSize="9"  fill="#8A93A8">missions</text>
+      <text x={cx} y={cy+10} textAnchor="middle" fontSize="9"  fill="#8A93A8">prestations</text>
     </svg>
   );
 };
@@ -418,8 +418,8 @@ export function LaunchBadge({ context="home", spotsLeft=null }) {
     ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
     : "Réservé aux 100 premiers prestataires inscrits";
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:`10 missions gratuites · ${spotsText}` },
-    presta:  { icon:"🚀", title:"10 missions offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:`10 prestations gratuites · ${spotsText}` },
+    presta:  { icon:"🚀", title:"10 prestations offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;

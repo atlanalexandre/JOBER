@@ -1037,7 +1037,7 @@ export function BOComptes() {
               </button>
             )}
             {p.role==="prestataire" && p.trial_exhausted && (
-              <button onClick={async()=>{ if(!await showConfirm(`Réinitialiser le quota missions de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ if(!await showConfirm(`Réinitialiser le quota prestations de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"reset_trial"?"…":"🔓 Débloquer quota"}
               </button>
             )}
@@ -1362,7 +1362,7 @@ export function BOLitiges() {
   useEffect(() => { load(); }, []);
 
   const handleRefund = async (m) => {
-    if (!await showConfirm(`Rembourser ${m.montant_total || 0} € au client pour la mission "${m.titre || m.metier}" ?`)) return;
+    if (!await showConfirm(`Rembourser ${m.montant_total || 0} € au client pour la prestation "${m.titre || m.metier}" ?`)) return;
     setProcessingId(m.id);
     try {
       const r = await boFetch({ action: "refund_dispute", mission_id: m.id });
@@ -2538,7 +2538,7 @@ export function BOMissions() {
     try {
       const res = await boFetch({ action:"update_mission", mission_id:missionId, ...editMissionVals });
       const data = await res.json();
-      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Mission mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
+      if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
     } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);
@@ -2650,7 +2650,7 @@ export function BOMissions() {
             {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
             {!["cancelled","closed","completed"].includes(m.status) && !result[m.id] && (
               <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
-                <button onClick={async()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=await showConfirm("Cette mission a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                <button onClick={async()=>{ const hasStripe=!!m.stripe_payment_intent; if(hasStripe){ const r=await showConfirm("Cette prestation a un paiement Stripe. Rembourser le client en même temps ?"); handleCancel(m.id,r); } else handleCancel(m.id,false); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                   {disputing===m.id+"_cancel"?"…":"🚫 Annuler"}
                 </button>
                 <button onClick={()=>{ setReassignId(reassignId===m.id?null:m.id); setReassignEmail(""); setReassignReason(""); }} disabled={!!disputing} style={{ padding:"6px 11px", borderRadius:8, border:"1px solid rgba(162,155,254,0.3)", background:"rgba(162,155,254,0.08)", color:C.violet, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>

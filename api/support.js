@@ -15,7 +15,7 @@ function checkContactRateLimit(ip, max = 3) {
 export default async function handler(req, res) {
   // ICS calendar file generation
   if (req.method === "GET" && req.query.ics === "1") {
-    const { title = "Mission ALANE", date, start = "08:00", end = "17:00", location = "", description = "" } = req.query;
+    const { title = "Prestation ALANE", date, start = "08:00", end = "17:00", location = "", description = "" } = req.query;
     if (!date) return res.status(400).json({ error: "date requis" });
     const sanitizeIcs = (s) => String(s || "").replace(/[\r\n]/g, " ").replace(/,/g, "\\,");
     const toIcsDt = (dateStr, timeStr) => { const [y,m,d] = dateStr.split("-"); const [hh,mm] = timeStr.split(":"); return `${y}${m.padStart(2,"0")}${d.padStart(2,"0")}T${hh.padStart(2,"0")}${mm.padStart(2,"0")}00`; };
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const now = new Date().toISOString().replace(/[-:]/g,"").slice(0,15);
     const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ALANE//Mission//FR","CALSCALE:GREGORIAN","METHOD:PUBLISH","BEGIN:VEVENT",`UID:${uid}`,`DTSTAMP:${now}`,`DTSTART:${toIcsDt(date,start)}`,`DTEND:${toIcsDt(date,end)}`,`SUMMARY:${sanitizeIcs(title)}`,`LOCATION:${sanitizeIcs(location)}`,`DESCRIPTION:${sanitizeIcs(description)}`, "END:VEVENT","END:VCALENDAR"].join("\r\n");
     res.setHeader("Content-Type","text/calendar; charset=utf-8");
-    res.setHeader("Content-Disposition",'attachment; filename="mission-alane.ics"');
+    res.setHeader("Content-Disposition",'attachment; filename="prestation-alane.ics"');
     return res.status(200).send(ics);
   }
 
@@ -116,18 +116,18 @@ export default async function handler(req, res) {
 <tr><td style="background:linear-gradient(135deg,#7C6FE0,#162547);padding:32px 28px 24px;text-align:center;">
 <div style="font-size:42px;margin-bottom:10px;">✅</div>
 <h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 6px;">Réservation confirmée !</h1>
-<p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Votre mission a bien été enregistrée</p></td></tr>
+<p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Votre prestation a bien été enregistrée</p></td></tr>
 <tr><td style="padding:28px;">
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 20px;">Bonjour <strong>${esc(clientName)||"cher client"}</strong>,</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#162547;border-radius:14px;overflow:hidden;margin-bottom:24px;border:1px solid rgba(124,111,224,0.25);"><tr><td style="padding:18px 20px;">
-<p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la mission</p>
+<p style="color:#7C6FE0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 14px;">Détails de la prestation</p>
 ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||"—"],["📅 Date",esc(date)||"—"],["🕐 Heure de début",esc(startTime)||"—"],["⏱️ Durée",hours?`${esc(String(hours))}h`:"—"],["📍 Lieu",[esc(adresse),esc(ville)].filter(Boolean).join(", ")||"—"],["💶 Total bloqué",total?`${esc(String(total))} €`:"—"]].map(([l,v])=>`<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr><td style="color:#8B8FA8;font-size:13px;width:48%;">${l}</td><td style="color:#F0F0F5;font-size:13px;font-weight:700;text-align:right;">${v}</td></tr></table>`).join("")}
 </td></tr></table>
 <p style="color:#10D98F;font-size:13px;font-weight:600;margin:0 0 20px;">🔒 Votre argent est sécurisé en escrow et ne sera libéré qu'après validation mutuelle.</p>
-<div style="text-align:center;margin-top:20px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma mission →</a></div>
+<div style="text-align:center;margin-top:20px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Suivre ma prestation →</a></div>
 </td></tr><tr><td style="padding:18px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
-    await sendEmail({ to: clientEmail, subject: `✅ Réservation confirmée — ${esc(job)||"Mission"} · ALANE`, html: bookingHtml });
+    await sendEmail({ to: clientEmail, subject: `✅ Réservation confirmée — ${esc(job)||"Prestation"} · ALANE`, html: bookingHtml });
     return res.status(200).json({ ok: true });
   }
 
@@ -241,7 +241,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
       );
       const activeMissions = await activeMissionsRes.json().catch(() => []);
       if (Array.isArray(activeMissions) && activeMissions.length > 0) {
-        return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une mission en cours. Terminez ou annulez vos missions actives avant de supprimer votre compte." });
+        return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une prestation en cours. Terminez ou annulez vos prestations actives avant de supprimer votre compte." });
       }
 
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {

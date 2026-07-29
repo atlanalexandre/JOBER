@@ -107,7 +107,7 @@ export default async function handler(req, res) {
                       from: RESEND_FROM_W,
                       to: userEmail,
                       subject: `Wallet rechargé — ${topupAmount.toFixed(2).replace(".", ",")} € disponibles sur ALANE`,
-                      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 8px">Wallet rechargé 💳</h2><p style="color:rgba(255,255,255,0.7);margin:0 0 20px">Bonjour${prenom ? " " + prenom : ""},</p><div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin:0 0 20px"><div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Montant rechargé</span><strong>+${topupAmount.toFixed(2).replace(".", ",")} €</strong></div><div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:rgba(255,255,255,0.5)">Nouveau solde</span><strong style="color:#F0B429">${newBal.toFixed(2).replace(".", ",")} €</strong></div></div><p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.6">Ces fonds seront utilisés automatiquement lors de votre prochain paiement de mission, sans frais Stripe supplémentaires.</p><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p></div>`,
+                      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#050E20;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 8px">Wallet rechargé 💳</h2><p style="color:rgba(255,255,255,0.7);margin:0 0 20px">Bonjour${prenom ? " " + prenom : ""},</p><div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin:0 0 20px"><div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Montant rechargé</span><strong>+${topupAmount.toFixed(2).replace(".", ",")} €</strong></div><div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:rgba(255,255,255,0.5)">Nouveau solde</span><strong style="color:#F0B429">${newBal.toFixed(2).replace(".", ",")} €</strong></div></div><p style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.6">Ces fonds seront utilisés automatiquement lors de votre prochain paiement de prestation, sans frais Stripe supplémentaires.</p><p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p></div>`,
                     }),
                   }).catch(e => console.error("[wallet_topup] email failed:", e));
                 }
@@ -195,7 +195,7 @@ export default async function handler(req, res) {
         if (prestataireId) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST", headers,
-            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée et le paiement confirmé. Préparez-vous pour la mission !", read: false }),
+            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Candidature acceptée ✅", body: "Votre candidature a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
           }).catch(e => console.error("notification failed:", e));
         }
       }
@@ -430,7 +430,7 @@ export default async function handler(req, res) {
         const mData = await mRes.json().catch(() => []);
         const m = Array.isArray(mData) && mData[0];
         if (m?.client_id) {
-          const label = m.titre || m.metier || "la mission";
+          const label = m.titre || m.metier || "la prestation";
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST", headers,
             body: JSON.stringify({
