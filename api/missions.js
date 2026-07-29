@@ -3001,6 +3001,10 @@ export default async function handler(req, res) {
             from: RESEND_FROM,
             to: [prestaEmail],
             subject: "🔔 Nouvelle demande de mission — répondez rapidement !",
+            // Version texte : sans elle, l'email part en HTML seul, ce qui pèse
+            // lourd dans le classement en spam. Les liens d'acceptation et de
+            // refus y sont repris en clair pour rester utilisables.
+            text: `Nouvelle demande de mission sur ALANE\n\n${sLabel} — ${sVille}\n${sDate}${sHdeb ? " à " + sHdeb : ""}\n${sHours} h${sTarif ? " · " + sTarif + " EUR/h" : ""}\n${sAdresse ? sAdresse + "\n" : ""}\nAccepter : ${acceptUrl}\nRefuser : ${refuseUrl}\n\nCes liens sont valables 24 h.\nL'équipe ALANE`,
             html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
               <h2 style="color:#A29BFE;margin:0 0 12px">Nouvelle demande de mission 🔔</h2>
               <p>Bonjour ${esc(prestaName)},</p>

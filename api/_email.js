@@ -37,6 +37,25 @@ export function emailHtml(content) {
 </body></html>`;
 }
 
+// Version texte dérivée du HTML. Un email sans alternative texte est un signal
+// de spam classique : les filtres considèrent qu'un expéditeur légitime en
+// fournit toujours une. Les emails du projet étaient tous en HTML seul.
+export function htmlToText(html) {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (m, href, txt) =>
+      `${txt.replace(/<[^>]+>/g, "").trim()} : ${href}`)
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function sendEmail({ to, subject, html }) {
   const key  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
@@ -56,7 +75,7 @@ export async function sendEmail({ to, subject, html }) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from, to: [to], subject, html }),
+        body: JSON.stringify({ from, to: [to], subject, html, text: htmlToText(html) }),
       });
       if (r.ok) { console.log(`[email] « ${subject} » accepté par Resend.`); return true; }
       const body = await r.text();
