@@ -1292,6 +1292,11 @@ export default function App() {
         try { localStorage.removeItem("alane_stay_logged_in"); } catch(e) {}
         try { sessionStorage.removeItem("alane_session_active"); sessionStorage.removeItem("bo_token"); } catch(e) {}
         let ecranAuMomentDeLaDeconnexion = null;
+        // Vider le profil préchargé : sans ça, une reconnexion sans rechargement
+        // de page retrouverait l'ancien rôle et rejouerait la redirection
+        // prématurée que l'on vient de corriger.
+        initProfileRef.current = null;
+        setProfileStatus(undefined);
         setBoUnlocked(false);
         setBoTestMode(false);
         setProfileLoaded(false);
@@ -1466,9 +1471,17 @@ export default function App() {
     if(supaUser && profileStatus==="pending" && !PUBLIC_SCREENS.has(screen) && screen!=="pending_approval"){
       setScreen("pending_approval"); return;
     }
-    // Session active sur un écran de connexion → espace correspondant
-    if(supaUser && role && AUTH_SCREENS.has(screen)){
-      setScreen(role==="prestataire" ? "p_home" : "home"); return;
+    // Session active sur un écran de connexion → espace correspondant.
+    // On se fonde sur le profil réellement chargé au démarrage, PAS sur `role` :
+    // ce dernier n'est que le bouton choisi sur l'écran « Vous êtes ? », donc une
+    // intention, pas un rôle vérifié. S'y fier déplaçait l'utilisateur vers
+    // l'accueil au moment même où signInWithPassword réussit, avant que
+    // handleLogin ait fini de contrôler le compte. Le refus qui suivait
+    // déclenchait un signOut depuis « home » — écran non protégé contre le renvoi
+    // — et l'utilisateur retombait sur l'écran de choix sans jamais voir le motif.
+    const roleConfirme = initProfileRef.current?.role;
+    if(supaUser && roleConfirme && AUTH_SCREENS.has(screen)){
+      setScreen(roleConfirme==="prestataire" ? "p_home" : "home"); return;
     }
     // Entrée par URL dans l'espace de l'autre rôle
     if(role==="client"       && PRESTA_SCREENS.includes(screen)){ setScreen("home");   return; }
