@@ -181,6 +181,10 @@ Chaque table a des règles décrivant qui peut lire et écrire quoi. Le principe
 - **`documents`** : chaque prestataire ne voit que les siens. Le backoffice y accède via `/api`.
 - **`platform_settings`** : seules les clés nécessaires avant connexion sont publiques
   (tarifs, phase de lancement). La commission et les taux de cashback sont privés.
+- **`notifications`** : chacun lit et marque comme lues **ses** notifications, mais
+  **personne ne peut en créer** depuis le navigateur. Toutes les notifications sont
+  insérées par `/api/missions` en service role. Cette écriture était ouverte à tout
+  compte connecté jusqu'au 29/07/2026 — c'était un vecteur de phishing in-app.
 - **Storage** : chacun n'écrit que dans son dossier `{user_id}/`.
 
 Deux conséquences pratiques :
@@ -239,6 +243,30 @@ modèle :
 Refermer ces deux points est une décision produit, pas une correction évidente : `get-profile`
 est appelé pendant la connexion, et le catalogue sert aussi les liens de partage `?profil=`
 qui fonctionnent aujourd'hui sans compte.
+
+### Ce que le front n'a plus le droit d'écrire
+
+Trois écritures sensibles se faisaient directement depuis le navigateur. Elles passent
+toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener** :
+
+| Écriture | Action serveur | Pourquoi |
+|---|---|---|
+| Notification | `notify_prestataire` | Un compte pouvait notifier n'importe qui, avec un texte libre |
+| Clôture de mission + cashback | `complete` | Le client écrivait son propre solde ; taux de `plans.js` au lieu de la base, et lecture-écriture non atomique |
+| Refus après délai expiré | `acceptance_timeout` | Le serveur revérifie que `acceptance_deadline` est réellement dépassée |
+
+La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
+ne s'écrivent jamais depuis `src/`.**
+
+### Migrations
+
+Le dossier `migrations/` contient les changements de schéma et de policies, datés et
+nommés en français. Ils ne sont **pas appliqués automatiquement** : il faut les jouer dans
+l'éditeur SQL Supabase. Chaque fichier porte ses requêtes de vérification et sa procédure
+de retour arrière.
+
+Les trois fichiers `*.sql` à la racine (`supabase-schema.sql`, `supabase_schema.sql`,
+`supabase_migration.sql`) sont des reliquats divergents — **aucun ne fait autorité**.
 
 ---
 

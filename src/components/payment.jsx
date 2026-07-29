@@ -29,18 +29,16 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
   const [totalSecs, setTotalSecs]   = useState(3600);
   const [phase, setPhase]           = useState("waiting");
   const [loaded, setLoaded]         = useState(!missionId);
-  const [clientId, setClientId]     = useState(null);
 
   // Charger le délai réel depuis Supabase
   useEffect(() => {
     if (!missionId) { setLoaded(true); return; }
     let mounted = true;
-    supabase.from("missions").select("status,acceptance_deadline,client_id").eq("id", missionId).single()
+    supabase.from("missions").select("status,acceptance_deadline").eq("id", missionId).single()
       .then(({ data }) => {
         if (!mounted || !data) return;
         if (data.status === "assigned") { setPhase("accepted"); return; }
         if (data.status === "refused")  { setPhase("refused");  return; }
-        setClientId(data.client_id || null);
         if (data.acceptance_deadline) {
           const secs = Math.max(0, Math.floor((new Date(data.acceptance_deadline).getTime() - Date.now()) / 1000));
           setSecsLeft(secs);
@@ -81,17 +79,29 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
     if (!loaded || secsLeft !== 0 || phase !== "waiting") return;
     setPhase("timeout");
     if (missionId) {
-      supabase.from("missions").update({ status: "refused" }).eq("id", missionId).then(()=>{});
-      if (clientId) {
-        supabase.from("notifications").insert({
-          user_id: clientId, type: "prestation",
-          title: "Prestation non confirmée",
-          body: `${p.name} n'a pas répondu dans le délai imparti. Vous pouvez choisir un autre prestataire.`,
-          read: false,
-        }).then(()=>{});
-      }
+      // Le passage en "refused" et la notification sont faits par le serveur
+      // (S-06) : il revérifie que le délai d'acceptation est réellement écoulé,
+      // ce que le front ne peut pas prouver.
+      (async () => {
+        const { data:sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        if (!token) return;
+        try {
+          const r = await fetch("/api/missions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ action: "acceptance_timeout", mission_id: missionId }),
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(()=>({}));
+            console.error("[timeout] refus automatique refusé :", r.status, err?.error || "");
+          }
+        } catch (err) {
+          console.error("[timeout] refus automatique injoignable :", err.message);
+        }
+      })();
     }
-  }, [loaded, secsLeft, phase, missionId, clientId]);
+  }, [loaded, secsLeft, phase, missionId]);
 
   if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 

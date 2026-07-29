@@ -3492,22 +3492,31 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
     let mounted = true;
     const finalize = async () => {
       if (missionId) {
-        await supabase.from("missions").update({ status:"completed" }).eq("id", missionId);
-        const { data:{ user } } = await supabase.auth.getUser();
-        if (user && mounted) {
-          const montant = Number(totalClientPrice);
-          const { data:prof } = await supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id",user.id).single();
-          const currentBalance = prof?.cashback_balance || 0;
-          const currentMonth   = prof?.missions_completed_month || 0;
-          const cashback = calcCashback(montant, currentMonth);
-          await supabase.from("profiles").update({
-            cashback_balance: Math.round((currentBalance + cashback)*100)/100,
-            missions_completed_month: currentMonth + 1,
-          }).eq("id", user.id);
-          await supabase.from("notifications").insert({
-            user_id: user.id, type:"payment",
-            title:"Paiement libéré", body:`Prestation validée — ${totalNetPresta} € versés à ${p.name}.`, read:false,
-          });
+        // Clôture entièrement déléguée au serveur (S-06). Le front écrivait ici
+        // lui-même le statut de la mission ET le solde de cashback : les taux
+        // venaient de plans.js au lieu de platform_settings, la lecture-écriture
+        // du solde n'était pas atomique, et surtout cela imposait que la RLS
+        // autorise un client à modifier son propre cashback_balance.
+        // /api/missions action "complete" fait tout correctement — crédit atomique
+        // par RPC, garde anti-double-crédit, et les deux notifications.
+        const { data:sd } = await supabase.auth.getSession();
+        const token = sd?.session?.access_token;
+        if (token) {
+          try {
+            const r = await fetch("/api/missions", {
+              method:"POST",
+              headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+              body: JSON.stringify({ action:"complete", mission_id: missionId }),
+            });
+            if (!r.ok) {
+              const err = await r.json().catch(()=>({}));
+              console.error("[validation] clôture de mission refusée :", r.status, err?.error || "");
+            }
+          } catch (err) {
+            console.error("[validation] clôture de mission injoignable :", err.message);
+          }
+        } else {
+          console.error("[validation] pas de session — clôture de mission impossible");
         }
       }
       if (mounted) setPaid(true);

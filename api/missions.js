@@ -1353,6 +1353,66 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // Refus automatique quand le prestataire n'a pas répondu dans le délai (S-06).
+    // Déclenché par le compte à rebours du client, mais le délai est revérifié ici :
+    // le front ne peut pas décider seul qu'il est écoulé. Il écrivait auparavant
+    // directement missions.status et la notification, ce qui imposait de laisser
+    // ouvertes la policy notifs_insert et l'écriture du statut depuis le front.
+    if (action === "acceptance_timeout") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,acceptance_deadline`, { headers });
+      const mData = await mRes.json().catch(() => []);
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (mission.status !== "pending_acceptance") {
+        return res.status(400).json({ error: "La mission n'est plus en attente d'acceptation" });
+      }
+      if (!mission.acceptance_deadline || new Date(mission.acceptance_deadline).getTime() > Date.now()) {
+        return res.status(400).json({ error: "Le délai d'acceptation n'est pas écoulé" });
+      }
+
+      // Filtre sur le statut : évite d'écraser une acceptation concurrente
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.pending_acceptance`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ status: "refused" }),
+      });
+      const patched = await patchRes.json().catch(() => []);
+      if (!Array.isArray(patched) || patched.length === 0) {
+        return res.status(409).json({ error: "Mission déjà traitée" });
+      }
+
+      let prestaName = "Le prestataire";
+      if (mission.prestataire_id) {
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
+          const ud = await ur.json();
+          if (ud?.user_metadata?.prenom) prestaName = ud.user_metadata.prenom;
+        } catch (e) {
+          console.error("[acceptance_timeout] lecture du prénom prestataire échouée :", e.message);
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.client_id,
+          type:    "prestation",
+          title:   "Prestation non confirmée",
+          body:    `${prestaName} n'a pas répondu dans le délai imparti. Vous pouvez choisir un autre prestataire.`,
+          read:    false,
+        }),
+      }).catch(e => console.error("[acceptance_timeout] insertion notification échouée :", e.message));
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "reject") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
@@ -2847,6 +2907,23 @@ export default async function handler(req, res) {
       const mCheck = await mCheckRes.json().catch(() => []);
       if (!Array.isArray(mCheck) || mCheck.length === 0) return res.status(403).json({ error: "Non autorisé" });
       const missionId = mCheck[0].id;
+
+      // Notification in-app (S-06) : insérée ici en service role, après la
+      // vérification ci-dessus que l'appelant est bien le client de cette mission.
+      // Le front l'insérait lui-même, ce qui obligeait à laisser la policy
+      // notifs_insert ouverte à tout compte connecté.
+      const delaiTexte = payload.same_day ? "1 heure" : "4 heures";
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: prestataire_id,
+          type:    "prestation",
+          title:   "Nouvelle demande de prestation",
+          body:    `Un client vous propose une prestation. Vous avez ${delaiTexte} pour accepter ou refuser.`,
+          read:    false,
+        }),
+      }).catch(e => console.error("[notify_prestataire] insertion notification échouée :", e.message));
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
       const ud = await ur.json();
