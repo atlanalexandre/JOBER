@@ -1496,7 +1496,7 @@ export default function App() {
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); }
-    if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
+    if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
@@ -1616,7 +1616,50 @@ export default function App() {
       {screen==="search_filters"    && <SearchFiltersScreen onNavigate={navigate} />}
       {screen==="profile"           && <ProfileScreen provider={selectedProvider} onNavigate={navigate} onBack={()=>setScreen(selectedSector?"sector_detail":"search_filters")} />}
       {screen==="cv"                && <CVScreen provider={selectedProvider} onBack={()=>setScreen("profile")} onNavigate={navigate} />}
-      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={(to,data)=>{ if(to==="stripe_pay") { setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); setScreen("stripe_pay"); } else navigate(to,data); }} onBack={()=>setScreen("profile")} />}
+      {screen==="booking"           && <BookingScreen provider={selectedProvider} onNavigate={async(to,data)=>{
+        if(to!=="stripe_pay") { navigate(to,data); return; }
+        setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||"");
+        setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||"");
+        setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false);
+        // La prestation doit exister AVANT le paiement : /api/stripe-intent refuse
+        // toute demande sans mission_id et recalcule le montant depuis la base,
+        // pour ne jamais faire confiance au montant envoyé par le navigateur.
+        // Elle est créée sans prestataire ni échéance : celui-ci n'est rattaché et
+        // sollicité qu'au paiement réussi, quand onSuccess complète la prestation.
+        try {
+          const { data:ud } = await supabase.auth.getUser();
+          const uid = ud?.user?.id;
+          if(!uid) { setBookingError("Session expirée, veuillez vous reconnecter."); return; }
+          const newId = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+          const { error:insErr } = await supabase.from("missions").insert({
+            id: newId,
+            client_id: uid,
+            // prestataire_id volontairement vide jusqu'au paiement : la liste des
+            // demandes du prestataire filtre sur cet identifiant, il n'est donc
+            // pas sollicité tant que le client n'a pas payé.
+            prestataire_id: null,
+            sector: selectedProvider?.sector || null,
+            metier: selectedProvider?.jobTitle || selectedProvider?.role || null,
+            date: data?.date || null,
+            hours: data?.hours || 8,
+            heure_debut: data?.startTime || null,
+            tarif_horaire: selectedProvider?.rateNum || null,
+            montant_total: data?.amount || null,
+            description: data?.description || null,
+            adresse: data?.adresse || null,
+            ville: data?.ville || null,
+            // "pending_acceptance" et non "open" : les missions "open" alimentent la
+            // place de marché de tous les prestataires (list_open), une réservation
+            // abandonnée avant paiement s'y afficherait donc.
+            status: "pending_acceptance",
+          });
+          if(insErr) { setBookingError("Impossible de préparer la prestation : " + (insErr.message || "erreur inconnue")); return; }
+          setSelectedMissionId(newId);
+          setScreen("stripe_pay");
+        } catch(e) {
+          setBookingError(e?.message || "Impossible de préparer le paiement — réessayez.");
+        }
+      }} onBack={()=>setScreen("profile")} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} missionId={selectedMissionId||null} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);
