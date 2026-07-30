@@ -404,6 +404,14 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**`profiles_privileges_guard`** (migration `2026-07-30_secu_verrou_champs_profil.sql`) protège
+les champs privilégiés du profil. La ligne `profiles` est créée **et** modifiée par le
+navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de profil — qui y
+choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre chose que
+`status = 'pending'`, mais rien ne l'y obligeait : seule la RLS protégeait ces champs. Le
+déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
+postal, `avatar_url`, `rib`.
+
 **`api/update-profile.js` filtre ce que le navigateur peut écrire dans `user_metadata`.**
 Il fusionnait sans aucun filtre l'objet reçu : un compte pouvait donc s'attribuer un
 abonnement, se valider lui-même ou se créditer un portefeuille en modifiant son profil. Une
