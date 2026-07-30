@@ -56,6 +56,22 @@ export function htmlToText(html) {
     .trim();
 }
 
+// Corps de requête pour l'API Resend. À utiliser partout à la place de
+// JSON.stringify : sur 31 envois, un seul fournissait une alternative texte et
+// aucun n'indiquait d'adresse de réponse. Un email HTML seul, expédié depuis une
+// adresse « no-reply » sans Reply-To, coche deux critères de spam que Gmail
+// applique d'autant plus durement à un domaine récent — d'où les confirmations
+// de commande retrouvées dans les indésirables.
+export function resendBody(payload) {
+  const corps = { ...payload };
+  if (corps.html && !corps.text) corps.text = htmlToText(corps.html);
+  if (!corps.reply_to) {
+    const repondreA = (process.env.RESEND_REPLY_TO || "").replace(/\s/g, "");
+    if (repondreA) corps.reply_to = repondreA;
+  }
+  return JSON.stringify(corps);
+}
+
 export async function sendEmail({ to, subject, html }) {
   const key  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const from = process.env.RESEND_FROM || "onboarding@resend.dev";
@@ -75,7 +91,7 @@ export async function sendEmail({ to, subject, html }) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from, to: [to], subject, html, text: htmlToText(html) }),
+        body: resendBody({ from, to: [to], subject, html }),
       });
       if (r.ok) { console.log(`[email] « ${subject} » accepté par Resend.`); return true; }
       const body = await r.text();

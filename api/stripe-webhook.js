@@ -1,3 +1,4 @@
+import { resendBody } from "./_email.js";
 export const config = { api: { bodyParser: false } };
 
 async function getRawBody(req) {
@@ -103,7 +104,7 @@ export default async function handler(req, res) {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY_W}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
+                    body: resendBody({
                       from: RESEND_FROM_W,
                       to: userEmail,
                       subject: `Wallet rechargé — ${topupAmount.toFixed(2).replace(".", ",")} € disponibles sur ALANE`,
@@ -296,7 +297,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: userEmail,
             subject: `✅ Votre abonnement ${planLabel} est activé — ALANE`,
@@ -494,7 +495,7 @@ export default async function handler(req, res) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: resendBody({
           from: RESEND_FROM,
           to: ADMIN_EMAIL,
           subject: `🚨 [CHARGEBACK] Dispute Stripe — ${amount}`,

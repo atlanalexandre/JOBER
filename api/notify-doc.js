@@ -1,3 +1,4 @@
+import { resendBody } from "./_email.js";
 import { verifyUser } from "./_auth.js";
 
 const DOC_LABELS = {
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
     await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: resendBody({
         from: RESEND_FROM,
         to: ADMIN_EMAIL,
         subject: `[Document] ${fullName} a ${actionWord} : ${docLabel}`,
