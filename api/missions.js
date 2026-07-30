@@ -975,7 +975,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -984,19 +984,39 @@ export default async function handler(req, res) {
       if (!mission.stripe_payment_intent) return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette prestation — impossible de valider" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de prestation" });
 
-      const hours        = mission.actual_hours ?? mission.hours ?? 0;
-      const tarifHoraire = mission.tarif_horaire || 0;
-      const montantTotal = Math.round(hours * tarifHoraire * 100) / 100;
-
-      if (montantTotal <= 0) {
-        console.error(`[complete] montant_total nul — mission ${mission_id} hours=${hours} tarif=${tarifHoraire}`);
-        return res.status(400).json({ error: "Le montant de la prestation est nul ou invalide — contactez le support pour finaliser manuellement." });
-      }
+      const heuresEffectives = mission.actual_hours ?? mission.hours ?? 0;
+      const tarifHoraire     = mission.tarif_horaire || 0;
 
       // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
       const missionDayCount = (mission.date_debut && mission.date_fin)
         ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
         : 1;
+
+      // Part revenant au prestataire : tarif × heures × JOURS.
+      //
+      // Le nombre de jours était omis. Sur une prestation récurrente de 5 jours, le
+      // prestataire recevait donc une seule journée — 112 € au lieu de 560 € — et la
+      // valeur écrasait `montant_total`, effaçant du même coup la trace de ce que le
+      // client avait réellement payé. Le cashback, la facture et un éventuel
+      // remboursement se calculaient ensuite tous sur ce montant amputé.
+      const partPrestataire = Math.round(heuresEffectives * tarifHoraire * missionDayCount * 100) / 100;
+
+      if (partPrestataire <= 0) {
+        console.error(`[complete] montant nul — prestation ${mission_id} heures=${heuresEffectives} tarif=${tarifHoraire} jours=${missionDayCount}`);
+        return res.status(400).json({ error: "Le montant de la prestation est nul ou invalide — contactez le support pour finaliser manuellement." });
+      }
+
+      // Total facturé au client : la part horaire plus les frais de service réellement
+      // encaissés. Ces frais se déduisent de ce qui a été payé à la réservation, ce qui
+      // évite de reproduire ici la grille tarifaire du tunnel. Ils sont conservés même
+      // si la durée réelle diffère de la durée prévue — ils rémunèrent la mise en
+      // relation, pas les heures.
+      const totalPaye    = Number(mission.montant_total || 0);
+      const partPrevue   = Math.round((Number(mission.hours) || 0) * tarifHoraire * missionDayCount * 100) / 100;
+      const fraisService = (partPrevue > 0 && totalPaye > partPrevue)
+        ? Math.round((totalPaye - partPrevue) * 100) / 100
+        : 0;
+      const totalClient  = Math.round((partPrestataire + fraisService) * 100) / 100;
 
       // Récupérer le palier cashback du client (missions_completed_month)
       const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
@@ -1022,14 +1042,14 @@ export default async function handler(req, res) {
         // de faire échouer la clôture de mission — le prestataire serait bloqué.
       }
       const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
-      const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+      const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
       const newBalance = Math.round(((profile?.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
       // Marquer mission completed — condition sur status=assigned pour éviter le double-crédit en cas de requête concurrente
       const completePatchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_client: true }),
+        body: JSON.stringify({ status: "completed", montant_total: totalClient, validation_client: true }),
       });
       const completedRows = await completePatchRes.json().catch(() => []);
       if (!Array.isArray(completedRows) || completedRows.length === 0) {
@@ -1168,7 +1188,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation validée ✅",
-            body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`,
+            body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est en cours de traitement.`,
             read: false,
           }),
         }).catch(() => {});
@@ -1193,7 +1213,7 @@ export default async function handler(req, res) {
                     <h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée ✅</h2>
                     <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
-                    <p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
@@ -1206,13 +1226,13 @@ export default async function handler(req, res) {
       // Virement automatique Stripe Connect
       const STRIPE_SK_PAYOUT = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       const COMMISSION = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
-      if (STRIPE_SK_PAYOUT && montantTotal > 0 && mission.prestataire_id) {
+      if (STRIPE_SK_PAYOUT && partPrestataire > 0 && mission.prestataire_id) {
         try {
           const ppRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=stripe_account_id,stripe_account_status`, { headers });
           const ppData = await ppRes.json();
           const pp = Array.isArray(ppData) && ppData[0];
           if (pp?.stripe_account_id && pp.stripe_account_status === "enabled") {
-            const netCents = Math.round(montantTotal * (1 - COMMISSION) * 100);
+            const netCents = Math.round(partPrestataire * (1 - COMMISSION) * 100);
             if (netCents >= 100) {
               const tParams = new URLSearchParams({
                 amount: String(netCents), currency: "eur", destination: pp.stripe_account_id,
@@ -1303,7 +1323,7 @@ export default async function handler(req, res) {
         }
       }
 
-      return res.status(200).json({ success: true, montantTotal, cashbackEarned, newBalance });
+      return res.status(200).json({ success: true, montantTotal: partPrestataire, totalClient, cashbackEarned, newBalance });
     }
 
     if (action === "dispute") {

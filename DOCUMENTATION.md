@@ -387,8 +387,25 @@ l'utilisateur dans un mur. Sans date exploitable, aucun des deux ne bloque.
 ### Paiement
 
 Le client paie via Stripe. Le webhook `stripe-webhook.js` confirme le paiement et fait passer
-la mission en `assigned`. À la validation finale, la commission est retenue, le prestataire est
-payé et le cashback client est crédité.
+la mission en `assigned`. À la validation finale, le prestataire est payé et le cashback client
+est crédité.
+
+**Ce que reçoit le prestataire** (décision du 30/07/2026) : `tarif_horaire × heures × jours`,
+soit la part horaire seule. Les frais de service restent acquis à ALANE — c'est sa
+rémunération, et c'est ce qu'annonce le contrat signé par les deux parties (« Montant net dû
+au Prestataire »). Les heures retenues sont les heures réelles (`actual_hours`) quand elles
+existent, sinon les heures prévues.
+
+Deux chemins émettent ce virement et **doivent rester alignés** : `api/missions.js` (action
+`complete`, cas normal) et `api/stripe-webhook.js` (`account.updated`, rattrapage des
+virements en attente quand le compte Stripe du prestataire devient opérationnel). Ils
+calculaient auparavant deux montants différents, tous deux faux : le premier omettait le
+nombre de jours, le second versait `montant_total` frais compris.
+
+`montant_total` porte **ce que le client a payé**, frais de service inclus. `complete` le
+recalcule si la durée réelle diffère de la durée prévue, en conservant les frais d'origine.
+Ne jamais y écrire la part du prestataire : la facture, le cashback et les remboursements en
+dépendent.
 
 Le client peut aussi alimenter un **portefeuille prépayé**, débité à chaque prestation.
 

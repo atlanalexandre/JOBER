@@ -640,13 +640,31 @@ export default async function handler(req, res) {
           const prestataireId2 = Array.isArray(profData2) && profData2[0]?.id;
           if (prestataireId2) {
             const pendRes = await fetch(
-              `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataireId2}&payout_status=eq.pending&select=id,montant_total`,
+              `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${prestataireId2}&payout_status=eq.pending&select=id,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin`,
               { headers: hdrs2 }
             ).catch(() => null);
             if (pendRes?.ok) {
               const pendMissions = await pendRes.json().catch(() => []);
               for (const pm of (Array.isArray(pendMissions) ? pendMissions : [])) {
-                const netCents2 = Math.round((pm.montant_total || 0) * (1 - COMMISSION2) * 100);
+                // Le virement portait sur `montant_total`, frais de service compris :
+                // ce chemin reversait donc au prestataire la rémunération d'ALANE, alors
+                // que le contrat signé par les deux parties annonce « Montant net dû au
+                // Prestataire » = tarif × heures. Il divergeait en outre du versement
+                // principal de /api/missions, qui, lui, omettait le nombre de jours.
+                // Les deux calculent désormais la même chose : tarif × heures × jours.
+                const joursPm = (pm.date_debut && pm.date_fin)
+                  ? Math.max(1, Math.round((new Date(pm.date_fin) - new Date(pm.date_debut)) / 86400000) + 1)
+                  : 1;
+                const heuresPm = pm.actual_hours ?? pm.hours ?? 0;
+                const partPm   = Math.round(Number(heuresPm) * Number(pm.tarif_horaire || 0) * joursPm * 100) / 100;
+                // Sans tarif ni durée exploitables, mieux vaut ne rien virer et le
+                // signaler que de reverser un montant faux.
+                if (partPm <= 0) {
+                  console.error(`[account.updated] part prestataire incalculable pour la prestation ${pm.id} `
+                    + `(heures=${heuresPm}, tarif=${pm.tarif_horaire}) — virement non émis.`);
+                  continue;
+                }
+                const netCents2 = Math.round(partPm * (1 - COMMISSION2) * 100);
                 if (netCents2 < 100) continue;
 
                 // Verrou atomique TOCTOU : passe payout_status → processing avant d'émettre le virement
