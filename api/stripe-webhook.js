@@ -66,17 +66,53 @@ export default async function handler(req, res) {
           "Prefer":        "return=minimal",
         };
         try {
-          const profR    = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}&select=prepaid_balance`, {
+          // Recharge idempotente et atomique. Stripe réémet l'événement tant qu'il
+          // n'a pas reçu de 2xx : sur un dépassement de délai de la fonction, le
+          // crédit étant déjà écrit, la recharge était rejouée et le solde crédité
+          // deux fois. Le chemin des prestations disposait de ce contrôle, celui du
+          // portefeuille sortait avant de l'atteindre.
+          //
+          // `crediter_portefeuille` enregistre la recharge et incrémente le solde
+          // dans une seule transaction, la clé primaire du registre étant
+          // l'identifiant du paiement : l'idempotence est garantie par la base.
+          // Renvoie NULL si la recharge avait déjà été traitée.
+          let newBal = null;
+          const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/crediter_portefeuille`, {
+            method: "POST",
             headers: { ...wHdrs, "Prefer": "return=representation" },
+            body: JSON.stringify({ p_user_id: topupUserId, p_amount: topupAmount, p_payment_intent: intent.id }),
           });
-          const profData = await profR.json().catch(() => []);
-          const current  = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
-          const newBal   = Math.round((current + topupAmount) * 100) / 100;
-          const upd = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}`, {
-            method: "PATCH", headers: wHdrs, body: JSON.stringify({ prepaid_balance: newBal }),
-          });
-          if (!upd.ok) {
-            console.error("[stripe-webhook/wallet_topup] PATCH failed", upd.status);
+
+          if (rpc.ok) {
+            const soldeRpc = await rpc.json().catch(() => null);
+            if (soldeRpc === null || soldeRpc === undefined) {
+              console.log(`[wallet_topup] recharge ${intent.id} déjà traitée — ignorée.`);
+              return res.status(200).json({ received: true });
+            }
+            newBal = Number(soldeRpc);
+          } else if (rpc.status === 404) {
+            // Migration 2026-07-30_argent_recharge_portefeuille_idempotente non
+            // encore appliquée : on retombe sur l'ancien comportement pour ne pas
+            // bloquer les recharges, en le signalant clairement.
+            console.error("[wallet_topup] procédure crediter_portefeuille absente — "
+              + "repli sur l'ancien crédit, NON protégé contre un double traitement. "
+              + "Appliquer la migration 2026-07-30_argent_recharge_portefeuille_idempotente.sql.");
+            const profR    = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}&select=prepaid_balance`, {
+              headers: { ...wHdrs, "Prefer": "return=representation" },
+            });
+            const profData = await profR.json().catch(() => []);
+            const current  = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
+            newBal = Math.round((current + topupAmount) * 100) / 100;
+            const upd = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${topupUserId}`, {
+              method: "PATCH", headers: wHdrs, body: JSON.stringify({ prepaid_balance: newBal }),
+            });
+            if (!upd.ok) {
+              console.error("[stripe-webhook/wallet_topup] PATCH failed", upd.status);
+              return res.status(500).json({ error: "Wallet update failed" });
+            }
+          } else {
+            const txt = await rpc.text().catch(() => "");
+            console.error(`[wallet_topup] crédit refusé (${rpc.status}) : ${txt}`);
             return res.status(500).json({ error: "Wallet update failed" });
           }
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {

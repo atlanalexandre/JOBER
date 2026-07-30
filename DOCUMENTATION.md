@@ -140,10 +140,19 @@ et les rôles d'administration sont exemptés. Il pose une **borne basse** sur l
 le calcul exact du tarif : reproduire la grille tarifaire en base finirait par diverger du
 tunnel de réservation et bloquerait des réservations légitimes.
 
-Deux procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
+**`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
+l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
+recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
+entrait dans le portefeuille sans laisser aucune trace — un solde ne pouvait être ni
+justifié, ni rapproché des encaissements Stripe.
+
+Trois procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
 - `increment_cashback` — crédite le cashback de façon atomique.
+- `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
+  transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
+  fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
 
 Comme elles ne sont pas visibles dans les fichiers SQL du dépôt, une modification de leur
 signature casse le code sans que rien ne le signale. **La référence, c'est la base.**
