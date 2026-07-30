@@ -404,6 +404,15 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**`api/update-profile.js` filtre ce que le navigateur peut écrire dans `user_metadata`.**
+Il fusionnait sans aucun filtre l'objet reçu : un compte pouvait donc s'attribuer un
+abonnement, se valider lui-même ou se créditer un portefeuille en modifiant son profil. Une
+liste de champs privilégiés est refusée (`plan_abonnement`, `status`, `missions_enabled`,
+`prepaid_balance`, les identifiants Stripe…). Deux garde-fous de taille s'y ajoutent, la
+fonction écrivant précisément le champ visé par la règle 1.1 : toute valeur commençant par
+`data:` est refusée, et l'ensemble est plafonné à 6 Ko — bien en deçà des 16 Ko de l'en-tête,
+qui doit aussi porter la signature du jeton.
+
 **Les avis passent par `/api/missions` (`submit_rating`), jamais par le navigateur.**
 L'insertion s'y faisait directement : le contrôle d'éligibilité était une requête du front,
 contournable, et côté prestataire il n'existait pas du tout — on pouvait noter n'importe qui,

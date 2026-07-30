@@ -60,8 +60,47 @@ export default async function handler(req, res) {
     if (cur.ok) currentMeta = (await cur.json())?.user_metadata || {};
   } catch { /* continuer avec currentMeta vide */ }
 
+  // Champs que le navigateur ne peut jamais écrire lui-même : ils décident de
+  // l'argent, des droits ou de l'état du compte. Cette fonction fusionnait sans
+  // filtre tout ce qu'on lui envoyait.
+  const CHAMPS_INTERDITS = [
+    "plan_abonnement", "subscription_end_date", "plan_souhaite",
+    "role", "status", "missions_enabled", "trial_exhausted",
+    "missions_completed_month", "cashback_balance", "prepaid_balance",
+    "stripe_customer_id", "stripe_subscription_id", "stripe_account_id", "stripe_account_status",
+  ];
+  const refuses = CHAMPS_INTERDITS.filter(k => k in profileData);
+  if (refuses.length) {
+    console.error(`[update-profile] champs privilégiés refusés pour ${userId} : ${refuses.join(", ")}`);
+    return res.status(403).json({ error: "Certains champs ne peuvent pas être modifiés depuis l'application." });
+  }
+
+  // Aucune valeur volumineuse : user_metadata est encodé dans le jeton, envoyé en
+  // en-tête HTTP à chaque requête, et Cloudflare plafonne les en-têtes à 16 Ko.
+  // Une photo en base64 y avait été stockée — 60 Ko — et TOUTES les requêtes du
+  // compte étaient rejetées en 520, déconnexion comprise : le compte devenait
+  // inutilisable (règle 1.1). Rien ne l'empêchait ici, dans la fonction qui écrit
+  // précisément ce champ.
+  for (const [k, v] of Object.entries(profileData)) {
+    if (typeof v === "string" && /^data:/i.test(v)) {
+      console.error(`[update-profile] data URI refusée sur « ${k} » pour ${userId} (${v.length} caractères)`);
+      return res.status(413).json({ error: "Les fichiers ne peuvent pas être enregistrés dans le profil. Utilisez l'envoi de document." });
+    }
+  }
+
   // Merge : données existantes + nouvelles (les nouvelles ont priorité)
   const merged = { ...currentMeta, ...profileData };
+
+  // Plafond global, très en deçà des 16 Ko : le jeton contient aussi ses propres
+  // en-têtes et signatures, et d'autres en-têtes voyagent avec lui.
+  const tailleMeta = Buffer.byteLength(JSON.stringify(merged), "utf8");
+  if (tailleMeta > 6144) {
+    console.error(`[update-profile] user_metadata trop volumineux pour ${userId} : ${tailleMeta} octets`);
+    return res.status(413).json({
+      error: "Votre profil contient trop d'informations pour être enregistré. "
+           + "Raccourcissez votre description ou vos compétences.",
+    });
+  }
 
   // Mise à jour via Admin API
   try {
