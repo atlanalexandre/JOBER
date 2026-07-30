@@ -126,10 +126,26 @@ Deux procédures stockées sont appelées depuis le code, et n'existent donc que
 Comme elles ne sont pas visibles dans les fichiers SQL du dépôt, une modification de leur
 signature casse le code sans que rien ne le signale. **La référence, c'est la base.**
 
-**`platform_settings`** — les réglages modifiables depuis le backoffice, stockés en clé/valeur :
-`commission_rate`, `cashback_rates`, `subscription_prices`, `plan_limits`, `frais_service`,
-`urgency_surcharge`, `launch_phase`, `disabled_sectors`, `sector_min_prestataires`,
-`invoice_sequence`.
+**`platform_settings`** — les réglages modifiables depuis le backoffice, stockés en clé/valeur.
+Chaque clé est listée avec **l'endroit qui l'applique réellement** : un réglage qu'aucun code
+ne lit est un piège, l'administrateur croit agir alors que rien ne change.
+
+| Clé | Appliquée par |
+|---|---|
+| `cashback_rates` | `api/missions.js` (action `complete`) |
+| `subscription_prices` | `api/plans.js`, écrans d'abonnement |
+| `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()` |
+| `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (10 prestations/mois aux 100 premiers prestataires) |
+| `frais_service` | tunnel de réservation, `api/stripe-intent.js` |
+| `urgency_surcharge` | écran de secteur (majoration affichée au client) |
+| `disabled_sectors` | `api/missions.js` — `get_sector_status` (affichage) et `assign_after_payment` (refus de réservation) |
+| `invoice_sequence` | `api/invoice.js` |
+| `commission_rate` | **personne** — vestige : la plateforme se rémunère sur les frais de service, `prixClient()` applique 0 % de commission. Ne pas s'y fier. |
+
+`sector_min_prestataires` a été retirée : elle fermait automatiquement tout secteur comptant
+moins de 30 prestataires, ce qui aurait verrouillé la plateforme entière. L'ouverture d'un
+secteur relève désormais de la seule décision explicite de l'administrateur
+(`disabled_sectors`). La clé peut rester en base, plus rien ne la lit.
 
 **`account_blacklist`** — empreintes des comptes supprimés, pour empêcher qu'on recrée un
 compte afin de récupérer l'essai gratuit. **Ne contient que des empreintes**, jamais de
@@ -296,6 +312,14 @@ créé à l'instant peut réserver immédiatement.
 `status` et `missions_enabled` sont deux choses différentes : un prestataire peut avoir un
 compte validé tout en n'ayant pas encore accès aux prestations, tant que son dossier
 documentaire n'est pas complet.
+
+`missions_enabled` vaut **`false` par défaut** (colonne créée avec `DEFAULT false`). Le verrou
+est appliqué à trois endroits, et il faut les trois : l'interface du prestataire masque la
+liste des prestations, `api/prestataires.js` l'exclut du catalogue client, et
+`api/missions.js` (`assign_after_payment`) refuse de lui affecter une prestation. Tant que
+l'administrateur n'a pas cliqué « ✅ Activer l'accès aux prestations » dans le backoffice, un
+prestataire approuvé **n'apparaît pas** aux clients — c'est voulu, mais c'est aussi la première
+chose à vérifier si le catalogue paraît vide.
 
 Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. Le dernier est
 traité à la connexion (`auth.jsx:1175`) et au démarrage (`App.jsx:1391`) : la session est

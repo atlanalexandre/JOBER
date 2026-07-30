@@ -1493,7 +1493,7 @@ export function CatalogueScreen({ onNavigate }) {
                   </>
                 ) : (
                   <div style={{ color:C.textMuted, fontSize:13, marginTop:6 }}>
-                    🔒 Bientôt disponible · {ss ? `${ss.count} / ${ss.min} prestataires inscrits` : "Ouverture prochaine"}
+                    🔒 Bientôt disponible · Ouverture prochaine
                   </div>
                 )}
               </div>

@@ -264,6 +264,58 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
   } catch { return null; }
 }
 
+// Secteurs fermés aux clients, réglés depuis le backoffice (`disabled_sectors`).
+// Renvoie toujours un tableau : en cas d'échec de lecture on ne ferme rien, mais
+// on journalise — fermer par défaut bloquerait toute la plateforme sur une panne.
+async function secteursDesactives(supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.disabled_sectors&select=value`, { headers });
+    const d = await r.json();
+    const v = Array.isArray(d) && d[0]?.value;
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    console.error("[secteurs] lecture de disabled_sectors impossible :", e.message);
+    return [];
+  }
+}
+
+// Limite mensuelle de prestations d'un prestataire, offre de lancement comprise.
+//
+// L'inscription annonce aux 100 premiers prestataires « 10 prestations/mois
+// gratuites ». Cette promesse n'était appliquée nulle part : le quota retombait
+// systématiquement sur `plan_limits.free` (2), et un prestataire du lancement se
+// voyait refuser sa 3ᵉ prestation avec un message parlant de « limite de son plan ».
+// L'offre s'applique tant que le réglage `launch_phase` est actif.
+async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
+  let limites = { free: 2, premium: 10, elite: 999 };
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
+    const d = await r.json();
+    if (Array.isArray(d) && d[0]?.value) limites = { ...limites, ...d[0].value };
+  } catch (e) {
+    console.error("[quota] lecture de plan_limits impossible, valeurs par défaut :", e.message);
+  }
+  const limite = Number(limites[plan] ?? limites.free) || 0;
+  if (plan !== "free" || !prestataireId) return limite;
+
+  try {
+    const sr = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.launch_phase&select=value`, { headers });
+    const sd = await sr.json();
+    const brut = Array.isArray(sd) && sd[0] ? sd[0].value : null;
+    if (brut !== true && brut !== "true") return limite;
+
+    // Les 100 premiers prestataires inscrits, dans l'ordre de création du profil.
+    const cr = await fetch(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&select=id&order=created_at.asc&limit=100`, { headers });
+    const cd = await cr.json();
+    if (Array.isArray(cd) && cd.some(p => p.id === prestataireId)) {
+      return Math.max(limite, Number(limites.premium) || 10);
+    }
+  } catch (e) {
+    console.error("[quota] offre de lancement non évaluée :", e.message);
+  }
+  return limite;
+}
+
 // ── Email one-click action (GET) ────────────────────────────────────────────
 const APP_URL_DEFAULT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
@@ -722,11 +774,6 @@ export default async function handler(req, res) {
       if (verified_prestataire_id && isUuid(verified_prestataire_id)) {
         const limitOk = await (async () => {
           try {
-            let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
-            const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
-            const slData = await slRes.json();
-            if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
-
             const [urRes, prRes] = await Promise.all([
               fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers }),
               fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
@@ -745,7 +792,7 @@ export default async function handler(req, res) {
             }
 
             const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
-            const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
+            const basePlanLimit = await limitePlanMensuelle(plan, verified_prestataire_id, SUPABASE_URL, headers);
             const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
             if (limit < 999) {
               // RPC atomique : FOR UPDATE sur la ligne profile pour éviter la race condition
@@ -1217,14 +1264,10 @@ export default async function handler(req, res) {
             // profiles.plan_abonnement a priorité sur user_metadata (écrit en premier par le webhook Stripe)
             const plan = prProfile?.plan_abonnement || prPlan?.user_metadata?.plan_abonnement || "free";
 
-            // Récupérer la limite du plan depuis platform_settings
-            let PLAN_LIMITS_C = { free: 2, premium: 10, elite: 999 };
-            try {
-              const plRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
-              const plData = await plRes.json();
-              if (Array.isArray(plData) && plData[0]?.value) PLAN_LIMITS_C = plData[0].value;
-            } catch {}
-            const planLimit = PLAN_LIMITS_C[plan] ?? 2;
+            // Limite du plan, offre de lancement comprise — la même que celle
+            // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
+            // la limite réellement opposée au prestataire.
+            const planLimit = await limitePlanMensuelle(plan, mission.prestataire_id, SUPABASE_URL, headers);
 
             const patchBody = { missions_completed_month: newCount };
             let justExhausted = false;
@@ -1452,10 +1495,29 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
       }
 
-      // Le prestataire doit exister, être approuvé, et avoir accès aux prestations
-      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&role=eq.prestataire&status=eq.approved&select=id`, { headers });
+      // Le secteur doit être ouvert aux clients. Le backoffice annonce « les secteurs
+      // désactivés sont masqués pour les clients » alors que la clé `disabled_sectors`
+      // n'était lue nulle part : un secteur fermé restait réservable.
+      const mSecRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector`, { headers });
+      const secteurMission = ((await mSecRes.json().catch(() => []))[0] || {}).sector;
+      if (secteurMission) {
+        const fermes = await secteursDesactives(SUPABASE_URL, headers);
+        if (fermes.includes(secteurMission)) {
+          return res.status(400).json({ error: "Ce secteur n'est pas encore ouvert aux réservations." });
+        }
+      }
+
+      // Le prestataire doit exister, être approuvé, et avoir accès aux prestations.
+      // `missions_enabled` est le second verrou du backoffice, posé après vérification
+      // des documents : il n'était lu que par l'interface du prestataire, si bien qu'un
+      // compte non activé restait réservable par un client.
+      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&role=eq.prestataire&status=eq.approved&select=id,missions_enabled`, { headers });
       const pData = await pRes.json().catch(() => []);
       if (!Array.isArray(pData) || !pData[0]) return res.status(400).json({ error: "Prestataire indisponible" });
+      if (pData[0].missions_enabled !== true) {
+        console.error(`[assign_after_payment] prestataire ${prestataire_id} non activé (missions_enabled != true)`);
+        return res.status(400).json({ error: "Ce prestataire n'a pas encore accès aux prestations (documents en cours de vérification). Choisissez un autre prestataire." });
+      }
 
       // Rayon d'intervention. Le profil annonce « intervient jusqu'à X km » et ce
       // rayon n'était vérifié que lors d'une diffusion générale : une réservation
@@ -1646,15 +1708,9 @@ export default async function handler(req, res) {
           const prData = await prRes.json();
           const prProfile = Array.isArray(prData) && prData[0];
           const cancelPlan = prProfile?.plan_abonnement || "free";
-          let planLimits = { free: 2, premium: 10, elite: 999 };
-          try {
-            const plRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
-            const plData = await plRes.json();
-            if (Array.isArray(plData) && plData[0]?.value) planLimits = { ...planLimits, ...plData[0].value };
-          } catch {}
           const current = prProfile ? (prProfile.missions_completed_month || 0) : 0;
           const newCount = current + 1;
-          const planLimit = planLimits[cancelPlan] ?? planLimits.free;
+          const planLimit = await limitePlanMensuelle(cancelPlan, caller.id, SUPABASE_URL, headers);
           const patchBody = { missions_completed_month: newCount };
           // Ne jamais marquer trial_exhausted pour un prestataire sur plan payant
           if (newCount >= planLimit && cancelPlan === "free") patchBody.trial_exhausted = true;
@@ -2134,19 +2190,18 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(rows) && rows[0] ? rows[0] : null);
     }
 
+    // État d'ouverture des secteurs. Volontairement accessible sans jeton : la
+    // réponse ne contient que des nombres agrégés, et les deux appelants — l'accueil
+    // client et le backoffice — n'envoyaient pas de Bearer, si bien que l'action
+    // répondait toujours 401. Le verrou des secteurs et le compteur du backoffice
+    // étaient donc inertes depuis leur création.
     if (action === "get_sector_status") {
-      const callerGss = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!callerGss) return res.status(401).json({ error: "Non authentifié" });
-      // Threshold configurable depuis le BO
-      let minPrestataires = 30;
-      try {
-        const sr = await fetch(
-          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.sector_min_prestataires&select=value`,
-          { headers }
-        );
-        const sd = await sr.json();
-        if (Array.isArray(sd) && sd[0]?.value != null) minPrestataires = Number(sd[0].value) || 20;
-      } catch {}
+      const cache = globalThis.__alaneSectorCache;
+      if (cache && Date.now() - cache.ts < 300_000) {
+        return res.status(200).json(cache.data);
+      }
+
+      const fermes = await secteursDesactives(SUPABASE_URL, headers);
 
       // IDs des prestataires approuvés
       const pr = await fetch(
@@ -2176,12 +2231,18 @@ export default async function handler(req, res) {
         if (sector) counts[sector] = (counts[sector] || 0) + 1;
       }
 
+      // L'ouverture dépend de la seule décision explicite de l'administrateur.
+      // Elle dépendait auparavant d'un seuil de prestataires (`sector_min_prestataires`,
+      // 30 par défaut) : dès que cette action redevenait joignable, tous les secteurs
+      // se verrouillaient d'un coup et la plateforme n'était plus réservable. Le
+      // nombre de prestataires reste renvoyé, pour information dans le backoffice.
       const KNOWN_SECTORS = ["proprete","logistique","hotellerie","restauration","commercial","distribution","divers"];
       const result = {};
       for (const s of KNOWN_SECTORS) {
-        const count = counts[s] || 0;
-        result[s] = { count, open: count >= minPrestataires, min: minPrestataires };
+        const disabled = fermes.includes(s);
+        result[s] = { count: counts[s] || 0, open: !disabled, disabled };
       }
+      globalThis.__alaneSectorCache = { ts: Date.now(), data: result };
       return res.status(200).json(result);
     }
 
@@ -2837,11 +2898,6 @@ export default async function handler(req, res) {
       if (response === "accept") {
         const quotaResult = await (async () => {
           try {
-            let PLAN_LIMITS = { free: 2, premium: 10, elite: 999 };
-            const slRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
-            const slData = await slRes.json();
-            if (Array.isArray(slData) && slData[0]?.value) PLAN_LIMITS = slData[0].value;
-
             const [urRes, prRes] = await Promise.all([
               fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }),
               fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
@@ -2858,7 +2914,7 @@ export default async function handler(req, res) {
               await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
             }
             const trialExhausted = prProfile?.trial_exhausted === true;
-            const basePlanLimit = PLAN_LIMITS[plan] ?? 2;
+            const basePlanLimit = await limitePlanMensuelle(plan, caller.id, SUPABASE_URL, headers);
             const limit = (trialExhausted && plan === "free") ? 0 : basePlanLimit;
             if (limit < 999) {
               const slotRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/check_prestataire_slot`, {
