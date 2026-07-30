@@ -1520,6 +1520,31 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Ce prestataire n'a pas encore accès aux prestations (documents en cours de vérification). Choisissez un autre prestataire." });
       }
 
+      // Tarif réellement annoncé par le prestataire. Second volet du contrôle du
+      // montant : stripe-intent vérifie la cohérence du total, mais il ne connaît pas
+      // encore le prestataire — la prestation est créée sans lui pour ne pas le
+      // solliciter avant paiement. C'est donc ici qu'on s'assure que le tarif horaire
+      // payé n'est pas inférieur à celui du prestataire qu'on lui affecte : sinon un
+      // client pouvait payer au tarif d'un prestataire à 12 €/h et engager celui à
+      // 25 €/h. Le prestataire est rémunéré sur ce montant, c'est lui qui perdrait.
+      try {
+        const mTarifRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=tarif_horaire`, { headers });
+        const tarifPaye = Number(((await mTarifRes.json().catch(() => []))[0] || {}).tarif_horaire || 0);
+        if (tarifPaye > 0) {
+          const urT = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+          const tarifReel = Number(((await urT.json().catch(() => ({}))).user_metadata || {}).tarif_net || 0);
+          if (tarifReel > 0 && tarifPaye < tarifReel - 0.01) {
+            console.error(`[assign_after_payment] tarif payé ${tarifPaye} €/h inférieur au tarif du prestataire ${prestataire_id} (${tarifReel} €/h)`);
+            return res.status(400).json({
+              error: `Le tarif de ce prestataire est de ${tarifReel.toFixed(2).replace(".", ",")} €/h, `
+                   + `supérieur au montant réglé. Recommencez la réservation depuis sa fiche.`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[assign_after_payment] contrôle du tarif impossible :", e.message);
+      }
+
       // Rayon d'intervention. Le profil annonce « intervient jusqu'à X km » et ce
       // rayon n'était vérifié que lors d'une diffusion générale : une réservation
       // directe permettait d'engager un prestataire de Nice pour une adresse

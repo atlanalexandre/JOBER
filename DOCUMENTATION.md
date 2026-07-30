@@ -118,6 +118,18 @@ pour envoyer les relances.
 
 ### Fonctions SQL (RPC)
 
+**Le déclencheur `missions_field_tamper_guard` ne couvre que les `UPDATE`.** Vérifié en base
+le 30/07/2026 : `CREATE TRIGGER missions_field_tamper_guard BEFORE UPDATE ON public.missions`.
+Une ligne `missions` est **insérée par le navigateur du client** (`App.jsx`,
+`client-screens.jsx`) : à la création, il choisit donc librement `tarif_horaire` et
+`montant_total`. Ne jamais considérer ces deux champs comme fiables. Ils sont contrôlés
+côté serveur à deux endroits, et il faut les deux :
+
+- `api/stripe-intent.js` — le total moins la part horaire doit correspondre à l'un des trois
+  frais de service du barème, sinon le paiement est refusé ;
+- `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
+  inférieur au `tarif_net` réellement annoncé par le prestataire affecté.
+
 Deux procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
