@@ -156,6 +156,71 @@ async function checkRateLimit(ip, max = 120, windowMs = 60_000) {
   } catch { return _rlMemory(ip, max, windowMs); }
 }
 
+// Remboursement intégral d'une prestation payée mais non honorée : refus du
+// prestataire, ou délai d'acceptation expiré. Ces trois chemins laissaient
+// l'argent du client bloqué alors que l'écran d'attente lui annonce « votre
+// paiement est intégralement remboursé ». Les seuls remboursements existants
+// couvraient les annulations.
+// Retourne { ok, mode, detail } — n'interrompt jamais l'appelant : mieux vaut une
+// prestation correctement refusée avec un remboursement à reprendre à la main
+// qu'une prestation bloquée en attente.
+async function rembourserPrestation(mission, supabaseUrl, serviceHeaders, motif) {
+  const intent = mission?.stripe_payment_intent;
+  if (!intent) return { ok: true, mode: "aucun_paiement" };
+
+  // Paiement par portefeuille prépayé : on recrédite le solde
+  if (String(intent).startsWith("wallet_")) {
+    const montant = Number(mission.montant_total) || 0;
+    if (montant <= 0 || !mission.client_id) return { ok: true, mode: "wallet_vide" };
+    try {
+      const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: serviceHeaders });
+      const pd = await pr.json().catch(() => []);
+      const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
+      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`, {
+        method: "PATCH",
+        headers: { ...serviceHeaders, "Prefer": "return=minimal" },
+        body: JSON.stringify({ prepaid_balance: Math.round((solde + montant) * 100) / 100 }),
+      });
+      console.log(`[remboursement/${motif}] portefeuille recrédité de ${montant} € — prestation ${mission.id}`);
+      return { ok: true, mode: "wallet", detail: montant };
+    } catch (e) {
+      console.error(`[remboursement/${motif}] recrédit portefeuille échoué — prestation ${mission.id} :`, e.message);
+      return { ok: false, mode: "wallet", detail: e.message };
+    }
+  }
+
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!cle) {
+    console.error(`[remboursement/${motif}] STRIPE_SECRET_KEY absente — remboursement NON effectué pour ${mission.id}`);
+    return { ok: false, mode: "stripe", detail: "cle_absente" };
+  }
+  try {
+    const r = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${cle}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        // Clé unique par prestation, indépendante du motif : plusieurs chemins
+        // peuvent viser la même prestation — expiration côté application et
+        // expiration par le cron notamment. Une clé par motif aurait fait tenter
+        // deux remboursements à Stripe, dont le second en erreur.
+        "Idempotency-Key": `refund-nonhonoree-${mission.id}`,
+      },
+      body: new URLSearchParams({ payment_intent: intent, reason: "requested_by_customer" }).toString(),
+    });
+    const d = await r.json();
+    if (d.id) {
+      console.log(`[remboursement/${motif}] Stripe OK ${d.id} — prestation ${mission.id}`);
+      return { ok: true, mode: "stripe", detail: d.id };
+    }
+    console.error(`[remboursement/${motif}] Stripe a refusé — prestation ${mission.id} :`, JSON.stringify(d));
+    return { ok: false, mode: "stripe", detail: d?.error?.message || "refus_stripe" };
+  } catch (e) {
+    console.error(`[remboursement/${motif}] appel Stripe impossible — prestation ${mission.id} :`, e.message);
+    return { ok: false, mode: "stripe", detail: e.message };
+  }
+}
+
 async function sendPushToUser(userId, notification, supabaseUrl, serviceHeaders) {
   try {
     const psRes = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?user_id=eq.${userId}&select=endpoint,p256dh,auth`, { headers: serviceHeaders });
@@ -235,7 +300,7 @@ async function handleEmailAction(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) { res.setHeader("Content-Type","text/html; charset=utf-8"); return res.status(500).send(emailActionHtml("Erreur serveur", "Configuration base de données manquante.", "#F25E5E", "⚠️")); }
   const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
 
-  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers: hdrs });
+  const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total`, { headers: hdrs });
   const mission = (await mr.json().catch(() => []))[0];
   if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette prestation a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
 
@@ -244,7 +309,8 @@ async function handleEmailAction(req, res) {
     await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
       method: "PATCH",
       headers: { ...hdrs, "Prefer": "return=minimal" },
-      body: JSON.stringify({ status: "open", prestataire_id: null }),
+      // Idem : l'expiration et son remboursement relèvent du cron.
+      body: JSON.stringify({ prestataire_id: null }),
     }).catch(() => {});
     return res.status(410).send(emailActionHtml("Délai dépassé", "Le délai de réponse est dépassé. La prestation est de nouveau disponible pour d'autres prestataires.", "#F5A623", "⏱"));
   }
@@ -263,7 +329,14 @@ async function handleEmailAction(req, res) {
     }
   }
 
-  const patchBody = action === "accept" ? { status: "assigned" } : { status: "open", prestataire_id: null };
+  // Même règle que dans l'application : un refus ne renvoie pas la prestation en
+  // « open » avec l'argent du client bloqué, il la clôt et déclenche son
+  // remboursement.
+  const patchBody = action === "accept" ? { status: "assigned" } : { status: "refused", prestataire_id: null };
+  if (action !== "accept") {
+    const rembMail = await rembourserPrestation(mission, SUPABASE_URL, hdrs, "refus-email");
+    if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
+  }
   await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify(patchBody) });
 
   if (mission.client_id) {
@@ -403,7 +476,11 @@ export default async function handler(req, res) {
           await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "open", prestataire_id: null }),
+            // Statut volontairement inchangé : l'expiration d'une prestation payée
+            // implique un remboursement, et cette écriture-là appartient au cron
+            // (cron-reset-monthly), seul endroit où la logique d'argent est tenue.
+            // La laisser ici renvoyait la prestation en « open » sans rembourser.
+            body: JSON.stringify({ prestataire_id: null }),
           }).catch(() => {});
           m.status = "open";
           m.prestataire_id = null;
@@ -1443,7 +1520,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,acceptance_deadline`, { headers });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,acceptance_deadline,stripe_payment_intent,montant_total`, { headers });
       const mData = await mRes.json().catch(() => []);
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1466,6 +1543,12 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Prestation déjà traitée" });
       }
 
+      // Le client a payé et personne n'a accepté : remboursement intégral.
+      const rembTimeout = await rembourserPrestation(mission, SUPABASE_URL, headers, "delai-expire");
+      if (!rembTimeout.ok) {
+        console.error(`[acceptance_timeout] remboursement à reprendre manuellement — prestation ${mission_id}`);
+      }
+
       let prestaName = "Le prestataire";
       if (mission.prestataire_id) {
         try {
@@ -1484,7 +1567,7 @@ export default async function handler(req, res) {
           user_id: mission.client_id,
           type:    "prestation",
           title:   "Prestation non confirmée",
-          body:    `${prestaName} n'a pas répondu dans le délai imparti. Vous pouvez choisir un autre prestataire.`,
+          body:    `${prestaName} n'a pas répondu dans le délai imparti.${rembTimeout.ok ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
           read:    false,
         }),
       }).catch(e => console.error("[acceptance_timeout] insertion notification échouée :", e.message));
@@ -2717,7 +2800,11 @@ export default async function handler(req, res) {
         await Promise.all(expired.map(async m => {
           await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
             method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "open", prestataire_id: null }),
+            // Statut volontairement inchangé : l'expiration d'une prestation payée
+            // implique un remboursement, et cette écriture-là appartient au cron
+            // (cron-reset-monthly), seul endroit où la logique d'argent est tenue.
+            // La laisser ici renvoyait la prestation en « open » sans rembourser.
+            body: JSON.stringify({ prestataire_id: null }),
           });
           // Notifier le client que le prestataire n'a pas répondu dans les temps
           if (m.client_id) {
@@ -2787,20 +2874,22 @@ export default async function handler(req, res) {
         if (quotaResult) return res.status(403).json(quotaResult);
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou délai dépassé" });
 
       // Vérification serveur du délai d'acceptation (le contrôle frontend seul est insuffisant)
       if (mission.acceptance_deadline && mission.acceptance_deadline < new Date().toISOString()) {
-        // Remettre en open pour qu'elle soit re-proposable
+        // Délai dépassé : le client sera remboursé par le cron d'expiration, qui
+        // clôt la prestation. On ne la renvoie donc pas en « open » ici, ce qui
+        // l'aurait rendue acceptable alors que le paiement va être rendu.
         await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ status: "open", prestataire_id: null }),
+          body: JSON.stringify({ prestataire_id: null }),
         }).catch(() => {});
-        return res.status(410).json({ error: "Le délai d'acceptation est dépassé. La prestation est de nouveau disponible." });
+        return res.status(410).json({ error: "Le délai d'acceptation est dépassé. Le client va être remboursé et pourra vous solliciter à nouveau." });
       }
 
       // Vérification conflit de créneau — bloquer l'acceptation si le prestataire a déjà une mission ce jour/heure
@@ -2821,9 +2910,14 @@ export default async function handler(req, res) {
         }
       } catch {}
 
+      // Refus d'une demande directe : la prestation ne repart pas en « open » avec
+      // l'argent du client toujours bloqué. Elle passe en « refused » et le client
+      // est remboursé, conformément à ce que lui annonce l'écran d'attente
+      // (« votre paiement est intégralement remboursé ») et au parcours qui lui
+      // propose ensuite un autre prestataire.
       const patchBody = response === "accept"
         ? { status: "assigned" }
-        : { status: "open", prestataire_id: null };
+        : { status: "refused", prestataire_id: null };
       const respondPatch = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.pending_acceptance`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Accept": "application/json" },
@@ -2832,6 +2926,13 @@ export default async function handler(req, res) {
       const respondedRows = await respondPatch.json().catch(() => []);
       if (!Array.isArray(respondedRows) || respondedRows.length === 0) {
         return res.status(409).json({ error: "La prestation n'est plus en attente — délai dépassé ou déjà assignée." });
+      }
+
+      // Remboursement du client en cas de refus
+      let rembRefus = { ok: true, mode: "sans_objet" };
+      if (response !== "accept") {
+        rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
+        if (!rembRefus.ok) console.error(`[respond_mission] remboursement à reprendre manuellement — prestation ${mission_id}`);
       }
 
       if (mission.client_id) {
