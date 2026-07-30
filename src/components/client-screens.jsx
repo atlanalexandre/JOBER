@@ -6368,8 +6368,19 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             );
           })()}
           {selected.status === "assigned" && !completedResult && selected.started_at && (() => {
-            const maxMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
-            const elapsed = Math.min(Date.now() - new Date(selected.started_at).getTime(), maxMs);
+            // La fin s'ancrait sur l'heure de démarrage réelle : un prestataire
+            // démarrant à 20h37 pour une prestation de 20h à 21h décalait la fin à
+            // 21h37, sans que le client ait accepté quoi que ce soit. La fin reste
+            // celle qui était prévue, sauf si le client a accepté le décalage.
+            const dureeMs = (selected.actual_hours ?? selected.hours ?? 1) * 3600 * 1000;
+            const debutMs = new Date(selected.started_at).getTime();
+            const finPrevueMs = finPrestationMs(selected);
+            const decalageAccepte = selected.delay_status === "approved";
+            const finMs = (!decalageAccepte && finPrevueMs && finPrevueMs > debutMs)
+              ? Math.min(finPrevueMs, debutMs + dureeMs)
+              : debutMs + dureeMs;
+            const maxMs = Math.max(0, finMs - debutMs);
+            const elapsed = Math.min(Date.now() - debutMs, maxMs);
             const done = elapsed >= maxMs;
             const s = Math.floor(elapsed / 1000);
             const h = Math.floor(s / 3600); const min = Math.floor((s % 3600) / 60); const sec = s % 60;
@@ -6379,7 +6390,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ marginTop:16, background:`${color}12`, border:`1px solid ${color}40`, borderRadius:14, padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div>
                   <div style={{ color, fontWeight:700, fontSize:13 }}>{done ? "✓ Prestation terminée" : "🚀 Prestation en cours"}</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Démarré(e) à {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>
+                    Démarré(e) à {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+                    {finMs ? ` · fin ${new Date(finMs).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}` : ""}
+                  </div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ color, fontWeight:800, fontSize:20, fontVariantNumeric:"tabular-nums" }}>{timerStr}</div>

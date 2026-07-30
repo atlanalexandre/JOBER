@@ -404,6 +404,22 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**Un démarrage tardif ne décale pas la fin sans l'accord du client.** Le décalage est
+mesuré à deux moments — au pointage d'arrivée (`checkin_mission`) **et** au démarrage
+(`start_mission`), le plus défavorable au client étant retenu — au-delà de 15 minutes. Il est
+inscrit dans `arrival_delay_minutes` avec `delay_status = "pending"`, et le client est
+notifié. Trois issues :
+
+| `delay_status` | Fin de la prestation | Heures facturées |
+|---|---|---|
+| `approved` | repoussée du retard | heures prévues |
+| `rejected` | heure initiale | réduites par `respond_delay` |
+| `pending` (sans réponse) | heure initiale | plafonnées à la validation, dans `complete` |
+
+La règle vit à trois endroits qui doivent rester alignés : `api/missions.js` (mesure et
+plafonnement), et les deux comptes à rebours — client dans `client-screens.jsx`, prestataire
+dans `presta-screens.jsx` — qui s'ancraient auparavant sur `started_at` seul.
+
 **Le passage en `disputed` est borné à 48 h après la fin effective de la prestation**, délai
 imposé par les CGPS art. 17.1 (« au-delà de 48 heures sans signalement, la Prestation est
 réputée définitivement validée »). Le point de départ est le pointage réel (`started_at`)

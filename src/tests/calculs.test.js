@@ -152,6 +152,60 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Décalage de démarrage : qui décide de la fin ──────────────────
+// Une prestation prévue de 20h à 21h, démarrée à 20h37, voyait sa fin glisser à
+// 21h37 sans que le client ait accepté quoi que ce soit. Le décalage n'était mesuré
+// qu'au pointage d'arrivée, jamais au démarrage. La fin reste celle qui était prévue
+// tant que le client n'a pas donné son accord.
+describe("décalage de démarrage — fin de prestation", () => {
+  const H = 3600000;
+  const finEffective = ({ debutPrevu, debutReel, heures, accepte }) => {
+    const finPrevue = debutPrevu + heures * H;
+    const finGlissee = debutReel + heures * H;
+    return (!accepte && finPrevue > debutReel) ? Math.min(finPrevue, finGlissee) : finGlissee;
+  };
+  const T20h = 1_760_000_000_000;          // référence arbitraire = 20h00
+  const T20h37 = T20h + 37 * 60000;
+
+  it("démarrage à l'heure : la fin ne bouge pas", () => {
+    expect(finEffective({ debutPrevu:T20h, debutReel:T20h, heures:1, accepte:false })).toBe(T20h + H);
+  });
+  it("démarrage à 20h37 sans accord : fin maintenue à 21h", () => {
+    expect(finEffective({ debutPrevu:T20h, debutReel:T20h37, heures:1, accepte:false })).toBe(T20h + H);
+  });
+  it("démarrage à 20h37 avec accord du client : fin repoussée à 21h37", () => {
+    expect(finEffective({ debutPrevu:T20h, debutReel:T20h37, heures:1, accepte:true })).toBe(T20h37 + H);
+  });
+  it("démarrage en avance : la prestation dure bien ses heures pleines", () => {
+    const T19h55 = T20h - 5 * 60000;
+    expect(finEffective({ debutPrevu:T20h, debutReel:T19h55, heures:1, accepte:false })).toBe(T19h55 + H);
+  });
+});
+
+// ── Heures facturées quand le décalage reste sans réponse ─────────
+// Le champ `delay_status` était lu à la validation sans jamais être utilisé : un
+// client qui n'avait rien accepté payait les heures pleines. Il paie désormais
+// jusqu'à l'heure de fin prévue.
+describe("décalage sans réponse — heures facturées", () => {
+  const facturees = ({ heuresPrevues, retardMin, statut }) => {
+    if (statut !== "pending") return heuresPrevues;
+    return Math.max(0, Math.round((heuresPrevues - retardMin / 60) * 100) / 100);
+  };
+
+  it("sans réponse du client : 1h prévue, 37 min de retard → 0,38 h facturée", () => {
+    expect(facturees({ heuresPrevues:1, retardMin:37, statut:"pending" })).toBeCloseTo(0.38);
+  });
+  it("décalage accepté : les heures prévues sont dues", () => {
+    expect(facturees({ heuresPrevues:1, retardMin:37, statut:"approved" })).toBe(1);
+  });
+  it("refus explicite : déjà arbitré ailleurs, pas de seconde réduction", () => {
+    expect(facturees({ heuresPrevues:0.38, retardMin:37, statut:"rejected" })).toBeCloseTo(0.38);
+  });
+  it("un retard supérieur à la durée ne rend jamais un montant négatif", () => {
+    expect(facturees({ heuresPrevues:1, retardMin:120, statut:"pending" })).toBe(0);
+  });
+});
+
 // ── Plan d'abonnement opposable ───────────────────────────────────
 // À l'inscription, le prestataire choisit son abonnement d'un simple appui et cette
 // valeur partait dans user_metadata. `profiles.plan_abonnement` restant vide faute de

@@ -2224,8 +2224,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             // disparaissait. Le client voyait donc une prestation exécutée que
             // personne n'avait déclaré avoir commencée.
             const debutReel = startedAtMap[m.id] ? new Date(startedAtMap[m.id]).getTime() : 0;
-            const finReelle = debutReel ? debutReel + (Number(effectiveHours) * 3600000) : 0;
             const finPrevue = missionStart > 0 ? missionStart + (Number(effectiveHours) * 3600000) : 0;
+            // Un démarrage tardif décalait la fin d'autant, sans que le client ait
+            // accepté quoi que ce soit. La prestation s'arrête à l'heure prévue tant
+            // qu'il n'a pas donné son accord — c'est lui qui a réservé ce créneau.
+            const decalageAccepte = m.delay_status === "approved";
+            const finReelle = debutReel
+              ? ((!decalageAccepte && finPrevue > 0 && finPrevue > debutReel)
+                  ? Math.min(finPrevue, debutReel + (Number(effectiveHours) * 3600000))
+                  : debutReel + (Number(effectiveHours) * 3600000))
+              : 0;
 
             const isStarted = debutReel > 0 && debutReel < renderNow;
             const isPast    = finReelle > 0 && finReelle < renderNow;

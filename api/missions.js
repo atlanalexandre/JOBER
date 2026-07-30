@@ -990,8 +990,21 @@ export default async function handler(req, res) {
       if (!mission.stripe_payment_intent) return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette prestation — impossible de valider" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de prestation" });
 
-      const heuresEffectives = mission.actual_hours ?? mission.hours ?? 0;
+      let heuresEffectives = mission.actual_hours ?? mission.hours ?? 0;
       const tarifHoraire     = mission.tarif_horaire || 0;
+
+      // Décalage jamais arbitré par le client : la prestation est facturée jusqu'à
+      // l'heure de fin initialement prévue. Le champ était lu ici sans être utilisé —
+      // un client qui n'avait rien accepté payait quand même les heures pleines.
+      // Un refus explicite (`rejected`) a déjà ajusté `hours` et `actual_hours`.
+      if (mission.delay_status === "pending") {
+        const retardH = (Number(mission.arrival_delay_minutes) || 0) / 60;
+        const plafonnees = Math.max(0, Math.round((Number(mission.hours || 0) - retardH) * 100) / 100);
+        if (plafonnees < heuresEffectives) {
+          console.log(`[complete] décalage non accepté sur ${mission_id} : ${heuresEffectives}h ramenées à ${plafonnees}h`);
+          heuresEffectives = plafonnees;
+        }
+      }
 
       // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
       const missionDayCount = (mission.date_debut && mission.date_fin)
@@ -2887,7 +2900,10 @@ export default async function handler(req, res) {
         const scheduledMs = scheduledNaive.getTime() + frenchOffsetMs(scheduledNaive);
         delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
       }
-      const hasDelay = delayMinutes > 5;
+      // Seuil aligné sur le reste de la plateforme, qui tolère 15 minutes avant de
+      // s'inquiéter. À 5 minutes, un simple aléa de circulation imposait au client
+      // une décision formelle.
+      const hasDelay = delayMinutes > 15;
 
       const patch = { arrived_at: arrivedAt };
       if (hasDelay) {
@@ -3810,7 +3826,7 @@ export default async function handler(req, res) {
       const { mission_id, auto_start } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,started_at,date,heure_debut,delay_status,arrival_delay_minutes`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable ou non assignée" });
@@ -3837,11 +3853,49 @@ export default async function handler(req, res) {
       }
 
       const startedAt = new Date().toISOString();
+
+      // Retard au démarrage. Le décalage n'était mesuré qu'au pointage d'arrivée :
+      // un prestataire arrivé à l'heure puis démarrant 36 minutes plus tard décalait
+      // la fin d'autant, en silence et sans que le client ait son mot à dire. C'est
+      // pourtant le démarrage qui détermine la fin, donc le service réellement rendu.
+      const patchStart = { started_at: startedAt };
+      if (m.date && m.heure_debut && m.delay_status !== "approved") {
+        try {
+          const [hd, md] = String(m.heure_debut).split(":").map(Number);
+          const prevuNaive = new Date(`${m.date}T${String(hd).padStart(2,"0")}:${String(md||0).padStart(2,"0")}:00`);
+          const prevuMs = prevuNaive.getTime() + frenchOffsetMs(prevuNaive);
+          const retardDemarrage = Math.round((new Date(startedAt).getTime() - prevuMs) / 60000);
+          // On retient le décalage le plus défavorable au client : celui de l'arrivée
+          // ou celui du démarrage, sans jamais l'effacer.
+          const retardRetenu = Math.max(retardDemarrage, Number(m.arrival_delay_minutes) || 0);
+          if (retardDemarrage > 15 && retardRetenu > (Number(m.arrival_delay_minutes) || 0)) {
+            patchStart.arrival_delay_minutes = retardRetenu;
+            patchStart.delay_status = "pending";
+            console.log(`[start_mission] retard de ${retardDemarrage} min sur ${mission_id} — accord du client requis`);
+          }
+        } catch (e) {
+          console.error("[start_mission] calcul du retard impossible :", e.message);
+        }
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ started_at: startedAt }),
+        body: JSON.stringify(patchStart),
       });
+
+      // Le client est prévenu séparément : sans accord de sa part, la prestation
+      // s'arrête à l'heure de fin initialement prévue.
+      if (patchStart.delay_status === "pending" && m.client_id) {
+        const labelR = m.titre || m.metier || "votre prestation";
+        const corpsR = `Le prestataire a démarré « ${labelR} » avec ${patchStart.arrival_delay_minutes} min de retard. `
+          + `Sans votre accord, la prestation prendra fin à l'heure initialement prévue.`;
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "⏰ Démarrage en retard", body: corpsR, read: false }),
+        }).catch(() => {});
+        sendPushToUser(m.client_id, { title: "⏰ Démarrage en retard", body: corpsR, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+      }
 
       // Notify client
       if (m.client_id) {
