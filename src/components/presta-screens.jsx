@@ -2212,14 +2212,27 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
             const isStarted = debutReel > 0 && debutReel < renderNow;
             const isPast    = finReelle > 0 && finReelle < renderNow;
-            // Horaire prévu dépassé sans que rien n'ait été pointé.
+            // Retard : l'heure de début est passée et rien n'a été pointé. Compté
+            // dès le début prévu, et non à la fin : sur une prestation d'une heure,
+            // attendre la fin prévue pour alerter revient à alerter trop tard.
+            const retardMin = (!debutReel && missionStart > 0 && missionStart < renderNow)
+              ? Math.floor((renderNow - missionStart) / 60000) : 0;
+            const enRetard = retardMin > 0;
             const pointageManquant = !debutReel && finPrevue > 0 && finPrevue < renderNow;
 
-            const badgeColor = isPast ? C.accentGold : pointageManquant ? C.danger : isStarted ? C.success : C.violet;
-            const badgeLabel = isPast ? "À valider" : pointageManquant ? "Pointage manquant" : isStarted ? "En cours" : "À venir";
-            const borderColor = isPast ? C.accentGold+"88" : pointageManquant ? C.danger+"66" : isStarted ? C.success+"44" : C.violet+"44";
+            const badgeColor = isPast ? C.accentGold : pointageManquant ? C.danger : enRetard ? C.danger : isStarted ? C.success : C.violet;
+            const badgeLabel = isPast ? "À valider" : pointageManquant ? "Pointage manquant" : enRetard ? `Retard ${retardMin} min` : isStarted ? "En cours" : "À venir";
+            const borderColor = isPast ? C.accentGold+"88" : (pointageManquant||enRetard) ? C.danger+"66" : isStarted ? C.success+"44" : C.violet+"44";
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${borderColor}` }}>
+                {enRetard && !pointageManquant && (
+                  <div style={{ background:`${C.danger}15`, border:`1px solid ${C.danger}55`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:16 }}>⏰</span>
+                    <span style={{ color:C.danger, fontSize:12, fontWeight:700 }}>
+                      {retardMin} min de retard — signalez votre arrivée, le client est informé
+                    </span>
+                  </div>
+                )}
                 {pointageManquant && (
                   <div style={{ background:`${C.danger}15`, border:`1px solid ${C.danger}55`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
                     <span style={{ fontSize:16 }}>⚠️</span>

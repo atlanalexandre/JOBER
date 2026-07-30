@@ -5980,6 +5980,43 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             </div>
             );
           })()}
+          {/* Retard en cours : le prestataire n'a pas encore signalé son arrivée
+              alors que l'heure de début est passée. Le mécanisme delay_status ne
+              se déclenche qu'au pointage : jusque-là, le client attendait sans
+              aucune information. Calculé à l'affichage, donc immédiat, sans
+              dépendre du cron qui ne passe que toutes les deux heures. */}
+          {selected.status === "assigned" && !selected.arrived_at && !selected.started_at && (() => {
+            if (!selected.date || !selected.heure_debut) return null;
+            let debutPrevu;
+            try {
+              const [yy, mm2, dd] = String(selected.date).split("-").map(Number);
+              const [hh, mi] = String(selected.heure_debut).split(":").map(Number);
+              debutPrevu = new Date(yy, mm2 - 1, dd, hh, mi).getTime();
+            } catch { return null; }
+            const retard = Math.floor((Date.now() - debutPrevu) / 60000);
+            if (retard < 10) return null;   // tolérance avant d'inquiéter le client
+            return (
+              <div style={{ background:"linear-gradient(135deg,rgba(242,94,94,0.12),rgba(242,94,94,0.05))", border:"1.5px solid rgba(242,94,94,0.45)", borderRadius:14, padding:"16px", marginTop:16 }}>
+                <div style={{ fontWeight:800, color:"#F25E5E", fontSize:14, marginBottom:6 }}>⏰ Votre prestataire n'a pas signalé son arrivée</div>
+                <div style={{ color:C.textSub, fontSize:13, marginBottom:14, lineHeight:1.5 }}>
+                  La prestation devait commencer il y a {retard} min. Il n'a pas encore confirmé être sur place.
+                  {retard >= 30 ? " Contactez-le, ou annulez sans frais si vous ne souhaitez plus attendre." : " Il a peut-être simplement oublié de pointer."}
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={()=>onNavigate?.("chat", { ...selected, _missionId: selected.id })}
+                    style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                    💬 Le contacter
+                  </button>
+                  {retard >= 30 && (
+                    <button onClick={()=>setShowCancelConfirm(true)}
+                      style={{ flex:1, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                      Annuler sans frais
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {selected.delay_status === "pending" && (
             <div style={{ background:"linear-gradient(135deg,rgba(240,180,41,0.1),rgba(240,180,41,0.05))", border:"1.5px solid rgba(240,180,41,0.4)", borderRadius:16, padding:"16px", marginBottom:16 }}>
               <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Décalage d'arrivée</div>

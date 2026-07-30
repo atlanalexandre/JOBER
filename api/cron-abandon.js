@@ -79,6 +79,60 @@ export default async function handler(req, res) {
 
   try {
 
+  // ── Prestataire en retard : heure de début dépassée sans pointage ──────────
+  // Ce cron tourne toutes les 30 min, contre 2 h pour celui des rappels : c'est
+  // le seul assez fréquent pour un retard. Sans lui, un prestataire qui ne se
+  // présente pas n'était relancé qu'à la fin prévue de la prestation — soit
+  // après coup sur une prestation d'une heure.
+  try {
+    const nowMs = Date.now();
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const rRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&arrived_at=is.null&started_at=is.null&date=eq.${aujourdhui}`
+      + `&select=id,client_id,prestataire_id,metier,sector,ville,date,heure_debut,hours`,
+      { headers: hdrs }
+    );
+    const enCours = rRes.ok ? await rRes.json().catch(() => []) : [];
+    for (const m of (Array.isArray(enCours) ? enCours : [])) {
+      if (!m.heure_debut) continue;
+      const [hh, mi] = String(m.heure_debut).split(":").map(Number);
+      const debut = new Date(`${m.date}T${String(hh).padStart(2,"0")}:${String(mi).padStart(2,"0")}:00`).getTime();
+      const retard = Math.floor((nowMs - debut) / 60000);
+      // Fenêtre de 10 à 40 min de retard. Ce cron passant toutes les 30 min,
+      // une prestation en retard tombe dans cette fenêtre une seule fois : pas
+      // besoin d'une colonne dédiée pour éviter les relances répétées, et donc
+      // pas de migration de schéma.
+      if (retard < 10 || retard >= 40) continue;
+
+      const label = m.metier || m.sector || "Prestation";
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: m.prestataire_id,
+            type: "mission",
+            title: `Retard de ${retard} min ⏰`,
+            body: `Votre prestation « ${label} »${m.ville ? " à " + m.ville : ""} devait commencer à ${String(m.heure_debut).replace(":","h")}. Signalez votre arrivée dans l'application : le client est informé du retard.`,
+            read: false,
+          }),
+        }).catch(() => {});
+        // Le client est informé aussi : il attendait jusqu'ici sans rien savoir.
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: m.client_id,
+            type: "mission",
+            title: "Prestataire en retard ⏰",
+            body: `Votre prestataire n'a pas encore signalé son arrivée pour « ${label} », prévue à ${String(m.heure_debut).replace(":","h")}. Vous pouvez le contacter depuis l'application.`,
+            read: false,
+          }),
+        }).catch(() => {});
+      } catch (e) { console.error(`[cron-abandon] relance retard ${m.id} :`, e.message); }
+    }
+  } catch (e) {
+    console.error("[cron-abandon] contrôle des retards échoué :", e.message);
+  }
+
   // Brouillons > 30 min, pas encore notifiés
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
