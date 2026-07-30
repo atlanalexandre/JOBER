@@ -152,6 +152,45 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Cohérence du montant encaissé ─────────────────────────────────
+// La ligne `missions` est insérée par le navigateur du client et le déclencheur
+// `missions_field_tamper_guard` ne protège que les UPDATE : un client pouvait créer
+// sa prestation avec montant_total = 1 €, payer 1 €, puis se faire affecter un
+// prestataire à 200 €. Reproduit le contrôle de api/stripe-intent.js : ce qui reste
+// après la part horaire doit être l'un des trois frais de service légitimes.
+describe("montant encaissé — contrôle de cohérence", () => {
+  const FRAIS = { single: 4.90, range: 2.90, urgent: 9.90 };
+  const coherent = ({ total, tarif, hours, jours = 1 }) => {
+    const partHoraire = tarif * hours;
+    if (partHoraire <= 0) return true;   // non vérifiable, on laisse passer
+    const admis = [FRAIS.single, Math.round(FRAIS.range * jours * 100) / 100, FRAIS.urgent];
+    const constates = Math.round((total - partHoraire * jours) * 100) / 100;
+    return admis.some(f => Math.abs(f - constates) <= 0.01);
+  };
+
+  it("prestation simple légitime : 8h × 14 € + 4,90 € de frais", () => {
+    expect(coherent({ total: 116.90, tarif: 14, hours: 8 })).toBe(true);
+  });
+  it("urgence légitime : frais de 9,90 €", () => {
+    expect(coherent({ total: 73.90, tarif: 16, hours: 4 })).toBe(true);
+  });
+  it("récurrent 5 jours : frais de 2,90 € × 5", () => {
+    expect(coherent({ total: 14.50 + 14 * 8 * 5, tarif: 14, hours: 8, jours: 5 })).toBe(true);
+  });
+  it("montant fabriqué à 1 € : refusé", () => {
+    expect(coherent({ total: 1, tarif: 14, hours: 8 })).toBe(false);
+  });
+  it("frais rabotés à zéro : refusé", () => {
+    expect(coherent({ total: 112, tarif: 14, hours: 8 })).toBe(false);
+  });
+  it("frais gonflés au-delà du barème : refusé", () => {
+    expect(coherent({ total: 200, tarif: 14, hours: 8 })).toBe(false);
+  });
+  it("tarif ou durée absents : non vérifiable, laissé passer", () => {
+    expect(coherent({ total: 116.90, tarif: 0, hours: 0 })).toBe(true);
+  });
+});
+
 // ── Quota mensuel du prestataire et offre de lancement ────────────
 // L'inscription annonce « 10 prestations/mois gratuites aux 100 premiers inscrits ».
 // Le quota retombait pourtant toujours sur plan_limits.free (2) : un prestataire du

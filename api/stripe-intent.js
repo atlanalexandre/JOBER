@@ -107,7 +107,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -119,6 +119,51 @@ export default async function handler(req, res) {
     ? Number(mission.montant_total)
     : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
   if (!computed || computed <= 0) return res.status(400).json({ error: "Montant de la prestation invalide ou non défini" });
+
+  // Cohérence du montant à encaisser.
+  //
+  // Le commentaire ci-dessus affirmait que « le montant est toujours calculé depuis
+  // la base, jamais depuis le client ». C'était faux dans les faits : la ligne
+  // `missions` est insérée par le navigateur du client, et le déclencheur
+  // `missions_field_tamper_guard` ne protège que les UPDATE — jamais les INSERT.
+  // Un client pouvait donc créer sa prestation avec montant_total = 1 €, payer 1 €,
+  // puis se faire affecter un prestataire à 200 €. Le prestataire était la victime :
+  // c'est ce montant qui détermine sa rémunération.
+  //
+  // Le montant est vérifié par sa décomposition, sans reproduire toute la grille
+  // tarifaire du tunnel de réservation : ce qui reste après la part horaire doit
+  // être l'un des trois frais de service légitimes. Toute autre valeur signifie que
+  // le total a été fabriqué.
+  const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
+  if (partHoraire > 0) {
+    let frais = { single: 4.90, range: 2.90, urgent: 9.90 };
+    try {
+      const fr = await fetch(`${SUPABASE_URL_PI}/rest/v1/platform_settings?key=eq.frais_service&select=value`, { headers: hdrsPI });
+      const fd = await fr.json();
+      if (Array.isArray(fd) && fd[0]?.value) frais = { ...frais, ...fd[0].value };
+    } catch (e) {
+      console.error("[stripe-intent] frais_service illisible, valeurs par défaut :", e.message);
+    }
+    const nbJours = (mission.date_debut && mission.date_fin)
+      ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
+      : 1;
+    const fraisAdmis = [
+      Number(frais.single) || 0,
+      Math.round((Number(frais.range) || 0) * nbJours * 100) / 100,
+      Number(frais.urgent) || 0,
+    ];
+    const fraisConstates = Math.round((computed - partHoraire * nbJours) * 100) / 100;
+    const coherent = fraisAdmis.some(f => Math.abs(f - fraisConstates) <= 0.01);
+    if (!coherent) {
+      console.error(`[stripe-intent] montant incohérent sur ${intentMissionId} : total ${computed} €, `
+        + `part horaire ${partHoraire} € × ${nbJours} j, frais déduits ${fraisConstates} € — `
+        + `attendus ${fraisAdmis.join(" / ")} €. Paiement refusé.`);
+      return res.status(400).json({
+        error: "Le montant de cette prestation ne correspond pas à son tarif. "
+             + "Revenez à l'écran de réservation et recommencez.",
+      });
+    }
+  }
   const amount = computed;
   const missionMetaId = intentMissionId;
 
