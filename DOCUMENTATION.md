@@ -170,7 +170,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `frais_service` | tunnel de réservation, `api/stripe-intent.js` |
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
 | `disabled_sectors` | `api/missions.js` — `get_sector_status` (affichage) et `assign_after_payment` (refus de réservation) |
-| `invoice_sequence` | `api/invoice.js` |
+| `invoice_sequence` | `api/invoice.js` — compteur incrémenté **une fois par facture**, à sa première consultation, jamais aux suivantes |
 | `commission_rate` | **personne** — vestige : la plateforme se rémunère sur les frais de service, `prixClient()` applique 0 % de commission. Ne pas s'y fier. |
 
 `sector_min_prestataires` a été retirée : elle fermait automatiquement tout secteur comptant
@@ -409,6 +409,17 @@ Deux chemins émettent ce virement et **doivent rester alignés** : `api/mission
 virements en attente quand le compte Stripe du prestataire devient opérationnel). Ils
 calculaient auparavant deux montants différents, tous deux faux : le premier omettait le
 nombre de jours, le second versait `montant_total` frais compris.
+
+**La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
+donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`. Les frais de service
+d'ALANE n'y figurent pas — ils relèveraient d'une facture séparée d'ALANE au client, qui
+n'existe pas encore (voir §8, `VITE_ALANE_SIRET`).
+
+`missions.invoice_number` conserve le numéro **attribué une seule fois**, à la première
+consultation. La facture étant produite à la volée, un numéro était auparavant tiré à chaque
+affichage : la même prestation en changeait à chaque ouverture et le compteur grimpait à
+chaque coup d'œil, ce qu'interdit l'article 242 nonies A de l'annexe II au CGI (numérotation
+continue et sans rupture).
 
 `montant_total` porte **ce que le client a payé**, frais de service inclus. `complete` le
 recalcule si la durée réelle diffère de la durée prévue, en conservant les frais d'origine.
