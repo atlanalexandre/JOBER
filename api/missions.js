@@ -1380,6 +1380,39 @@ export default async function handler(req, res) {
       const pData = await pRes.json().catch(() => []);
       if (!Array.isArray(pData) || !pData[0]) return res.status(400).json({ error: "Prestataire indisponible" });
 
+      // Rayon d'intervention. Le profil annonce « intervient jusqu'à X km » et ce
+      // rayon n'était vérifié que lors d'une diffusion générale : une réservation
+      // directe permettait d'engager un prestataire de Nice pour une adresse
+      // parisienne. Contrôle ici, au moment décisif où la prestation lui est
+      // réellement affectée.
+      try {
+        const mLieuRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=adresse,ville`, { headers });
+        const mLieu = (await mLieuRes.json().catch(() => []))[0] || {};
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+        const ud = await ur.json().catch(() => ({}));
+        const metaP = ud?.user_metadata || {};
+        const rayonKm = Number(metaP.zone_km) || 50;
+        const lieuPresta = metaP.ville || metaP.code_postal;
+        const lieuPrestation = [mLieu.adresse, mLieu.ville].filter(Boolean).join(" ") || mLieu.ville;
+
+        if (lieuPresta && lieuPrestation) {
+          const [cP, cM] = await Promise.all([geocodeFR(lieuPresta), geocodeFR(lieuPrestation)]);
+          if (cP && cM) {
+            const dist = haversineKm(cP.lat, cP.lon, cM.lat, cM.lon);
+            if (dist > rayonKm) {
+              console.error(`[assign_after_payment] hors zone : ${Math.round(dist)} km > ${rayonKm} km (presta ${prestataire_id})`);
+              return res.status(400).json({
+                error: `Ce prestataire n'intervient que dans un rayon de ${rayonKm} km autour de ${metaP.ville || "sa zone"}. L'adresse de la prestation est à environ ${Math.round(dist)} km. Choisissez un prestataire plus proche.`,
+              });
+            }
+          }
+          // Géocodage indisponible : on laisse passer plutôt que de bloquer une
+          // réservation légitime sur une défaillance de l'API adresse.
+        }
+      } catch (e) {
+        console.error("[assign_after_payment] contrôle du rayon impossible :", e.message);
+      }
+
       const patch = { prestataire_id, status: "pending_acceptance" };
       if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
       if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;

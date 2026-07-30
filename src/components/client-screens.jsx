@@ -2553,6 +2553,11 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [walletInfo, setWalletInfo] = useState({ balance: 0, missionsThisMonth: 0 });
   const [cbTransfer, setCbTransfer] = useState(false);
   const [savedAddress, setSavedAddress] = useState(null);
+  // Contrôle du rayon d'intervention. La fiche annonce « intervient jusqu'à X km »
+  // mais rien ne l'appliquait : on pouvait réserver un prestataire de Nice pour
+  // une adresse parisienne. Le serveur refuse désormais l'affectation ; on prévient
+  // ici avant le paiement plutôt que de laisser l'échec survenir après.
+  const [horsZone, setHorsZone] = useState(null);
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
@@ -2581,6 +2586,27 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     const diff = Math.ceil((d2 - d1) / (1000*60*60*24)) + 1;
     return diff > 0 ? diff : 1;
   })();
+
+  useEffect(() => {
+    setHorsZone(null);
+    const lieuPrestation = [adresse, ville].filter(Boolean).join(" ") || ville;
+    const lieuPresta = p?.ville;
+    const rayonKm = Number(p?.zone_km) || 50;
+    if (!lieuPrestation || !lieuPresta) return;
+    let vivant = true;
+    const geo = (q) => fetch(`https://api-adresse.data.gouv.fr/search/?${new URLSearchParams({ q, limit: "1" })}`)
+      .then(r => r.json())
+      .then(d => { const f = d.features?.[0]; return f ? { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] } : null; })
+      .catch(() => null);
+    Promise.all([geo(lieuPresta), geo(lieuPrestation)]).then(([cP, cM]) => {
+      if (!vivant || !cP || !cM) return;   // géocodage indisponible : on ne bloque pas
+      const R = 6371, dLat = (cM.lat-cP.lat)*Math.PI/180, dLon = (cM.lon-cP.lon)*Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(cP.lat*Math.PI/180)*Math.cos(cM.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+      const km = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+      if (km > rayonKm) setHorsZone({ km, rayonKm, villePresta: p?.ville });
+    });
+    return () => { vivant = false; };
+  }, [adresse, ville, p?.ville, p?.zone_km]);
 
   const fraisMission = isUrgent
     ? fraisSettings.urgent
@@ -3120,7 +3146,17 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             ))}
           </div>
-          <Btn full onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          {horsZone && (
+            <div style={{ background:"rgba(242,94,94,0.12)", border:"1.5px solid rgba(242,94,94,0.45)", borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ color:"#F25E5E", fontWeight:800, fontSize:13, marginBottom:5 }}>📍 Adresse hors de la zone d'intervention</div>
+              <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>
+                {p?.name || "Ce prestataire"} n'intervient que dans un rayon de <strong style={{ color:C.text }}>{horsZone.rayonKm} km</strong>
+                {horsZone.villePresta ? <> autour de <strong style={{ color:C.text }}>{horsZone.villePresta}</strong></> : null}.
+                L'adresse indiquée est à environ <strong style={{ color:C.text }}>{horsZone.km} km</strong>. Choisissez un prestataire plus proche, ou modifiez l'adresse.
+              </div>
+            </div>
+          )}
+          <Btn full disabled={!!horsZone} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
