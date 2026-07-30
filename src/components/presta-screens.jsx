@@ -2700,6 +2700,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [completedMissions,setCompletedMissions]=useState([]);
   const [historyMissions,setHistoryMissions]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
+  // Limite mensuelle telle que le serveur l'applique réellement. Le front la
+  // déduisait d'une constante où le plan gratuit annonce 10 prestations, alors que
+  // `plan_limits` en accorde 2 hors offre de lancement : un prestataire pouvait lire
+  // « 2/10 » en étant déjà bloqué. Seul /api/missions connaît la vraie valeur.
+  const [limiteMensuelle,setLimiteMensuelle]=useState(null);
   const [ratedMissions, setRatedMissions] = useState(new Set());
   const [ratingTarget, setRatingTarget] = useState(null);
   const [streak, setStreak] = useState(0);
@@ -2748,9 +2753,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         setUserStatus(prof.status);
         setMissionsEnabled(prof.missions_enabled === true);
       }
-      const _PR={free:0,premium:1,elite:2};
-      const _bp=(...ps)=>ps.reduce((b,p)=>(_PR[p]||0)>(_PR[b]||0)?p:b,"free");
-      setPlanActuel(_bp(prof?.plan_abonnement,u.user_metadata?.plan_abonnement,planJson?.plan));
+      // Le plan affiché suit le serveur, qui ne retient plus que `profiles`. Il était
+      // calculé comme le plus élevé des trois sources, user_metadata compris : le
+      // prestataire lisait « Elite » — choisi à l'inscription, jamais payé — tout en
+      // étant limité au quota gratuit.
+      setPlanActuel(planJson?.plan || prof?.plan_abonnement || "free");
+      if (planJson?.limite_mensuelle != null) setLimiteMensuelle(Number(planJson.limite_mensuelle));
       setPlanLoaded(true);
       const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
       const allM=Array.isArray(mData)?mData:[];
@@ -2845,9 +2853,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         setUserStatus(profRes.data.status);
         setMissionsEnabled(profRes.data.missions_enabled === true);
       }
-      const _PR2={free:0,premium:1,elite:2};
-      const _bp2=(...ps)=>ps.reduce((b,p)=>(_PR2[p]||0)>(_PR2[b]||0)?p:b,"free");
-      setPlanActuel(_bp2(profRes.data?.plan_abonnement,u.user_metadata?.plan_abonnement,planJson?.plan));
+      setPlanActuel(planJson?.plan || profRes.data?.plan_abonnement || "free");
+      if (planJson?.limite_mensuelle != null) setLimiteMensuelle(Number(planJson.limite_mensuelle));
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
@@ -3078,7 +3085,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           )}
           {planLoaded && (() => {
             const plan = ABONNEMENTS_PRESTA.find(p=>p.id===planActuel)||ABONNEMENTS_PRESTA[0];
-            const limit = plan.missions >= 999 ? null : plan.missions;
+            // La constante ne sert que de repli le temps que le serveur réponde.
+            const limitBrute = limiteMensuelle != null ? limiteMensuelle : plan.missions;
+            const limit = limitBrute >= 999 ? null : limitBrute;
             if(!limit) return null;
             const pct = Math.min(100, Math.round((missionsUsedMonth/limit)*100));
             const remaining = Math.max(0, limit - missionsUsedMonth);
