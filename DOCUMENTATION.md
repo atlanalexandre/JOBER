@@ -165,7 +165,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 |---|---|
 | `cashback_rates` | `api/missions.js` (action `complete`) |
 | `subscription_prices` | `api/plans.js`, écrans d'abonnement |
-| `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()` |
+| `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()`, appliqué au plan lu dans **`profiles`** |
 | `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (10 prestations/mois aux 100 premiers prestataires) |
 | `frais_service` | tunnel de réservation, `api/stripe-intent.js` |
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
@@ -346,6 +346,16 @@ Backoffice → validation → status "approved" → email de confirmation
 
 Autrement dit : **seuls les prestataires passent par une validation manuelle.** Un client
 créé à l'instant peut réserver immédiatement.
+
+**`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
+une copie, mais elle n'est **jamais** opposable : à l'inscription, le prestataire choisit son
+plan d'un simple appui, sans paiement, et cette valeur y atterrit. Tant que le repli sur
+user_metadata existait, il suffisait de sélectionner Elite en créant son compte pour obtenir
+999 prestations par mois, le badge et la première place dans les résultats — sans rien régler.
+`user_metadata.plan_souhaite` conserve désormais ce choix comme simple intention.
+
+Seuls trois chemins accordent un plan payant : le webhook Stripe, la vérification directe de
+l'abonnement dans `refresh_plan`, et le forçage manuel depuis le backoffice.
 
 `status` et `missions_enabled` sont deux choses différentes : un prestataire peut avoir un
 compte validé tout en n'ayant pas encore accès aux prestations, tant que son dossier

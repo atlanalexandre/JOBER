@@ -783,7 +783,13 @@ export default async function handler(req, res) {
             const prData = await prRes.json();
             const prDataProfile = Array.isArray(prData) && prData[0];
             // profiles.plan_abonnement prioritaire — écrit en premier par le webhook Stripe
-            let plan = prDataProfile?.plan_abonnement || urData.user_metadata?.plan_abonnement || "free";
+            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+            // et cette valeur était écrite telle quelle dans user_metadata. Comme
+            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+            let plan = prDataProfile?.plan_abonnement || "free";
             const endDate = urData.user_metadata?.subscription_end_date;
             const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
             if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
@@ -1272,18 +1278,21 @@ export default async function handler(req, res) {
       // Incrémenter missions_completed_month du prestataire + auto-marquer trial_exhausted si limite atteinte
       if (mission.prestataire_id) {
         try {
-          // Récupérer le compteur actuel du prestataire et son plan
-          const [prMonthRes, prPlanRes] = await Promise.all([
-            fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
-            fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers }),
-          ]);
+          // Récupérer le compteur actuel du prestataire et son plan. La lecture de
+          // user_metadata a été retirée : elle ne servait qu'au repli sur le plan
+          // qu'elle annonce, désormais sans valeur — un appel de moins à l'API Auth.
+          const prMonthRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers });
           const prMonthData = await prMonthRes.json();
-          const prPlan = await prPlanRes.json();
           const prProfile = Array.isArray(prMonthData) && prMonthData[0];
           if (prProfile && !prProfile.trial_exhausted) {
             const newCount = (prProfile.missions_completed_month || 0) + missionDayCount;
-            // profiles.plan_abonnement a priorité sur user_metadata (écrit en premier par le webhook Stripe)
-            const plan = prProfile?.plan_abonnement || prPlan?.user_metadata?.plan_abonnement || "free";
+            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+            // et cette valeur était écrite telle quelle dans user_metadata. Comme
+            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+            const plan = prProfile?.plan_abonnement || "free";
 
             // Limite du plan, offre de lancement comprise — la même que celle
             // appliquée à l'acceptation, sinon le compteur marque « épuisé » avant
@@ -3012,7 +3021,13 @@ export default async function handler(req, res) {
             const urData = await urRes.json();
             const prData = await prRes.json();
             const prProfile = Array.isArray(prData) && prData[0];
-            let plan = prProfile?.plan_abonnement || urData.user_metadata?.plan_abonnement || "free";
+            // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
+            // le prestataire choisit son abonnement d'un simple appui — Premium ou Elite —
+            // et cette valeur était écrite telle quelle dans user_metadata. Comme
+            // `profiles.plan_abonnement` restait vide tant qu'aucun paiement n'avait eu
+            // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
+            // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
+            let plan = prProfile?.plan_abonnement || "free";
             const endDate = urData.user_metadata?.subscription_end_date;
             const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
             if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
@@ -3980,14 +3995,19 @@ export default async function handler(req, res) {
       const profile = Array.isArray(prData) && prData[0];
       if (!profile) { console.error("[refresh_plan] profil introuvable pour", caller.id, "prData:", JSON.stringify(prData)); return res.status(404).json({ error: "Profil introuvable" }); }
 
-      // Lire user_metadata côté serveur (service role) — non affecté par le cache JWT client
-      const PLAN_RANK = { free:0, premium:1, elite:2 };
-      const uRes2 = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }).catch(() => null);
-      const uData2 = uRes2?.ok ? await uRes2.json() : {};
-      const metaPlan2 = uData2?.user_metadata?.plan_abonnement || "free";
-      const profilePlan2 = profile.plan_abonnement || "free";
-      let plan = (PLAN_RANK[metaPlan2]||0) > (PLAN_RANK[profilePlan2]||0) ? metaPlan2 : profilePlan2;
-      console.log(`[refresh_plan] user=${caller.id} meta=${metaPlan2} profile=${profilePlan2} → plan=${plan}`);
+      // Le plan part de `profiles` et ne peut être relevé que par Stripe, plus bas.
+      //
+      // Cette action retenait le plus élevé entre `profiles` et `user_metadata`, puis
+      // l'inscrivait dans `profiles`. Or user_metadata reçoit le plan choisi d'un
+      // simple appui à l'inscription, sans paiement : il suffisait de sélectionner
+      // Elite au moment de créer son compte pour que cette « réparation » accorde
+      // définitivement 999 prestations par mois, le badge Elite et la première place
+      // dans les résultats — sans jamais rien régler.
+      //
+      // Seuls le webhook Stripe, la vérification directe ci-dessous et le forçage
+      // depuis le backoffice peuvent accorder un plan payant.
+      let plan = profile.plan_abonnement || "free";
+      console.log(`[refresh_plan] user=${caller.id} profil=${plan}`);
       let trialExhausted = !!profile.trial_exhausted;
 
       // Vérification Stripe directe si un abonnement existe

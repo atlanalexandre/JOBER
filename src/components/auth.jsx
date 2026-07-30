@@ -116,7 +116,13 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
         statut_pro: statutPro, siret: siretNum.replace(/[\s.]/g,"") || null, rib: ribIban.replace(/\s/g,"") || null,
-        plan_abonnement: planChoisi,
+        // Le plan sélectionné ici n'est qu'une intention : il est conservé pour
+        // proposer le paiement ensuite, jamais comme abonnement acquis. Il était
+        // écrit dans `plan_abonnement`, ce qui suffisait à obtenir Elite — 999
+        // prestations par mois, badge et première place — sans rien payer. Seul le
+        // webhook Stripe accorde un plan payant.
+        plan_souhaite: planChoisi,
+        plan_abonnement: "free",
       }},
     });
     if (signUpErr) {
@@ -130,6 +136,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       const { error: profileErr } = await supabase.from("profiles").upsert({
         id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
+        // `profiles` fait foi pour l'abonnement : il naît gratuit et n'est relevé que
+        // par le webhook Stripe, après paiement effectif.
+        plan_abonnement: "free",
       });
       if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";
