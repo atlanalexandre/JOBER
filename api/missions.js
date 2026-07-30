@@ -3339,22 +3339,52 @@ export default async function handler(req, res) {
             url: "/",
           }, SUPABASE_URL, headers).catch(() => {})));
 
-          // SMS uniquement si la prestation a lieu dans moins de 24 h : à ce stade
-          // le coût se justifie, une prestation non pourvue étant une prestation
-          // perdue pour tout le monde.
+          // SMS : réservé aux prestations à moins de 24 h ET aux prestataires qui
+          // correspondent réellement — même métier et disponibles ce jour-là. Un
+          // SMS est facturé et intrusif : l'envoyer à quelqu'un qui ne peut pas
+          // prendre la prestation coûte de l'argent, agace, et finit par faire
+          // ignorer les suivants. Notification et push restent, eux, larges.
           if (urgent) {
             const BREVO = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
             if (BREVO) {
-              const texte = smsClean(`ALANE - Prestation a reprendre : ${libelle}${mission.ville ? " a " + mission.ville : ""}${quand ? " le " + quand : ""}. Le prestataire prevu s'est desiste. Connectez-vous pour la reprendre. alane.fr`);
-              await Promise.all(cibles.map(c => {
-                const tel = metaMap[c.id]?.user_metadata?.telephone;
-                if (!tel) return Promise.resolve();
-                return fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+              const jourPrestation = mission.date
+                ? JOURS_FR[new Date(`${mission.date}T12:00:00`).getDay()]
+                : null;
+
+              const eligiblesSms = cibles.filter(c => {
+                const meta = metaMap[c.id]?.user_metadata || {};
+
+                // Métier : le principal ou l'un de ceux déclarés dans metiers_list
+                const metiersPresta = [
+                  meta.metier,
+                  ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier) : []),
+                ].filter(Boolean);
+                if (mission.metier && !metiersPresta.includes(mission.metier)) return false;
+
+                // Disponibilité déclarée pour ce jour de la semaine. Exigée
+                // explicitement : sans elle, on ne facture pas un SMS au hasard.
+                if (jourPrestation) {
+                  const jours = Array.isArray(meta.dispon_jours) ? meta.dispon_jours : [];
+                  if (!jours.includes(jourPrestation)) return false;
+                }
+
+                return !!meta.telephone;
+              });
+
+              if (eligiblesSms.length) {
+                const texte = smsClean(`ALANE - Prestation a reprendre : ${libelle}${mission.ville ? " a " + mission.ville : ""}${quand ? " le " + quand : ""}. Le prestataire prevu s'est desiste. Connectez-vous pour la reprendre. alane.fr`);
+                await Promise.all(eligiblesSms.map(c => fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                   method: "POST",
                   headers: { "api-key": BREVO, "Content-Type": "application/json" },
-                  body: JSON.stringify({ sender: "ALANE", recipient: tel.replace(/[^0-9+]/g, ""), content: texte }),
-                }).catch(() => {});
-              }));
+                  body: JSON.stringify({
+                    sender: "ALANE",
+                    recipient: String(metaMap[c.id].user_metadata.telephone).replace(/[^0-9+]/g, ""),
+                    content: texte,
+                  }),
+                }).catch(() => {})));
+              }
+              console.log(`[presta_cancel] SMS remplaçant : ${eligiblesSms.length} éligible(s) sur ${cibles.length} notifié(s)`);
             }
           }
         }
