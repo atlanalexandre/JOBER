@@ -1664,7 +1664,43 @@ export function LeafletMap({ providers, onNavigate }) {
   );
 }
 
+// Cache de géocodage partagé entre les rendus : les prestataires se répartissent
+// sur peu de villes distinctes, une seule requête par ville suffit.
+const _villeCoordsCache = new Map();
+async function coordsVille(ville) {
+  if (!ville) return null;
+  const cle = String(ville).trim().toLowerCase();
+  if (_villeCoordsCache.has(cle)) return _villeCoordsCache.get(cle);
+  // Table locale d'abord : instantanée, et elle couvre les grandes villes.
+  const locale = cityCoords(ville);
+  if (Array.isArray(locale)) {
+    const c = { lat: locale[0], lng: locale[1] };
+    _villeCoordsCache.set(cle, c);
+    return c;
+  }
+  try {
+    const r = await fetch(`https://api-adresse.data.gouv.fr/search/?${new URLSearchParams({ q: cle, limit: "1" })}`);
+    const d = await r.json();
+    const f = d.features?.[0];
+    const c = f ? { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] } : null;
+    _villeCoordsCache.set(cle, c);
+    return c;
+  } catch { _villeCoordsCache.set(cle, null); return null; }
+}
+const distanceKm = (a, b) => {
+  const R = 6371, dLat = (b.lat-a.lat)*Math.PI/180, dLon = (b.lng-a.lng)*Math.PI/180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+};
+
 export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
+  // Masquage des prestataires hors de leur zone d'intervention. Le rayon déclaré
+  // était affiché sur la fiche sans jamais filtrer la liste : un client parisien
+  // voyait des prestataires niçois. Pré-filtre de confort — le contrôle décisif
+  // reste celui de l'écran de réservation, qui connaît l'adresse exacte.
+  const [pointRef, setPointRef] = useState(null);
+  const [horsZoneIds, setHorsZoneIds] = useState([]);
+  const [afficherHorsZone, setAfficherHorsZone] = useState(false);
   const s = sector || SECTORS[0];
   const [selectedJob, setSelectedJob] = useState(null);
   const [urgentMode, setUrgentMode] = useState(false);
@@ -1713,6 +1749,38 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     return { name, rate:`${price.toFixed(2).replace(".",",")} € HT/h`, count, availCount, base, price };
   });
 
+  // Point de référence : la position du client si elle est connue, sinon son
+  // adresse enregistrée — c'est là que ses prestations ont lieu.
+  useEffect(() => {
+    if (clientCoords?.lat) { setPointRef(clientCoords); return; }
+    let vivant = true;
+    supabase.auth.getUser().then(async ({ data }) => {
+      const meta = data?.user?.user_metadata || {};
+      const lieu = [meta.adresse, meta.ville].filter(Boolean).join(" ") || meta.ville || meta.code_postal;
+      const c = await coordsVille(lieu);
+      if (vivant && c) setPointRef(c);
+    }).catch(() => {});
+    return () => { vivant = false; };
+  }, [clientCoords]);
+
+  // Détermination des prestataires hors zone, une ville à la fois
+  useEffect(() => {
+    if (!pointRef) { setHorsZoneIds([]); return; }
+    let vivant = true;
+    (async () => {
+      const hors = [];
+      for (const p of providers) {
+        if (!p.ville) continue;
+        const c = await coordsVille(p.ville);
+        if (!vivant) return;
+        if (!c) continue;   // ville non géocodable : on ne masque pas
+        if (distanceKm(pointRef, c) > (Number(p.zone_km) || 50)) hors.push(p.id);
+      }
+      if (vivant) setHorsZoneIds(hors);
+    })();
+    return () => { vivant = false; };
+  }, [pointRef, providers]);
+
   const filteredProviders = providers
     .filter(p => p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob))
     .filter(p => !filterDispo || p.available)
@@ -1720,6 +1788,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
     .filter(p => p.rateNum <= filterTarifMax)
     .filter(p => p.rating >= filterNoteMin)
     .filter(p => !filterCertified || p.plan === "premium" || p.plan === "elite")
+    .filter(p => afficherHorsZone || !horsZoneIds.includes(p.id))
     .sort((a,b) => {
       const planDiff = (b.planRank||0) - (a.planRank||0);
       if(planDiff !== 0) return planDiff;
@@ -1979,6 +2048,26 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
 
               {/* Vue carte */}
               {showMap && <LeafletMap providers={filteredProviders} onNavigate={onNavigate} />}
+
+              {/* Prestataires masqués pour cause de zone : jamais en silence, sinon
+                  le client cherche un prestataire qu'il avait vu la veille. */}
+              {!afficherHorsZone && horsZoneIds.length > 0 && (
+                <div style={{ background:"rgba(124,111,224,0.08)", border:`1px solid ${C.violet}33`, borderRadius:r, padding:"11px 14px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                  <span style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>
+                    📍 {horsZoneIds.length} prestataire{horsZoneIds.length > 1 ? "s" : ""} masqué{horsZoneIds.length > 1 ? "s" : ""} — hors de {horsZoneIds.length > 1 ? "leur" : "sa"} zone d'intervention
+                  </span>
+                  <button onClick={()=>setAfficherHorsZone(true)}
+                    style={{ flexShrink:0, background:"transparent", border:`1px solid ${C.violet}66`, borderRadius:8, padding:"6px 11px", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                    Afficher
+                  </button>
+                </div>
+              )}
+              {afficherHorsZone && horsZoneIds.length > 0 && (
+                <div style={{ color:C.textMuted, fontSize:11, marginBottom:12, textAlign:"center" }}>
+                  Prestataires hors zone inclus — ils pourront refuser le déplacement.{" "}
+                  <button onClick={()=>setAfficherHorsZone(false)} style={{ background:"none", border:"none", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline" }}>Masquer</button>
+                </div>
+              )}
 
               {/* Vue liste */}
               {!showMap && (filteredProviders.length === 0 ? (
