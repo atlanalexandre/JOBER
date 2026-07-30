@@ -2477,8 +2477,15 @@ export function BOMissions() {
 
   useEffect(() => { load(filter); }, [filter]);
 
-  const handleValidate = async (missionId) => {
-    if (!await showConfirm("Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
+  const handleValidate = async (missionId, sansPointage = false) => {
+    // Le montant facturé est calculé sur les heures prévues. Sans pointage, rien
+    // ne prouve que la prestation a eu lieu : l'avertissement est explicite.
+    const avertissement = sansPointage
+      ? "⚠️ Le prestataire n'a JAMAIS signalé son arrivée ni démarré cette prestation.\n\n"
+        + "Rien ne prouve qu'elle a eu lieu. En validant, vous facturez au client les heures prévues "
+        + "et déclenchez le paiement du prestataire.\n\nConfirmez uniquement après vérification auprès des deux parties.\n\n"
+      : "";
+    if (!await showConfirm(avertissement + "Valider cette prestation manuellement ? Le cashback sera crédité et les deux parties notifiées.")) return;
     setValidating(missionId);
     try {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
@@ -2584,6 +2591,14 @@ export function BOMissions() {
 
       {filtered.map(m => {
         const canValidate = ["assigned","pending_acceptance"].includes(m.status);
+        // État du pointage : sans lui, l'administrateur validait sans savoir si le
+        // prestataire s'était réellement présenté — or c'est précisément le cas
+        // qui amène à valider manuellement.
+        const pointage = m.started_at
+          ? { txt:`Démarrée à ${new Date(m.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}`, col:C.success }
+          : m.arrived_at
+            ? { txt:`Arrivée signalée à ${new Date(m.arrived_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}, jamais démarrée`, col:C.accentGold }
+            : { txt:"Aucun pointage du prestataire", col:C.danger };
         const montant = m.montant_total || Math.round((m.hours||0)*(m.tarif_horaire||0)*100)/100;
         return (
           <div key={m.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"14px 16px", marginBottom:10, border:`1px solid ${(STATUS_COLORS[m.status]||C.border)}22` }}>
@@ -2613,10 +2628,13 @@ export function BOMissions() {
                     {m.validation_client ? "✅ Client a validé" : "⏳ Client n'a pas validé"}
                   </div>
                 )}
+                {canValidate && (
+                  <div style={{ fontSize:11, marginTop:5, color:pointage.col, fontWeight:600 }}>📍 {pointage.txt}</div>
+                )}
                 {result[m.id] && <div style={{ fontSize:12, marginTop:6, color: result[m.id].startsWith("✅") ? C.success : "#F25E5E" }}>{result[m.id]}</div>}
               </div>
               {canValidate && !result[m.id]?.startsWith("✅") && (
-                <button onClick={()=>handleValidate(m.id)} disabled={validating===m.id} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}18`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", opacity:validating===m.id?0.5:1, flexShrink:0 }}>
+                <button onClick={()=>handleValidate(m.id, !m.started_at)} disabled={validating===m.id} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}18`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", opacity:validating===m.id?0.5:1, flexShrink:0 }}>
                   {validating===m.id ? "…" : "✅ Valider"}
                 </button>
               )}
