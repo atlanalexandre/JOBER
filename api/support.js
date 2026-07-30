@@ -59,7 +59,16 @@ export default async function handler(req, res) {
         if (newUser) {
           const meta3 = newUser.user_metadata || {};
           const tel3   = meta3.telephone || null;
-          const iban3  = meta3.rib ? String(meta3.rib).replace(/\s/g, "").toUpperCase() : null;
+          // `profiles.rib` d'abord — voir migration 2026-07-30_rgpd_iban_hors_du_jeton.
+          let rib3 = meta3.rib;
+          try {
+            const rP3 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUser.id}&select=rib&limit=1`, { headers: svcHeaders });
+            const dP3 = await rP3.json().catch(() => []);
+            if (Array.isArray(dP3) && dP3[0]?.rib) rib3 = dP3[0].rib;
+          } catch (e) {
+            console.error("[signup] lecture de profiles.rib impossible :", e.message);
+          }
+          const iban3  = rib3 ? String(rib3).replace(/\s/g, "").toUpperCase() : null;
           const siret3 = meta3.kbis || null;
           const orFilters3 = [];
           if (email)   orFilters3.push(`email_hash.eq.${hashPii(email)}`);
