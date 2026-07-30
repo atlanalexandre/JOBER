@@ -2110,7 +2110,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin`,
         { headers }
       );
       const mData = await mRes.json();
@@ -2121,8 +2121,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Cette prestation ne peut plus être annulée" });
       }
 
-      // Politique d'annulation : seuls les frais de service sont retenus si < 24h
-      const FRAIS_SERVICE = 4.90; // frais de service standard retenus en cas d'annulation < 24h
+      // Politique d'annulation : seuls les frais de service sont retenus si < 24h.
+      // Ces frais varient — 4,90 € pour une prestation simple, 2,90 € par jour en
+      // récurrent, 9,90 € en urgence — alors qu'un montant fixe de 4,90 € était
+      // retenu. Un client en récurrent sur un jour se voyait donc prélever 4,90 €
+      // pour 2,90 € payés, et une urgence ne laissait que 4,90 € sur 9,90 € encaissés.
+      // Les frais réels se déduisent du total : montant payé moins la part horaire.
+      const FRAIS_DEFAUT = 4.90;
       let lessThan24h = false;
       if (mission.date) {
         const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
@@ -2145,11 +2150,31 @@ export default async function handler(req, res) {
           }
         } catch {}
       }
-      // > 24h : remboursement intégral / < 24h : frais de service retenus (4,90€)
+      // Frais réellement payés = total encaissé − part horaire (tarif × heures × jours)
+      const nbJours = (mission.date_debut && mission.date_fin)
+        ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
+        : 1;
+      const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0) * nbJours;
+      const fraisDeduits = Math.round((missionAmount - partHoraire) * 100) / 100;
+      // Garde-fou calibré sur la grille réelle (plans.js FRAIS_MER : 4,90 simple,
+      // 2,90 par jour en récurrent, 9,90 en urgence) plutôt que sur un pourcentage
+      // du total : en urgence, 9,90 € sur 24,90 € représentent 40 % du total et un
+      // plafond proportionnel les aurait rejetés à tort. Si la déduction sort de
+      // cette grille — données incomplètes, montant repris du PaymentIntent — on
+      // retombe sur le forfait plutôt que de retenir un montant fantaisiste.
+      const fraisPlausiblesMax = Math.max(9.90, 2.90 * nbJours) + 0.01;
+      const fraisRetenus = (fraisDeduits > 0 && fraisDeduits <= fraisPlausiblesMax && fraisDeduits < missionAmount)
+        ? fraisDeduits
+        : Math.min(FRAIS_DEFAUT, missionAmount);
+
+      // > 24h : remboursement intégral / < 24h : frais de service réels retenus
       const refundAmount = lessThan24h
-        ? Math.max(0, Math.round((missionAmount - FRAIS_SERVICE) * 100)) // en centimes
+        ? Math.max(0, Math.round((missionAmount - fraisRetenus) * 100)) // en centimes
         : Math.round(missionAmount * 100);
-      const keptAmount = lessThan24h ? Math.min(FRAIS_SERVICE, missionAmount) : 0;
+      const keptAmount = lessThan24h ? fraisRetenus : 0;
+      if (lessThan24h) {
+        console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
+      }
 
       // Récupérer l'email du client pour les notifications
       let clientEmail = null;
