@@ -1,3 +1,4 @@
+import { resendBody } from "./_email.js";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
@@ -95,7 +96,7 @@ export default async function handler(req, res) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: resendBody({
           from: RESEND_FROM,
           to: [normalizedEmail],
           subject: "Réinitialisation de votre mot de passe ALANE",

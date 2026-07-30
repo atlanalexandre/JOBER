@@ -1,3 +1,4 @@
+import { resendBody } from "./_email.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
 // Pour chaque brouillon > 30 min non encore notifié :
@@ -229,7 +230,7 @@ export default async function handler(req, res) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: resendBody({
               from: RESEND_FROM,
               to: email,
               subject,

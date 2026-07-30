@@ -1,3 +1,4 @@
+import { resendBody } from "./_email.js";
 import crypto from "crypto";
 
 // Returns the UTC offset in ms for a given date in France (CEST = -7200000, CET = -3600000)
@@ -945,7 +946,7 @@ export default async function handler(req, res) {
             await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY_AC}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
+              body: resendBody({
                 from: RESEND_FROM_AC,
                 to: clientEmail,
                 subject: `✅ Un prestataire a été assigné à votre prestation — ALANE`,
@@ -1184,7 +1185,7 @@ export default async function handler(req, res) {
               await fetch("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({
+                body: resendBody({
                   from: RESEND_FROM,
                   to: prestaEmail,
                   subject: "Prestation validée — votre paiement est en cours 💰",
@@ -1431,7 +1432,7 @@ export default async function handler(req, res) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
-            body: JSON.stringify({
+            body: resendBody({
               from: process.env.RESEND_FROM || "onboarding@resend.dev",
               to: clientEmail,
               subject: `✅ Validez la fin de prestation — ${metier} · ALANE`,
@@ -1930,7 +1931,7 @@ export default async function handler(req, res) {
                 await fetch("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${RESEND_KEY_B}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({
+                  body: resendBody({
                     from: RESEND_FROM_B,
                     to: [ud.email],
                     subject: `🔔 Nouvelle prestation disponible : ${missionLabel}`,
@@ -2063,7 +2064,7 @@ export default async function handler(req, res) {
           const er = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: resendBody({
               from: RESEND_FROM,
               to: [recipientEmail],
               subject: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
@@ -2404,7 +2405,7 @@ export default async function handler(req, res) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: resendBody({
               from: RESEND_FROM || "ALANE <onboarding@resend.dev>",
               to: ADMIN_EMAIL,
               subject: `[ACTION REQUISE] Annulation incomplète — prestation ${mission_id.slice(0,8)}`,
@@ -2430,7 +2431,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: clientEmail,
             subject: refundAmount > 0 ? `Annulation confirmée — remboursement de ${refundEur} € en cours` : "Annulation confirmée",
@@ -2455,7 +2456,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: ADMIN_EMAIL,
             subject: `[ACTION REQUISE] Remboursement Stripe échoué — prestation ${mission_id.slice(0,8)}`,
@@ -2646,7 +2647,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: prestaEmail,
             subject: `💶 Prestation interrompue — vous serez payé(e) pour ${billedHours}h`,
@@ -2719,7 +2720,7 @@ export default async function handler(req, res) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: resendBody({
               from: RESEND_FROM,
               to: ADMIN_EMAIL,
               subject: `[ACTION REQUISE] Arrêt en cours — ${missionLabel} — ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
@@ -3024,7 +3025,7 @@ export default async function handler(req, res) {
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: resendBody({
               from: RESEND_FROM,
               to: [clientEmail],
               subject: isAccepted ? `✅ ${resolvedPrestaName} a accepté la prestation !` : `❌ ${resolvedPrestaName} a refusé la prestation`,
@@ -3113,7 +3114,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: [clientEmail],
             subject,
@@ -3212,7 +3213,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: [prestaEmail],
             subject: "🔔 Nouvelle demande de prestation — répondez rapidement !",
@@ -3331,7 +3332,7 @@ export default async function handler(req, res) {
             await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
+              body: resendBody({
                 from: RESEND_FROM,
                 to: [prestaEmail],
                 subject: "⏱ Demande d'heures supplémentaires",
@@ -3610,7 +3611,7 @@ export default async function handler(req, res) {
             await Promise.all(avecEmail.map(c => fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Authorization": `Bearer ${RESEND_KEY_R}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
+              body: resendBody({
                 from: RESEND_FROM_R,
                 to: [metaMap[c.id].email],
                 subject: urgent
@@ -3807,7 +3808,7 @@ export default async function handler(req, res) {
         await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: resendBody({
             from: RESEND_FROM,
             to: ADMIN_EMAIL,
             subject: ticketSubject,

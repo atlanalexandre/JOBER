@@ -398,7 +398,8 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `VITE_ALANE_ADRESSE` | Adresse affichée sur les factures — **vide = ligne masquée** |
 | `VITE_ALANE_FORME` | Forme juridique sur les factures (défaut `SAS`) |
 | `RESEND_API_KEY` | Envoi d'emails |
-| `RESEND_FROM` | Expéditeur — **contient une espace significative** |
+| `RESEND_FROM` | Expéditeur — **contient une espace significative**. Le nom affiché doit être `ALANE`, comme le contenu des emails et le domaine : un nom d'expéditeur qui ne correspond ni au domaine ni à la marque est lu comme une tentative d'usurpation par les filtres anti-spam. |
+| `RESEND_REPLY_TO` | Adresse de réponse (`support@alane.fr`). Facultative, mais son absence combinée à un expéditeur `no-reply@` pénalise la délivrabilité. Si elle n'est pas renseignée, aucun `Reply-To` n'est envoyé. |
 | `ADMIN_EMAIL` | Destinataire des tickets support |
 | `BREVO_API_KEY` | SMS et emails de relance |
 | `BO_PASSWORD` | Accès au backoffice |
