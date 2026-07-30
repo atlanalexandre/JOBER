@@ -958,14 +958,19 @@ export function BOComptes() {
                     const DOC_ICON = DOC_ICONS;
                     const DOC_LABEL = DOC_LABELS;
                     const isImg = doc.signedUrl && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(doc.signedUrl);
+                    // Sur un écran de téléphone, le libellé était comprimé au point de se
+                    // couper au milieu d'un mot (« RC » / « Pro ») juste à côté des
+                    // boutons, rendant la ligne illisible. La ligne peut désormais passer
+                    // à la ligne : les boutons descendent sous le libellé plutôt que de
+                    // l'écraser, et le libellé s'abrège proprement.
                     return (
-                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
-                        <span style={{ fontSize:16 }}>{DOC_ICON[doc.type]||"📄"}</span>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600 }}>{DOC_LABEL[doc.type]||doc.type}</div>
+                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", flexWrap:"wrap", rowGap:6, gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
+                        <span style={{ fontSize:16, flexShrink:0 }}>{DOC_ICON[doc.type]||"📄"}</span>
+                        <div style={{ flex:"1 1 130px", minWidth:0 }}>
+                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{DOC_LABEL[doc.type]||doc.type}</div>
                           <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
                         </div>
-                        <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5 }}>
+                        <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5, flexShrink:0, marginLeft:"auto" }}>
                           {doc.signedUrl && (
                             <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}

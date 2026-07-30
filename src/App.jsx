@@ -1734,22 +1734,19 @@ export default function App() {
                 throw new Error(jA.error || "Erreur lors de l'affectation de la prestation.");
               }
             } else {
-              const newMissionId = typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
-              const { error:insertErr } = await supabase.from("missions").insert({
-                id: newMissionId,
-                client_id:userId, prestataire_id:selectedProvider.id,
-                sector:selectedProvider.sector, metier:selectedProvider.jobTitle||selectedProvider.role,
-                date:paymentDate||null, hours:paymentHours,
-                heure_debut:paymentStartTime||null,
-                tarif_horaire:selectedProvider.rateNum, montant_total:paymentAmount,
-                description:paymentDescription||null,
-                adresse:paymentAdresse||null,
-                ville:paymentVille||null,
-                status:"pending_acceptance", acceptance_deadline:deadline,
-                ...(intentId ? { stripe_payment_intent: intentId } : {}),
-              });
-              if(insertErr) throw new Error(insertErr.message || "Erreur lors de la création de la prestation.");
-              missionId=newMissionId; setSelectedMissionId(newMissionId);
+              // Ce chemin créait la prestation depuis le navigateur en y écrivant
+              // lui-même prestataire_id, status, acceptance_deadline et l'identifiant
+              // du paiement : il contournait donc l'intégralité des contrôles serveur
+              // — rayon d'intervention, accès aux prestations du prestataire, secteur
+              // ouvert, tarif réellement annoncé.
+              //
+              // Il est par ailleurs inatteignable : /api/stripe-intent refuse toute
+              // demande sans mission_id, un paiement ne peut donc pas aboutir sans que
+              // la prestation existe déjà. Y arriver signifie qu'une hypothèse a cédé
+              // en amont — mieux vaut le dire que créer une prestation non vérifiée.
+              console.error("[paiement] encaissement sans identifiant de prestation — création annulée.");
+              throw new Error("Paiement encaissé mais la prestation est introuvable. "
+                + "Ne renouvelez pas le paiement : contactez-nous, le montant vous sera remboursé.");
             }
             // La notification in-app est désormais insérée par /api/missions
             // (action notify_prestataire), en service role et après vérification

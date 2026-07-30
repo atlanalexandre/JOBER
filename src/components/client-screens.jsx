@@ -8030,15 +8030,24 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
       if(user){
-        const { data } = await supabase.from("missions").insert({
+        const { data, error } = await supabase.from("missions").insert({
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
           heure_debut: startTime || null,
           recurrence: recurrence || null,
         }).select().single();
+        // L'échec était avalé : la demande continuait avec une prestation qui
+        // n'existait qu'en mémoire, aucun prestataire ne pouvait donc la voir et
+        // le client attendait des réponses qui ne viendraient jamais (règle 1.2).
+        if(error) throw new Error(error.message || "erreur inconnue");
         if(data) prestation.id = data.id;
       }
-    } catch(e){ /* insert échoue silencieusement — onSubmit reçoit quand même la prestation locale */ }
+    } catch(e){
+      console.error("[diffusion] création de la prestation impossible :", e?.message);
+      setSending(false);
+      showToast("Impossible d'enregistrer votre demande : " + (e?.message || "erreur inconnue"), "error");
+      return;
+    }
     setSending(false);
     onSubmit(prestation);
   };
