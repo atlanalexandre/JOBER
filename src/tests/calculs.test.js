@@ -171,6 +171,32 @@ describe("facture — montant HT", () => {
   });
 });
 
+// ── Récapitulatif de paiement sur la facture ──────────────────────
+// Les frais de service sont affichés au client, mais séparément de la facture du
+// prestataire : les inscrire sur celle-ci gonflerait son chiffre d'affaires déclaré
+// — donc ses cotisations et son plafond de micro-entreprise — sur un argent qu'il
+// n'encaisse pas. Un écart aberrant n'affiche rien plutôt qu'un chiffre faux.
+describe("facture — frais de service affichés au client", () => {
+  const frais = ({ totalPaye, ttcPrestation }) => {
+    const calc = Math.round((totalPaye - ttcPrestation) * 100) / 100;
+    return (calc > 0 && calc < ttcPrestation) ? calc : 0;
+  };
+
+  it("prestation simple : 4,90 € de frais affichés", () => {
+    expect(frais({ totalPaye:116.90, ttcPrestation:112 })).toBeCloseTo(4.90);
+  });
+  it("urgence : 9,90 € de frais affichés", () => {
+    expect(frais({ totalPaye:73.90, ttcPrestation:64 })).toBeCloseTo(9.90);
+  });
+  it("montant payé égal au facturé : aucun frais, pas de récapitulatif", () => {
+    expect(frais({ totalPaye:112, ttcPrestation:112 })).toBe(0);
+  });
+  it("écart aberrant : rien n'est affiché plutôt qu'un chiffre faux", () => {
+    expect(frais({ totalPaye:500, ttcPrestation:112 })).toBe(0);
+    expect(frais({ totalPaye:50,  ttcPrestation:112 })).toBe(0);
+  });
+});
+
 // ── Versement au prestataire ──────────────────────────────────────
 // Deux chemins de virement calculaient deux montants différents, tous deux faux :
 // /api/missions oubliait le nombre de jours (un récurrent de 5 jours ne versait

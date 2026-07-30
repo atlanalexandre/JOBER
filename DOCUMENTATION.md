@@ -411,9 +411,17 @@ calculaient auparavant deux montants différents, tous deux faux : le premier om
 nombre de jours, le second versait `montant_total` frais compris.
 
 **La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
-donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`. Les frais de service
-d'ALANE n'y figurent pas — ils relèveraient d'une facture séparée d'ALANE au client, qui
-n'existe pas encore (voir §8, `VITE_ALANE_SIRET`).
+donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`.
+
+Les frais de service **n'entrent pas dans ce total** et ne doivent jamais y entrer : le
+prestataire ne les encaisse pas, et les porter sur sa facture gonflerait son chiffre
+d'affaires déclaré — donc ses cotisations URSSAF et son plafond de micro-entreprise — sur un
+argent qu'il n'a jamais reçu. Ils apparaissent dans un bloc distinct, « Récapitulatif de
+votre paiement », qui montre au client la prestation, les frais et le total réglé. Ce bloc
+**ne vaut pas facture** pour les frais : leur facturation par ALANE suppose son SIRET et son
+adresse, encore absents (voir §8, `VITE_ALANE_SIRET`). Les frais y sont déduits de
+`montant_total` moins le TTC de la prestation ; un écart aberrant n'affiche rien plutôt qu'un
+chiffre faux, et le journalise.
 
 `missions.invoice_number` conserve le numéro **attribué une seule fois**, à la première
 consultation. La facture étant produite à la volée, un numéro était auparavant tiré à chaque
