@@ -123,3 +123,31 @@ describe("Calcul montant total mission", () => {
     expect(calculMontant(0, 0)).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ── Fusion des styles du composant Btn ────────────────────────────
+// Le style passé en prop est fusionné après celui de la variante. Une propriété
+// à undefined — écrite naturellement `condition ? valeur : undefined` — écrasait
+// la variante : le bouton « Confirmer & payer » s'affichait en blanc, donc
+// apparemment désactivé. Reproduit ici la fusion de ui.jsx.
+describe("Btn — fusion des styles", () => {
+  const fusion = (variante, passe) => ({
+    ...variante,
+    ...(passe ? Object.fromEntries(Object.entries(passe).filter(([, v]) => v !== undefined)) : undefined),
+  });
+  const VARIANTE = { background: "linear-gradient(violet)", color: "#fff" };
+
+  it("une propriété undefined n'écrase pas celle de la variante", () => {
+    expect(fusion(VARIANTE, { background: undefined }).background).toBe("linear-gradient(violet)");
+  });
+  it("une propriété définie écrase bien celle de la variante", () => {
+    expect(fusion(VARIANTE, { background: "red" }).background).toBe("red");
+  });
+  it("les autres propriétés passées sont conservées", () => {
+    expect(fusion(VARIANTE, { background: undefined, padding: "13px" })).toEqual({
+      background: "linear-gradient(violet)", color: "#fff", padding: "13px",
+    });
+  });
+  it("aucun style passé laisse la variante intacte", () => {
+    expect(fusion(VARIANTE, undefined)).toEqual(VARIANTE);
+  });
+});
