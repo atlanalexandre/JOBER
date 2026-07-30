@@ -459,18 +459,30 @@ export function BOComptes() {
     setValidatingAll(profileId);
     const valides = [];
     const echecs  = [];
+    // Le motif renvoyé par le serveur était jeté : l'écran annonçait « Échec sur :
+    // … Réessayez » sans jamais dire pourquoi, et réessayer ne servait à rien
+    // puisque la cause était la même à chaque fois (règle 1.2).
+    let motif = null;
     for (const doc of unverified) {
       try {
         const r = await boFetch({ action:"verify_doc", profileId, docId: doc.id });
-        if (r.ok) valides.push(doc.id);
-        else echecs.push(DOC_LABELS[doc.type] || doc.type);
-      } catch { echecs.push(DOC_LABELS[doc.type] || doc.type); }
+        if (r.ok) { valides.push(doc.id); continue; }
+        const j = await r.json().catch(() => ({}));
+        echecs.push(DOC_LABELS[doc.type] || doc.type);
+        if (!motif) motif = j.error || `erreur ${r.status}`;
+      } catch (e) {
+        echecs.push(DOC_LABELS[doc.type] || doc.type);
+        if (!motif) motif = e?.message || "erreur réseau";
+      }
     }
     // Seuls les documents réellement validés changent d'état : l'ancien code les
     // marquait tous vérifiés à l'écran, même en cas d'échec côté serveur.
     setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => valides.includes(doc.id) ? { ...doc, verified:true } : doc) }));
     setValidatingAll(null);
-    if (echecs.length) showToast(`Échec sur : ${echecs.join(", ")}. Réessayez.`);
+    if (echecs.length) {
+      console.error("[BO] validation en bloc — échecs :", echecs, "motif :", motif);
+      showToast(`Échec sur ${echecs.length} document${echecs.length > 1 ? "s" : ""} — ${motif}`);
+    }
   };
 
   useEffect(() => {
