@@ -7446,26 +7446,29 @@ export function RatingScreen({ provider, missionId, onSubmit, onBack }) {
           setSaving(true);
           setRatingError(null);
           try {
-            if(userId && p.id) {
-              const { data: mCheck } = await supabase.from("missions")
-                .select("id").eq("client_id", userId).eq("prestataire_id", p.id).eq("status","completed").limit(1);
-              if(!mCheck?.length) {
-                setRatingError("Vous ne pouvez noter un prestataire qu'après une prestation complétée ensemble.");
-                setSaving(false); return;
-              }
+            // L'avis part par le serveur : le contrôle d'éligibilité se faisait ici,
+            // dans le navigateur, donc contournable — et la note pilote le classement
+            // du catalogue. Le destinataire est déduit de la prestation côté serveur.
+            if (!missionId) {
+              setRatingError("Prestation introuvable — revenez à votre historique pour déposer votre avis.");
+              setSaving(false); return;
             }
-            const { error: insertErr } = await supabase.from("ratings").insert({
-              reviewer_id: userId,
-              reviewee_provider_id: p.id,
-              reviewee_name: p.name,
-              rating,
-              tags,
-              comment: comment.trim()||null,
-              mission_id: missionId||null,
+            const { data: sdR } = await supabase.auth.getSession();
+            const rR = await fetch("/api/missions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sdR?.session?.access_token || ""}` },
+              body: JSON.stringify({ action: "submit_rating", mission_id: missionId, rating, comment: comment.trim() || null, tags }),
             });
-            if (insertErr) throw insertErr;
+            if (!rR.ok) {
+              const jR = await rR.json().catch(() => ({}));
+              // Le motif du serveur était remplacé par un message générique : le client
+              // ne savait pas s'il avait déjà noté, ou si la prestation n'était pas finie.
+              setRatingError(jR.error || `Erreur ${rR.status} — réessayez.`);
+              setSaving(false); return;
+            }
           } catch(e) {
-            setRatingError("Une erreur est survenue. Veuillez réessayer.");
+            console.error("[avis] dépôt impossible :", e?.message);
+            setRatingError(e?.message || "Erreur réseau — réessayez.");
             setSaving(false);
             return;
           }
