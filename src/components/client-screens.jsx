@@ -4,7 +4,7 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, fetchPrestaCount } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
 
@@ -932,7 +932,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <span style={{ fontSize:22, flexShrink:0 }}>✅</span>
             <div>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13, lineHeight:1.3 }}>
-                Prestation à valider ({prestationsToValidate.length})
+                Prestation à valider ({missionsToValidate.length})
               </div>
               <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginTop:2 }}>
                 {missionsToValidate[0].metier || "Prestation"} — le prestataire a confirmé la fin
@@ -1172,7 +1172,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               </div>
               <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.6)" }}>
                 {nextTier
-                  ? <>{missionsToNext} prestation{prestationsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
+                  ? <>{missionsToNext} prestation{missionsToNext>1?"s":""} avant le palier <strong style={{ color:C.accentGold }}>{nextTier.label}</strong></>
                   : <>Vous êtes au palier maximum 🎉</>}
               </div>
             </div>
@@ -2857,7 +2857,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           {/* Durée par jour */}
           <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:14 }}>
             <label style={{ display:"block", fontSize:11, color:C.textSub, marginBottom:10, fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>
-              {isUrgent ? "⏱️ Durée (mode urgence)" : prestationType==="range" ? "Heures par jour" : "Durée de la prestation"}
+              {isUrgent ? "⏱️ Durée (mode urgence)" : missionType==="range" ? "Heures par jour" : "Durée de la prestation"}
             </label>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
@@ -2889,7 +2889,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               style={{ width:"100%", padding:"13px 15px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", resize:"none", height:80, boxSizing:"border-box", outline:"none", background:"#112240", color:C.text, lineHeight:1.6 }} />
           </div>
 
-          {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {prestationType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
+          {dateError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>⚠️ {missionType==="range" && !endDate ? "La date de fin est requise" : "La date de début est requise"}</div>}
           {availError && <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, color:"#F25E5E" }}>🚫 {availError}</div>}
           {tooSoonError && !isUrgent && (
             <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.45)", borderRadius:12, padding:"14px 16px", marginBottom:12 }}>
@@ -3022,7 +3022,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ["Date", isUrgent ? `Aujourd’hui — ${urgentStartDate}` : missionType==="range" && startDate && endDate ? `${formatDate(startDate)} → ${formatDate(endDate)}` : formatDate(startDate)],
               ["Heure de début", isUrgent ? `${urgentStartTime} (~30 min)` : startTime||"—"],
               ["Heure de fin", (()=>{ const t = isUrgent ? urgentStartTime : (startTime||"08:00"); const [h,m] = t.split(":").map(Number); const endMin = h*60 + m + hours*60; return `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`; })()],
-              ...(prestationType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
+              ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
@@ -3038,7 +3038,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{prestationType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
@@ -3597,7 +3597,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <div><div style={{ fontWeight:800, color:C.text }}>{p.name}</div><div style={{ color:C.textSub, fontSize:13 }}>{p.role}</div></div>
           </div>
           <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {prestationHours}h prévues)</label>
+            <label style={{ fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5, display:"block" }}>Heures réelles effectuées : {hoursActual}h (max : {missionHours}h prévues)</label>
             <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
           </div>
           <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
@@ -4858,7 +4858,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const articles = [
     {
       title:"Article 1 — Objet du contrat",
-      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${prestationDate}\nDurée estimée : ${prestationHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
+      content:`Le présent contrat a pour objet de définir les conditions dans lesquelles ${p.name}, auto-entrepreneur (ci-après "le Prestataire"), fournit ses services à la société cliente (ci-après "le Client"), dans le cadre d'une prestation de services réalisée via la plateforme ALANE.\n\nNature de la prestation : ${p.role}\nDate de la prestation : ${missionDate}\nDurée estimée : ${missionHours} heures\nLieu : Paris, France (selon adresse renseignée lors de la réservation)`
     },
     {
       title:"Article 2 — Indépendance du prestataire",
@@ -4866,7 +4866,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${prestationHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
+      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est sécurisé via Stripe : les fonds sont bloqués dès la réservation et libérés automatiquement au Prestataire dans un délai de 24h après validation mutuelle de la prestation par les deux parties.\n\nEn cas de litige non résolu, ALANE intervient en médiateur et arbitre le déblocage des fonds sous 72h ouvrées.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
@@ -4948,7 +4948,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 {[
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
-                  ["Durée", `${prestationHours} heures`],
+                  ["Durée", `${missionHours} heures`],
                   ["Montant client total", `${totalAmount} €`],
                   ["Montant net prestataire", `${prestaNet} €`],
                 ].map(([l,v])=>(
@@ -6845,7 +6845,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
 
           {nextTier ? (
             <p style={{ color:C.textSub, fontSize:12 }}>
-              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{prestationsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
+              Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
               <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({(nextTier.rate*100).toFixed(0)}%)</strong>
             </p>
           ) : (

@@ -448,7 +448,7 @@ export function BOComptes() {
     // Valider en bloc revient à certifier des pièces qu'on n'a pas forcément
     // ouvertes — un Kbis hors sujet est déjà passé comme ça. La confirmation
     // nomme les documents concernés pour rendre l'acte conscient.
-    const liste = unverified.map(d => `• ${DOC_LABEL[d.type] || d.type}`).join("\n");
+    const liste = unverified.map(d => `• ${DOC_LABELS[d.type] || d.type}`).join("\n");
     const ok = await showConfirm(
       `Vous allez valider ${unverified.length} document${unverified.length > 1 ? "s" : ""} :\n\n${liste}\n\n`
       + "Les avez-vous tous ouverts et contrôlés ? Valider un document revient à certifier "
@@ -2484,12 +2484,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"force_complete_mission", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [prestationId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
+        setResult(r => ({ ...r, [missionId]: `✅ Validée — ${data.montantTotal}€${data.cashback > 0 ? ` · cashback +${data.cashback}€` : ""}` }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
     setValidating(null);
   };
 
@@ -2500,12 +2500,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"release_dispute", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [prestationId]: "✅ Fonds libérés — prestation validée" }));
+        setResult(r => ({ ...r, [missionId]: "✅ Fonds libérés — prestation validée" }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
     setDisputing(null);
   };
 
@@ -2517,7 +2517,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:`🚫 Annulée${withRefund?" + remboursement initié":""}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"cancelled"}:m)); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2529,7 +2529,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:`✅ Réassignée → ${data.new_presta_name}`})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,status:"assigned"}:m)); setReassignId(null); setReassignEmail(""); setReassignReason(""); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2540,7 +2540,7 @@ export function BOMissions() {
       const data = await res.json();
       if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
-    } catch { setResult(r=>({...r,[prestationId]:"❌ Erreur réseau"})); }
+    } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
     setDisputing(null);
   };
 
@@ -2551,12 +2551,12 @@ export function BOMissions() {
       const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
       const data = await res.json();
       if (data.success) {
-        setResult(r => ({ ...r, [prestationId]: "💰 Remboursement initié" }));
+        setResult(r => ({ ...r, [missionId]: "💰 Remboursement initié" }));
         setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"closed" } : m));
       } else {
         setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
       }
-    } catch { setResult(r => ({ ...r, [prestationId]: "❌ Erreur réseau" })); }
+    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
     setDisputing(null);
   };
 

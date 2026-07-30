@@ -33,7 +33,10 @@ export default defineConfig([
       'no-empty': 'warn',
       'react-hooks/rules-of-hooks': 'warn',
       'react-refresh/only-export-components': 'warn',
-      'no-undef': 'warn',
+      // Bloquant, et non plus simple avertissement : une variable inexistante
+      // fait planter l'écran en production (« Can't find variable: … »). Trois
+      // cas dormaient dans ces fichiers sans que la CI ne bronche.
+      'no-undef': 'error',
       'no-useless-escape': 'warn',
     },
   },
