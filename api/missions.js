@@ -3277,31 +3277,86 @@ export default async function handler(req, res) {
       });
 
       // Recherche d'un remplaçant. L'écran client annonce « nous recherchons un
-      // remplaçant parmi les prestataires disponibles » : jusqu'ici personne
-      // n'était prévenu, la prestation devenait seulement visible sur la place de
-      // marché et n'était trouvée qu'en la parcourant. La promesse était donc
-      // fausse. On notifie désormais les prestataires approuvés du même secteur.
+      // remplaçant » : jusqu'ici personne n'était prévenu, la prestation devenait
+      // seulement visible sur la place de marché. Trois canaux, dosés selon
+      // l'urgence : notification et push pour tous les prestataires du secteur,
+      // SMS réservé aux désistements de dernière minute.
       try {
+        const libelle = mission.titre || mission.metier || "Prestation";
+        const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
+        const corps = `Une prestation « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} cherche un prestataire : celui qui était prévu s'est désisté.`;
+
+        // Urgence : la prestation a-t-elle lieu dans moins de 24 h ?
+        let urgent = false;
+        if (mission.date) {
+          const [uh, um] = String(mission.heure_debut || "08:00").split(":").map(Number);
+          const debutMs = new Date(`${mission.date}T${String(uh).padStart(2,"0")}:${String(um).padStart(2,"0")}:00`).getTime();
+          urgent = debutMs - Date.now() < 24 * 3600000;
+        }
+
         const candRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&id=neq.${caller.id}&select=id&limit=100`,
+          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&id=neq.${caller.id}&select=id`,
           { headers }
         );
         const candidats = candRes.ok ? await candRes.json().catch(() => []) : [];
-        if (Array.isArray(candidats) && candidats.length) {
-          const libelle = mission.titre || mission.metier || "Prestation";
-          const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
-          const lignes = candidats.map(c => ({
-            user_id: c.id,
-            type: "mission",
-            title: "Prestation à reprendre 🔄",
-            body: `Une prestation « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} cherche un prestataire : celui qui était prévu s'est désisté. Consultez les prestations disponibles.`,
-            read: false,
-          }));
+
+        // Métadonnées en lot pour filtrer par secteur — même approche que broadcast
+        const metaMap = {};
+        let pageMeta = 1;
+        while (pageMeta <= 10) {
+          const bRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${pageMeta}`, { headers });
+          const bData = await bRes.json().catch(() => ({}));
+          const lot = bData.users || [];
+          for (const u of lot) metaMap[u.id] = u;
+          if (lot.length < 1000) break;
+          pageMeta++;
+        }
+
+        const cibles = (Array.isArray(candidats) ? candidats : []).filter(c => {
+          const meta = metaMap[c.id]?.user_metadata || {};
+          const secteurPresta = meta.secteur || meta.sector;
+          // Sans secteur renseigné côté prestataire, on ne l'exclut pas : mieux vaut
+          // une notification de trop qu'une prestation qui ne trouve personne.
+          return !mission.sector || !secteurPresta || secteurPresta === mission.sector;
+        });
+
+        if (cibles.length) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST",
             headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify(lignes),
-          }).catch(e => console.error("[presta_cancel] notification des remplaçants échouée :", e.message));
+            body: JSON.stringify(cibles.map(c => ({
+              user_id: c.id, type: "mission",
+              title: urgent ? "Prestation urgente à reprendre 🔄" : "Prestation à reprendre 🔄",
+              body: `${corps} Consultez les prestations disponibles.`,
+              read: false,
+            }))),
+          }).catch(e => console.error("[presta_cancel] notifications remplaçants :", e.message));
+
+          // Push : gratuit, et atteint le téléphone application fermée.
+          await Promise.all(cibles.map(c => sendPushToUser(c.id, {
+            title: urgent ? "🔄 Prestation urgente à reprendre" : "🔄 Prestation à reprendre",
+            body: corps,
+            url: "/",
+          }, SUPABASE_URL, headers).catch(() => {})));
+
+          // SMS uniquement si la prestation a lieu dans moins de 24 h : à ce stade
+          // le coût se justifie, une prestation non pourvue étant une prestation
+          // perdue pour tout le monde.
+          if (urgent) {
+            const BREVO = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
+            if (BREVO) {
+              const texte = smsClean(`ALANE - Prestation a reprendre : ${libelle}${mission.ville ? " a " + mission.ville : ""}${quand ? " le " + quand : ""}. Le prestataire prevu s'est desiste. Connectez-vous pour la reprendre. alane.fr`);
+              await Promise.all(cibles.map(c => {
+                const tel = metaMap[c.id]?.user_metadata?.telephone;
+                if (!tel) return Promise.resolve();
+                return fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                  method: "POST",
+                  headers: { "api-key": BREVO, "Content-Type": "application/json" },
+                  body: JSON.stringify({ sender: "ALANE", recipient: tel.replace(/[^0-9+]/g, ""), content: texte }),
+                }).catch(() => {});
+              }));
+            }
+          }
         }
       } catch (e) {
         console.error("[presta_cancel] recherche de remplaçant échouée :", e.message);
