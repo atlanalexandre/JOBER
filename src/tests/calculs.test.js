@@ -167,7 +167,8 @@ describe("mise à jour du profil — garde-fous", () => {
     for (const v of Object.values(donnees)) {
       if (typeof v === "string" && /^data:/i.test(v)) return "fichier";
     }
-    const taille = Buffer.byteLength(JSON.stringify({ ...metaExistant, ...donnees }), "utf8");
+    // TextEncoder plutôt que Buffer : même mesure en octets UTF-8, disponible partout.
+    const taille = new TextEncoder().encode(JSON.stringify({ ...metaExistant, ...donnees })).length;
     return taille > 6144 ? "trop volumineux" : "ok";
   };
 
