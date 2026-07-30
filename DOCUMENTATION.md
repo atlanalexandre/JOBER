@@ -296,6 +296,13 @@ de retour arrière.
 Les trois fichiers `*.sql` à la racine (`supabase-schema.sql`, `supabase_schema.sql`,
 `supabase_migration.sql`) sont des reliquats divergents — **aucun ne fait autorité**.
 
+Cette divergence a déjà coûté une panne complète : `supabase-schema.sql` annonce
+`documents.id uuid`, `supabase_schema.sql` annonce `documents.id BIGSERIAL`. Le backoffice
+avait été écrit sur la première hypothèse et exigeait un uuid, si bien que **la validation
+et le refus d'un document répondaient toujours « docId invalide »** — les boutons n'ont
+jamais fonctionné. Avant d'écrire un contrôle de format sur une clé primaire, **relever son
+type dans la base** (`SELECT pg_typeof(id) FROM <table> LIMIT 1;`), jamais dans ces fichiers.
+
 ---
 
 ## 6. Parcours utilisateur

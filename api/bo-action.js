@@ -56,6 +56,18 @@ export default async function handler(req, res) {
 
   // Validation UUID pour profileId — évite les injections PostgREST via le paramètre de chemin
   const isUuidId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  // Identifiant de document : la clé primaire de `documents` n'est pas un uuid mais un
+  // entier (BIGSERIAL). Exiger un uuid faisait échouer toute validation et tout refus de
+  // document avec « docId invalide », y compris « Tout valider » sur les 7 pièces d'un
+  // prestataire — le bouton n'a donc jamais fonctionné. Les deux formes sont acceptées et
+  // strictement validées : les fichiers du dépôt se contredisent sur le type de cette
+  // colonne (`supabase-schema.sql` dit uuid, `supabase_schema.sql` dit BIGSERIAL) et la
+  // référence est la base, pas le dépôt.
+  const isDocId = (v) => {
+    if (isUuidId(v)) return true;
+    const s = typeof v === "number" ? String(v) : v;
+    return typeof s === "string" && /^[0-9]{1,19}$/.test(s);
+  };
   if (profileId !== undefined && profileId !== null && !isUuidId(profileId)) {
     return res.status(400).json({ error: "profileId invalide" });
   }
@@ -883,7 +895,7 @@ export default async function handler(req, res) {
 
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
-      if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
+      if (!isDocId(req.body.docId)) return res.status(400).json({ error: "Identifiant de document invalide" });
       // Vérifier que le document appartient bien au profil demandé.
       // Le message d'erreur distingue les deux causes possibles : sans cette
       // distinction, « document non trouvé pour ce profil » ne permettait pas de
@@ -929,7 +941,7 @@ export default async function handler(req, res) {
     // d'un document jamais examiné : le retirer est plus clair pour les deux côtés.
     if (action === "reject_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
-      if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
+      if (!isDocId(req.body.docId)) return res.status(400).json({ error: "Identifiant de document invalide" });
       const motif = String(req.body.motif || "").trim().slice(0, 300);
       if (!motif) return res.status(400).json({ error: "Motif de refus requis" });
 

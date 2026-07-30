@@ -152,6 +152,38 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Identifiant de document accepté par le backoffice ─────────────
+// La clé primaire de `documents` est un entier (BIGSERIAL), pas un uuid. Le backoffice
+// exigeait un uuid : toute validation et tout refus de document répondaient « docId
+// invalide », le bouton n'a donc jamais fonctionné. Les deux formes sont acceptées, et
+// rien d'autre — l'identifiant part dans une URL PostgREST.
+describe("identifiant de document — validation", () => {
+  const isUuid  = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const isDocId = (v) => {
+    if (isUuid(v)) return true;
+    const s = typeof v === "number" ? String(v) : v;
+    return typeof s === "string" && /^[0-9]{1,19}$/.test(s);
+  };
+
+  it("accepte un entier (BIGSERIAL), en nombre comme en chaîne", () => {
+    expect(isDocId(12)).toBe(true);
+    expect(isDocId("12")).toBe(true);
+  });
+  it("accepte un uuid, au cas où la colonne changerait de type", () => {
+    expect(isDocId("3fa85f64-5717-4562-b3fc-2c963f66afa6")).toBe(true);
+  });
+  it("refuse l'entrée virtuelle de la photo de profil", () => {
+    expect(isDocId("photo_virtual")).toBe(false);
+  });
+  it("refuse toute tentative d'injection dans l'URL PostgREST", () => {
+    expect(isDocId("1 or true")).toBe(false);
+    expect(isDocId("1,2")).toBe(false);
+    expect(isDocId("*")).toBe(false);
+    expect(isDocId("")).toBe(false);
+    expect(isDocId(null)).toBe(false);
+  });
+});
+
 // ── Cohérence du montant encaissé ─────────────────────────────────
 // La ligne `missions` est insérée par le navigateur du client et le déclencheur
 // `missions_field_tamper_guard` ne protège que les UPDATE : un client pouvait créer

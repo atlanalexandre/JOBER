@@ -907,7 +907,11 @@ export function BOComptes() {
                     </span>
                     <div style={{ display:"flex", gap:6 }}>
                       {docsLoading[p.id] && <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>Chargement…</span>}
-                      {docs[p.id] && docs[p.id].some(d=>!d.verified) && (
+                      {/* La photo de profil vient de user_metadata, pas de la table
+                          `documents` : elle n'est pas validable. Sans l'exclure ici, le
+                          bouton s'affichait alors qu'il n'y avait rien à valider, et un
+                          clic ne produisait rien du tout. */}
+                      {docs[p.id] && docs[p.id].some(d=>!d.verified && !d.isVirtual) && (
                         <button onClick={()=>handleVerifyAllDocs(p.id)} disabled={validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:validatingAll===p.id?0.5:1 }}>
                           {validatingAll===p.id ? "Validation…" : "✓ Tout valider"}
                         </button>
@@ -965,7 +969,7 @@ export function BOComptes() {
                           {doc.signedUrl && (
                             <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}
-                          {!doc.verified && (
+                          {!doc.verified && !doc.isVirtual && (
                             <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               {docVerifying===doc.id ? "…" : "✓"}
                             </button>
