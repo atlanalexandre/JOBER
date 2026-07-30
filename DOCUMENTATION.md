@@ -367,6 +367,14 @@ closed               clôturée
 Chemins de sortie : `cancelled` (annulation), `disputed` (litige),
 `needs_replacement` (le prestataire se désiste, retour au marché), `rejected` / `refused`.
 
+**Le passage en `disputed` est borné à 48 h après la fin effective de la prestation**, délai
+imposé par les CGPS art. 17.1 (« au-delà de 48 heures sans signalement, la Prestation est
+réputée définitivement validée »). Le point de départ est le pointage réel (`started_at`)
+s'il existe, sinon l'horaire prévu (`date` + `heure_debut` + `hours`). La règle vit à deux
+endroits qui doivent rester alignés : `api/missions.js` (action `dispute`, seul juge) et
+`contestationOuverte()` dans `client-screens.jsx`, qui masque le bouton pour ne pas envoyer
+l'utilisateur dans un mur. Sans date exploitable, aucun des deux ne bloque.
+
 ### Paiement
 
 Le client paie via Stripe. Le webhook `stripe-webhook.js` confirme le paiement et fait passer

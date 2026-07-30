@@ -1311,23 +1311,71 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id, message } = payload;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      // Cette validation manquait ici, seule action à en être dépourvue, alors que
+      // l'identifiant part directement dans une URL PostgREST.
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
       if (mission.status !== "completed") return res.status(400).json({ error: "La prestation doit être terminée pour signaler un litige" });
 
-      // Passer la mission en litige
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Délai de contestation de 48 h, imposé par les CGPS : « Au-delà de 48 heures
+      // sans signalement par le Client, la Prestation est réputée définitivement
+      // validée […] et aucune contestation ne pourra être acceptée. » Rien ne
+      // l'appliquait : une prestation terminée depuis des mois restait contestable,
+      // et la garantie donnée au prestataire n'en était pas une.
+      //
+      // Le point de départ est « la fin effective de la prestation », comme l'écrit
+      // le contrat : le pointage réel s'il existe, sinon l'horaire prévu.
+      const finPrestationMs = (() => {
+        const dureeMs = Math.max(1, Number(mission.hours) || 1) * 3600000;
+        if (mission.started_at) {
+          const debut = new Date(mission.started_at).getTime();
+          if (!isNaN(debut)) return debut + dureeMs;
+        }
+        if (!mission.date) return null;
+        const naive = new Date(`${mission.date}T${mission.heure_debut || "08:00"}:00`);
+        if (isNaN(naive.getTime())) return null;
+        return naive.getTime() + frenchOffsetMs(naive) + dureeMs;
+      })();
+      if (finPrestationMs) {
+        const depasseMs = Date.now() - (finPrestationMs + 48 * 3600000);
+        if (depasseMs > 0) {
+          const joursEcoules = Math.floor((Date.now() - finPrestationMs) / 86400000);
+          console.error(`[dispute] hors délai sur ${mission_id} : ${joursEcoules} jour(s) depuis la fin`);
+          return res.status(400).json({
+            error: "Le délai de contestation de 48 h après la fin de la prestation est écoulé. "
+                 + "Écrivez à direction@alane.fr si la situation le justifie.",
+          });
+        }
+      } else {
+        // Sans date exploitable, on ne bloque pas : refuser un litige légitime serait
+        // pire que d'en accepter un tardif. Journalisé pour que ce cas soit visible.
+        console.error(`[dispute] délai de 48 h non vérifiable sur ${mission_id} (date absente)`);
+      }
+
+      // Passer la prestation en litige. Le résultat était ignoré : un refus laissait
+      // la prestation en « completed » alors que le client lisait « Signalement
+      // envoyé » — le litige n'existait alors nulle part (règle 1.2). Le filtre sur
+      // le statut évite aussi deux signalements concurrents.
+      const patchLitige = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.completed`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ status: "disputed" }),
       });
+      const litigeRows = await patchLitige.json().catch(() => []);
+      if (!patchLitige.ok || !Array.isArray(litigeRows) || litigeRows.length === 0) {
+        console.error(`[dispute] passage en litige refusé pour ${mission_id} : ${patchLitige.status}`);
+        return res.status(409).json({ error: "Ce signalement n'a pas pu être enregistré — la prestation a peut-être changé d'état. Rechargez la page." });
+      }
 
-      // Créer un ticket de support
-      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+      // Ticket de support. Son échec était également ignoré : le backoffice liste les
+      // prestations en litige, le litige ne disparaissait donc pas complètement, mais
+      // le message du client — le seul élément qui explique le problème — était perdu.
+      const ticketRes = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({
@@ -1337,6 +1385,10 @@ export default async function handler(req, res) {
           status: "open",
         }),
       });
+      if (!ticketRes.ok) {
+        const txt = await ticketRes.text().catch(() => "");
+        console.error(`[dispute] ticket de support non créé pour ${mission_id} : ${ticketRes.status} ${txt}`);
+      }
 
       // Notification au prestataire
       if (mission.prestataire_id) {
