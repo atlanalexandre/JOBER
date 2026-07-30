@@ -5994,7 +5994,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               debutPrevu = new Date(yy, mm2 - 1, dd, hh, mi).getTime();
             } catch { return null; }
             const retard = Math.floor((Date.now() - debutPrevu) / 60000);
-            if (retard < 10) return null;   // tolérance avant d'inquiéter le client
+            if (retard < 15) return null;   // tolérance avant d'inquiéter le client
             return (
               <div style={{ background:"linear-gradient(135deg,rgba(242,94,94,0.12),rgba(242,94,94,0.05))", border:"1.5px solid rgba(242,94,94,0.45)", borderRadius:14, padding:"16px", marginTop:16 }}>
                 <div style={{ fontWeight:800, color:"#F25E5E", fontSize:14, marginBottom:6 }}>⏰ Votre prestataire n'a pas signalé son arrivée</div>

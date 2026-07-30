@@ -98,11 +98,12 @@ export default async function handler(req, res) {
       const [hh, mi] = String(m.heure_debut).split(":").map(Number);
       const debut = new Date(`${m.date}T${String(hh).padStart(2,"0")}:${String(mi).padStart(2,"0")}:00`).getTime();
       const retard = Math.floor((nowMs - debut) / 60000);
-      // Fenêtre de 10 à 40 min de retard. Ce cron passant toutes les 30 min,
-      // une prestation en retard tombe dans cette fenêtre une seule fois : pas
-      // besoin d'une colonne dédiée pour éviter les relances répétées, et donc
-      // pas de migration de schéma.
-      if (retard < 10 || retard >= 40) continue;
+      // Fenêtre de 15 à 45 min de retard, large de 30 min comme la période du
+      // cron : une prestation en retard y tombe une seule fois, ce qui évite les
+      // relances répétées sans colonne dédiée ni migration de schéma.
+      // 15 min est le seuil retenu avec Alexandre : en dessous, on alerte pour un
+      // simple aléa de circulation.
+      if (retard < 15 || retard >= 45) continue;
 
       const label = m.metier || m.sector || "Prestation";
       try {
