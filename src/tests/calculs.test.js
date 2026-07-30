@@ -151,3 +151,37 @@ describe("Btn — fusion des styles", () => {
     expect(fusion(VARIANTE, undefined)).toEqual(VARIANTE);
   });
 });
+
+// ── Frais retenus en cas d'annulation client < 24h ────────────────
+// L'écran de réservation annonce « frais de service retenus uniquement ». Ces
+// frais varient (plans.js FRAIS_MER : 4,90 simple · 2,90/jour récurrent · 9,90
+// urgence) alors qu'un forfait de 4,90 € était retenu : un client en récurrent
+// perdait 4,90 € pour 2,90 € payés, et une urgence ne laissait que 4,90 € sur
+// 9,90 € encaissés. Reproduit le calcul de api/missions.js (cancel_client).
+describe("annulation < 24h — frais réellement retenus", () => {
+  const fraisRetenus = ({ tarif, hours, jours, total }) => {
+    const partHoraire = tarif * hours * jours;
+    const deduits = Math.round((total - partHoraire) * 100) / 100;
+    const max = Math.max(9.90, 2.90 * jours) + 0.01;
+    return (deduits > 0 && deduits <= max && deduits < total) ? deduits : Math.min(4.90, total);
+  };
+
+  it("prestation simple : retient les 4,90 € payés", () => {
+    expect(fraisRetenus({ tarif:15, hours:1, jours:1, total:19.90 })).toBeCloseTo(4.90);
+  });
+  it("urgence : retient les 9,90 € payés, pas 4,90", () => {
+    expect(fraisRetenus({ tarif:15, hours:1, jours:1, total:24.90 })).toBeCloseTo(9.90);
+  });
+  it("récurrent 1 jour : retient 2,90 € et non 4,90 — le client n'est plus surfacturé", () => {
+    expect(fraisRetenus({ tarif:15, hours:1, jours:1, total:17.90 })).toBeCloseTo(2.90);
+  });
+  it("récurrent 5 jours : retient les 14,50 € payés", () => {
+    expect(fraisRetenus({ tarif:15, hours:2, jours:5, total:164.50 })).toBeCloseTo(14.50);
+  });
+  it("données incomplètes : repli sur le forfait", () => {
+    expect(fraisRetenus({ tarif:0, hours:0, jours:1, total:19.90 })).toBeCloseTo(4.90);
+  });
+  it("ne retient jamais plus que le montant payé", () => {
+    expect(fraisRetenus({ tarif:0, hours:0, jours:1, total:2 })).toBeLessThanOrEqual(2);
+  });
+});
