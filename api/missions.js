@@ -3339,42 +3339,85 @@ export default async function handler(req, res) {
             url: "/",
           }, SUPABASE_URL, headers).catch(() => {})));
 
-          // SMS : réservé aux prestations à moins de 24 h ET aux prestataires qui
-          // correspondent réellement — même métier et disponibles ce jour-là. Un
-          // SMS est facturé et intrusif : l'envoyer à quelqu'un qui ne peut pas
-          // prendre la prestation coûte de l'argent, agace, et finit par faire
-          // ignorer les suivants. Notification et push restent, eux, larges.
+          // Prestataires réellement en mesure de prendre la prestation : même
+          // métier, et disponibles ce jour-là. Ce filtre commande les deux canaux
+          // sortants (email et SMS). Notification et push restent larges, au
+          // niveau du secteur : ils ne coûtent rien et n'encombrent pas de boîte.
+          const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+          const jourPrestation = mission.date
+            ? JOURS_FR[new Date(`${mission.date}T12:00:00`).getDay()]
+            : null;
+
+          const eligibles = cibles.filter(c => {
+            const meta = metaMap[c.id]?.user_metadata || {};
+            // Métier : le principal ou l'un de ceux déclarés dans metiers_list
+            const metiersPresta = [
+              meta.metier,
+              ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier) : []),
+            ].filter(Boolean);
+            if (mission.metier && !metiersPresta.includes(mission.metier)) return false;
+            // Disponibilité déclarée pour ce jour de la semaine, exigée
+            // explicitement : sans elle, on ne sollicite personne à l'extérieur.
+            if (jourPrestation) {
+              const jours = Array.isArray(meta.dispon_jours) ? meta.dispon_jours : [];
+              if (!jours.includes(jourPrestation)) return false;
+            }
+            return true;
+          });
+
+          // EMAIL — toujours, pour les prestataires éligibles. C'est le canal de
+          // référence hors urgence : il ne coûte rien et laisse une trace
+          // consultable. Restreint aux éligibles, car un email hors sujet dégrade
+          // la réputation du domaine d'envoi et fait basculer les suivants en spam.
+          const RESEND_KEY_R = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+          const RESEND_FROM_R = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+          const APP_URL_R = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+          if (RESEND_KEY_R) {
+            const avecEmail = eligibles.filter(c => metaMap[c.id]?.email);
+            const htmlMail = `<div style="font-family:sans-serif;max-width:520px;margin:auto;background:#0A1628;color:#fff;padding:28px;border-radius:16px">
+              <h2 style="color:#7C6FE0;margin:0 0 14px;font-size:19px">${urgent ? "Prestation urgente à reprendre" : "Prestation à reprendre"}</h2>
+              <p style="color:rgba(255,255,255,0.85);line-height:1.7;margin:0 0 18px">Le prestataire prévu s'est désisté. Cette prestation correspond à votre métier et à vos disponibilités :</p>
+              <table style="width:100%;color:rgba(255,255,255,0.85);font-size:14px;border-collapse:collapse">
+                <tr><td style="padding:5px 0;color:rgba(255,255,255,0.5)">Prestation</td><td style="font-weight:700">${esc(libelle)}</td></tr>
+                ${mission.ville ? `<tr><td style="padding:5px 0;color:rgba(255,255,255,0.5)">Lieu</td><td style="font-weight:700">${esc(mission.ville)}</td></tr>` : ""}
+                ${quand ? `<tr><td style="padding:5px 0;color:rgba(255,255,255,0.5)">Date</td><td style="font-weight:700">${esc(quand)}</td></tr>` : ""}
+                ${mission.hours ? `<tr><td style="padding:5px 0;color:rgba(255,255,255,0.5)">Durée</td><td style="font-weight:700">${esc(String(mission.hours))} h</td></tr>` : ""}
+              </table>
+              <div style="text-align:center;margin:26px 0 8px">
+                <a href="${APP_URL_R}" style="display:inline-block;background:#7C6FE0;color:#fff;font-weight:700;padding:13px 30px;border-radius:10px;text-decoration:none">Voir la prestation →</a>
+              </div>
+              <p style="color:rgba(255,255,255,0.4);font-size:12px;text-align:center;margin:16px 0 0">Premier positionné, premier servi.</p>
+            </div>`;
+            const texteMail = `${urgent ? "Prestation urgente a reprendre" : "Prestation a reprendre"}\n\n`
+              + `Le prestataire prevu s'est desiste. Cette prestation correspond a votre metier et a vos disponibilites.\n\n`
+              + `Prestation : ${libelle}\n${mission.ville ? "Lieu : " + mission.ville + "\n" : ""}${quand ? "Date : " + quand + "\n" : ""}${mission.hours ? "Duree : " + mission.hours + " h\n" : ""}`
+              + `\nVoir la prestation : ${APP_URL_R}\n\nPremier positionne, premier servi.\nL'equipe ALANE`;
+            await Promise.all(avecEmail.map(c => fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_KEY_R}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: RESEND_FROM_R,
+                to: [metaMap[c.id].email],
+                subject: urgent
+                  ? `Prestation urgente à reprendre — ${libelle}${mission.ville ? " · " + mission.ville : ""}`
+                  : `Prestation à reprendre — ${libelle}${mission.ville ? " · " + mission.ville : ""}`,
+                html: htmlMail,
+                text: texteMail,
+              }),
+            }).catch(e => console.error("[presta_cancel] email remplaçant :", e.message))));
+            console.log(`[presta_cancel] email remplaçant : ${avecEmail.length} envoyé(s)`);
+          }
+
+          // SMS — uniquement à moins de 24 h de la prestation, et aux mêmes
+          // éligibles. Le SMS est facturé et intrusif : hors urgence, l'email et
+          // le push suffisent.
           if (urgent) {
             const BREVO = (process.env.BREVO_API_KEY || "").replace(/\s/g, "");
             if (BREVO) {
-              const JOURS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
-              const jourPrestation = mission.date
-                ? JOURS_FR[new Date(`${mission.date}T12:00:00`).getDay()]
-                : null;
-
-              const eligiblesSms = cibles.filter(c => {
-                const meta = metaMap[c.id]?.user_metadata || {};
-
-                // Métier : le principal ou l'un de ceux déclarés dans metiers_list
-                const metiersPresta = [
-                  meta.metier,
-                  ...(Array.isArray(meta.metiers_list) ? meta.metiers_list.map(x => x?.metier) : []),
-                ].filter(Boolean);
-                if (mission.metier && !metiersPresta.includes(mission.metier)) return false;
-
-                // Disponibilité déclarée pour ce jour de la semaine. Exigée
-                // explicitement : sans elle, on ne facture pas un SMS au hasard.
-                if (jourPrestation) {
-                  const jours = Array.isArray(meta.dispon_jours) ? meta.dispon_jours : [];
-                  if (!jours.includes(jourPrestation)) return false;
-                }
-
-                return !!meta.telephone;
-              });
-
-              if (eligiblesSms.length) {
+              const avecTel = eligibles.filter(c => metaMap[c.id]?.user_metadata?.telephone);
+              if (avecTel.length) {
                 const texte = smsClean(`ALANE - Prestation a reprendre : ${libelle}${mission.ville ? " a " + mission.ville : ""}${quand ? " le " + quand : ""}. Le prestataire prevu s'est desiste. Connectez-vous pour la reprendre. alane.fr`);
-                await Promise.all(eligiblesSms.map(c => fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+                await Promise.all(avecTel.map(c => fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                   method: "POST",
                   headers: { "api-key": BREVO, "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -3384,7 +3427,7 @@ export default async function handler(req, res) {
                   }),
                 }).catch(() => {})));
               }
-              console.log(`[presta_cancel] SMS remplaçant : ${eligiblesSms.length} éligible(s) sur ${cibles.length} notifié(s)`);
+              console.log(`[presta_cancel] SMS remplaçant : ${avecTel.length} envoyé(s) sur ${eligibles.length} éligible(s), ${cibles.length} notifié(s)`);
             }
           }
         }
