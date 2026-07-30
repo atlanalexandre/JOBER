@@ -455,11 +455,20 @@ export default async function handler(req, res) {
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
       };
-      // Remettre en open uniquement si encore en pending_acceptance (pas déjà paid/cancelled)
+      // Un paiement refusé remettait la prestation en « open ». Or « open » alimente
+      // la place de marché : la réservation d'un client dont la carte vient d'être
+      // refusée était donc diffusée à tous les prestataires du secteur, alors qu'il
+      // avait choisi quelqu'un de précis et n'avait rien payé. C'est précisément ce
+      // que le tunnel évite en créant la prestation en « pending_acceptance ».
+      //
+      // La prestation reste donc en attente : le client peut relancer son paiement
+      // depuis le même écran. Si rien n'aboutit, cron-abandon l'annule au bout de
+      // deux heures — il vise exactement ces lignes (pending_acceptance, sans
+      // prestataire ni paiement).
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&status=eq.pending_acceptance`, {
         method: "PATCH", headers,
-        body: JSON.stringify({ status: "open", prestataire_id: null, stripe_payment_intent: null }),
-      }).catch(e => console.error("[payment_failed] mission reopen failed:", e.message));
+        body: JSON.stringify({ prestataire_id: null, stripe_payment_intent: null }),
+      }).catch(e => console.error("[payment_failed] nettoyage de la prestation échoué :", e.message));
 
       // Notifier le client
       try {
@@ -527,6 +536,59 @@ export default async function handler(req, res) {
     const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
     const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
     const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
+
+    // Un rejet de paiement bancaire ne laissait de trace nulle part si l'email
+    // d'alerte ne partait pas : ni ticket, ni prestation marquée, un simple
+    // console.warn. C'est pourtant le seul événement où de l'argent déjà encaissé
+    // repart, et où le prestataire risque d'être payé pour une prestation dont le
+    // règlement a été repris par la banque du client.
+    //
+    // La prestation concernée est retrouvée par l'identifiant du paiement, et un
+    // ticket de support est ouvert : le backoffice devient la trace de secours
+    // quand l'email échoue ou n'est pas configuré.
+    let missionLitige = null;
+    if (dispute.payment_intent && SUPABASE_URL && SERVICE_ROLE_KEY) {
+      try {
+        const hdrsD = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
+        const mRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?stripe_payment_intent=eq.${dispute.payment_intent}&select=id,client_id,prestataire_id,metier,sector,date,montant_total,status&limit=1`,
+          { headers: hdrsD }
+        );
+        missionLitige = (await mRes.json().catch(() => []))[0] || null;
+
+        if (missionLitige?.client_id) {
+          const ticket = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+            method: "POST",
+            headers: { ...hdrsD, "Prefer": "return=minimal" },
+            body: JSON.stringify({
+              subject: `Rejet bancaire — ${amount} — prestation ${missionLitige.id}`,
+              message: `Contestation Stripe reçue (motif : ${reason}).\n`
+                + `Prestation : ${missionLitige.metier || missionLitige.sector || "?"} du ${missionLitige.date || "?"}, `
+                + `statut ${missionLitige.status}, montant ${missionLitige.montant_total ?? "?"} €.\n`
+                + `Prestataire : ${missionLitige.prestataire_id || "aucun"}.\n`
+                + `Répondre depuis le tableau de bord Stripe dans les délais impartis.`,
+              user_id: missionLitige.client_id,
+              status: "open",
+            }),
+          });
+          if (!ticket.ok) {
+            const txt = await ticket.text().catch(() => "");
+            console.error(`[dispute] ticket non créé pour ${dispute.id} : ${ticket.status} ${txt}`);
+          }
+        }
+      } catch (e) {
+        console.error("[dispute] rattachement à la prestation impossible :", e.message);
+      }
+    }
+
+    if (!ADMIN_EMAIL) {
+      console.error(`[dispute] ADMIN_EMAIL non configurée — aucune alerte envoyée pour le rejet ${dispute.id} `
+        + `(${amount}, motif ${reason}, prestation ${missionLitige?.id || "non identifiée"}).`);
+    }
+    if (!RESEND_API_KEY) {
+      console.error(`[dispute] RESEND_API_KEY absente — aucune alerte envoyée pour le rejet ${dispute.id}.`);
+    }
+
     if (RESEND_API_KEY && ADMIN_EMAIL) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -543,6 +605,8 @@ export default async function handler(req, res) {
               <tr><td style="padding:6px 0;color:#666">Charge ID</td><td style="font-size:12px">${chargeId || "—"}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Raison</td><td style="font-weight:700">${reason}</td></tr>
               <tr><td style="padding:6px 0;color:#666">Statut</td><td>${dispute.status || "—"}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-size:12px">${missionLitige ? `${missionLitige.id} — ${missionLitige.metier || missionLitige.sector || ""} du ${missionLitige.date || "?"} (${missionLitige.status})` : "non identifiée"}</td></tr>
+              <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-size:12px">${missionLitige?.prestataire_id || "—"}</td></tr>
             </table>
             <p style="margin-top:16px"><a href="https://dashboard.stripe.com/disputes/${dispute.id}" style="color:#7C6FE0;font-weight:700">Gérer dans Stripe Dashboard →</a></p>
           </div>`,
