@@ -404,6 +404,12 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**Les frais de service sont dus sur toute annulation à l'initiative du client**, quel que
+soit le délai — CGPS art. 8.1, « en principe retenus et non remboursables car ils couvrent des
+coûts déjà engagés ». Le serveur les remboursait pourtant au-delà de 24 h, alors que l'écran
+de confirmation annonçait déjà « hors frais de service ». Unique exception, CGPS art. 8.2 :
+la défaillance du prestataire, où le remboursement est intégral.
+
 **Retard du prestataire : le client peut annuler sans aucun frais.** Le seuil est
 proportionnel à la durée — `min(60 min, max(20 min, 25 % de la durée))`, soit 20 min pour une
 prestation d'une heure, 30 min pour deux heures, 60 min au-delà de quatre. Un retard se juge
