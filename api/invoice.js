@@ -142,36 +142,88 @@ export default async function handler(req, res) {
     }
   }
 
-  // Numérotation séquentielle via platform_settings (optimistic lock, 3 tentatives)
-  let invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
-  try {
-    const hdrsDB = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const seqRes = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&select=value`, { headers: hdrsDB });
-      const seqData = await seqRes.json();
-      const currentVal = Array.isArray(seqData) && seqData[0] ? Number(seqData[0].value) : 0;
-      const nextVal = currentVal + 1;
-      const patchRes = await fetch(
-        `${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&value=eq.${currentVal}`,
-        { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ value: nextVal, updated_at: new Date().toISOString() }) }
-      );
-      const patched = await patchRes.json().catch(() => []);
-      if (Array.isArray(patched) && patched.length > 0) {
-        const year = new Date().getFullYear();
-        invoiceNum = `FAC-${year}-${String(nextVal).padStart(6, "0")}`;
-        break;
+  // Numérotation séquentielle.
+  //
+  // Un nouveau numéro était tiré à CHAQUE affichage de la facture : la même
+  // prestation en changeait à chaque ouverture, et le compteur grimpait à chaque
+  // consultation. Or l'article 242 nonies A de l'annexe II au CGI impose une
+  // numérotation continue, sans rupture, et un numéro qui identifie durablement la
+  // facture. Le numéro est donc attribué une seule fois puis conservé sur la
+  // prestation ; les affichages suivants le relisent.
+  const hdrsDB = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+  let invoiceNum = mission.invoice_number || null;
+
+  if (!invoiceNum) {
+    let numeroTire = null;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const seqRes = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&select=value`, { headers: hdrsDB });
+        const seqData = await seqRes.json();
+        const currentVal = Array.isArray(seqData) && seqData[0] ? Number(seqData[0].value) : 0;
+        const nextVal = currentVal + 1;
+        const patchRes = await fetch(
+          `${supabaseUrl}/rest/v1/platform_settings?key=eq.invoice_sequence&value=eq.${currentVal}`,
+          { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ value: nextVal, updated_at: new Date().toISOString() }) }
+        );
+        const patched = await patchRes.json().catch(() => []);
+        if (Array.isArray(patched) && patched.length > 0) {
+          numeroTire = `FAC-${new Date().getFullYear()}-${String(nextVal).padStart(6, "0")}`;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
       }
-      await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+    } catch (seqErr) {
+      console.error("[invoice] compteur illisible :", seqErr.message);
     }
-  } catch (seqErr) {
-    console.error("[invoice] sequence fetch error, fallback to uuid-based:", seqErr.message);
+
+    if (numeroTire) {
+      // Le filtre sur invoice_number garantit qu'un seul affichage simultané fixe le
+      // numéro. Le perdant relit celui du gagnant plutôt que d'afficher le sien.
+      try {
+        const fixRes = await fetch(
+          `${supabaseUrl}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}&invoice_number=is.null`,
+          { method: "PATCH", headers: hdrsDB, body: JSON.stringify({ invoice_number: numeroTire }) }
+        );
+        const fixes = await fixRes.json().catch(() => []);
+        if (Array.isArray(fixes) && fixes.length > 0) {
+          invoiceNum = numeroTire;
+        } else if (fixRes.ok) {
+          const relu = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}&select=invoice_number`, { headers: hdrsDB });
+          invoiceNum = ((await relu.json().catch(() => []))[0] || {}).invoice_number || numeroTire;
+        } else {
+          // Colonne absente : migration 2026-07-30_facture_numero_stable non appliquée.
+          const txt = await fixRes.text().catch(() => "");
+          console.error("[invoice] numéro NON conservé — la facture changera de numéro à chaque affichage. "
+            + `Appliquer la migration 2026-07-30_facture_numero_stable.sql. Détail : ${fixRes.status} ${txt}`);
+          invoiceNum = numeroTire;
+        }
+      } catch (e) {
+        console.error("[invoice] conservation du numéro impossible :", e.message);
+        invoiceNum = numeroTire;
+      }
+    }
   }
+
+  if (!invoiceNum) invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
   const today = new Date();
   const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
   const hours = Number(mission.actual_hours ?? mission.hours ?? 0);
   const tarifHoraire = Number(mission.tarif_horaire || 0);
-  const htCalc = Math.round(hours * tarifHoraire * 100) / 100;
+  // Le nombre de jours était omis : une prestation récurrente de 5 jours était
+  // facturée une seule journée, comme elle n'était payée qu'une journée au
+  // prestataire. La facture doit refléter ce qui est réellement dû.
+  const nbJours = (mission.date_debut && mission.date_fin)
+    ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
+    : 1;
+  const htCalc = Math.round(hours * tarifHoraire * nbJours * 100) / 100;
+  // Repli sur montant_total seulement s'il n'y a rien à calculer. Il inclut les frais
+  // de service d'ALANE, qui ne relèvent pas de la facture du prestataire : c'est un
+  // pis-aller, signalé pour qu'il ne passe pas inaperçu.
+  if (htCalc <= 0) {
+    console.error(`[invoice] tarif ou durée absents sur la prestation ${mission_id} — `
+      + `repli sur montant_total, qui inclut les frais de service.`);
+  }
   const ht = htCalc > 0 ? htCalc : Number(mission.montant_total || 0);
   const htFormatted = ht.toFixed(2).replace(".", ",");
 
@@ -198,6 +250,7 @@ export default async function handler(req, res) {
 
   const lineItem = htCalc > 0
     ? `${metier} — ${hours}h × ${tarifHoraire.toFixed(2).replace(".", ",")} €/h`
+      + (nbJours > 1 ? ` × ${nbJours} jours` : "")
     : metier;
 
   // Build HTML

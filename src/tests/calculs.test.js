@@ -152,6 +152,25 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Montant facturé ───────────────────────────────────────────────
+// La facture omettait elle aussi le nombre de jours : une prestation récurrente de
+// 5 jours était facturée une seule journée. Elle doit porter le même montant que
+// celui versé au prestataire — c'est sa facture au client.
+describe("facture — montant HT", () => {
+  const htFacture = ({ tarif, heures, jours = 1 }) => Math.round(tarif * heures * jours * 100) / 100;
+
+  it("prestation simple : 8h × 14 €", () => {
+    expect(htFacture({ tarif:14, heures:8 })).toBe(112);
+  });
+  it("récurrent 5 jours : les 5 journées sont facturées", () => {
+    expect(htFacture({ tarif:14, heures:8, jours:5 })).toBe(560);
+  });
+  it("le HT facturé égale la part versée au prestataire", () => {
+    const part = Math.round(14 * 8 * 3 * 100) / 100;
+    expect(htFacture({ tarif:14, heures:8, jours:3 })).toBe(part);
+  });
+});
+
 // ── Versement au prestataire ──────────────────────────────────────
 // Deux chemins de virement calculaient deux montants différents, tous deux faux :
 // /api/missions oubliait le nombre de jours (un récurrent de 5 jours ne versait
