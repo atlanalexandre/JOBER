@@ -985,6 +985,11 @@ export default function App() {
   // Passe à true dès que Supabase a tranché sur la session (event INITIAL_SESSION).
   // Les gardes d'accès attendent ce signal, sinon un utilisateur connecté qui ouvre
   // /dashboard serait renvoyé vers la connexion avant que sa session soit résolue.
+  // Écran d'origine avant une réservation. J'avais conclu à tort en #566 que ce
+  // mécanisme était mort : le parcours de diffusion (mission_broadcast) lui donne
+  // bien une autre valeur, et le retirer laissait un appel vers une fonction
+  // inexistante — donc un plantage au clic.
+  const [bookingSource,setBookingSource]=useState("profile");
   const [authReady,setAuthReady]=useState(false);
   // Raison de la dernière déconnexion involontaire, affichée sur l'écran de choix.
   const [authNotice,setAuthNotice]=useState(null);
@@ -1700,7 +1705,7 @@ export default function App() {
         } catch(e) {
           setBookingError(e?.message || "Impossible de préparer le paiement — réessayez.");
         }
-      }} onBack={()=>setScreen("profile")} />}
+      }} onBack={()=>setScreen(bookingSource)} />}
       {screen==="stripe_pay"        && <StripePaymentScreen amount={paymentAmount} provider={selectedProvider} description={paymentDescription} missionId={selectedMissionId||null} onSuccess={async(intentId)=>{
         setBookingError(null);
         setPendingProvider(selectedProvider);

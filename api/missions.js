@@ -237,7 +237,7 @@ async function handleEmailAction(req, res) {
 
   const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}&prestataire_id=eq.${prestaId}&status=eq.pending_acceptance&select=id,client_id,metier,titre,acceptance_deadline,date,heure_debut,hours`, { headers: hdrs });
   const mission = (await mr.json().catch(() => []))[0];
-  if (!prestation) return res.status(409).send(emailActionHtml("Déjà traité", "Cette prestation a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
+  if (!mission) return res.status(409).send(emailActionHtml("Déjà traité", "Cette prestation a déjà été acceptée, refusée ou annulée.", "#A29BFE", "ℹ️"));
 
   // Vérification serveur du délai d'acceptation
   if (mission.acceptance_deadline && mission.acceptance_deadline < new Date().toISOString()) {
@@ -269,12 +269,12 @@ async function handleEmailAction(req, res) {
   if (mission.client_id) {
     const isAccepted = action === "accept";
     await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, read: false, ref_id: missionId }) }).catch(() => {});
-    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${prestationLabel}".` : `Le prestataire a décliné "${prestationLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(() => {});
+    sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(() => {});
   }
 
   return res.status(200).send(emailActionHtml(
     action === "accept" ? "Prestation acceptée !" : "Prestation refusée",
-    action === "accept" ? `Vous avez accepté la prestation <strong style="color:#fff">${esc(prestationLabel)}</strong>. Le client a été notifié.` : `Vous avez décliné la prestation <strong style="color:#fff">${esc(missionLabel)}</strong>.`,
+    action === "accept" ? `Vous avez accepté la prestation <strong style="color:#fff">${esc(missionLabel)}</strong>. Le client a été notifié.` : `Vous avez décliné la prestation <strong style="color:#fff">${esc(missionLabel)}</strong>.`,
     action === "accept" ? "#10D98F" : "#A29BFE",
     action === "accept" ? "✅" : "👋"
   ));
@@ -1767,8 +1767,8 @@ export default async function handler(req, res) {
                       <p>Une nouvelle prestation correspond à votre profil :</p>
                       <div style="background:#f5f5f5;border-left:4px solid #4F46E5;padding:12px 16px;margin:16px 0;border-radius:4px">
                         <strong>${esc(missionLabel)}</strong><br/>
-                        📅 ${esc(prestation?.date || "Date à confirmer")}<br/>
-                        📍 ${esc(prestation?.ville || "Ville à confirmer")}<br/>
+                        📅 ${esc(mission?.date || "Date à confirmer")}<br/>
+                        📍 ${esc(mission?.ville || "Ville à confirmer")}<br/>
                         ⏱ ${esc(String(mission?.hours || "?"))}h
                       </div>
                       <p>Connectez-vous à ALANE pour vous positionner.</p>
@@ -1786,7 +1786,7 @@ export default async function handler(req, res) {
                 const digits = phone.replace(/\D/g, "");
                 const e164 = digits.startsWith("0") ? "33" + digits.slice(1) : digits.startsWith("33") ? digits : null;
                 if (e164) {
-                  const smsText = smsClean(`ALANE - Nouvelle prestation : ${prestation?.metier || sector || "Prestation"} le ${prestation?.date || "?"} a ${prestation?.ville || "?"} (${prestation?.hours || "?"}h). Connectez-vous pour vous positionner. — alane.fr`);
+                  const smsText = smsClean(`ALANE - Nouvelle prestation : ${mission?.metier || sector || "Prestation"} le ${mission?.date || "?"} a ${mission?.ville || "?"} (${mission?.hours || "?"}h). Connectez-vous pour vous positionner. — alane.fr`);
                   console.log("[broadcast] sending SMS");
                   await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
                     method: "POST",
@@ -2282,7 +2282,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation annulée ❌",
-            body: `La prestation "${prestationLabel}" a été annulée par le client.`,
+            body: `La prestation "${missionLabel}" a été annulée par le client.`,
             read: false,
           }),
         }).catch(() => {});
@@ -2301,7 +2301,7 @@ export default async function handler(req, res) {
                 body: JSON.stringify({
                   sender: "ALANE",
                   recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-                  content: `ANNULATION : La prestation "${prestationLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
+                  content: `ANNULATION : La prestation "${missionLabel}" a été annulée par le client. Ne vous déplacez pas. Connectez-vous à l'app pour plus d'infos.`,
                 }),
               }).catch(() => {});
             }
@@ -2451,7 +2451,7 @@ export default async function handler(req, res) {
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
               <h2 style="color:#050E20">Prestation interrompue par le client</h2>
               <p style="color:#444">Bonjour ${esc(prestaName)},</p>
-              <p style="color:#444">Le client a mis fin à la prestation <strong>${esc(prestationLabel)}</strong> avant son terme prévu.</p>
+              <p style="color:#444">Le client a mis fin à la prestation <strong>${esc(missionLabel)}</strong> avant son terme prévu.</p>
               <div style="background:#fff;border-radius:10px;padding:16px;margin:20px 0;border-left:4px solid #7C6FE0">
                 <table style="width:100%;font-size:14px;color:#333">
                   <tr><td style="padding:5px 0;color:#666">Durée prévue</td><td style="font-weight:700">${totalHours}h</td></tr>
@@ -2477,7 +2477,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             sender: "ALANE",
             recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-            content: `Prestation "${prestationLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
+            content: `Prestation "${missionLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
           }),
         }).catch(() => {});
       }
@@ -2491,7 +2491,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation interrompue — paiement prorata 💶",
-            body: `La prestation "${prestationLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT). L'équipe ALANE vous contacte sous 24h.`,
+            body: `La prestation "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT). L'équipe ALANE vous contacte sous 24h.`,
             read: false,
           }),
         }).catch(() => {});
@@ -2520,7 +2520,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               from: RESEND_FROM,
               to: ADMIN_EMAIL,
-              subject: `[ACTION REQUISE] Arrêt en cours — ${prestationLabel} — ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
+              subject: `[ACTION REQUISE] Arrêt en cours — ${missionLabel} — ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
               html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
                 <h2 style="color:#050E20">⚠️ Prestation interrompue en cours d'exécution</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -2817,8 +2817,8 @@ export default async function handler(req, res) {
                 <h2 style="color:${isAccepted?"#10D98F":"#F25E5E"};margin:0 0 12px">${isAccepted?"Prestation acceptée ✅":"Prestation refusée ❌"}</h2>
                 <p>Bonjour ${esc(clientName)},</p>
                 ${isAccepted
-                  ? `<p><strong>${esc(resolvedPrestaName)}</strong> a accepté votre demande de prestation <strong>${esc(prestationLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
-                  : `<p><strong>${esc(resolvedPrestaName)}</strong> a décliné votre prestation <strong>${esc(prestationLabel)}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
+                  ? `<p><strong>${esc(resolvedPrestaName)}</strong> a accepté votre demande de prestation <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour suivre la prestation.</p>`
+                  : `<p><strong>${esc(resolvedPrestaName)}</strong> a décliné votre prestation <strong>${esc(missionLabel)}</strong>.</p><p>Connectez-vous à ALANE pour choisir un autre prestataire.</p>`
                 }
                 <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
@@ -2838,8 +2838,8 @@ export default async function handler(req, res) {
                 sender: "ALANE",
                 recipient: e164,
                 content: smsClean(isAccepted
-                  ? `ALANE - ${resolvedPrestaName} a accepté votre prestation ${prestationLabel}. Connectez-vous pour suivre. — alane.fr`
-                  : `ALANE - ${resolvedPrestaName} a refusé votre prestation ${prestationLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
+                  ? `ALANE - ${resolvedPrestaName} a accepté votre prestation ${missionLabel}. Connectez-vous pour suivre. — alane.fr`
+                  : `ALANE - ${resolvedPrestaName} a refusé votre prestation ${missionLabel}. Connectez-vous pour choisir un autre prestataire. — alane.fr`),
               }),
             }).catch(() => {});
           }

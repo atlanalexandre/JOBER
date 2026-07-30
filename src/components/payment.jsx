@@ -508,7 +508,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 
   const handlePayFromWallet = async () => {
     if (walletProcessing) return;
-    if (!prestationId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
+    if (!missionId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
     setWalletProcessing(true);
     setStripeError(null);
     try {
@@ -547,7 +547,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     setProcessing(true);
     try {
       const { data: { session: piSession } } = await supabase.auth.getSession();
-      if (!prestationId) throw new Error("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement.");
+      if (!missionId) throw new Error("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement.");
       const r = await fetch("/api/stripe-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
