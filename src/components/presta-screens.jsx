@@ -2197,22 +2197,35 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               : 0;
             // Pour les missions en cours, toujours utiliser hours (actual_hours est réservé aux missions terminées)
             const effectiveHours = m.hours ?? 1;
-            const missionEnd = startedAtMap[m.id]
-              ? new Date(startedAtMap[m.id]).getTime() + (Number(effectiveHours) * 3600000)
-              : m.date
-                ? (m.heure_debut
-                    ? new Date(`${m.date}T${m.heure_debut}`).getTime() + (Number(effectiveHours) * 3600000)
-                    : new Date(m.date + 'T23:59:00').getTime())
-                : 0;
             void renderTick; // forces re-render every 30s via state change
             const renderNow = Date.now();
-            const isStarted = missionStart > 0 && missionStart < renderNow;
-            const isPast = missionEnd > 0 && missionEnd < renderNow;
-            const badgeColor = isPast ? C.accentGold : isStarted ? C.success : C.violet;
-            const badgeLabel = isPast ? "À valider" : isStarted ? "En cours" : "À venir";
-            const borderColor = isPast ? C.accentGold+"88" : isStarted ? C.success+"44" : C.violet+"44";
+
+            // Une prestation ne démarre et ne se termine que sur pointage RÉEL du
+            // prestataire. Le code se rabattait auparavant sur l'horaire prévu :
+            // sans aucune action de sa part, la prestation passait « en cours »
+            // puis « terminée — pensez à valider », et le bouton de pointage
+            // disparaissait. Le client voyait donc une prestation exécutée que
+            // personne n'avait déclaré avoir commencée.
+            const debutReel = startedAtMap[m.id] ? new Date(startedAtMap[m.id]).getTime() : 0;
+            const finReelle = debutReel ? debutReel + (Number(effectiveHours) * 3600000) : 0;
+            const finPrevue = missionStart > 0 ? missionStart + (Number(effectiveHours) * 3600000) : 0;
+
+            const isStarted = debutReel > 0 && debutReel < renderNow;
+            const isPast    = finReelle > 0 && finReelle < renderNow;
+            // Horaire prévu dépassé sans que rien n'ait été pointé.
+            const pointageManquant = !debutReel && finPrevue > 0 && finPrevue < renderNow;
+
+            const badgeColor = isPast ? C.accentGold : pointageManquant ? C.danger : isStarted ? C.success : C.violet;
+            const badgeLabel = isPast ? "À valider" : pointageManquant ? "Pointage manquant" : isStarted ? "En cours" : "À venir";
+            const borderColor = isPast ? C.accentGold+"88" : pointageManquant ? C.danger+"66" : isStarted ? C.success+"44" : C.violet+"44";
             return (
               <div key={m.id} style={{ background:"#0D1B3E", borderRadius:16, padding:"15px", marginBottom:12, border:`2px solid ${borderColor}` }}>
+                {pointageManquant && (
+                  <div style={{ background:`${C.danger}15`, border:`1px solid ${C.danger}55`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:16 }}>⚠️</span>
+                    <span style={{ color:C.danger, fontSize:12, fontWeight:700 }}>Horaire dépassé — signalez votre arrivée pour démarrer la prestation</span>
+                  </div>
+                )}
                 {isPast && (
                   <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:10, padding:"8px 12px", marginBottom:10, display:"flex", gap:8, alignItems:"center" }}>
                     <span style={{ fontSize:16 }}>⚠️</span>

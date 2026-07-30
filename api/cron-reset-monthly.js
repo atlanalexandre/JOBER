@@ -482,14 +482,27 @@ ${(() => {
       let endNotifSent = 0;
       try {
         const enRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&end_notif_sent=not.is.true&select=id,client_id,prestataire_id,metier,sector,date,heure_debut,hours,ville,started_at`,
           { headers }
         );
         const enMissions = await enRes.json().catch(() => []);
         if (Array.isArray(enMissions)) {
           const nowMs = Date.now();
           const ended = enMissions.filter(m => {
-            if (!m.date) return false;
+            // Une prestation n'est terminée que si le prestataire l'a réellement
+            // démarrée. Sans started_at, le calcul se faisait sur l'horaire prévu :
+            // le client recevait « prestation terminée, validez » alors que
+            // personne n'avait déclaré s'être présenté.
+            if (m.started_at) {
+              return nowMs >= new Date(m.started_at).getTime() + Number(m.hours || 1) * 3600000;
+            }
+            return false;
+          });
+
+          // Prestations dont l'horaire est dépassé sans aucun pointage : on alerte
+          // le prestataire, et surtout on ne dit pas au client qu'elle est terminée.
+          const sansPointage = enMissions.filter(m => {
+            if (m.started_at || !m.date) return false;
             const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
             const naive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
             const y = naive.getUTCFullYear();
@@ -528,6 +541,32 @@ ${(() => {
                 body: JSON.stringify({ end_notif_sent: true }),
               }).catch(()=>{});
             } catch(e) { console.error(`end-notif mission ${m.id}:`, e); }
+          }
+
+          // Horaire dépassé sans démarrage : on relance le prestataire, sans
+          // jamais annoncer au client une prestation qui n'a pas été pointée.
+          // Le drapeau end_notif_sent n'est pas posé : la relance se répétera
+          // à chaque passage tant que rien n'est pointé.
+          for (const m of sansPointage) {
+            try {
+              const mLabel2 = esc(m.metier || m.sector || "Prestation");
+              if (m.prestataire_id) {
+                await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({
+                    user_id: m.prestataire_id,
+                    type: "mission",
+                    title: "Pointage manquant ⚠️",
+                    body: `L'horaire de votre prestation « ${mLabel2} » est dépassé et vous n'avez pas signalé votre arrivée. Ouvrez l'application pour la démarrer, sinon elle ne pourra pas être validée ni payée.`,
+                    read: false,
+                  }),
+                }).catch(() => {});
+              }
+              if (smsEnabled && m.prestataire_id) {
+                const tel = userMap[m.prestataire_id]?.meta?.telephone;
+                if (tel) await sendSms(BREVO_API_KEY, tel, smsTexte(`ALANE - Pointage manquant : votre prestation ${mLabel2} devait avoir commence. Signalez votre arrivee dans l'application, sans quoi elle ne pourra pas etre payee. alane.fr`));
+              }
+            } catch(e) { console.error(`sans-pointage mission ${m.id}:`, e); }
           }
         }
       } catch(e) { console.error("end-notif in reminders error:", e); }
