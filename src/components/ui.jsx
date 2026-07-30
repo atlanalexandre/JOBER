@@ -27,6 +27,14 @@ export const Badge = ({ children, color=C.violet, small }) => (
 );
 
 export const Btn = ({ children, onClick, variant="primary", full, disabled, style:s, className="" }) => {
+  // Le style passé en prop est fusionné APRÈS celui de la variante. Une propriété
+  // à undefined — écrite naturellement sous la forme `couleur ? X : undefined` —
+  // écrasait donc la valeur de la variante au lieu de la laisser intacte : le
+  // bouton « Confirmer & payer » perdait son fond violet et s'affichait en blanc,
+  // donnant l'impression d'être désactivé. On retire ces clés avant fusion.
+  const styleUtile = s
+    ? Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined))
+    : undefined;
   const variants = {
     primary: {
       background: disabled ? "rgba(255,255,255,0.06)" : `linear-gradient(135deg, ${C.violet}, ${C.violetDark})`,
@@ -87,7 +95,7 @@ export const Btn = ({ children, onClick, variant="primary", full, disabled, styl
         opacity: disabled ? 0.5 : 1,
         letterSpacing: 0.2,
         ...variants[variant],
-        ...s,
+        ...styleUtile,
       }}
     >{children}</button>
   );
