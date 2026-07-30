@@ -4,7 +4,11 @@ export const isLaunchPhase = () => IS_LAUNCH;
 export const FRAIS_MER = { single:4.90, range:2.90, urgent:9.90 };
 
 export const ABONNEMENTS_PRESTA = [
-  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:10,  popular:false,
+  // `missions` n'est qu'un repli d'affichage : la limite opposable vient de
+  // /api/missions (`limite_mensuelle`), qui applique plan_limits et l'offre de
+  // lancement. Elle valait 10 ici alors que le plan gratuit en accorde 2 hors
+  // lancement — l'écran annonçait « 2/10 » à un prestataire déjà bloqué.
+  { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:2,  popular:false,
     features:["2 prestations/mois","Profil visible par les clients"],
     locked:["10 prestations/mois","Badge ✓ Certifié — les clients te font davantage confiance","Prestations urgentes (tarif majoré)","Priorité dans les résultats de recherche"],
     note:"🎁 Offre de lancement : 10 prestations/mois offertes aux 100 premiers inscrits." },

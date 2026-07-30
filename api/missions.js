@@ -4059,7 +4059,12 @@ export default async function handler(req, res) {
         }
       }
 
-      return res.status(200).json({ plan, trial_exhausted: trialExhausted });
+      // La limite effective est renvoyée au front, qui la devinait à partir d'une
+      // constante : le plan gratuit y annonce 10 prestations alors que `plan_limits`
+      // en accorde 2 hors offre de lancement. Un prestataire aurait donc lu « 2/10 »
+      // en étant déjà bloqué. Le calcul du quota vit ici, l'affichage le suit.
+      const limiteMensuelle = await limitePlanMensuelle(plan, caller.id, SUPABASE_URL, headers);
+      return res.status(200).json({ plan, trial_exhausted: trialExhausted, limite_mensuelle: limiteMensuelle });
     }
 
     // ── Annuler l'abonnement Stripe (fin de période) ─────────────────────────
