@@ -404,6 +404,14 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**Les avis passent par `/api/missions` (`submit_rating`), jamais par le navigateur.**
+L'insertion s'y faisait directement : le contrôle d'éligibilité était une requête du front,
+contournable, et côté prestataire il n'existait pas du tout — on pouvait noter n'importe qui,
+autant de fois que voulu, alors que la note pilote le classement du catalogue. Le serveur
+vérifie que l'auteur a pris part à la prestation, qu'elle est terminée, et qu'il n'a pas déjà
+donné son avis ; le destinataire est déduit de la prestation. `reviewee_provider_id` porte
+selon le sens le prestataire **ou** le client — le nom de la colonne est trompeur.
+
 **Les frais de service sont dus sur toute annulation à l'initiative du client**, quel que
 soit le délai — CGPS art. 8.1, « en principe retenus et non remboursables car ils couvrent des
 coûts déjà engagés ». Le serveur les remboursait pourtant au-delà de 24 h, alors que l'écran

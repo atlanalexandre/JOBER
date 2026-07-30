@@ -2968,13 +2968,21 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   setRatingLoading(true);
                   const { data:{ session } } = await supabase.auth.getSession();
                   if(!session) { setRatingLoading(false); return; }
-                  await supabase.from("ratings").upsert({
-                    reviewer_id: session.user.id,
-                    reviewee_provider_id: ratingTarget.client_id,
-                    rating: ratingValue,
-                    comment: ratingComment.trim() || null,
-                    mission_id: ratingTarget.id,
-                  });
+                  // Aucun contrôle n'existait de ce côté : l'écriture partait du
+                  // navigateur, sans vérifier que le prestataire avait bien travaillé
+                  // avec ce client ni qu'il n'avait pas déjà noté. Le serveur tranche.
+                  const rN = await fetch("/api/missions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token || ""}` },
+                    body: JSON.stringify({ action: "submit_rating", mission_id: ratingTarget.id, rating: ratingValue, comment: ratingComment.trim() || null }),
+                  }).catch(() => null);
+                  if (!rN || !rN.ok) {
+                    const jN = rN ? await rN.json().catch(() => ({})) : {};
+                    console.error("[avis] dépôt impossible :", jN.error || rN?.status);
+                    showToast(jN.error || "Avis non enregistré — réessayez.", "error");
+                    setRatingLoading(false);
+                    return;
+                  }
                   setRatedMissions(prev => new Set([...prev, ratingTarget.id]));
                   setRatingTarget(null);
                   setRatingValue(0);

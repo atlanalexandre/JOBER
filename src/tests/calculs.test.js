@@ -152,6 +152,49 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Dépôt d'un avis ───────────────────────────────────────────────
+// L'insertion se faisait depuis le navigateur. Le contrôle « avez-vous déjà travaillé
+// ensemble ? » était une requête du front, contournable, et côté prestataire il
+// n'existait pas du tout : on pouvait noter n'importe qui, autant de fois que voulu.
+// Or la note pilote le classement du catalogue. Reproduit les contrôles de
+// api/missions.js (submit_rating).
+describe("avis — qui peut noter, et une seule fois", () => {
+  const M = { id:"m1", client_id:"c1", prestataire_id:"p1", status:"completed" };
+  const verdict = (mission, auteur, dejaNote = false) => {
+    const estClient = mission.client_id === auteur;
+    const estPresta = mission.prestataire_id === auteur;
+    if (!estClient && !estPresta) return "tiers";
+    if (!["completed", "closed"].includes(mission.status)) return "pas terminee";
+    if (dejaNote) return "doublon";
+    return estClient ? mission.prestataire_id : mission.client_id;
+  };
+
+  it("le client note le prestataire de SA prestation", () => {
+    expect(verdict(M, "c1")).toBe("p1");
+  });
+  it("le prestataire note le client, sans avoir à le désigner", () => {
+    expect(verdict(M, "p1")).toBe("c1");
+  });
+  it("un tiers ne peut noter personne", () => {
+    expect(verdict(M, "inconnu")).toBe("tiers");
+  });
+  it("une prestation non terminée ne se note pas", () => {
+    expect(verdict({ ...M, status:"assigned" }, "c1")).toBe("pas terminee");
+  });
+  it("un second avis sur la même prestation est refusé", () => {
+    expect(verdict(M, "c1", true)).toBe("doublon");
+  });
+
+  const noteValide = (n) => Number.isInteger(Number(n)) && Number(n) >= 1 && Number(n) <= 5;
+  it("la note doit être un entier de 1 à 5", () => {
+    expect(noteValide(5)).toBe(true);
+    expect(noteValide(0)).toBe(false);
+    expect(noteValide(6)).toBe(false);
+    expect(noteValide(4.5)).toBe(false);
+    expect(noteValide("abc")).toBe(false);
+  });
+});
+
 // ── Frais de service retenus à l'annulation ───────────────────────
 // Les CGPS art. 8.1 les disent « en principe retenus et non remboursables car ils
 // couvrent des coûts déjà engagés », et l'écran de confirmation annonçait déjà

@@ -3018,6 +3018,80 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, actual_hours: actualHours });
     }
 
+    // Dépôt d'un avis. L'insertion se faisait depuis le navigateur : le contrôle
+    // d'éligibilité — « avez-vous déjà travaillé ensemble ? » — était une requête du
+    // front, contournable, et côté prestataire il n'existait pas du tout. Rien
+    // n'empêchait donc de noter n'importe qui, autant de fois que voulu. Or la note
+    // pilote le classement du catalogue et s'affiche à chaque client : un concurrent
+    // ou un client mécontent pouvait effondrer un prestataire en quelques minutes.
+    //
+    // Tout est revérifié ici : la prestation existe, l'auteur y a pris part, elle est
+    // terminée, et il n'a pas déjà donné son avis. Le destinataire est déduit de la
+    // prestation, jamais transmis par l'appelant.
+    if (action === "submit_rating") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, rating, comment, tags } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const note = Number(rating);
+      if (!Number.isInteger(note) || note < 1 || note > 5) {
+        return res.status(400).json({ error: "La note doit être comprise entre 1 et 5." });
+      }
+      const texte = comment == null ? null : String(comment).trim().slice(0, 1000) || null;
+
+      const rmRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status`, { headers });
+      const rmData = await rmRes.json().catch(() => []);
+      const rm = Array.isArray(rmData) && rmData[0];
+      if (!rm) return res.status(404).json({ error: "Prestation introuvable" });
+
+      const estClient = rm.client_id === caller.id;
+      const estPresta = rm.prestataire_id === caller.id;
+      if (!estClient && !estPresta) return res.status(403).json({ error: "Vous n'avez pas pris part à cette prestation." });
+      if (!["completed", "closed"].includes(rm.status)) {
+        return res.status(400).json({ error: "Vous pourrez déposer votre avis une fois la prestation terminée." });
+      }
+      const destinataire = estClient ? rm.prestataire_id : rm.client_id;
+      if (!destinataire) return res.status(400).json({ error: "Aucun destinataire pour cet avis." });
+
+      const dejaRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings?mission_id=eq.${mission_id}&reviewer_id=eq.${caller.id}&select=id&limit=1`, { headers });
+      const deja = await dejaRes.json().catch(() => []);
+      if (Array.isArray(deja) && deja.length > 0) {
+        return res.status(409).json({ error: "Vous avez déjà déposé un avis sur cette prestation." });
+      }
+
+      // Le nom affiché est lu en base, pas transmis par l'appelant.
+      let nomDestinataire = null;
+      try {
+        const pnRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${destinataire}&select=prenom,nom`, { headers });
+        const pn = (await pnRes.json().catch(() => []))[0];
+        if (pn) nomDestinataire = [pn.prenom, pn.nom].filter(Boolean).join(" ") || null;
+      } catch (e) {
+        console.error("[submit_rating] nom du destinataire illisible :", e.message);
+      }
+
+      const corps = {
+        reviewer_id: caller.id,
+        reviewee_provider_id: destinataire,
+        rating: note,
+        comment: texte,
+        mission_id,
+      };
+      if (nomDestinataire) corps.reviewee_name = nomDestinataire;
+      if (Array.isArray(tags) && tags.length) corps.tags = tags.slice(0, 10).map(t => String(t).slice(0, 40));
+
+      const insRes = await fetch(`${SUPABASE_URL}/rest/v1/ratings`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify(corps),
+      });
+      const insRows = await insRes.json().catch(() => []);
+      if (!insRes.ok || !Array.isArray(insRows) || insRows.length === 0) {
+        console.error(`[submit_rating] insertion refusée pour ${mission_id} : ${insRes.status} ${JSON.stringify(insRows)}`);
+        return res.status(500).json({ error: "Votre avis n'a pas pu être enregistré. Réessayez." });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
     if (action === "my_missions") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
