@@ -152,6 +152,53 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Quota mensuel du prestataire et offre de lancement ────────────
+// L'inscription annonce « 10 prestations/mois gratuites aux 100 premiers inscrits ».
+// Le quota retombait pourtant toujours sur plan_limits.free (2) : un prestataire du
+// lancement se voyait refuser sa 3ᵉ prestation. Reproduit la décision de
+// limitePlanMensuelle() dans api/missions.js.
+describe("limite mensuelle — offre de lancement", () => {
+  const LIMITES = { free: 2, premium: 10, elite: 999 };
+  const limite = ({ plan, lancement, rangCentPremiers }) => {
+    const base = LIMITES[plan] ?? LIMITES.free;
+    if (plan !== "free" || !lancement || !rangCentPremiers) return base;
+    return Math.max(base, LIMITES.premium);
+  };
+
+  it("prestataire du lancement : 10 prestations, pas 2", () => {
+    expect(limite({ plan:"free", lancement:true, rangCentPremiers:true })).toBe(10);
+  });
+  it("hors des 100 premiers : le plan free reste à 2", () => {
+    expect(limite({ plan:"free", lancement:true, rangCentPremiers:false })).toBe(2);
+  });
+  it("offre de lancement désactivée : retour à 2 pour tout le monde", () => {
+    expect(limite({ plan:"free", lancement:false, rangCentPremiers:true })).toBe(2);
+  });
+  it("un plan payant n'est jamais dégradé par l'offre", () => {
+    expect(limite({ plan:"premium", lancement:true, rangCentPremiers:true })).toBe(10);
+    expect(limite({ plan:"elite",   lancement:true, rangCentPremiers:true })).toBe(999);
+  });
+});
+
+// ── Ouverture d'un secteur ────────────────────────────────────────
+// L'ouverture dépendait d'un seuil de prestataires (30 par défaut) alors que l'action
+// qui le calculait répondait toujours 401 : le verrou n'a jamais fonctionné. Le jour où
+// elle redevenait joignable, tous les secteurs se fermaient d'un coup. Seule la décision
+// explicite de l'administrateur compte désormais.
+describe("ouverture d'un secteur", () => {
+  const ouvert = (secteur, desactives) => !desactives.includes(secteur);
+
+  it("un secteur non désactivé est ouvert, même sans aucun prestataire", () => {
+    expect(ouvert("proprete", [])).toBe(true);
+  });
+  it("un secteur désactivé dans le backoffice est fermé", () => {
+    expect(ouvert("hotellerie", ["hotellerie"])).toBe(false);
+  });
+  it("la désactivation ne touche que le secteur visé", () => {
+    expect(ouvert("restauration", ["hotellerie"])).toBe(true);
+  });
+});
+
 // ── Frais retenus en cas d'annulation client < 24h ────────────────
 // L'écran de réservation annonce « frais de service retenus uniquement ». Ces
 // frais varient (plans.js FRAIS_MER : 4,90 simple · 2,90/jour récurrent · 9,90

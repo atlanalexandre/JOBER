@@ -44,7 +44,11 @@ function frenchOffsetMs(date) {
 // caractères et double donc le coût d'envoi.
 function smsTexte(s, max = 160) {
   return String(s || "")
-    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, "")
+    // Sélecteurs de variante traités à part : eslint refuse un caractère combinant
+    // dans une classe de caractères (no-misleading-character-class), et la règle est
+    // en erreur — la CI restait rouge.
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, "")
     .replace(/[—–]/g, "-").replace(/[«»""]/g, '"').replace(/['']/g, "'")
     .replace(/[\r\n\t]/g, " ")
     .replace(/\s{2,}/g, " ")

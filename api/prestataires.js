@@ -32,7 +32,12 @@ export default async function handler(req, res) {
   try {
     // Fetch approved prestataires + verified doc IDs in parallel
     const [profilesRes, verifiedDocsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id,prenom,nom,created_at,trial_exhausted,avatar_url`, { headers }),
+      // `missions_enabled` est le second verrou du backoffice, posé après vérification
+      // des documents (bouton « Activer l'accès aux prestations »). Il n'était lu que
+      // par l'interface du prestataire : un compte non activé restait proposé aux
+      // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
+      // l'affectation le refuse également côté /api/missions.
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
     ]);
     const profiles     = await profilesRes.json();

@@ -2031,7 +2031,6 @@ export function BOSettingsTab() {
   const [localFs,  setLocalFs]  = useState({ single:"4.90", range:"2.90", urgent:"9.90" });
   const [localDs,  setLocalDs]  = useState([]);
   const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
-  const [localSmp, setLocalSmp] = useState("30");
   const [launchPhase, setLaunchPhase] = useState(true);
   const [sectorCounts, setSectorCounts] = useState({});
 
@@ -2046,7 +2045,6 @@ export function BOSettingsTab() {
       // une décimale transformait en 0,8 % à l'affichage — puis en base au premier
       // enregistrement, soit 0,8 % réellement crédité au client.
       if (s.cashback_rates)          setLocalCbr(s.cashback_rates.map(t => ({ ...t, rate: String(Math.round(t.rate * 10000) / 100) })));
-      if (s.sector_min_prestataires != null) setLocalSmp(String(s.sector_min_prestataires));
       if (s.launch_phase != null)    setLaunchPhase(Boolean(s.launch_phase));
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -2128,7 +2126,7 @@ export function BOSettingsTab() {
       {/* ── Secteurs ── */}
       <SectionTitle>🗂️ Secteurs d'activité</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>Les secteurs désactivés sont masqués pour les clients.</div>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Les secteurs désactivés sont masqués pour les clients et ne peuvent plus être réservés. Compter jusqu'à 5 minutes après l'enregistrement.</div>
         {Object.entries(SECTOR_LABELS).map(([id, label]) => {
           const disabled = localDs.includes(id);
           return (
@@ -2183,31 +2181,24 @@ export function BOSettingsTab() {
       <SectionTitle>🔓 Ouverture des secteurs aux clients</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
         <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-          Un secteur n'est visible et accessible aux clients que si le nombre minimum de prestataires approuvés est atteint.
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
-          <span style={{ color:C.text, fontSize:13, fontWeight:600, width:220 }}>Minimum prestataires / secteur</span>
-          <input type="number" min={1} max={9999} value={localSmp} onChange={e => setLocalSmp(e.target.value)}
-            style={{ width:80, padding:"7px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit", textAlign:"center" }} />
-          <SaveBtn k="sector_min_prestataires" onClick={() => save("sector_min_prestataires", Number(localSmp))} />
+          L'ouverture d'un secteur dépend uniquement des interrupteurs « Secteurs d'activité » ci-dessus.
+          Un changement met jusqu'à 5 minutes à se propager aux clients.
         </div>
         <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
           <div style={{ color:C.textSub, fontSize:11, marginBottom:8, fontWeight:600, textTransform:"uppercase", letterSpacing:.5 }}>État actuel des secteurs</div>
           {SECTORS.map(s => {
             const sc = sectorCounts[s.id];
-            const min = sc?.min ?? Number(localSmp);
             const count = sc?.count ?? 0;
-            const isOpen = sc ? sc.open : false;
-            const pct = Math.min(100, Math.round((count / min) * 100));
+            const isOpen = sc ? sc.open : !localDs.includes(s.id);
             return (
               <div key={s.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
                 <span style={{ fontSize:16, flexShrink:0 }}>{s.icon}</span>
                 <span style={{ color:C.text, fontSize:12, fontWeight:600, width:110, flexShrink:0 }}>{s.label}</span>
-                <div style={{ flex:1, height:6, borderRadius:99, background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${pct}%`, borderRadius:99, background: isOpen ? "#4CAF8A" : "#F0B429", transition:"width .3s" }} />
-                </div>
-                <span style={{ color: isOpen ? "#4CAF8A" : C.textMuted, fontSize:11, fontWeight:700, width:60, textAlign:"right", flexShrink:0 }}>{count}/{min}</span>
-                <span style={{ fontSize:11, fontWeight:700, color: isOpen ? "#4CAF8A" : "#F0B429", width:80, flexShrink:0 }}>{isOpen ? "✅ Ouvert" : "🔒 Fermé"}</span>
+                <div style={{ flex:1 }} />
+                <span style={{ color:C.textSub, fontSize:11, fontWeight:700, textAlign:"right", flexShrink:0 }}>
+                  {count} prestataire{count > 1 ? "s" : ""}
+                </span>
+                <span style={{ fontSize:11, fontWeight:700, color: isOpen ? "#4CAF8A" : "#F0B429", width:80, textAlign:"right", flexShrink:0 }}>{isOpen ? "✅ Ouvert" : "🔒 Fermé"}</span>
               </div>
             );
           })}
