@@ -241,6 +241,24 @@ export default async function handler(req, res) {
     ? "TVA non applicable — article 293 B du CGI (auto-entrepreneur)."
     : `TVA de 20 % applicable. SIRET : ${escHtml(prestaSiret || "—")}. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.`;
 
+  // Frais de service ALANE, déduits de ce que le client a réellement payé. Ils
+  // n'entrent PAS dans le total facturé par le prestataire : celui-ci ne les
+  // encaisse pas, et les inscrire sur sa facture gonflerait son chiffre d'affaires
+  // déclaré — donc ses cotisations URSSAF et son plafond de micro-entreprise — sur
+  // un argent qu'il n'a jamais reçu. Ils figurent dans un récapitulatif séparé, pour
+  // que le client retrouve le montant qu'il a effectivement réglé.
+  const totalPayeClient = Number(mission.montant_total || 0);
+  const fraisServiceCalc = Math.round((totalPayeClient - ttc) * 100) / 100;
+  // Une valeur négative ou aberrante signifie que montant_total ne correspond pas à
+  // cette prestation : on n'affiche alors aucun récapitulatif plutôt qu'un chiffre faux.
+  const fraisService = (fraisServiceCalc > 0 && fraisServiceCalc < ttc) ? fraisServiceCalc : 0;
+  const fraisFormatted = fraisService.toFixed(2).replace(".", ",");
+  const totalPayeFormatted = totalPayeClient.toFixed(2).replace(".", ",");
+  if (totalPayeClient > 0 && fraisService === 0 && Math.abs(totalPayeClient - ttc) > 0.01) {
+    console.error(`[invoice] frais de service non déductibles sur ${mission_id} : `
+      + `payé ${totalPayeClient} €, facturé ${ttc} € — récapitulatif omis.`);
+  }
+
   const missionDate = mission.date || "";
   const heureDebut = mission.heure_debut || "";
   const metier = mission.metier || "Prestation de service";
@@ -540,6 +558,31 @@ export default async function handler(req, res) {
         </div>
       </div>
     </div>
+
+    ${fraisService > 0 ? `
+    <div class="card">
+      <div class="section-title">Récapitulatif de votre paiement</div>
+      <div class="totals">
+        <div class="total-row">
+          <span class="total-row-label">Prestation (facturée ci-dessus par le prestataire)</span>
+          <span class="total-row-value">${escHtml(ttcFormatted)} €</span>
+        </div>
+        <div class="total-row">
+          <span class="total-row-label">Frais de service ALANE</span>
+          <span class="total-row-value">${escHtml(fraisFormatted)} €</span>
+        </div>
+        <div class="total-row total-ttc">
+          <span class="total-row-label">Total réglé</span>
+          <span class="total-row-value">${escHtml(totalPayeFormatted)} €</span>
+        </div>
+      </div>
+      <div class="legal">
+        Les frais de service rémunèrent la mise en relation et l'usage de la plateforme.
+        Ils sont perçus par ALANE et ne sont pas encaissés par le prestataire : ils ne
+        figurent donc pas sur sa facture, dont le total ci-dessus ne concerne que la
+        prestation elle-même.
+      </div>
+    </div>` : ""}
 
     <div class="card">
       <div class="payment-badge">
