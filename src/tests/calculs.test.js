@@ -152,6 +152,44 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Versement au prestataire ──────────────────────────────────────
+// Deux chemins de virement calculaient deux montants différents, tous deux faux :
+// /api/missions oubliait le nombre de jours (un récurrent de 5 jours ne versait
+// qu'une journée) et le webhook versait `montant_total`, frais de service compris —
+// ALANE reversait donc sa propre rémunération. Le contrat signé par les deux parties
+// annonce « Montant net dû au Prestataire » = tarif × heures. Décision du 30/07/2026 :
+// le prestataire reçoit la part horaire, ALANE conserve ses frais de service.
+describe("versement au prestataire", () => {
+  const partPrestataire = ({ tarif, heures, jours = 1 }) =>
+    Math.round(tarif * heures * jours * 100) / 100;
+  // Frais réellement encaissés, déduits de ce que le client a payé.
+  const fraisService = ({ totalPaye, tarif, heuresPrevues, jours = 1 }) => {
+    const prevue = Math.round(tarif * heuresPrevues * jours * 100) / 100;
+    return (prevue > 0 && totalPaye > prevue) ? Math.round((totalPaye - prevue) * 100) / 100 : 0;
+  };
+
+  it("prestation simple : 8h × 14 € = 112 €, et non les 116,90 € payés", () => {
+    expect(partPrestataire({ tarif:14, heures:8 })).toBe(112);
+  });
+  it("ALANE conserve les 4,90 € de frais de service", () => {
+    expect(fraisService({ totalPaye:116.90, tarif:14, heuresPrevues:8 })).toBeCloseTo(4.90);
+  });
+  it("récurrent 5 jours : 5 journées versées (560 €), pas une seule (112 €)", () => {
+    expect(partPrestataire({ tarif:14, heures:8, jours:5 })).toBe(560);
+  });
+  it("urgence : les 9,90 € de frais restent acquis à ALANE", () => {
+    expect(fraisService({ totalPaye:73.90, tarif:16, heuresPrevues:4 })).toBeCloseTo(9.90);
+  });
+  it("heures réelles supérieures aux heures prévues : le prestataire est payé au réel", () => {
+    expect(partPrestataire({ tarif:14, heures:10 })).toBe(140);
+    // …et les frais de service ne bougent pas, ils rémunèrent la mise en relation
+    expect(fraisService({ totalPaye:116.90, tarif:14, heuresPrevues:8 })).toBeCloseTo(4.90);
+  });
+  it("montant payé incohérent : aucun frais inventé", () => {
+    expect(fraisService({ totalPaye:50, tarif:14, heuresPrevues:8 })).toBe(0);
+  });
+});
+
 // ── Délai de contestation d'une prestation ────────────────────────
 // Les CGPS écrivent : « Au-delà de 48 heures sans signalement par le Client, la
 // Prestation est réputée définitivement validée […] et aucune contestation ne pourra
