@@ -52,6 +52,60 @@ function smsTexte(s, max = 160) {
     .slice(0, max);
 }
 
+// Remboursement d'une prestation payée que personne n'a acceptée. Ce cron
+// renvoyait la prestation en « open » sans jamais rembourser : le client avait
+// payé pour un prestataire précis, personne n'avait répondu, et son argent
+// restait bloqué indéfiniment. C'est le chemin réellement emprunté, le
+// navigateur du client étant rarement resté ouvert pour déclencher l'expiration
+// côté application.
+async function rembourserPrestation(mission, supabaseUrl, hdrs) {
+  const intent = mission?.stripe_payment_intent;
+  if (!intent) return true;
+  if (String(intent).startsWith("wallet_")) {
+    const montant = Number(mission.montant_total) || 0;
+    if (montant <= 0 || !mission.client_id) return true;
+    try {
+      const pr = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}&select=prepaid_balance`, { headers: hdrs });
+      const pd = await pr.json().catch(() => []);
+      const solde = Number(Array.isArray(pd) && pd[0]?.prepaid_balance || 0);
+      await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${mission.client_id}`, {
+        method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
+        body: JSON.stringify({ prepaid_balance: Math.round((solde + montant) * 100) / 100 }),
+      });
+      console.log(`[cron/expiration] portefeuille recrédité de ${montant} € — prestation ${mission.id}`);
+      return true;
+    } catch (e) {
+      console.error(`[cron/expiration] recrédit portefeuille échoué — ${mission.id} :`, e.message);
+      return false;
+    }
+  }
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!cle) {
+    console.error(`[cron/expiration] STRIPE_SECRET_KEY absente — remboursement NON effectué pour ${mission.id}`);
+    return false;
+  }
+  try {
+    const r = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${cle}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        // Même clé que dans missions.js : une prestation non honorée ne peut être
+        // remboursée qu'une fois, quel que soit le chemin qui le déclenche.
+        "Idempotency-Key": `refund-nonhonoree-${mission.id}`,
+      },
+      body: new URLSearchParams({ payment_intent: intent, reason: "requested_by_customer" }).toString(),
+    });
+    const d = await r.json();
+    if (d.id) { console.log(`[cron/expiration] Stripe OK ${d.id} — prestation ${mission.id}`); return true; }
+    console.error(`[cron/expiration] Stripe a refusé — ${mission.id} :`, JSON.stringify(d));
+    return false;
+  } catch (e) {
+    console.error(`[cron/expiration] appel Stripe impossible — ${mission.id} :`, e.message);
+    return false;
+  }
+}
+
 function sendSms(apiKey, to, content) {
   const phone = formatPhone(to);
   if (!phone) return Promise.resolve();
@@ -98,18 +152,23 @@ export default async function handler(req, res) {
     const nowIso = new Date().toISOString();
     try {
       const zRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre`,
+        `${SUPABASE_URL}/rest/v1/missions?status=eq.pending_acceptance&acceptance_deadline=lt.${nowIso}&select=id,client_id,metier,titre,stripe_payment_intent,montant_total`,
         { headers }
       );
       const zombies = await zRes.json().catch(() => []);
       if (Array.isArray(zombies) && zombies.length) {
         await Promise.all(zombies.map(async z => {
-          // Reset mission → open + effacer prestataire_id + réinitialiser broadcast_sent_at
-          // pour permettre une re-diffusion immédiate
+          // Remboursement puis clôture. La prestation était remise en « open »
+          // avec le paiement du client toujours bloqué : il avait payé pour un
+          // prestataire précis qui n'a pas répondu, et son argent restait
+          // immobilisé sur une prestation flottante que personne ne lui avait
+          // demandé de remettre en circulation.
+          const rembZ = await rembourserPrestation(z, SUPABASE_URL, headers);
+          if (!rembZ) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${z.id}`);
           await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${z.id}`, {
             method: "PATCH",
             headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "open", prestataire_id: null, broadcast_sent_at: null }),
+            body: JSON.stringify({ status: "refused", prestataire_id: null, broadcast_sent_at: null }),
           }).catch(() => {});
           if (z.client_id) {
             await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -119,7 +178,7 @@ export default async function handler(req, res) {
                 user_id: z.client_id,
                 type: "mission",
                 title: "Prestataire non disponible",
-                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}". Elle est remise en recherche — vous pouvez la re-diffuser depuis votre espace.`,
+                body: `Le prestataire n'a pas répondu pour "${z.titre || z.metier || "votre prestation"}".${rembZ ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
                 read: false,
               }),
             }).catch(() => {});
@@ -589,9 +648,14 @@ ${(() => {
     const zombies = await zRes.json().catch(() => []);
     if (Array.isArray(zombies) && zombies.length > 0) {
       await Promise.all(zombies.map(async zm => {
+        const rembOk = await rembourserPrestation(zm, SUPABASE_URL, headers);
+        if (!rembOk) console.error(`[cron/expiration] remboursement à reprendre manuellement — prestation ${zm.id}`);
         await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${zm.id}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ status: "open", prestataire_id: null }),
+          // « refused » et non « open » : le client est remboursé, la prestation
+          // est donc close. La laisser ouverte avec son paiement remboursé
+          // permettrait à un prestataire de l'accepter sans contrepartie.
+          body: JSON.stringify({ status: "refused", prestataire_id: null }),
         }).catch(() => {});
         if (zm.client_id) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -599,7 +663,7 @@ ${(() => {
             body: JSON.stringify({
               user_id: zm.client_id, type: "mission",
               title: "Prestataire non disponible ⏱️",
-              body: `Le prestataire n'a pas répondu à temps pour la prestation "${zm.titre || zm.metier || ""}". Elle est de nouveau disponible.`,
+              body: `Le prestataire n'a pas répondu à temps pour la prestation "${zm.titre || zm.metier || ""}".${rembOk ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
               read: false,
             }),
           }).catch(() => {});
