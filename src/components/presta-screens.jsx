@@ -2181,12 +2181,29 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
         </div>
       )}
 
-      {/* Prestations en cours (assignées) */}
-      {assignedMissions.length > 0 && (
+      {/* Prestations assignées : à venir et en cours */}
+      {assignedMissions.length > 0 && (() => {
+        // Le titre annonçait « en cours » pour toute prestation assignée, y compris
+        // celles qui n'avaient pas commencé — la carte affichait « À venir » juste à
+        // côté. Une prestation n'est en cours que lorsque le prestataire a pointé son
+        // démarrage, exactement comme le calcule la carte plus bas.
+        const maintenant = Date.now();
+        const enCours = assignedMissions.filter(m => {
+          const debut = startedAtMap[m.id] ? new Date(startedAtMap[m.id]).getTime() : 0;
+          return debut > 0 && debut < maintenant;
+        }).length;
+        const aVenir = assignedMissions.length - enCours;
+        const titre = enCours === 0
+          ? `Prestation${aVenir > 1 ? "s" : ""} à venir (${aVenir})`
+          : aVenir === 0
+            ? `Prestation${enCours > 1 ? "s" : ""} en cours (${enCours})`
+            : `${enCours} en cours · ${aVenir} à venir`;
+        const couleur = enCours > 0 ? C.success : C.accentGold;
+        return (
         <div style={{ marginBottom:18 }}>
-          <p style={{ fontWeight:800, color:C.success, fontSize:13, margin:"0 0 10px", display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:8, height:8, borderRadius:"50%", background:C.success, display:"inline-block" }} />
-            Prestation{assignedMissions.length > 1 ? "s" : ""} en cours ({assignedMissions.length})
+          <p style={{ fontWeight:800, color:couleur, fontSize:13, margin:"0 0 10px", display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:8, height:8, borderRadius:"50%", background:couleur, display:"inline-block" }} />
+            {titre}
           </p>
           {assignedMissions.map(m => {
             const sector = SECTORS.find(s => s.id === m.sector);
@@ -2377,8 +2394,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:"10px 13px", display:"flex", alignItems:"center", gap:10 }}>
                           <div style={{ fontSize:16, flexShrink:0 }}>⏳</div>
                           <div>
-                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection GPS inactive</div>
-                            <div style={{ color:C.textMuted, fontSize:11 }}>S'activera 1h avant le début de la prestation.</div>
+                            <div style={{ color:C.textSub, fontWeight:700, fontSize:12 }}>Détection automatique d'arrivée inactive</div>
+                            <div style={{ color:C.textMuted, fontSize:11 }}>Elle s'activera 1h avant le début et confirmera votre présence sur place. Sans rapport avec le partage de position ci-dessous.</div>
                           </div>
                         </div>
                       ) : (
@@ -2484,7 +2501,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   )}
                   <button onClick={() => toggleTracking(m.id)}
                     style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    {sharingLocation[m.id] ? "⏹ Arrêter le partage de position" : "📍 Partager ma position au client"}
+                    {sharingLocation[m.id] ? "⏹ Arrêter de partager mon trajet" : "📍 Partager mon trajet au client"}
                   </button>
                   <button onClick={async()=>{
                     if(!await showConfirm("Annuler cette prestation ?")) return;
@@ -2507,7 +2524,8 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* État vide */}
       {assignedMissions.length === 0 && pendingMissions.length === 0 && (
