@@ -6157,9 +6157,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             <div style={{ marginTop:20, background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"16px" }}>
               <div style={{ fontWeight:700, color:"#F59E0B", fontSize:14, marginBottom:6 }}>🔄 Prestation en cours de réassignation</div>
               <div style={{ color:C.textSub, fontSize:13, lineHeight:1.6 }}>
-                Le prestataire initialement assigné s'est désisté. Votre prestation reste active — nous recherchons un remplaçant parmi les prestataires disponibles. Vous serez notifié(e) dès qu'un nouveau prestataire accepte.
+                Le prestataire initialement assigné s'est désisté. <strong style={{ color:C.text }}>Vous avez été intégralement remboursé.</strong> Votre demande reste publiée et les prestataires disponibles de votre secteur ont été prévenus.
               </div>
-              <div style={{ marginTop:10, color:C.textMuted, fontSize:11 }}>⚠️ Aucune facturation supplémentaire ne sera effectuée.</div>
+              <div style={{ marginTop:10, color:C.textMuted, fontSize:11, lineHeight:1.6 }}>
+                Dès qu'un prestataire se positionne, vous le retrouvez ci-dessous et choisissez de l'accepter. Le paiement est alors à refaire, pour le même montant : rien ne vous est prélevé entre-temps.
+              </div>
             </div>
           )}
           </>)}

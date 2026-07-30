@@ -3213,7 +3213,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non annulable" });
@@ -3275,6 +3275,37 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ status: "needs_replacement", prestataire_id: null }),
       });
+
+      // Recherche d'un remplaçant. L'écran client annonce « nous recherchons un
+      // remplaçant parmi les prestataires disponibles » : jusqu'ici personne
+      // n'était prévenu, la prestation devenait seulement visible sur la place de
+      // marché et n'était trouvée qu'en la parcourant. La promesse était donc
+      // fausse. On notifie désormais les prestataires approuvés du même secteur.
+      try {
+        const candRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&id=neq.${caller.id}&select=id&limit=100`,
+          { headers }
+        );
+        const candidats = candRes.ok ? await candRes.json().catch(() => []) : [];
+        if (Array.isArray(candidats) && candidats.length) {
+          const libelle = mission.titre || mission.metier || "Prestation";
+          const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
+          const lignes = candidats.map(c => ({
+            user_id: c.id,
+            type: "mission",
+            title: "Prestation à reprendre 🔄",
+            body: `Une prestation « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} cherche un prestataire : celui qui était prévu s'est désisté. Consultez les prestations disponibles.`,
+            read: false,
+          }));
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify(lignes),
+          }).catch(e => console.error("[presta_cancel] notification des remplaçants échouée :", e.message));
+        }
+      } catch (e) {
+        console.error("[presta_cancel] recherche de remplaçant échouée :", e.message);
+      }
 
       // Rejeter la candidature acceptée du prestataire qui annule
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.accepted`, {
