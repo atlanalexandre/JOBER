@@ -37,6 +37,21 @@ function frenchOffsetMs(date) {
   return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
 }
 
+// Prépare un texte pour SMS : retire emojis, tirets cadratins et tout caractère
+// hors alphabet GSM-7. Deux raisons : les opérateurs les transcodent en « . » ou
+// « ? » — le rappel partait avec un point parasite en tête et en fin — et un seul
+// caractère hors GSM force l'encodage UCS-2, qui réduit le SMS de 160 à 70
+// caractères et double donc le coût d'envoi.
+function smsTexte(s, max = 160) {
+  return String(s || "")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, "")
+    .replace(/[—–]/g, "-").replace(/[«»""]/g, '"').replace(/['']/g, "'")
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
 function sendSms(apiKey, to, content) {
   const phone = formatPhone(to);
   if (!phone) return Promise.resolve();
@@ -227,11 +242,16 @@ ${(() => {
             }).catch(()=>{})
           );
           if (smsEnabled) {
-            const smsBody = `⏰ ALANE - Rappel : votre prestation ${m.metier||"Prestation"} à ${m.ville||""} est demain à ${m.heure_debut||""}h. Bonne prestation ! — alane.fr`;
+            // Deux messages distincts : « Bonne prestation ! » n'a pas de sens pour
+            // le client, qui ne réalise pas la prestation mais la reçoit.
+            const quoi   = `${m.metier||"Prestation"}${m.ville ? " a " + m.ville : ""}`;
+            const quand  = m.heure_debut ? String(m.heure_debut).replace(":", "h") : "";
+            const smsPrestataire = smsTexte(`ALANE - Rappel : votre prestation ${quoi} est demain${quand ? " a " + quand : ""}. Bonne prestation ! alane.fr`);
+            const smsClientRappel = smsTexte(`ALANE - Rappel : votre prestataire intervient demain${quand ? " a " + quand : ""} pour ${quoi}. alane.fr`);
             const clientPhone = userMap[m.client_id]?.meta?.telephone;
             const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
-            if (clientPhone) sends.push(sendSms(BREVO_API_KEY, clientPhone, smsBody));
-            if (prestaPhone) sends.push(sendSms(BREVO_API_KEY, prestaPhone, smsBody));
+            if (clientPhone) sends.push(sendSms(BREVO_API_KEY, clientPhone, smsClientRappel));
+            if (prestaPhone) sends.push(sendSms(BREVO_API_KEY, prestaPhone, smsPrestataire));
           }
           await Promise.all(sends);
           sent += sends.length;
@@ -318,8 +338,8 @@ ${(() => {
             if (m.validation_prestataire && !m.validation_client && clientEmail)
               vSends.push(fetch("https://api.resend.com/emails", { method:"POST", headers:{"Authorization":`Bearer ${RESEND_API_KEY}`,"Content-Type":"application/json"}, body: JSON.stringify({ from: RESEND_FROM, to:[clientEmail], subject:`✅ Validez votre prestation du ${m.date} — ALANE`, html: clientHtml }) }).catch(()=>{}));
             if (smsEnabled) {
-              const smsPresta  = `📋 ALANE - Confirmez la fin de votre prestation ${m.metier||"Prestation"} du ${m.date} pour recevoir votre paiement. — alane.fr`;
-              const smsCashback = `✅ ALANE - Votre prestataire a confirmé la prestation du ${m.date}. Validez-la pour obtenir votre cashback. — alane.fr`;
+              const smsPresta  = smsTexte(`ALANE - Confirmez la fin de votre prestation ${m.metier||"Prestation"} du ${m.date} pour recevoir votre paiement. alane.fr`);
+              const smsCashback = smsTexte(`ALANE - Votre prestataire a confirme la prestation du ${m.date}. Validez-la pour obtenir votre cashback. alane.fr`);
               const clientPhone = userMap[m.client_id]?.meta?.telephone;
               const prestaPhone = userMap[m.prestataire_id]?.meta?.telephone;
               if (!m.validation_prestataire && prestaPhone) vSends.push(sendSms(BREVO_API_KEY, prestaPhone, smsPresta));
