@@ -2383,7 +2383,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire,date_debut,date_fin,arrived_at,started_at`,
         { headers }
       );
       const mData = await mRes.json();
@@ -2440,12 +2440,47 @@ export default async function handler(req, res) {
         ? fraisDeduits
         : Math.min(FRAIS_DEFAUT, missionAmount);
 
+      // Défaillance du prestataire : annulation sans aucun frais.
+      //
+      // Un retard se juge en proportion, pas en minutes : 30 minutes sur une
+      // prestation d'une heure, c'est la moitié du service perdu ; sur huit heures,
+      // c'est un contretemps. Le droit d'annuler s'ouvre donc à
+      //   seuil = min(60 min, max(20 min, 25 % de la durée prévue))
+      // soit 20 min pour 1h, 30 min pour 2h, 60 min pour 4h et au-delà.
+      //
+      // Il se referme dès que la prestation a démarré : le prestataire est alors à
+      // l'œuvre, et c'est l'arbitrage du décalage — fin à l'heure prévue, heures
+      // réduites — qui rééquilibre. Annuler à ce stade le ferait travailler pour rien.
+      //
+      // Le retard est recalculé ici et jamais lu depuis la requête : c'est une
+      // décision d'argent.
+      let annulationPourRetard = false;
+      if (!mission.started_at && mission.date && mission.heure_debut && mission.prestataire_id) {
+        try {
+          const [hR, mR] = String(mission.heure_debut).split(":").map(Number);
+          const prevuNaive = new Date(`${mission.date}T${String(hR).padStart(2,"0")}:${String(mR||0).padStart(2,"0")}:00`);
+          const prevuMs = prevuNaive.getTime() + frenchOffsetMs(prevuNaive);
+          const retardMin = Math.floor((Date.now() - prevuMs) / 60000);
+          const dureeMin = Math.max(1, Number(mission.hours) || 1) * 60;
+          const seuilMin = Math.min(60, Math.max(20, Math.round(dureeMin * 0.25)));
+          if (retardMin >= seuilMin) {
+            annulationPourRetard = true;
+            console.log(`[cancel_client] retard de ${retardMin} min ≥ seuil ${seuilMin} min (durée ${dureeMin} min) — annulation sans frais`);
+          }
+        } catch (e) {
+          console.error("[cancel_client] calcul du seuil de retard impossible :", e.message);
+        }
+      }
+
       // > 24h : remboursement intégral / < 24h : frais de service réels retenus
-      const refundAmount = lessThan24h
+      // Défaillance du prestataire : intégral dans tous les cas, frais compris —
+      // c'est ce que promet le contrat, et le client n'y est pour rien.
+      const retenirFrais = lessThan24h && !annulationPourRetard;
+      const refundAmount = retenirFrais
         ? Math.max(0, Math.round((missionAmount - fraisRetenus) * 100)) // en centimes
         : Math.round(missionAmount * 100);
-      const keptAmount = lessThan24h ? fraisRetenus : 0;
-      if (lessThan24h) {
+      const keptAmount = retenirFrais ? fraisRetenus : 0;
+      if (retenirFrais) {
         console.log(`[cancel_client] frais retenus ${fraisRetenus} € (déduits: ${fraisDeduits}, total: ${missionAmount}, horaire: ${partHoraire})`);
       }
 

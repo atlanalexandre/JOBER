@@ -404,6 +404,17 @@ promet, et rien ne l'appliquait : la prestation était clôturée et l'argent re
 la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
 la prestation est reprise au passage suivant.
 
+**Retard du prestataire : le client peut annuler sans aucun frais.** Le seuil est
+proportionnel à la durée — `min(60 min, max(20 min, 25 % de la durée))`, soit 20 min pour une
+prestation d'une heure, 30 min pour deux heures, 60 min au-delà de quatre. Un retard se juge
+en proportion : 30 minutes sur une heure, c'est la moitié du service perdu ; sur huit heures,
+un contretemps. Le droit **se referme dès le démarrage** — le prestataire est alors à l'œuvre
+et c'est l'arbitrage du décalage qui rééquilibre ; annuler le ferait travailler pour rien.
+Le remboursement est **intégral, frais de service compris**, comme le promet le contrat en cas
+de défaillance du prestataire. Le retard est recalculé par `cancel_client` et jamais lu depuis
+la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
+n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
+
 **Un démarrage tardif ne décale pas la fin sans l'accord du client.** Le décalage est
 mesuré à deux moments — au pointage d'arrivée (`checkin_mission`) **et** au démarrage
 (`start_mission`), le plus défavorable au client étant retenu — au-delà de 15 minutes. Il est
