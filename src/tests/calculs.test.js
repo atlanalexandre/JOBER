@@ -152,6 +152,30 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Plan d'abonnement opposable ───────────────────────────────────
+// À l'inscription, le prestataire choisit son abonnement d'un simple appui et cette
+// valeur partait dans user_metadata. `profiles.plan_abonnement` restant vide faute de
+// paiement, le repli sur user_metadata accordait Elite — 999 prestations, badge et
+// première place — à qui n'avait jamais rien réglé. Seul `profiles`, écrit par le
+// webhook Stripe ou le backoffice, fait foi.
+describe("plan d'abonnement — source de vérité", () => {
+  // `metadata` est volontairement ignoré : c'est tout l'objet de la correction.
+  const planOpposable = ({ profil, metadata: _metadata }) => profil || "free";
+
+  it("un plan choisi à l'inscription n'accorde rien", () => {
+    expect(planOpposable({ profil:null, metadata:"elite" })).toBe("free");
+  });
+  it("un plan réglé et inscrit par le webhook fait foi", () => {
+    expect(planOpposable({ profil:"premium", metadata:"free" })).toBe("premium");
+  });
+  it("metadata ne peut jamais relever le plan du profil", () => {
+    expect(planOpposable({ profil:"premium", metadata:"elite" })).toBe("premium");
+  });
+  it("sans rien nulle part : plan gratuit", () => {
+    expect(planOpposable({ profil:null, metadata:null })).toBe("free");
+  });
+});
+
 // ── Montant facturé ───────────────────────────────────────────────
 // La facture omettait elle aussi le nombre de jours : une prestation récurrente de
 // 5 jours était facturée une seule journée. Elle doit porter le même montant que

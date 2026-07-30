@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       // par l'interface du prestataire : un compte non activé restait proposé aux
       // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
       // l'affectation le refuse également côté /api/missions.
-      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url,plan_abonnement`, { headers }),
       fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
     ]);
     const profiles     = await profilesRes.json();
@@ -110,8 +110,12 @@ export default async function handler(req, res) {
         dispo_immediat:        meta.dispo_immediat        || false,
         code_postal:      meta.code_postal      || null,
         ville:            meta.ville            || null,
+        // Le plan vient de `profiles`, jamais de user_metadata : celui-ci reçoit le
+        // plan choisi d'un simple appui à l'inscription, sans paiement. Le badge
+        // Elite et la première place dans les résultats étaient donc accessibles
+        // sans rien régler.
         plan_abonnement:  (() => {
-          let plan = meta.plan_abonnement || "free";
+          let plan = p.plan_abonnement || "free";
           const endDate = meta.subscription_end_date;
           if (endDate && plan !== "free" && new Date(endDate).getTime() < Date.now()) plan = "free";
           return plan;
