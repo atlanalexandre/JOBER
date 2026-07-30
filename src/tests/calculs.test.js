@@ -152,6 +152,49 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Seuil d'annulation sans frais pour retard du prestataire ──────
+// Un retard se juge en proportion, pas en minutes : 30 min sur une prestation d'une
+// heure, c'est la moitié du service perdu ; sur huit heures, c'est un contretemps.
+// Le seuil valait 30 min quelle que soit la durée. Reproduit
+// seuilAnnulationRetardMin() et le contrôle de api/missions.js (cancel_client).
+describe("annulation sans frais — seuil proportionnel", () => {
+  const seuil = (heures) => {
+    const dureeMin = Math.max(1, Number(heures) || 1) * 60;
+    return Math.min(60, Math.max(20, Math.round(dureeMin * 0.25)));
+  };
+
+  it("1 h : annulable dès 20 min de retard, soit un tiers du service", () => {
+    expect(seuil(1)).toBe(20);
+  });
+  it("2 h : 30 min", () => {
+    expect(seuil(2)).toBe(30);
+  });
+  it("4 h : 60 min", () => {
+    expect(seuil(4)).toBe(60);
+  });
+  it("8 h : plafonné à 60 min, pas 2 h", () => {
+    expect(seuil(8)).toBe(60);
+  });
+  it("prestation très courte : plancher de 20 min, on n'annule pas pour 8 min", () => {
+    expect(seuil(0.5)).toBe(20);
+  });
+
+  // Le droit se referme dès le démarrage : le prestataire est à l'œuvre, et c'est
+  // l'arbitrage du décalage qui rééquilibre. Annuler le ferait travailler pour rien.
+  const annulableSansFrais = ({ heures, retardMin, demarre }) =>
+    !demarre && retardMin >= seuil(heures);
+
+  it("1 h, 25 min de retard, pas démarrée : annulable", () => {
+    expect(annulableSansFrais({ heures:1, retardMin:25, demarre:false })).toBe(true);
+  });
+  it("même retard mais prestation démarrée : plus annulable", () => {
+    expect(annulableSansFrais({ heures:1, retardMin:25, demarre:true })).toBe(false);
+  });
+  it("1 h, 12 min de retard : pas encore annulable", () => {
+    expect(annulableSansFrais({ heures:1, retardMin:12, demarre:false })).toBe(false);
+  });
+});
+
 // ── Décalage de démarrage : qui décide de la fin ──────────────────
 // Une prestation prévue de 20h à 21h, démarrée à 20h37, voyait sa fin glisser à
 // 21h37 sans que le client ait accepté quoi que ce soit. Le décalage n'était mesuré

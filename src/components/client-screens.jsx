@@ -3875,6 +3875,15 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
 // navigateur d'un client français interprète déjà « 2026-07-30T08:00 » en heure locale.
 export const HEURES_CONTESTATION = 48;
 
+// Seuil de retard ouvrant l'annulation sans frais. Un retard se juge en proportion,
+// pas en minutes : 30 min sur une prestation d'une heure, c'est la moitié du service
+// perdu ; sur huit heures, c'est un contretemps. Doit rester identique au calcul de
+// /api/missions (cancel_client), seul juge.
+export function seuilAnnulationRetardMin(heures) {
+  const dureeMin = Math.max(1, Number(heures) || 1) * 60;
+  return Math.min(60, Math.max(20, Math.round(dureeMin * 0.25)));
+}
+
 export function finPrestationMs(m) {
   const duree = Math.max(1, Number(m?.hours) || 1) * 3600000;
   if (m?.started_at) {
@@ -6171,19 +6180,26 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             } catch { return null; }
             const retard = Math.floor((Date.now() - debutPrevu) / 60000);
             if (retard < 15) return null;   // tolérance avant d'inquiéter le client
+            // Le droit d'annuler s'ouvrait à 30 min quelle que soit la durée. Sur une
+            // prestation d'une heure, 30 min de retard représentent la moitié du
+            // service ; sur huit heures, un contretemps. Le seuil suit la durée.
+            const seuilAnnul = seuilAnnulationRetardMin(selected.hours);
+            const peutAnnulerSansFrais = retard >= seuilAnnul;
             return (
               <div style={{ background:"linear-gradient(135deg,rgba(242,94,94,0.12),rgba(242,94,94,0.05))", border:"1.5px solid rgba(242,94,94,0.45)", borderRadius:14, padding:"16px", marginTop:16 }}>
                 <div style={{ fontWeight:800, color:"#F25E5E", fontSize:14, marginBottom:6 }}>⏰ Votre prestataire n'a pas signalé son arrivée</div>
                 <div style={{ color:C.textSub, fontSize:13, marginBottom:14, lineHeight:1.5 }}>
                   La prestation devait commencer il y a {retard} min. Il n'a pas encore confirmé être sur place.
-                  {retard >= 30 ? " Contactez-le, ou annulez sans frais si vous ne souhaitez plus attendre." : " Il a peut-être simplement oublié de pointer."}
+                  {peutAnnulerSansFrais
+                    ? " Contactez-le, ou annulez sans aucun frais si vous ne souhaitez plus attendre — vous serez intégralement remboursé, frais de service compris."
+                    : ` Il a peut-être simplement oublié de pointer. Passé ${seuilAnnul} min de retard, vous pourrez annuler sans frais.`}
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <button onClick={()=>onNavigate?.("chat", { ...selected, _missionId: selected.id })}
                     style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid ${C.violet}`, background:"transparent", color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                     💬 Le contacter
                   </button>
-                  {retard >= 30 && (
+                  {peutAnnulerSansFrais && (
                     <button onClick={()=>setShowCancelConfirm(true)}
                       style={{ flex:1, padding:"11px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                       Annuler sans frais
@@ -6586,6 +6602,18 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     {selected.stripe_payment_intent ? (
                       (() => {
                         const hoursUntil = mStart ? (mStart.getTime() - Date.now()) / 3600000 : Infinity;
+                        // Défaillance du prestataire : le message annonçait une retenue de
+                        // frais alors que le bouton qui mène ici promet « sans frais ». Le
+                        // serveur rembourse bien l'intégralité dans ce cas.
+                        const retardMin2 = mStart ? Math.floor((Date.now() - mStart.getTime()) / 60000) : 0;
+                        const sansFrais = !selected.started_at && selected.prestataire_id
+                          && retardMin2 >= seuilAnnulationRetardMin(selected.hours);
+                        if (sansFrais) return (
+                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>
+                            Votre prestataire a {retardMin2} min de retard et n'a pas démarré la prestation.
+                            <br/><strong style={{ color:"#10D98F" }}>Remboursement intégral</strong>, frais de service compris.
+                          </div>
+                        );
                         return hoursUntil >= 24
                           ? <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à plus de 24h → <strong style={{ color:"#10D98F" }}>remboursement intégral</strong> (hors frais de service).</div>
                           : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
