@@ -3864,6 +3864,37 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
   );
 }
 
+// Fenêtre de contestation d'une prestation : 48 h après sa fin effective, comme
+// l'imposent les CGPS (art. 17.1). Deux règles divergentes coexistaient — « moins de
+// 7 jours depuis la date » sur les cartes de l'historique, et aucune limite du tout
+// dans la vue détail — et ni l'une ni l'autre ne correspondait au contrat. La règle
+// est ici en un seul endroit, et /api/missions la revérifie de son côté : le front ne
+// décide pas seul d'un délai contractuel.
+//
+// Contrairement au serveur, aucune conversion de fuseau n'est nécessaire : le
+// navigateur d'un client français interprète déjà « 2026-07-30T08:00 » en heure locale.
+export const HEURES_CONTESTATION = 48;
+
+export function finPrestationMs(m) {
+  const duree = Math.max(1, Number(m?.hours) || 1) * 3600000;
+  if (m?.started_at) {
+    const debut = new Date(m.started_at).getTime();
+    if (!isNaN(debut)) return debut + duree;
+  }
+  if (!m?.date) return null;
+  const naive = new Date(`${m.date}T${m.heure_debut || "08:00"}:00`);
+  if (isNaN(naive.getTime())) return null;
+  return naive.getTime() + duree;
+}
+
+// Sans date exploitable on n'interdit rien : refuser un litige légitime serait pire
+// que d'en accepter un tardif, et le serveur reste le juge.
+export function contestationOuverte(m) {
+  const fin = finPrestationMs(m);
+  if (!fin) return true;
+  return Date.now() <= fin + HEURES_CONTESTATION * 3600000;
+}
+
 export function ChatScreen({ provider, onBack, chatClientId }) {
   if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Conversation introuvable.</div>;
   const p = provider;
@@ -3899,7 +3930,14 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
       .select("*")
       .eq("conversation_key", key)
       .order("created_at", { ascending: true });
-    if (!error) setMsgs(data || []);
+    // Un échec de lecture affichait une conversation vide, indiscernable d'une
+    // conversation qui n'a jamais commencé.
+    if (error) {
+      console.error("[chat] lecture de la conversation impossible :", error.message);
+      showToast("Conversation illisible : " + error.message, "error");
+    } else {
+      setMsgs(data || []);
+    }
     setLoading(false);
   };
 
@@ -3936,7 +3974,12 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
     const optimistic = { id:`opt-${Date.now()}`, sender_tag:senderTag, sender_id:userId, conversation_key:key, content, created_at:new Date().toISOString() };
     setMsgs(m => [...m, optimistic]);
     try {
-      await supabase.from("messages").insert({ conversation_key:key, sender_id:userId, sender_tag:senderTag, content });
+      // L'échec était avalé par un `catch (_) {}` : le message restait affiché comme
+      // envoyé alors qu'il n'existait pas en base. Le client croyait avoir prévenu son
+      // prestataire — sur une prestation en cours, c'est le pire moment pour mentir à
+      // l'utilisateur (règle 1.2).
+      const { error:sendErr } = await supabase.from("messages").insert({ conversation_key:key, sender_id:userId, sender_tag:senderTag, content });
+      if (sendErr) throw new Error(sendErr.message || "erreur inconnue");
       // Notifier le destinataire (in-app + SMS)
       const recipientId = chatClientId ? chatClientId : p.id;
       const { data: meData } = await supabase.auth.getUser();
@@ -3950,7 +3993,15 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
           body: JSON.stringify({ action: "chat_notify", recipient_id: recipientId, sender_name: senderDisplayName, message_preview: content }),
         }).catch(() => {});
       });
-    } catch (_) {}
+    } catch (e) {
+      console.error("[chat] envoi impossible :", e?.message);
+      // Le message optimiste est retiré : le laisser afficherait un message envoyé
+      // qui ne l'est pas. Le texte est rendu à l'utilisateur pour qu'il réessaie
+      // sans avoir à le retaper.
+      setMsgs(m => m.filter(x => x.id !== optimistic.id));
+      setMsg(content);
+      showToast("Message non envoyé : " + (e?.message || "erreur réseau"), "error");
+    }
     setSending(false);
   };
 
@@ -6441,9 +6492,16 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
           {selected.status === "completed" && (
             <div style={{ marginTop:8 }}>
-              <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                ⚠️ Signaler un problème
-              </button>
+              {contestationOuverte(selected) ? (
+                <button onClick={()=>setShowDisputeModal(selected.id)} style={{ width:"100%", padding:"11px", borderRadius:r, border:"1px solid rgba(242,94,94,0.3)", background:"rgba(242,94,94,0.08)", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⚠️ Signaler un problème
+                </button>
+              ) : (
+                <div style={{ color:C.textMuted, fontSize:11, textAlign:"center", lineHeight:1.5, padding:"8px 4px" }}>
+                  Le délai de contestation de {HEURES_CONTESTATION} h après la fin de la prestation est écoulé.<br/>
+                  Écrivez à direction@alane.fr si la situation le justifie.
+                </div>
+              )}
             </div>
           )}
 
@@ -6776,11 +6834,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             m.ville || null,
           ].filter(Boolean);
 
-          // Signaler un problème : missions terminées < 7j
-          const canDispute = m.status === "completed" && !disputeSuccess[m.id] && (() => {
-            const mDate = m.date ? new Date(m.date) : null;
-            return mDate ? (Date.now() - mDate.getTime()) / 86400000 <= 7 : false;
-          })();
+          // Signaler un problème : dans les 48 h suivant la fin, comme les CGPS
+          // l'imposent. La règle était ici de 7 jours à compter de la date, ce qui
+          // laissait contester une prestation cinq jours après le délai contractuel —
+          // et l'API la refuse désormais.
+          const canDispute = m.status === "completed" && !disputeSuccess[m.id] && contestationOuverte(m);
 
           return (
             <div key={m.id} onClick={()=>openCandidatures(m)}

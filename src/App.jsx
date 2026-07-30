@@ -1187,12 +1187,18 @@ export default function App() {
       // Fallback borné : sans repère, ne pas balayer tout l'historique depuis 1970
       lastSeen = lastSeen || new Date(Date.now() - 30*24*3600*1000).toISOString();
       // head:true → seul le compteur est renvoyé, pas les lignes
+      //
+      // Le filtre portait sur `sender_tag != "client"`, ce qui n'a de sens que pour un
+      // client. Pour un prestataire, il comptait ses propres messages — dont le tag est
+      // « prestataire » — et n'a jamais compté ceux du client. Le badge était donc
+      // exactement inversé côté prestataire. `sender_id` ne dépend pas du rôle.
       const { count, error } = await supabase
         .from("messages")
         .select("id", { count:"exact", head:true })
         .ilike("conversation_key", `%${userId}%`)
-        .neq("sender_tag","client")
+        .neq("sender_id", userId)
         .gt("created_at", lastSeen);
+      if(error) console.error("[messages] comptage des non lus impossible :", error.message);
       if(!error && mounted) setUnreadCount(count || 0);
     };
     poll();

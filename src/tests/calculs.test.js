@@ -152,6 +152,47 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Délai de contestation d'une prestation ────────────────────────
+// Les CGPS écrivent : « Au-delà de 48 heures sans signalement par le Client, la
+// Prestation est réputée définitivement validée […] et aucune contestation ne pourra
+// être acceptée. » Rien ne l'appliquait : une prestation terminée depuis des mois
+// restait contestable, et la garantie donnée au prestataire n'en était pas une.
+// Reproduit le contrôle de api/missions.js (action `dispute`).
+describe("litige — délai de 48 h après la fin de la prestation", () => {
+  const H = 3600000;
+  // finPrestation : pointage réel s'il existe, sinon horaire prévu.
+  const finPrestation = ({ startedAt, debutPrevu, hours }) => {
+    const duree = Math.max(1, hours || 1) * H;
+    if (startedAt) return startedAt + duree;
+    if (debutPrevu) return debutPrevu + duree;
+    return null;
+  };
+  const contestable = (m, maintenant) => {
+    const fin = finPrestation(m);
+    if (!fin) return true;                       // non vérifiable → on laisse passer
+    return maintenant <= fin + 48 * H;
+  };
+  const T0 = 1_760_000_000_000;
+
+  it("juste après la fin : contestable", () => {
+    expect(contestable({ debutPrevu:T0, hours:8 }, T0 + 8*H + 60000)).toBe(true);
+  });
+  it("47 h après la fin : encore contestable", () => {
+    expect(contestable({ debutPrevu:T0, hours:8 }, T0 + 8*H + 47*H)).toBe(true);
+  });
+  it("49 h après la fin : hors délai", () => {
+    expect(contestable({ debutPrevu:T0, hours:8 }, T0 + 8*H + 49*H)).toBe(false);
+  });
+  it("le délai part du pointage réel quand il existe, pas de l'horaire prévu", () => {
+    // Prestation prévue à T0 mais démarrée 6 h plus tard : à T0+50h, la fin réelle
+    // n'a que 44 h — le client doit encore pouvoir contester.
+    expect(contestable({ debutPrevu:T0, startedAt:T0 + 6*H, hours:2 }, T0 + 50*H)).toBe(true);
+  });
+  it("sans date exploitable, on ne bloque pas un litige légitime", () => {
+    expect(contestable({ hours:8 }, T0 + 1000*H)).toBe(true);
+  });
+});
+
 // ── Identifiant de document accepté par le backoffice ─────────────
 // La clé primaire de `documents` est un entier (BIGSERIAL), pas un uuid. Le backoffice
 // exigeait un uuid : toute validation et tout refus de document répondaient « docId
