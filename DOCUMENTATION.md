@@ -376,6 +376,14 @@ closed               clôturée
 Chemins de sortie : `cancelled` (annulation), `disputed` (litige),
 `needs_replacement` (le prestataire se désiste, retour au marché), `rejected` / `refused`.
 
+**`needs_replacement` signifie « déjà payée ».** C'est ce qui la distingue d'une prestation
+réouverte en `open` : le prestataire s'est désisté après paiement, l'argent du client est
+conservé le temps de trouver un remplaçant. Si la date passe sans remplaçant, le cron
+mensuel **rembourse intégralement** puis passe la prestation en `cancelled` — le contrat le
+promet, et rien ne l'appliquait : la prestation était clôturée et l'argent restait acquis à
+la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
+la prestation est reprise au passage suivant.
+
 **Le passage en `disputed` est borné à 48 h après la fin effective de la prestation**, délai
 imposé par les CGPS art. 17.1 (« au-delà de 48 heures sans signalement, la Prestation est
 réputée définitivement validée »). Le point de départ est le pointage réel (`started_at`)

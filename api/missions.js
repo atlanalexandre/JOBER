@@ -1779,11 +1779,20 @@ export default async function handler(req, res) {
 
       // Si déjà payée → needs_replacement (pas de re-paiement), sinon retour open
       const newStatus = mission.stripe_payment_intent ? "needs_replacement" : "open";
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Le résultat de cette écriture n'était pas vérifié : un refus laissait la
+      // prestation assignée au prestataire qui venait pourtant de se désister, alors
+      // que son écran lui confirmait l'annulation. Le filtre sur le statut évite en
+      // outre d'écraser une prestation entre-temps annulée par le client.
+      const patchDesist = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.assigned`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ status: newStatus, prestataire_id: null, validation_prestataire: false }),
       });
+      const desistRows = await patchDesist.json().catch(() => []);
+      if (!patchDesist.ok || !Array.isArray(desistRows) || desistRows.length === 0) {
+        console.error(`[cancel_prestataire] désistement refusé pour ${mission_id} : ${patchDesist.status}`);
+        return res.status(409).json({ error: "Ce désistement n'a pas pu être enregistré — la prestation a peut-être changé d'état. Rechargez la page." });
+      }
 
       // Rejeter la candidature du prestataire désisté
       await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=eq.${caller.id}`, {
