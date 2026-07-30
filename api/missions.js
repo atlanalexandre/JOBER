@@ -2400,14 +2400,10 @@ export default async function handler(req, res) {
       // retenu. Un client en récurrent sur un jour se voyait donc prélever 4,90 €
       // pour 2,90 € payés, et une urgence ne laissait que 4,90 € sur 9,90 € encaissés.
       // Les frais réels se déduisent du total : montant payé moins la part horaire.
+      // Le délai avant la prestation ne détermine plus la retenue des frais : ils sont
+      // dus dans tous les cas d'annulation par le client. Le calcul est retiré plutôt
+      // que laissé inutilisé, pour ne pas laisser croire qu'il compte encore.
       const FRAIS_DEFAUT = 4.90;
-      let lessThan24h = false;
-      if (mission.date) {
-        const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
-        const missionStart = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStart.getTime() + frenchOffsetMs(missionStart));
-        lessThan24h = (missionStartUTC - new Date()) / 3600000 < 24;
-      }
       // montant_total n'est défini qu'à la validation — pour les missions assigned non validées,
       // le montant réel est dans le PaymentIntent Stripe. On le récupère si nécessaire.
       let missionAmount = Number(mission.montant_total) || 0;
@@ -2472,10 +2468,18 @@ export default async function handler(req, res) {
         }
       }
 
-      // > 24h : remboursement intégral / < 24h : frais de service réels retenus
-      // Défaillance du prestataire : intégral dans tous les cas, frais compris —
-      // c'est ce que promet le contrat, et le client n'y est pour rien.
-      const retenirFrais = lessThan24h && !annulationPourRetard;
+      // Les frais de service sont retenus sur TOUTE annulation à l'initiative du
+      // client, quel que soit le délai : ils rémunèrent la mise en relation, déjà
+      // effectuée. C'est ce qu'annoncent les CGPS art. 8.1 (« en principe retenus et
+      // non remboursables car ils couvrent des coûts déjà engagés ») et l'écran de
+      // confirmation lui-même (« remboursement intégral hors frais de service »).
+      // Seul le serveur disait le contraire au-delà de 24 h : il les remboursait.
+      //
+      // Unique exception, celle des CGPS art. 8.2 : la défaillance du prestataire.
+      // Le client est alors intégralement remboursé, frais compris — il n'y est pour
+      // rien, et facturer une mise en relation qui n'a produit personne serait
+      // difficilement défendable.
+      const retenirFrais = !annulationPourRetard;
       const refundAmount = retenirFrais
         ? Math.max(0, Math.round((missionAmount - fraisRetenus) * 100)) // en centimes
         : Math.round(missionAmount * 100);
@@ -2604,10 +2608,12 @@ export default async function handler(req, res) {
               <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
                 <tr><td style="padding:6px 0;color:#666">Montant payé</td><td style="font-weight:700">${esc(String(missionAmount.toFixed(2).replace(".",",")))} €</td></tr>
                 <tr><td style="padding:6px 0;color:#666">Remboursement</td><td style="font-weight:700;color:#10D98F">${refundEur} €</td></tr>
-                ${lessThan24h ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
+                ${keptAmount > 0 ? `<tr><td style="padding:6px 0;color:#666">Frais de service retenus</td><td style="font-weight:700;color:#F0B429">${keptEur} €</td></tr>` : ""}
               </table>
               <p style="font-size:13px;color:#666">${refundAmount > 0 ? (walletRefunded ? "Le remboursement a été crédité instantanément sur votre wallet ALANE." : (stripeRefundId ? "Le remboursement a été déclenché automatiquement. Il apparaîtra sur votre relevé bancaire sous 5 à 10 jours ouvrés." : "Le remboursement sera traité manuellement par notre équipe dans les 48h.")) : (mission.stripe_payment_intent ? "Les frais de service ont été retenus — aucun montant supplémentaire n'est dû." : "Aucun paiement n'avait été effectué pour cette mission.")}</p>
-              ${lessThan24h ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus car l'annulation a eu lieu moins de 24h avant le début de la prestation.</p>` : ""}
+              ${keptAmount > 0
+                ? `<p style="font-size:12px;color:#999">Les frais de service (${keptEur} €) sont retenus : ils couvrent la mise en relation, déjà effectuée.</p>`
+                : `<p style="font-size:12px;color:#999">Votre prestataire ne s'est pas présenté : vous êtes intégralement remboursé, frais de service compris.</p>`}
               <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),

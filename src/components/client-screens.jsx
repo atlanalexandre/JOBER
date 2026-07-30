@@ -6614,9 +6614,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                             <br/><strong style={{ color:"#10D98F" }}>Remboursement intégral</strong>, frais de service compris.
                           </div>
                         );
-                        return hoursUntil >= 24
-                          ? <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à plus de 24h → <strong style={{ color:"#10D98F" }}>remboursement intégral</strong> (hors frais de service).</div>
-                          : <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Annulation à moins de 24h → <strong style={{ color:"#F0B429" }}>les frais de service sont retenus</strong>. Le reste sera remboursé.</div>;
+                        // Les frais de service sont dus quel que soit le délai : ils
+                        // rémunèrent la mise en relation, déjà effectuée. Le message
+                        // ne distingue plus que ce qui change vraiment — la présence
+                        // ou non d'un prestataire déjà engagé.
+                        void hoursUntil;
+                        return <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>
+                          Le montant de la prestation vous est <strong style={{ color:"#10D98F" }}>remboursé intégralement</strong>.
+                          <br/>Les <strong style={{ color:"#F0B429" }}>frais de service restent acquis</strong> : ils couvrent la mise en relation, déjà effectuée.
+                        </div>;
                       })()
                     ) : (
                       <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.6, marginBottom:20 }}>Cette prestation sera supprimée. Aucun paiement n'a été effectué.</div>

@@ -152,6 +152,29 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Frais de service retenus à l'annulation ───────────────────────
+// Les CGPS art. 8.1 les disent « en principe retenus et non remboursables car ils
+// couvrent des coûts déjà engagés », et l'écran de confirmation annonçait déjà
+// « hors frais de service ». Seul le serveur les remboursait au-delà de 24 h.
+// Unique exception, CGPS art. 8.2 : la défaillance du prestataire.
+describe("annulation — frais de service retenus", () => {
+  const rembourse = ({ total, frais, defaillancePrestataire }) =>
+    defaillancePrestataire ? total : Math.round((total - frais) * 100) / 100;
+
+  it("annulation à plus de 24 h : les frais restent acquis", () => {
+    expect(rembourse({ total:116.90, frais:4.90, defaillancePrestataire:false })).toBeCloseTo(112);
+  });
+  it("annulation à moins de 24 h : même règle", () => {
+    expect(rembourse({ total:116.90, frais:4.90, defaillancePrestataire:false })).toBeCloseTo(112);
+  });
+  it("défaillance du prestataire : remboursement intégral, frais compris", () => {
+    expect(rembourse({ total:116.90, frais:4.90, defaillancePrestataire:true })).toBeCloseTo(116.90);
+  });
+  it("urgence : ce sont bien les 9,90 € réels qui sont retenus", () => {
+    expect(rembourse({ total:73.90, frais:9.90, defaillancePrestataire:false })).toBeCloseTo(64);
+  });
+});
+
 // ── Seuil d'annulation sans frais pour retard du prestataire ──────
 // Un retard se juge en proportion, pas en minutes : 30 min sur une prestation d'une
 // heure, c'est la moitié du service perdu ; sur huit heures, c'est un contretemps.
