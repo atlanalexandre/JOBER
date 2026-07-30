@@ -152,6 +152,49 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Mise à jour du profil : ce que le navigateur peut écrire ──────
+// `update-profile` fusionnait sans filtre tout ce qu'on lui envoyait dans
+// user_metadata — champs privilégiés compris, et sans aucune limite de taille. Or
+// user_metadata est encodé dans le jeton, envoyé en en-tête à chaque requête, et
+// Cloudflare plafonne les en-têtes à 16 Ko : une photo en base64 y avait rendu un
+// compte totalement inutilisable (règle 1.1).
+describe("mise à jour du profil — garde-fous", () => {
+  const INTERDITS = ["plan_abonnement","subscription_end_date","plan_souhaite","role","status",
+    "missions_enabled","trial_exhausted","missions_completed_month","cashback_balance",
+    "prepaid_balance","stripe_customer_id","stripe_subscription_id","stripe_account_id","stripe_account_status"];
+  const verdict = (donnees, metaExistant = {}) => {
+    if (INTERDITS.some(k => k in donnees)) return "champ interdit";
+    for (const v of Object.values(donnees)) {
+      if (typeof v === "string" && /^data:/i.test(v)) return "fichier";
+    }
+    // TextEncoder plutôt que Buffer : même mesure en octets UTF-8, disponible partout.
+    const taille = new TextEncoder().encode(JSON.stringify({ ...metaExistant, ...donnees })).length;
+    return taille > 6144 ? "trop volumineux" : "ok";
+  };
+
+  it("une modification ordinaire passe", () => {
+    expect(verdict({ prenom:"Alex", ville:"Nice", tarif_net:15 })).toBe("ok");
+  });
+  it("s'offrir un abonnement en modifiant son profil : refusé", () => {
+    expect(verdict({ plan_abonnement:"elite" })).toBe("champ interdit");
+  });
+  it("se valider soi-même : refusé", () => {
+    expect(verdict({ status:"approved", missions_enabled:true })).toBe("champ interdit");
+  });
+  it("se créditer un portefeuille : refusé", () => {
+    expect(verdict({ prepaid_balance:1000 })).toBe("champ interdit");
+  });
+  it("une photo en base64 : refusée, c'est le bug qui a bloqué un compte entier", () => {
+    expect(verdict({ photo_url:"data:image/png;base64,iVBORw0KGgo..." })).toBe("fichier");
+  });
+  it("une biographie démesurée : refusée avant d'atteindre la limite du jeton", () => {
+    expect(verdict({ bio:"x".repeat(7000) })).toBe("trop volumineux");
+  });
+  it("le cumul avec l'existant est pris en compte, pas seulement l'envoi", () => {
+    expect(verdict({ bio:"x".repeat(3000) }, { competences:"y".repeat(4000) })).toBe("trop volumineux");
+  });
+});
+
 // ── Dépôt d'un avis ───────────────────────────────────────────────
 // L'insertion se faisait depuis le navigateur. Le contrôle « avez-vous déjà travaillé
 // ensemble ? » était une requête du front, contournable, et côté prestataire il
