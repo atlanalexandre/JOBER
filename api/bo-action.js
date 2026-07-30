@@ -884,15 +884,36 @@ export default async function handler(req, res) {
     if (action === "verify_doc") {
       if (!profileId || !req.body.docId) return res.status(400).json({ error: "profileId + docId requis" });
       if (!isUuidId(req.body.docId)) return res.status(400).json({ error: "docId invalide" });
-      // Vérifier que le document appartient bien au profil demandé
-      const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&prestataire_id=eq.${profileId}&select=id`, { headers });
-      const docCheckData = await docCheckRes.json();
-      if (!Array.isArray(docCheckData) || !docCheckData[0]) return res.status(403).json({ error: "Document non trouvé pour ce profil" });
-      await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
+      // Vérifier que le document appartient bien au profil demandé.
+      // Le message d'erreur distingue les deux causes possibles : sans cette
+      // distinction, « document non trouvé pour ce profil » ne permettait pas de
+      // savoir si la ligne avait disparu ou si elle appartenait à un autre compte —
+      // cas réel après recréation d'un compte, les documents gardant l'ancien
+      // identifiant de prestataire.
+      const docCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}&select=id,prestataire_id`, { headers });
+      const docCheckData = await docCheckRes.json().catch(() => []);
+      const docTrouve = Array.isArray(docCheckData) && docCheckData[0];
+      if (!docTrouve) {
+        return res.status(404).json({ error: "Ce document n'existe plus en base — rafraîchissez la liste (🔄)." });
+      }
+      if (docTrouve.prestataire_id !== profileId) {
+        console.error(`[verify_doc] document ${req.body.docId} rattaché à ${docTrouve.prestataire_id}, demandé pour ${profileId}`);
+        return res.status(403).json({ error: "Ce document appartient à un autre compte prestataire." });
+      }
+      const patchDocRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ verified: true }),
       });
+      // L'écriture n'était pas vérifiée : un refus de PostgREST renvoyait quand même
+      // « success: true » et l'écran affichait le document comme validé alors qu'il
+      // ne l'était pas en base.
+      const patchDocData = await patchDocRes.json().catch(() => null);
+      if (!patchDocRes.ok || !Array.isArray(patchDocData) || patchDocData.length === 0) {
+        const detail = patchDocRes.ok ? "aucune ligne modifiée" : JSON.stringify(patchDocData || {});
+        console.error(`[verify_doc] échec de l'écriture pour ${req.body.docId} : ${patchDocRes.status} ${detail}`);
+        return res.status(500).json({ error: `La validation n'a pas pu être enregistrée (${patchDocRes.status}).` });
+      }
       // Marquer le profil comme ayant au moins un document vérifié
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "PATCH",
