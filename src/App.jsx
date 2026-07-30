@@ -1797,7 +1797,11 @@ export default function App() {
         amount={paymentAmount}
         missionId={selectedMissionId}
         hours={paymentHours}
-        onAccepted={()=>setScreen("contract")}
+        // Bascule directe vers le suivi. L'écran de contrat était traversé en
+        // une seconde : la prestation étant déjà « assigned », il considérait les
+        // deux signatures acquises et appelait aussitôt onSign, qui menait ici.
+        // Le client signe déjà à la commande, cette étape n'apportait rien.
+        onAccepted={()=>setScreen("tracking")}
         onCancelled={()=>{ setScreen("sector_detail"); }}
         onBack={()=>setScreen("home")}
       />}
