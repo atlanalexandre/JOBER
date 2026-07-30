@@ -130,6 +130,16 @@ côté serveur à deux endroits, et il faut les deux :
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
   inférieur au `tarif_net` réellement annoncé par le prestataire affecté.
 
+**`missions_creation_guard`** (migration `2026-07-30_secu_verrou_creation_prestation.sql`)
+double ces contrôles au niveau de la base, seul endroit qu'aucun chemin d'écriture ne peut
+contourner. Pour un compte connecté, il interdit à la création : un `client_id` autre que
+soi-même, un `prestataire_id` renseigné, un statut hors `open`/`pending_acceptance`, un
+`stripe_payment_intent`, un `acceptance_deadline`, un pointage antidaté, et un
+`montant_total` inférieur à la seule part horaire (frais de service négatifs). `service_role`
+et les rôles d'administration sont exemptés. Il pose une **borne basse** sur le montant, pas
+le calcul exact du tarif : reproduire la grille tarifaire en base finirait par diverger du
+tunnel de réservation et bloquerait des réservations légitimes.
+
 Deux procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
