@@ -115,7 +115,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
         niveau, experience_ans: experienceAns, competences, langues,
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
-        statut_pro: statutPro, siret: siretNum.replace(/[\s.]/g,"") || null, rib: ribIban.replace(/\s/g,"") || null,
+        // L'IBAN n'est plus écrit ici : user_metadata est encodé dans le jeton
+        // d'authentification, transmis en en-tête à chaque requête et conservé dans le
+        // navigateur. Une coordonnée bancaire n'a rien à y faire — elle va dans
+        // `profiles.rib`, lu par le seul backoffice en service role.
+        statut_pro: statutPro, siret: siretNum.replace(/[\s.]/g,"") || null,
         // Le plan sélectionné ici n'est qu'une intention : il est conservé pour
         // proposer le paiement ensuite, jamais comme abonnement acquis. Il était
         // écrit dans `plan_abonnement`, ce qui suffisait à obtenir Elite — 999
@@ -139,6 +143,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         // `profiles` fait foi pour l'abonnement : il naît gratuit et n'est relevé que
         // par le webhook Stripe, après paiement effectif.
         plan_abonnement: "free",
+        rib: ribIban.replace(/\s/g,"") || null,
       });
       if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";

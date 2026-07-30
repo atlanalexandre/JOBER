@@ -88,7 +88,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes, blacklistRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,created_at&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,created_at,rib&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
       ]);
@@ -118,7 +118,11 @@ export default async function handler(req, res) {
         for (const k of META_EXPOSE) if (meta[k] !== undefined) exposedMeta[k] = meta[k];
         const email = u.email || "";
         const tel   = meta.telephone || null;
-        const iban  = meta.rib ? String(meta.rib).replace(/\s/g, "").toUpperCase() : null;
+        // `profiles.rib` d'abord : l'IBAN sort de user_metadata, où il était encodé
+        // dans le jeton et transmis à chaque requête. Repli sur l'ancien emplacement
+        // tant que la migration 2026-07-30_rgpd_iban_hors_du_jeton n'est pas passée.
+        const ribBrut = p.rib || meta.rib;
+        const iban  = ribBrut ? String(ribBrut).replace(/\s/g, "").toUpperCase() : null;
         const siret = meta.kbis ? String(meta.kbis).replace(/\s/g, "") : null;
         const blacklisted =
           (email && blSets.email.has(hashPii(email))) ||
@@ -129,6 +133,7 @@ export default async function handler(req, res) {
           ...p,
           email,
           ...exposedMeta,
+          rib: p.rib || meta.rib || null,
           blacklisted: !!blacklisted,
         };
       });
@@ -169,7 +174,18 @@ export default async function handler(req, res) {
       if (action === "approve") {
         const meta2 = userData.user_metadata || {};
         const tel2   = meta2.telephone || null;
-        const iban2  = meta2.rib ? String(meta2.rib).replace(/\s/g, "").toUpperCase() : null;
+        // `profiles.rib` d'abord — voir migration 2026-07-30_rgpd_iban_hors_du_jeton.
+        // Sans ce repli, le contrôle anti-recréation cesserait de reconnaître un IBAN
+        // déjà blacklisté dès que l'IBAN quitte le jeton.
+        let ribAppr = meta2.rib;
+        try {
+          const rProf = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib&limit=1`, { headers });
+          const dProf = await rProf.json().catch(() => []);
+          if (Array.isArray(dProf) && dProf[0]?.rib) ribAppr = dProf[0].rib;
+        } catch (e) {
+          console.error("[approve] lecture de profiles.rib impossible :", e.message);
+        }
+        const iban2  = ribAppr ? String(ribAppr).replace(/\s/g, "").toUpperCase() : null;
         const siret2 = meta2.kbis ? String(meta2.kbis).replace(/\s/g, "") : null;
 
         // Vérification dans les deux sens :
@@ -338,14 +354,17 @@ export default async function handler(req, res) {
       // Récupérer téléphone, IBAN, SIRET depuis user_metadata + consommation de missions depuis profiles
       const meta = userData.user_metadata || {};
       const telephone = meta.telephone || null;
-      const iban      = meta.rib ? String(meta.rib).replace(/\s/g, "").toUpperCase() : null;
       const siret     = meta.kbis || null;
       const savedProfileRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement&limit=1`,
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_completed_month,plan_abonnement,rib&limit=1`,
         { headers }
       );
       const savedProfileRows = savedProfileRes.ok ? await savedProfileRes.json().catch(() => []) : [];
       const savedProfile = Array.isArray(savedProfileRows) && savedProfileRows.length > 0 ? savedProfileRows[0] : {};
+      // L'empreinte anti-recréation doit rester calculable après la sortie de l'IBAN
+      // du jeton : `profiles.rib` d'abord, ancien emplacement en repli.
+      const ribSuppr  = savedProfile.rib || meta.rib;
+      const iban      = ribSuppr ? String(ribSuppr).replace(/\s/g, "").toUpperCase() : null;
       if (userEmail || telephone || iban || siret) {
         await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
           method: "POST",

@@ -198,6 +198,7 @@ C'est le point le plus déroutant du projet, et la source de plusieurs pannes.
 | Emplacement | Contenu | Limite |
 |---|---|---|
 | `auth.users.user_metadata` | Infos saisies à l'inscription : téléphone, adresse, secteur, métier, tarif, disponibilités, compétences | **Encodé dans le jeton, ~16 Ko max** |
+| `profiles.rib` | IBAN du prestataire | **Jamais dans `user_metadata`** — voir ci-dessous |
 | Table `profiles` | Rôle, statut, soldes, abonnement, photo | Aucune |
 | Storage `Documents` | Les fichiers justificatifs | 10 Mo par fichier |
 
@@ -346,6 +347,15 @@ Backoffice → validation → status "approved" → email de confirmation
 
 Autrement dit : **seuls les prestataires passent par une validation manuelle.** Un client
 créé à l'instant peut réserver immédiatement.
+
+**L'IBAN vit dans `profiles.rib`, jamais dans `user_metadata`.** Il y était stocké, donc
+encodé dans le jeton d'authentification, transmis en en-tête HTTP à chaque requête et
+conservé dans le navigateur. Ce n'est pas un problème de taille — 27 caractères — mais
+d'exposition : une coordonnée bancaire atteignait ainsi chaque point d'entrée de la
+plateforme, y compris ceux qui n'en ont aucun besoin (minimisation, RGPD art. 5.1.c). Les
+quatre lectures (liste du backoffice, approbation, suppression, contrôle anti-recréation à
+l'inscription) lisent `profiles.rib` en priorité et retombent sur l'ancien emplacement tant
+que l'étape 2 de la migration `2026-07-30_rgpd_iban_hors_du_jeton` n'a pas été passée.
 
 **`profiles.plan_abonnement` fait seule foi pour l'abonnement.** `user_metadata` en contient
 une copie, mais elle n'est **jamais** opposable : à l'inscription, le prestataire choisit son
