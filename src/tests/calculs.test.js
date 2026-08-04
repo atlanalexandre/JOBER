@@ -152,6 +152,35 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Montants affichés au prestataire ──────────────────────────────
+// Six copies d'une même formule privilégiaient `montant_total`, qui porte ce que le
+// CLIENT a payé, frais de service compris. Une prestation d'1 h à 15 €/h s'affichait
+// « 19,90 € gagnés » — le prestataire n'en touche que 15. Sa fiche de fin, son revenu
+// du mois, son historique et son export comptable étaient tous surévalués.
+describe("montant perçu par le prestataire", () => {
+  const montant = (m) => {
+    const heures = Number(m?.actual_hours ?? m?.hours ?? 0);
+    const tarif  = Number(m?.tarif_horaire || 0);
+    const jours  = (m?.date_debut && m?.date_fin)
+      ? Math.max(1, Math.round((new Date(m.date_fin) - new Date(m.date_debut)) / 86400000) + 1)
+      : 1;
+    return Math.round(heures * tarif * jours * 100) / 100;
+  };
+
+  it("1 h à 15 €/h : 15 €, et non les 19,90 € payés par le client", () => {
+    expect(montant({ hours:1, tarif_horaire:15, montant_total:19.90 })).toBe(15);
+  });
+  it("les heures réellement effectuées priment sur les heures prévues", () => {
+    expect(montant({ hours:8, actual_hours:6, tarif_horaire:14 })).toBe(84);
+  });
+  it("récurrent 5 jours : les cinq journées comptent", () => {
+    expect(montant({ hours:8, tarif_horaire:14, date_debut:"2026-07-01", date_fin:"2026-07-05" })).toBe(560);
+  });
+  it("tarif ou durée absents : zéro plutôt qu'un montant inventé", () => {
+    expect(montant({ montant_total:19.90 })).toBe(0);
+  });
+});
+
 // ── Mise à jour du profil : ce que le navigateur peut écrire ──────
 // `update-profile` fusionnait sans filtre tout ce qu'on lui envoyait dans
 // user_metadata — champs privilégiés compris, et sans aucune limite de taille. Or

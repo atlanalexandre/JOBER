@@ -10,6 +10,27 @@ const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
 const ACCEPT_ATTR    = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif";
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
+// Ce que le prestataire perçoit réellement : tarif × heures × jours.
+//
+// Six copies d'une même formule privilégiaient `montant_total`, qui porte ce que le
+// CLIENT a payé — frais de service d'ALANE compris. Tous les montants affichés au
+// prestataire étaient donc surévalués : son revenu du mois, sa fiche de fin de
+// prestation, son historique, ses totaux, et jusqu'à son export comptable. Pour un
+// auto-entrepreneur qui déclare son chiffre d'affaires à partir de cet export, cela
+// revenait à déclarer un revenu jamais encaissé.
+//
+// Les heures réellement effectuées priment sur les heures prévues.
+// Volontairement non exportée : exporter une fonction depuis un fichier de
+// composants casse le rafraîchissement à chaud (react-refresh).
+function montantPrestataire(m) {
+  const heures = Number(m?.actual_hours ?? m?.hours ?? 0);
+  const tarif  = Number(m?.tarif_horaire || 0);
+  const jours  = (m?.date_debut && m?.date_fin)
+    ? Math.max(1, Math.round((new Date(m.date_fin) - new Date(m.date_debut)) / 86400000) + 1)
+    : 1;
+  return Math.round(heures * tarif * jours * 100) / 100;
+}
+
 function validateDocSync(file) {
   const ext = file.name ? file.name.split(".").pop().toLowerCase() : "";
   if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
@@ -2768,7 +2789,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setPlanActuel(planJson?.plan || prof?.plan_abonnement || "free");
       if (planJson?.limite_mensuelle != null) setLimiteMensuelle(Number(planJson.limite_mensuelle));
       setPlanLoaded(true);
-      const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+      const getAmt = montantPrestataire;
       const allM=Array.isArray(mData)?mData:[];
       const done=allM.filter(m=>m.status==="completed");
       const refused=allM.filter(m=>m.status==="refused");
@@ -2893,7 +2914,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* ── Recap Card ── */}
       {recapCard && (() => {
-        const getAmt = m => Number(m.montant_total||(m.tarif_horaire&&(m.actual_hours??m.hours)?Number(m.tarif_horaire)*Number(m.actual_hours??m.hours):0));
+        const getAmt = montantPrestataire;
         const amt = getAmt(recapCard);
         const billedHours = recapCard.actual_hours ?? recapCard.hours;
         const sector = SECTORS.find(s => s.id === recapCard.sector);
@@ -2901,8 +2922,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ? (() => { try { return new Date(recapCard.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}); } catch(e) { return recapCard.date; } })()
           : "";
         return (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9000, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
-            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"14px 20px 0", paddingBottom:"calc(28px + env(safe-area-inset-bottom, 16px))", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"75vh", overflowY:"auto" }}>
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9990, backdropFilter:"blur(3px)", WebkitBackdropFilter:"blur(3px)" }}>
+            <div style={{ background:"linear-gradient(180deg,#0D1B3E,#091224)", borderRadius:"24px 24px 0 0", padding:"14px 20px 0", paddingBottom:"calc(96px + env(safe-area-inset-bottom, 16px))", width:"100%", maxWidth:480, border:`1px solid rgba(16,217,143,0.25)`, borderBottom:"none", textAlign:"center", maxHeight:"80vh", overflowY:"auto" }}>
               <div style={{ width:36, height:4, background:"rgba(255,255,255,0.15)", borderRadius:2, margin:"0 auto 14px" }} />
               <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:12, marginBottom:10 }}>
                 <div style={{ width:52, height:52, borderRadius:"50%", background:"linear-gradient(135deg,rgba(16,217,143,0.2),rgba(10,191,122,0.1))", border:"2px solid rgba(16,217,143,0.4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0, boxShadow:"0 0 20px rgba(16,217,143,0.25)" }}>
@@ -3161,7 +3182,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         {tab==="historique" && (()=>{
           const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée" };
           const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted };
-          const getAmtH = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+          const getAmtH = montantPrestataire;
           return historyMissions.length === 0 ? (
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center" }}>
               <div style={{ fontSize:36, marginBottom:10 }}>📂</div>
@@ -3208,7 +3229,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </>;
         })()}
         {tab==="revenus" && (()=>{
-          const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+          const getAmt = montantPrestataire;
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           return <>
             {completedMissions.length===0 ? (
@@ -3235,7 +3256,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   const d = new Date(now.getFullYear(), now.getMonth() - (3-i), 1);
                   return { year:d.getFullYear(), month:d.getMonth(), label:["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"][d.getMonth()] };
                 });
-                const getAmt2 = m => Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const getAmt2 = montantPrestataire;
                 const byMonth = months.map(({year,month,label}) => {
                   const rev = completedMissions.filter(m => {
                     if (!m.date) return false;
@@ -3306,7 +3327,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             </div>
             {completedMissions.length > 0 && (
               <button onClick={()=>{
-                const getAmt=m=>Number(m.montant_total||(m.tarif_horaire&&m.hours?Number(m.tarif_horaire)*Number(m.hours):0));
+                const getAmt = montantPrestataire;
                 const rows=[["Date","Secteur","Métier","Heures","Montant (€)","Statut"],...completedMissions.map(m=>[m.date||"",SECTORS.find(s=>s.id===m.sector)?.label||m.sector||"",m.metier||"",m.hours||"",getAmt(m).toFixed(2),m.status||""])];
                 const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
                 const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
