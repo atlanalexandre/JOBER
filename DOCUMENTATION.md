@@ -482,6 +482,11 @@ rémunération, et c'est ce qu'annonce le contrat signé par les deux parties (�
 au Prestataire »). Les heures retenues sont les heures réelles (`actual_hours`) quand elles
 existent, sinon les heures prévues.
 
+**Côté interface, `montantPrestataire()` dans `presta-screens.jsx` calcule la même chose** et
+doit rester alignée : six copies d'une formule privilégiant `montant_total` surévaluaient tous
+les montants montrés au prestataire — revenu du mois, fiche de fin de prestation, historique,
+totaux et export comptable. Une prestation d'1 h à 15 €/h s'affichait « 19,90 € gagnés ».
+
 Deux chemins émettent ce virement et **doivent rester alignés** : `api/missions.js` (action
 `complete`, cas normal) et `api/stripe-webhook.js` (`account.updated`, rattrapage des
 virements en attente quand le compte Stripe du prestataire devient opérationnel). Ils
