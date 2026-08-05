@@ -412,6 +412,18 @@ choisit donc lui-même `role` et `status`. L'application n'écrit jamais autre c
 déclencheur rend la question sans objet. Restent libres : nom, prénom, adresse, ville, code
 postal, `avatar_url`, `rib`.
 
+**`META_EXPOSE` dans `api/bo-action.js` liste les champs `user_metadata` renvoyés au
+backoffice.** C'est une liste blanche volontaire — un champ sensible ajouté plus tard ne fuite
+pas par accident — mais elle doit être **étendue en même temps que l'inscription**. Elle datait
+d'avant le formulaire prestataire actuel : le backoffice affichait « Secteur », « Métier »,
+« Tarif net », « Adresse » et « Langues » sans jamais les recevoir, et la fiche d'un candidat
+se résumait à son email, son téléphone et son IBAN — alors que c'est sur ces informations que
+repose la décision de validation.
+
+**Le SIRET d'un prestataire est dans `user_metadata.siret`**, pas dans `kbis`, qui n'est
+renseigné que pour les clients professionnels. Le contrôle à l'approbation et le bouton
+« Vérifier IBAN / SIRET » ne lisaient que `kbis` : aucun SIRET de prestataire n'était vérifié.
+
 **`api/update-profile.js` filtre ce que le navigateur peut écrire dans `user_metadata`.**
 Il fusionnait sans aucun filtre l'objet reçu : un compte pouvait donc s'attribuer un
 abonnement, se valider lui-même ou se créditer un portefeuille en modifiant son profil. Une

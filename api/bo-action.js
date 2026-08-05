@@ -110,7 +110,29 @@ export default async function handler(req, res) {
       const authUsers = authData.users || [];
       const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
       // Whitelist explicite des champs user_metadata exposés — évite la fuite de champs futurs sensibles
-      const META_EXPOSE = ["telephone", "type_compte", "societe_nom", "kbis", "rib", "role", "prenom", "nom"];
+      // Liste blanche des champs user_metadata renvoyés au backoffice — elle évite
+      // qu'un champ sensible ajouté plus tard ne fuite par accident.
+      //
+      // Elle datait d'avant l'inscription prestataire actuelle : le backoffice
+      // affichait bien « Secteur », « Métier », « Tarif net », « Adresse » et
+      // « Langues », mais ces champs n'étaient jamais transmis. La fiche d'un
+      // prestataire se résumait donc à son email, son téléphone et son IBAN, alors
+      // que l'inscription collecte une vingtaine d'informations professionnelles —
+      // précisément celles sur lesquelles repose la décision de validation.
+      const META_EXPOSE = [
+        "telephone", "type_compte", "societe_nom", "kbis", "rib", "role", "prenom", "nom",
+        // Profil professionnel du prestataire
+        "secteur", "metier", "metiers_list", "tarif_net", "niveau", "experience_ans",
+        "competences", "langues", "statut_pro", "siret",
+        // Localisation et rayon d'intervention
+        "adresse", "code_postal", "ville", "zone_km",
+        // Disponibilités
+        "dispon_jours", "dispo_immediat",
+        // Client
+        "frequence_besoins", "volume_horaire",
+        // Divers
+        "date_naissance", "bio",
+      ];
       const merged = (Array.isArray(profiles) ? profiles : []).map(p => {
         const u = authMap[p.id] || {};
         const meta = u.user_metadata || {};
@@ -153,7 +175,12 @@ export default async function handler(req, res) {
       // Validation SIRET — log uniquement, ne bloque pas l'approbation
       if (action === "approve") {
         const metaForSiret = userData.user_metadata || {};
-        const rawSiret = metaForSiret.kbis ? String(metaForSiret.kbis).replace(/\s/g, "") : null;
+        // L'inscription prestataire enregistre le SIRET dans `siret` ; `kbis` n'est
+        // renseigné que pour les clients professionnels. Le contrôle ne lisait que
+        // `kbis` : tout prestataire déclenchait donc « Prestataire sans SIRET », et
+        // aucun SIRET de prestataire n'a jamais été contrôlé.
+        const siretBrut = metaForSiret.siret || metaForSiret.kbis;
+        const rawSiret = siretBrut ? String(siretBrut).replace(/\s/g, "") : null;
         const isPrestataire = metaForSiret.role === "prestataire";
         if (isPrestataire && !rawSiret) {
           console.warn(`[approve] Prestataire sans SIRET — profileId=${profileId}`);

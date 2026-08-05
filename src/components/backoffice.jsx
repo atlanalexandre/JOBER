@@ -387,7 +387,10 @@ export function BOComptes() {
       const res = await fetch("/api/verify-docs", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ iban: p.rib||"", siret: p.kbis||"" }),
+        // Le SIRET d'un prestataire est dans `siret` ; `kbis` n'est renseigné que
+        // pour les clients professionnels. La vérification partait donc à vide sur
+        // tous les prestataires, alors que c'est là qu'elle compte le plus.
+        body: JSON.stringify({ iban: p.rib||"", siret: p.siret || p.kbis || "" }),
       });
       const data = await res.json();
       setVerifs(v => ({ ...v, [p.id]: data }));
@@ -775,7 +778,7 @@ export function BOComptes() {
                     <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
                     <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
                     <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
-                    <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret} />
+                    <InfoRow icon="🪪" label="AE SIRET" value={p.ae_siret || p.siret} />
                     {p.role === "prestataire" && p.date_naissance && (
                       <InfoRow icon="🎂" label="Naissance" value={(() => {
                         const dob = new Date(p.date_naissance);
@@ -790,6 +793,19 @@ export function BOComptes() {
                       <InfoRow icon="💶" label="Tarif net" value={p.tarif_net ? `${p.tarif_net} €/h` : null} />
                       <InfoRow icon="📍" label="Adresse" value={[p.rue || p.adresse, p.cp || p.code_postal, p.ville].filter(Boolean).join(", ") || null} />
                       <InfoRow icon="🌐" label="Langues" value={Array.isArray(p.langues) ? p.langues.join(", ") : p.langues} />
+                      <InfoRow icon="🎯" label="Rayon" value={p.zone_km ? `${p.zone_km} km` : null} />
+                      <InfoRow icon="📊" label="Niveau" value={[p.niveau, p.experience_ans ? `${p.experience_ans} an${p.experience_ans > 1 ? "s" : ""} d'expérience` : null].filter(Boolean).join(" · ") || null} />
+                      <InfoRow icon="🏷️" label="Statut" value={p.statut_pro} />
+                      <InfoRow icon="📅" label="Disponibilités" value={(() => {
+                        const jours = Array.isArray(p.dispon_jours) ? p.dispon_jours.join(", ") : null;
+                        return [jours, p.dispo_immediat ? "disponible immédiatement" : null].filter(Boolean).join(" · ") || null;
+                      })()} />
+                      <InfoRow icon="🧰" label="Autres métiers" value={(() => {
+                        if (!Array.isArray(p.metiers_list) || p.metiers_list.length <= 1) return null;
+                        return p.metiers_list.map(m => m?.metier || m).filter(Boolean).join(", ");
+                      })()} />
+                      <InfoRow icon="⭐" label="Compétences" value={Array.isArray(p.competences) ? p.competences.join(", ") : p.competences} />
+                      <InfoRow icon="📝" label="Bio" value={p.bio} />
                     </>}
                     {p.role === "client" && <>
                       <InfoRow icon="📍" label="Adresse" value={[p.adresse || p.rue, p.code_postal || p.cp, p.ville].filter(Boolean).join(", ") || null} />
