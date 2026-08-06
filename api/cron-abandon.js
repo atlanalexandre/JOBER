@@ -1,4 +1,5 @@
 import { resendBody } from "./_email.js";
+import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
 // Pour chaque brouillon > 30 min non encore notifié :
@@ -87,7 +88,10 @@ export default async function handler(req, res) {
   // après coup sur une prestation d'une heure.
   try {
     const nowMs = Date.now();
-    const aujourdhui = new Date().toISOString().slice(0, 10);
+    // La date est celle de Paris, pas celle d'UTC : entre minuit et 2 h du matin
+    // en France, `toISOString()` renvoie encore la veille et les prestations du
+    // jour sortaient du filtre.
+    const aujourdhui = new Date(nowMs - frenchOffsetMs(new Date(nowMs))).toISOString().slice(0, 10);
     const rRes = await fetch(
       `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&arrived_at=is.null&started_at=is.null&date=eq.${aujourdhui}`
       + `&select=id,client_id,prestataire_id,metier,sector,ville,date,heure_debut,hours`,
@@ -96,9 +100,13 @@ export default async function handler(req, res) {
     const enCours = rRes.ok ? await rRes.json().catch(() => []) : [];
     for (const m of (Array.isArray(enCours) ? enCours : [])) {
       if (!m.heure_debut) continue;
-      const [hh, mi] = String(m.heure_debut).split(":").map(Number);
-      const debut = new Date(`${m.date}T${String(hh).padStart(2,"0")}:${String(mi).padStart(2,"0")}:00`).getTime();
-      const retard = Math.floor((nowMs - debut) / 60000);
+      // heure_debut est une heure locale française, Vercel tourne en UTC :
+      // la conversion passe obligatoirement par _temps.js. Elle manquait ici,
+      // et le retard calculé était inférieur de 1 à 2 h au retard réel — la
+      // fenêtre ci-dessous ne s'ouvrait donc qu'après 2 h 15 de retard, soit
+      // après la fin d'une prestation d'une heure.
+      const retard = retardMinutes(m.date, m.heure_debut, nowMs);
+      if (retard === null) continue;
       // Fenêtre de 15 à 45 min de retard, large de 30 min comme la période du
       // cron : une prestation en retard y tombe une seule fois, ce qui évite les
       // relances répétées sans colonne dédiée ni migration de schéma.
