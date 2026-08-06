@@ -86,6 +86,27 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
+  // ── Journal du backoffice ─────────────────────────────────────────
+  //
+  // La plupart des actions destructrices étaient déjà tracées, mais sept ne
+  // l'étaient pas — dont la validation des pièces d'identité et la modification
+  // des réglages de la plateforme.
+  //
+  // Deux conséquences. D'abord la conformité : après tout le travail sur la
+  // vigilance (art. 10B et 10D), ne pas pouvoir répondre à « qui a validé ce
+  // SIRET, et quand ? » vide le dispositif de sa substance. Ensuite l'argent :
+  // les frais de service, les taux de cashback et les seuils vivent dans
+  // `platform_settings`, et rien ne disait qui les avait changés.
+  //
+  // L'échec d'écriture n'interrompt jamais l'action — un journal indisponible
+  // ne doit pas empêcher de valider un document — mais il est signalé.
+  const journaliser = (act, champs = {}) =>
+    fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ action: act, ...champs }),
+    }).catch(e => console.error(`[bo_logs] ${act} non journalisé :`, e.message));
+
   try {
     if (action === "list") {
       const [profilesRes, authRes, blacklistRes] = await Promise.all([
@@ -152,11 +173,28 @@ export default async function handler(req, res) {
           (tel   && blSets.tel.has(hashPii(tel)))     ||
           (iban  && blSets.iban.has(hashPii(iban)))   ||
           (siret && blSets.siret.has(hashPii(siret)));
+        // L'IBAN ne quitte plus le serveur dans la liste.
+        //
+        // `list` renvoyait l'IBAN complet, en clair, de TOUS les comptes, à chaque
+        // ouverture du backoffice. Une seule fiche est consultée à la fois : il
+        // n'y a aucune raison d'envoyer au navigateur les coordonnées bancaires
+        // de tout le monde. La minimisation des données (RGPD art. 5.1.c) impose
+        // le contraire, et une session compromise emportait jusqu'ici l'ensemble
+        // du fichier bancaire.
+        //
+        // Seuls partent : la présence d'un IBAN, et ses quatre derniers
+        // caractères, qui suffisent à distinguer deux comptes à l'écran. La
+        // valeur complète s'obtient une fiche à la fois par l'action
+        // `reveal_iban`, qui laisse une trace.
+        const ribComplet = p.rib || meta.rib || null;
+        const ribNettoye = ribComplet ? String(ribComplet).replace(/\s/g, "").toUpperCase() : null;
         return {
           ...p,
           email,
           ...exposedMeta,
-          rib: p.rib || meta.rib || null,
+          rib: null,
+          rib_present: !!ribNettoye,
+          rib_fin: ribNettoye ? ribNettoye.slice(-4) : null,
           blacklisted: !!blacklisted,
         };
       });
@@ -196,6 +234,18 @@ export default async function handler(req, res) {
         body: JSON.stringify(profilePatch),
       });
       if (!patchRes.ok) return res.status(500).json({ error: "Erreur mise à jour" });
+
+      // Approuver un prestataire lui ouvre l'accès au travail ; le refuser le lui
+      // ferme. Ni l'un ni l'autre ne laissait de trace. Le contrôle du SIRET
+      // effectué juste au-dessus n'était journalisé que dans la console Vercel,
+      // effacée au bout de quelques jours : sa conclusion est consignée ici.
+      journaliser(action, {
+        target_id: profileId,
+        target_email: userEmail || null,
+        details: action === "approve"
+          ? { siret: (userData.user_metadata?.siret || userData.user_metadata?.kbis || null) }
+          : null,
+      });
 
       // Anti-abus à l'approbation : vérifier si les identifiants du nouveau compte
       // correspondent à un compte précédemment supprimé
@@ -787,6 +837,7 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur suppression ticket" });
+      journaliser("delete_ticket", { target_id: String(req.body.ticketId ?? req.body.id ?? "") || null });
       return res.status(200).json({ success: true });
     }
 
@@ -817,6 +868,7 @@ export default async function handler(req, res) {
           }).then(() => { sent++; }).catch(() => {})
         ));
       }
+      journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
       return res.status(200).json({ success: true, sent });
     }
 
@@ -979,6 +1031,8 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ docs_verified: true }),
       }).catch(() => {}); // Ignoré si la colonne n'existe pas encore (migration non appliquée)
+      // Qui a validé cette pièce, et quand : la question sera posée en contrôle.
+      journaliser("verify_doc", { target_id: profileId, details: { doc_id: String(req.body.docId) } });
       return res.status(200).json({ success: true });
     }
 
@@ -1030,6 +1084,7 @@ export default async function handler(req, res) {
         }),
       }).catch(e => console.error("[reject_doc] notification échouée :", e.message));
 
+      journaliser("reject_doc", { target_id: profileId, reason: motif, details: { doc_id: String(req.body.docId), type: doc.type } });
       return res.status(200).json({ success: true, type: doc.type });
     }
 
@@ -1547,6 +1602,33 @@ export default async function handler(req, res) {
       return res.status(200).json(resultat);
     }
 
+    // Révéler l'IBAN d'un compte, une fiche à la fois.
+    //
+    // Contrepartie du masquage dans `list` : la consultation reste possible, mais
+    // devient un acte identifié et tracé, au lieu d'un envoi massif silencieux.
+    if (action === "reveal_iban") {
+      if (!isUuidId(profileId)) return res.status(400).json({ error: "profileId invalide" });
+
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=rib&limit=1`, { headers });
+      const pd = pr.ok ? await pr.json().catch(() => []) : [];
+      let rib = Array.isArray(pd) && pd[0]?.rib;
+
+      // Repli sur l'ancien emplacement tant que la migration
+      // 2026-07-30_rgpd_iban_hors_du_jeton n'est pas passée partout.
+      if (!rib) {
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+          if (ur.ok) rib = (await ur.json())?.user_metadata?.rib || null;
+        } catch (e) {
+          console.error("[reveal_iban] user_metadata illisible :", e.message);
+        }
+      }
+
+      journaliser("reveal_iban", { target_id: profileId, details: { trouve: !!rib } });
+      if (!rib) return res.status(404).json({ error: "Aucun IBAN enregistré pour ce compte" });
+      return res.status(200).json({ rib: String(rib).replace(/\s/g, "").toUpperCase() });
+    }
+
     if (action === "list_ratings") {
       const rr = await fetch(`${SUPABASE_URL}/rest/v1/ratings?select=id,rating,comment,created_at,reviewer_id,reviewee_id&order=created_at.desc&limit=200`, { headers });
       const ratings = await rr.json();
@@ -1572,6 +1654,7 @@ export default async function handler(req, res) {
         { headers }
       );
       const missions = await r.json();
+      journaliser("list_missions_export", { details: { lignes: Array.isArray(missions) ? missions.length : 0 } });
       return res.status(200).json(Array.isArray(missions) ? missions : []);
     }
 
@@ -1590,6 +1673,7 @@ export default async function handler(req, res) {
         method: "DELETE",
         headers: { ...headers, "Prefer": "return=minimal" },
       });
+      journaliser("reset_visits", {});
       return res.status(200).json({ success: true });
     }
 
@@ -1760,6 +1844,10 @@ export default async function handler(req, res) {
         body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur sauvegarde" });
+      // Les frais de service, les taux de cashback et les seuils de vigilance
+      // vivent dans platform_settings. Un changement non tracé est un changement
+      // qu'on ne saura pas expliquer.
+      journaliser("save_settings", { details: { key, value } });
       return res.status(200).json({ ok: true });
     }
 
@@ -1789,6 +1877,7 @@ export default async function handler(req, res) {
         const err = await r.text();
         return res.status(500).json({ error: `Erreur insertion: ${err}` });
       }
+      journaliser("seed_docs", { target_id: profileId, details: { inseres: inserts.length } });
       return res.status(200).json({ ok: true, inserted: inserts.length });
     }
 

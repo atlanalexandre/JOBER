@@ -393,6 +393,40 @@ documents portant deux numéros pour une seule opération, ce qu'interdit l'arti
 de l'annexe II au CGI. Ne pas produire de document est rattrapable ; en produire un mal
 numéroté ne l'est pas.
 
+### Le backoffice
+
+`admin.alane.fr` n'est **pas un déploiement séparé** : c'est la même application, le même
+bundle. `App.jsx` bascule sur l'écran `bo_login` quand `window.location.hostname` vaut
+`admin.alane.fr`. Les écrans `bo_login` et `bo_dashboard` sont dans `PUBLIC_SCREENS` :
+`www.alane.fr/admin` ouvre donc la même page de connexion. La sécurité réelle est
+**entièrement côté serveur**.
+
+**Authentification** — `bo-verify-pin` valide le mot de passe (`BO_PASSWORD`, comparaison
+`timingSafeEqual`, 10 tentatives / 5 min / IP persistées dans `bo_rate_limits`) et rend un
+jeton `ts.nonce.HMAC`. `bo-action` le vérifie **une seule fois, avant tout aiguillage** :
+les 50+ actions sont couvertes sans exception possible. Expiration 24 h. Jeton rangé en
+`sessionStorage`.
+
+Si `BO_PASSWORD` est absent, un mot de passe de repli dérivé de la clé service role reste
+accepté, mais il n'est **jamais transmis au navigateur** — il s'écrit dans les journaux
+Vercel. Il l'était jusqu'au 06/08/2026, affiché en clair sur l'écran de connexion avec un
+bouton pour s'en servir : une variable d'environnement absente ouvrait le backoffice à
+quiconque connaissait l'adresse. Une tentative ratée ne renvoie plus aucun diagnostic
+(elle donnait la longueur exacte de `BO_PASSWORD` et la liste des variables d'environnement).
+
+**IBAN** — l'action `list` ne renvoie plus que `rib_present` et `rib_fin` (4 derniers
+caractères). La valeur complète s'obtient fiche par fiche via `reveal_iban`, **tracée dans
+`bo_logs`**. L'export CSV ne contient plus que les 4 derniers caractères. Jusqu'au
+06/08/2026, l'IBAN complet de **tous** les comptes partait au navigateur à chaque ouverture
+du backoffice — contraire à la minimisation (RGPD art. 5.1.c), et une session compromise
+emportait tout le fichier bancaire.
+
+**Journal** — toute action sensible écrit dans `bo_logs` via le helper `journaliser()`.
+Sept ne le faisaient pas : `approve`/`reject`, `verify_doc`, `reject_doc`,
+`send_global_comm`, `save_settings`, `delete_ticket`, `reset_visits`,
+`list_missions_export`, `seed_docs`. La validation des pièces d'identité et la modification
+des réglages — frais de service, cashback, seuils de vigilance — ne laissaient aucune trace.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et
