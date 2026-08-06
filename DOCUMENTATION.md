@@ -458,6 +458,15 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**Article 10B des CGPS — intervention au bénéfice d'un tiers.** La sous-traitance n'est pas
+interdite : un client professionnel peut faire exécuter une prestation chez son propre client,
+c'est licite. Ce qui est prohibé est le schéma précis — fournir à un tiers un prestataire
+nommément désigné ou un volume d'heures, ce tiers exerçant directement sur lui le pouvoir de
+direction. Une interdiction plus large aurait bloqué la vraie sous-traitance. Le client
+professionnel déclare le bénéficiaire final, le lieu réel, la nature du service vendu et
+l'identité de la personne qui organise le travail. L'engagement figure aussi dans le contrat
+signé à la commande, seul document opposable aux deux parties.
+
 **Le décalage est un ajustement de prix, jamais une sanction.** La distinction n'est pas
 cosmétique : un ajustement automatique décidé par le seul client, appliqué en silence et sans
 droit de réponse, constitue un indice de pouvoir disciplinaire — ce qu'une plateforme ne peut
