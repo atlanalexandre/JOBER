@@ -6211,9 +6211,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           })()}
           {selected.delay_status === "pending" && (
             <div style={{ background:"linear-gradient(135deg,rgba(240,180,41,0.1),rgba(240,180,41,0.05))", border:"1.5px solid rgba(240,180,41,0.4)", borderRadius:16, padding:"16px", marginBottom:16 }}>
-              <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏰ Décalage d'arrivée</div>
+              <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏱ Durée de la prestation</div>
               <div style={{ color:C.textSub, fontSize:13, marginBottom:14, lineHeight:1.5 }}>
-                Votre prestataire est arrivé avec {selected.arrival_delay_minutes} min de retard. La fin de prestation est proposée {selected.arrival_delay_minutes} min plus tard. Acceptez-vous ?
+                Le démarrage a été décalé de {selected.arrival_delay_minutes} min.
+                Vous pouvez prolonger d'autant pour conserver la durée prévue, ou vous en tenir
+                à l'heure de fin convenue — seules les heures réellement effectuées seront alors facturées.
               </div>
               <div style={{ display:"flex", gap:10 }}>
                 <button
@@ -6226,7 +6228,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     if (j.ok) setSelected(s => s ? { ...s, delay_status:"approved", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ✅ Accepter le décalage
+                  ✅ Prolonger d'autant
                 </button>
                 <button
                   onClick={async () => {
@@ -6238,19 +6240,19 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                     if (j.ok) setSelected(s => s ? { ...s, delay_status:"rejected", actual_hours: j.actual_hours, hours: j.actual_hours } : s);
                   }}
                   style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid rgba(242,94,94,0.4)`, background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ❌ Refuser — fin à l'heure prévue
+                  ⏱ Fin à l'heure convenue
                 </button>
               </div>
             </div>
           )}
           {selected.delay_status === "approved" && selected.arrival_delay_minutes > 0 && (
             <div style={{ background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
-              ✅ Décalage de {selected.arrival_delay_minutes} min accepté — fin ajustée
+              ✅ Prestation prolongée de {selected.arrival_delay_minutes} min — durée prévue conservée
             </div>
           )}
           {selected.delay_status === "rejected" && selected.arrival_delay_minutes > 0 && (
             <div style={{ background:"rgba(242,94,94,0.06)", border:"1px solid rgba(242,94,94,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
-              ❌ Décalage refusé — {selected.actual_hours}h facturées (fin à l'heure prévue)
+              ⏱ Fin à l'heure convenue — {selected.actual_hours} h facturées, soit le temps réalisé
             </div>
           )}
           {selected.status === "assigned" && (() => {
