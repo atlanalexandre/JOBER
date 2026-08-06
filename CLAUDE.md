@@ -254,6 +254,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | Piège | Ce qu'il faut retenir |
 |---|---|
 | Bucket `Documents` | Majuscule obligatoire |
+| `heure_debut` | Heure **locale française**, Vercel tourne en **UTC**. Passer par `api/_temps.js`, jamais recopier la formule de décalage |
 | Table des prestations | C'est `missions`, il n'existe pas de table `prestations` |
 | Variables Vercel | Contiennent des espaces invisibles, toujours les nettoyer |
 | `user_metadata` | Encodé dans le jeton, limite ~16 Ko |

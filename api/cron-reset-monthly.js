@@ -1,4 +1,5 @@
 import { resendBody } from "./_email.js";
+import { frenchOffsetMs, finPrestationMs } from "./_temps.js";
 import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
@@ -28,14 +29,6 @@ function formatPhone(raw) {
   if (cleaned.startsWith("+33")) return cleaned;
   if (cleaned.startsWith("0")) return "+33" + cleaned.slice(1);
   return null;
-}
-
-function frenchOffsetMs(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const y = d.getUTCFullYear();
-  const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
-  const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
-  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
 }
 
 // Prépare un texte pour SMS : retire emojis, tirets cadratins et tout caractère
@@ -414,9 +407,10 @@ ${(() => {
         const TWELVE_HOURS_MS = 2 * 60 * 60 * 1000; // relance toutes les 2h
         const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
           if (!m.heure_debut) return true;
-          const effectiveH = m.actual_hours ?? m.hours ?? 0;
-          const endMs = new Date(`${m.date}T${m.heure_debut}:00`).getTime() + (Number(effectiveH) * 3600000);
-          if (endMs >= now) return false;
+          // Conversion heure française → UTC : elle manquait, la relance de
+          // validation partait avec une à deux heures de retard.
+          const endMs = finPrestationMs({ ...m, started_at: null });
+          if (endMs === null || endMs >= now) return false;
           // N-05: skip missions that already got a reminder less than 12h ago
           if (m.last_validation_reminder_at) {
             const lastReminderMs = new Date(m.last_validation_reminder_at).getTime();
@@ -644,15 +638,13 @@ ${(() => {
 
           // Prestations dont l'horaire est dépassé sans aucun pointage : on alerte
           // le prestataire, et surtout on ne dit pas au client qu'elle est terminée.
+          // Le calcul était recopié ici avec le signe du décalage inversé
+          // (`naive - offset` au lieu de `naive + offset`) : l'alerte partait
+          // quatre heures trop tard en été. Il passe désormais par _temps.js.
           const sansPointage = enMissions.filter(m => {
             if (m.started_at || !m.date) return false;
-            const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-            const naive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
-            const y = naive.getUTCFullYear();
-            const marchEnd = new Date(Date.UTC(y,2,31)); marchEnd.setUTCDate(31-marchEnd.getUTCDay()); marchEnd.setUTCHours(1,0,0,0);
-            const octEnd   = new Date(Date.UTC(y,9,31)); octEnd.setUTCDate(31-octEnd.getUTCDay());   octEnd.setUTCHours(1,0,0,0);
-            const offset = (naive >= marchEnd && naive < octEnd) ? -7200000 : -3600000;
-            return nowMs >= naive.getTime() - offset + Number(m.hours || 1) * 3600000;
+            const finMs = finPrestationMs(m);
+            return finMs !== null && nowMs >= finMs;
           });
           for (const m of ended) {
             try {

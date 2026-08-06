@@ -1,0 +1,97 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Conversion des horaires de prestation en instant réel
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POURQUOI CE FICHIER
+//
+// `missions.heure_debut` est une heure locale française : « 14:00 » veut dire
+// 14 h à Paris. Vercel exécute les fonctions en UTC. Écrire
+//
+//     new Date(`${date}T${heure_debut}:00`)
+//
+// donne donc 14 h UTC, soit 16 h à Paris en été — deux heures trop tard.
+//
+// La formule de correction existait déjà en quatre exemplaires recopiés à la
+// main dans le projet. Trois d'entre eux étaient faux :
+//
+//   • api/cron-abandon.js       — correction absente : l'alerte « prestataire
+//     en retard », qui doit partir entre 15 et 45 min de retard, ne partait
+//     qu'entre 2 h 15 et 2 h 45. Sur une prestation d'une heure, elle arrivait
+//     après la fin. La fonctionnalité n'a jamais fonctionné.
+//
+//   • api/cron-reset-monthly.js — signe inversé (`naive - offset` au lieu de
+//     `naive + offset`) : l'alerte « horaire dépassé sans pointage » partait
+//     quatre heures trop tard en été.
+//
+//   • api/cron-reset-monthly.js — correction absente sur la relance de
+//     validation : deux heures de retard.
+//
+// D'où ce module unique. Toute nouvelle conversion passe par ici ; on ne
+// recopie plus la formule.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Décalage à AJOUTER à une date naïve interprétée en UTC pour obtenir
+ * l'instant UTC réel de cette heure locale française.
+ *
+ * La valeur est NÉGATIVE : -2 h en heure d'été (CEST), -1 h en heure d'hiver
+ * (CET). « 14:00 Paris en été » = 14 h UTC − 2 h = 12 h UTC.
+ *
+ * Les bascules suivent la règle européenne : dernier dimanche de mars et
+ * dernier dimanche d'octobre, à 01:00 UTC dans les deux cas.
+ */
+export function frenchOffsetMs(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const marchEnd = new Date(Date.UTC(y, 2, 31)); marchEnd.setUTCDate(31 - marchEnd.getUTCDay()); marchEnd.setUTCHours(1, 0, 0, 0);
+  const octEnd   = new Date(Date.UTC(y, 9, 31)); octEnd.setUTCDate(31 - octEnd.getUTCDay());     octEnd.setUTCHours(1, 0, 0, 0);
+  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
+}
+
+/**
+ * Instant UTC (ms) du début prévu d'une prestation.
+ *
+ * @param {string} date        « 2026-08-06 »
+ * @param {string} heureDebut  « 14:00 » — 08:00 par défaut, comme partout ailleurs
+ * @returns {number|null} null si la date est absente ou illisible
+ */
+export function debutPrestationMs(date, heureDebut) {
+  if (!date) return null;
+  const [h = 8, mn = 0] = String(heureDebut || "08:00").split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(mn)) return null;
+  const naive = new Date(`${date}T${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}:00`);
+  const naiveMs = naive.getTime();
+  if (isNaN(naiveMs)) return null;
+  return naiveMs + frenchOffsetMs(naive);
+}
+
+/**
+ * Instant UTC (ms) de la fin prévue d'une prestation.
+ *
+ * Si le prestataire a réellement pointé son démarrage, c'est ce pointage qui
+ * fait foi — une prestation commencée avec du retard finit avec du retard.
+ * Sans pointage, on retombe sur l'horaire prévu.
+ *
+ * @param {{date?:string, heure_debut?:string, hours?:number, actual_hours?:number, started_at?:string}} m
+ * @returns {number|null}
+ */
+export function finPrestationMs(m) {
+  if (!m) return null;
+  const dureeH = Number(m.actual_hours ?? m.hours ?? 1) || 1;
+  const dureeMs = dureeH * 3600000;
+  if (m.started_at) {
+    const debut = new Date(m.started_at).getTime();
+    if (!isNaN(debut)) return debut + dureeMs;
+  }
+  const debutMs = debutPrestationMs(m.date, m.heure_debut);
+  return debutMs === null ? null : debutMs + dureeMs;
+}
+
+/**
+ * Retard de démarrage, en minutes, par rapport à l'horaire prévu.
+ * Négatif si l'on est encore en avance. null si l'horaire est inconnu.
+ */
+export function retardMinutes(date, heureDebut, nowMs = Date.now()) {
+  const debutMs = debutPrestationMs(date, heureDebut);
+  return debutMs === null ? null : Math.floor((nowMs - debutMs) / 60000);
+}

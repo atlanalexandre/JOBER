@@ -263,6 +263,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
+| `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 
 ### Comment l'appelant est vérifié
 

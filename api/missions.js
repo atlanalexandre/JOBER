@@ -1,16 +1,6 @@
 import { resendBody } from "./_email.js";
+import { frenchOffsetMs, finPrestationMs } from "./_temps.js";
 import crypto from "crypto";
-
-// Returns the UTC offset in ms for a given date in France (CEST = -7200000, CET = -3600000)
-function frenchOffsetMs(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const y = d.getUTCFullYear();
-  // Last Sunday in March at 01:00 UTC (clocks go forward: CET→CEST)
-  const marchEnd = new Date(Date.UTC(y, 2, 31)); marchEnd.setUTCDate(31 - marchEnd.getUTCDay()); marchEnd.setUTCHours(1, 0, 0, 0);
-  // Last Sunday in October at 01:00 UTC (clocks go back: CEST→CET)
-  const octEnd   = new Date(Date.UTC(y, 9, 31)); octEnd.setUTCDate(31 - octEnd.getUTCDay());   octEnd.setUTCHours(1, 0, 0, 0);
-  return (d >= marchEnd && d < octEnd) ? -7200000 : -3600000;
-}
 
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
 async function sendWebPush(sub, notification) {
@@ -714,17 +704,10 @@ export default async function handler(req, res) {
       const toAutoValidate = missions.filter(m => {
         if (m.status !== "assigned" || !m.validation_prestataire) return false;
         if (!m.date) return false;
-        const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-        // heure_debut est en heure locale française — Vercel tourne en UTC
-        const naiveMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime();
-        const offsetMs = (() => {
-          const d = new Date(naiveMs), y = d.getUTCFullYear();
-          const dstStart = new Date(Date.UTC(y,2,31)); dstStart.setUTCDate(31-dstStart.getUTCDay()); dstStart.setUTCHours(1,0,0,0);
-          const dstEnd   = new Date(Date.UTC(y,9,31)); dstEnd.setUTCDate(31-dstEnd.getUTCDay());     dstEnd.setUTCHours(1,0,0,0);
-          return (d >= dstStart && d < dstEnd) ? -7200000 : -3600000;
-        })();
-        const missionEndMs = naiveMs + offsetMs + Number(m.hours || 1) * 3600000;
-        return nowTs - missionEndMs >= 24 * 3600000;
+        // heure_debut est en heure locale française — Vercel tourne en UTC.
+        // La conversion vit dans _temps.js, elle n'est plus recopiée ici.
+        const missionEndMs = finPrestationMs({ ...m, started_at: null, actual_hours: null });
+        return missionEndMs !== null && nowTs - missionEndMs >= 24 * 3600000;
       });
 
       if (toAutoValidate.length > 0) {
@@ -1522,21 +1505,14 @@ export default async function handler(req, res) {
       //
       // Le point de départ est « la fin effective de la prestation », comme l'écrit
       // le contrat : le pointage réel s'il existe, sinon l'horaire prévu.
-      const finPrestationMs = (() => {
-        const dureeMs = Math.max(1, Number(mission.hours) || 1) * 3600000;
-        if (mission.started_at) {
-          const debut = new Date(mission.started_at).getTime();
-          if (!isNaN(debut)) return debut + dureeMs;
-        }
-        if (!mission.date) return null;
-        const naive = new Date(`${mission.date}T${mission.heure_debut || "08:00"}:00`);
-        if (isNaN(naive.getTime())) return null;
-        return naive.getTime() + frenchOffsetMs(naive) + dureeMs;
-      })();
-      if (finPrestationMs) {
-        const depasseMs = Date.now() - (finPrestationMs + 48 * 3600000);
+      // La durée retenue est celle commandée, pas actual_hours : le délai de
+      // contestation ne doit pas se raccourcir parce que le prestataire a
+      // déclaré moins d'heures que prévu.
+      const finMs = finPrestationMs({ ...mission, actual_hours: null });
+      if (finMs) {
+        const depasseMs = Date.now() - (finMs + 48 * 3600000);
         if (depasseMs > 0) {
-          const joursEcoules = Math.floor((Date.now() - finPrestationMs) / 86400000);
+          const joursEcoules = Math.floor((Date.now() - finMs) / 86400000);
           console.error(`[dispute] hors délai sur ${mission_id} : ${joursEcoules} jour(s) depuis la fin`);
           return res.status(400).json({
             error: "Le délai de contestation de 48 h après la fin de la prestation est écoulé. "
