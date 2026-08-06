@@ -261,6 +261,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | `onAuthStateChange` | Aucun appel Supabase à l'intérieur |
 | `platform_settings` | Lecture restreinte par clé ; une clé absente provoque une erreur 406 |
 | Réécriture Vercel | La destination doit être `/` et non `/index.html` (à cause de `cleanUrls`) |
+| CGPS | Source unique : `src/constants/cgps.js`. Ne jamais recopier un extrait dans un écran — quatre copies divergentes, dont deux fausses sur l'argent, étaient présentées à l'inscription. Après modification : `npm run cgps` |
 | CI eslint | Doit rester à 0 erreur |
 
 ---

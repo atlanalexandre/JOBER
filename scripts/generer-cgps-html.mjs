@@ -4,26 +4,25 @@
 //
 // POURQUOI
 //
-// Les CGPS existaient en deux exemplaires : l'objet `cgps` de
-// src/components/client-screens.jsx, affiché dans l'application, et une copie
-// HTML écrite à la main dans public/cgps.html, publiquement accessible.
+// Les CGPS existaient en quatre exemplaires : le texte intégral dans
+// client-screens.jsx, une copie HTML écrite à la main dans public/cgps.html, et
+// deux résumés distincts dans auth.jsx — ceux que l'utilisateur validait à
+// l'inscription.
 //
-// Les deux ont divergé. La copie publique, figée au 30 juillet 2026, ignorait
-// l'article 10B (intervention au bénéfice d'un tiers), l'article 10C
-// (détermination du prix réellement exécuté) et la réécriture de l'article 5.2.
-// Elle engageait pourtant ALANE : c'est le document qu'un client, un contrôleur
-// URSSAF ou un juge consulte en premier.
+// Tous avaient divergé. La copie publique, figée au 30 juillet 2026, ignorait
+// les articles 10B et 10C ainsi que la réécriture du 5.2. Les résumés
+// d'inscription, eux, étaient faux sur l'argent (voir l'en-tête de
+// src/constants/cgps.js).
 //
-// Deux versions d'un même contrat, dont l'une est fausse, est un risque en soi.
-// La copie manuelle est donc supprimée : ce script la régénère depuis l'objet
-// affiché dans l'application, seule source de vérité.
+// Le texte vit désormais dans src/constants/cgps.js, importé par l'application,
+// par les écrans d'inscription et par ce script. On ne recopie plus.
 //
 // USAGE
 //
 //     npm run cgps
 //
-// À relancer après toute modification de l'objet `cgps`. La CI vérifie que le
-// fichier généré correspond bien à la source (npm run cgps:verifier).
+// À relancer après toute modification de src/constants/cgps.js. La CI vérifie
+// que le fichier généré correspond bien à la source (npm run cgps:verifier).
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -31,33 +30,19 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const racine = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE = join(racine, "src/components/client-screens.jsx");
 const CIBLE  = join(racine, "public/cgps.html");
 
-// ── Extraction des sections ────────────────────────────────────────────────
-//
-// On lit le fichier source comme du texte plutôt que de l'importer : le module
-// est un composant React qui tire des dizaines de dépendances et ne s'exécute
-// pas hors navigateur. L'objet `cgps` est un littéral simple, on le découpe.
+// Les CGPS sont importées, plus analysées comme du texte : `constants/cgps.js`
+// n'a aucune dépendance et s'exécute tel quel hors navigateur. Le générateur lit
+// donc exactement l'objet que l'application affiche, sans expression régulière
+// susceptible de rater une section au premier changement de mise en forme.
+const { CGPS } = await import(new URL("../src/constants/cgps.js", import.meta.url));
 
-function extraireSections(source) {
-  const debut = source.indexOf("    cgps: {");
-  if (debut === -1) throw new Error("Objet `cgps` introuvable dans " + SOURCE);
-  const fin = source.indexOf("contrat_prestation: {", debut);
-  if (fin === -1) throw new Error("Fin de l'objet `cgps` introuvable");
-  const bloc = source.slice(debut, fin);
-
-  const sections = [];
-  // Chaque section est `title:"…",` suivi de `text:"…"`. Les deux chaînes sont
-  // des littéraux JavaScript à guillemets doubles : on les relit avec JSON.parse
-  // pour que \n et les échappements soient traités exactement comme à l'exécution.
-  const motif = /title:\s*("(?:[^"\\]|\\.)*")\s*,\s*\n?\s*text:\s*("(?:[^"\\]|\\.)*")/g;
-  let m;
-  while ((m = motif.exec(bloc)) !== null) {
-    sections.push({ titre: JSON.parse(m[1]), texte: JSON.parse(m[2]) });
-  }
-  if (!sections.length) throw new Error("Aucune section extraite — le format de l'objet a changé");
-  return sections;
+if (!Array.isArray(CGPS?.sections) || !CGPS.sections.length) {
+  throw new Error("CGPS.sections est vide ou absent de src/constants/cgps.js");
+}
+if (!CGPS.maj) {
+  throw new Error("Champ `maj` absent de CGPS — la date de version est obligatoire");
 }
 
 // ── Rendu ──────────────────────────────────────────────────────────────────
@@ -168,18 +153,14 @@ ${corps}
 
 // ── Exécution ──────────────────────────────────────────────────────────────
 
-const source = readFileSync(SOURCE, "utf8");
-const sections = extraireSections(source);
+const sections = CGPS.sections.map(s => ({ titre: s.title, texte: s.text }));
 
-// La date de version est déclarée dans la source (`maj:"…"` de l'objet cgps) et
-// non déduite de git ou de l'heure de génération. Deux raisons : publier une
-// nouvelle version des conditions est une décision éditoriale, et une date
-// dérivée du dernier commit rendrait le contrôle CI circulaire — on génère le
-// fichier AVANT de committer, il porterait donc toujours la date d'avant.
-const maj = source.slice(source.indexOf("    cgps: {")).match(/maj:\s*"([^"]+)"/);
-if (!maj) throw new Error("Champ `maj` absent de l'objet `cgps` — la date de version est obligatoire");
-
-const html = rendrePage(sections, maj[1]);
+// La date de version est déclarée dans la source (`CGPS.maj`) et non déduite de
+// git ou de l'heure de génération. Deux raisons : publier une nouvelle version
+// des conditions est une décision éditoriale, et une date dérivée du dernier
+// commit rendrait le contrôle CI circulaire — on génère le fichier AVANT de
+// committer, il porterait donc toujours la date d'avant.
+const html = rendrePage(sections, CGPS.maj);
 
 if (process.argv.includes("--verifier")) {
   const actuel = readFileSync(CIBLE, "utf8");
@@ -194,5 +175,5 @@ if (process.argv.includes("--verifier")) {
   console.log(`[cgps] public/cgps.html est à jour (${sections.length} articles).`);
 } else {
   writeFileSync(CIBLE, html);
-  console.log(`[cgps] public/cgps.html régénéré — ${sections.length} articles, version du ${maj[1]}.`);
+  console.log(`[cgps] public/cgps.html régénéré — ${sections.length} articles, version du ${CGPS.maj}.`);
 }
