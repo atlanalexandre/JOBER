@@ -748,7 +748,7 @@ export default async function handler(req, res) {
           const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
           const authData = await authRes.json();
           (authData.users || []).forEach(u => { emailMap[u.id] = u.email; });
-        } catch {}
+        } catch (e) { console.error("[bo-action] emails des participants illisibles :", e.message); }
       }
 
       const enriched = missions.map(m => ({
@@ -982,7 +982,7 @@ export default async function handler(req, res) {
           });
           const sj = await sr.json();
           signedUrl = sj.signedURL ? `${SUPABASE_URL}/storage/v1${sj.signedURL}` : null;
-        } catch {}
+        } catch (e) { console.error("[bo-action] URL signée du document non générée :", e.message); }
         const prof = profileMap[doc.prestataire_id] || {};
         const meta = usersData?.users?.find(u => u.id === doc.prestataire_id)?.user_metadata || {};
         const prenom = prof.prenom || meta.prenom || "";

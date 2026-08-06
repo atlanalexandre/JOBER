@@ -895,7 +895,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         if (!mounted || !Array.isArray(missions)) return;
         const toValidate = missions.filter(m => m.status === "assigned" && m.validation_prestataire);
         setMissionsToValidate(toValidate);
-      } catch {}
+      // Sans trace, l'écran n'affiche rien et le client ne valide jamais.
+      } catch (e) { console.error("[client] prestations à valider illisibles :", e.message); }
     };
     loadValidations();
     const t = setInterval(loadValidations, 8000);
@@ -1628,17 +1629,52 @@ export function useProviders() {
   return { providers, loading };
 }
 
+// Chargement de Leaflet — copie locale d'abord, CDN en secours.
+//
+// La bibliothèque était chargée depuis unpkg.com, ce qui oblige la CSP à
+// autoriser l'exécution de scripts venus de ce domaine. Si le CDN est compromis,
+// du code arbitraire s'exécute sur le site — y compris sur admin.alane.fr, qui
+// partage le même bundle, avec accès au jeton de session du backoffice.
+//
+// La copie locale supprime cette dépendance. Elle n'est pas dans le dépôt : elle
+// se dépose en deux commandes (voir DOCUMENTATION.md, « Carte »). Tant qu'elle
+// n'est pas là, on retombe sur le CDN pour ne pas casser la carte, et on le dit
+// dans la console plutôt que de laisser croire que le problème est réglé.
+const LEAFLET_LOCAL = "/vendor/leaflet/leaflet";
+const LEAFLET_CDN   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
+
 export function loadLeaflet() {
   return new Promise(resolve => {
     if (window.L) { resolve(window.L); return; }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => resolve(window.L);
-    document.head.appendChild(script);
+
+    const poserStyle = (base) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `${base}.css`;
+      document.head.appendChild(link);
+    };
+
+    const poserScript = (base, onError) => {
+      const script = document.createElement("script");
+      script.src = `${base}.js`;
+      script.onload = () => resolve(window.L);
+      script.onerror = onError;
+      document.head.appendChild(script);
+    };
+
+    poserStyle(LEAFLET_LOCAL);
+    poserScript(LEAFLET_LOCAL, () => {
+      console.warn(
+        "[carte] Leaflet n'est pas hébergé localement — repli sur unpkg.com. "
+        + "Déposez public/vendor/leaflet/ pour supprimer cette dépendance externe "
+        + "(voir DOCUMENTATION.md, section « Carte »)."
+      );
+      poserStyle(LEAFLET_CDN);
+      poserScript(LEAFLET_CDN, () => {
+        console.error("[carte] Leaflet introuvable, en local comme sur le CDN — la carte ne s'affichera pas.");
+        resolve(null);
+      });
+    });
   });
 }
 
@@ -1658,7 +1694,9 @@ export function LeafletMap({ providers, onNavigate }) {
   useEffect(() => {
     let cancelled = false;
     loadLeaflet().then(L => {
-      if (cancelled || !mapRef.current || instanceRef.current) return;
+      // L vaut null si la bibliothèque n'a pu être chargée d'aucune source :
+      // sans ce garde, la carte plantait sur `L.map is not a function`.
+      if (cancelled || !L || !mapRef.current || instanceRef.current) return;
       const map = L.map(mapRef.current, { zoomControl: true }).setView([46.603354, 1.8883335], 6);
       instanceRef.current = map;
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -5230,7 +5268,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
             prestataire_signed_at: new Date().toISOString(),
           });
         }
-      } catch(_) {}
+      } catch (e) { console.error("[contrat] horodatage de signature non enregistré :", e.message); }
       if (mounted) { setFinalised(true); onSign && onSign(); }
     })();
     return ()=>{ mounted=false; };

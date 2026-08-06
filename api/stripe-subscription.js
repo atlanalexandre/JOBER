@@ -44,7 +44,7 @@ export default async function handler(req, res) {
         const profData = await profR.json();
         existingCustomerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
       }
-    } catch {}
+    } catch (e) { console.error("[stripe-subscription] stripe_customer_id illisible — un nouveau client Stripe sera créé :", e.message); }
   }
 
   try {

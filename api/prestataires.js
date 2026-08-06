@@ -84,7 +84,7 @@ export default async function handler(req, res) {
       const allUsersData = await allUsersRes.json();
       const allUsers = allUsersData.users || [];
       for (const u of allUsers) userMetaMap[u.id] = u.user_metadata || {};
-    } catch {}
+    } catch (e) { console.error("[prestataires] métadonnées des prestataires illisibles — fiches incomplètes :", e.message); }
 
     // Enrich each profile with user_metadata
     const enriched = approvedProfiles.map((p) => {

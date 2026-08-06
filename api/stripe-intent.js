@@ -267,7 +267,7 @@ export default async function handler(req, res) {
       );
       const cData = await cRes.json().catch(() => []);
       if (Array.isArray(cData) && cData[0]) candidatureId = cData[0].id;
-    } catch {}
+    } catch (e) { console.error("[stripe-intent] candidature liée à la prestation introuvable :", e.message); }
   }
 
   if (amount < 1) return res.status(400).json({ error: "Montant invalide (min 1€)" });

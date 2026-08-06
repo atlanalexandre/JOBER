@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       prenom = caller.user_metadata?.prenom || "";
       nom    = caller.user_metadata?.nom    || "";
     }
-  } catch {}
+  } catch (e) { console.error("[notify-doc] nom du prestataire illisible :", e.message); }
 
   const fullName   = [prenom, nom].filter(Boolean).join(" ") || email;
   const esc        = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
