@@ -336,6 +336,34 @@ toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener
 La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
 ne s'écrivent jamais depuis `src/`.**
 
+### Les documents contractuels
+
+| Document | Où il vit | Quand il est présenté |
+|---|---|---|
+| **CGPS** (23 articles) | `src/constants/cgps.js` — **source unique** | Modale d'inscription (acceptation), écran Documents, et `public/cgps.html` généré |
+| Contrat-cadre Client Professionnel | `src/constants/contrat-cadre-pro.js` | Avant la première réservation chez un tiers |
+| Contrat de prestation | `client-screens.jsx` (`contrat_prestation`) | Signé à chaque prestation |
+| CGU | `App.jsx` | Modale « Conditions Générales » du pied de page |
+
+Les CGPS ont existé en **quatre exemplaires** jusqu'au 06/08/2026 : le texte intégral, une
+copie HTML manuelle dans `public/cgps.html`, et **deux résumés distincts de huit sections**
+dans `auth.jsx` — un par parcours d'inscription, chacun titré « CGPS » et validé par un
+bouton « J'accepte les CGPS ».
+
+Le document que l'utilisateur acceptait n'était donc pas celui qui l'engage, et il était
+**faux sur l'argent** : il annonçait une commission de mise en relation qui n'existe pas
+(`prixClient()` applique 0 %), affirmait qu'ALANE ne détient pas les fonds alors qu'ils sont
+séquestrés par Stripe Connect jusqu'à la double validation, et niait toute retenue sur le
+montant de la prestation que l'article 8.1 prévoit pourtant.
+
+Depuis, un seul texte : `src/constants/cgps.js`, importé par l'application, par les écrans
+d'inscription et par le générateur. **Ne jamais en recopier un extrait dans un écran** —
+importer `CGPS` et rendre les sections.
+
+Pour modifier les CGPS : éditer `src/constants/cgps.js`, mettre à jour `maj` s'il s'agit
+d'une évolution de fond, puis `npm run cgps`. La CI (`npm run cgps:verifier`) refuse toute
+divergence avec `public/cgps.html`.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et
