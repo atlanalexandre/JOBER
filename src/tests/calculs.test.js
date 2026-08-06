@@ -152,6 +152,52 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Détection des schémas de mise à disposition (CGPS art. 10B) ───
+// Intervenir chez un tiers est licite. Ce qui ne l'est pas, c'est de fournir une
+// personne désignée, à l'heure, à un tiers qui la dirige. La détection ne prouve
+// rien : elle désigne les comptes à qui poser une question. D'où des seuils bas et
+// une exigence de récurrence — un déplacement isolé ne dit rien.
+describe("signaux de mise à disposition", () => {
+  const norm = v => String(v || "").trim().toLowerCase().replace(/[\s-]+/g, " ");
+  const signale = (villeCompte, prestations) => {
+    if (prestations.length < 3) return false;
+    const vc = norm(villeCompte);
+    if (!vc) return false;
+    const hors = prestations.filter(m => m.ville && norm(m.ville) !== vc);
+    if (!hors.length) return false;
+    const parLieu = {};
+    for (const m of hors) {
+      const cle = norm([m.adresse, m.ville].filter(Boolean).join(" "));
+      if (cle) parLieu[cle] = (parLieu[cle] || 0) + 1;
+    }
+    const max = Math.max(0, ...Object.values(parLieu));
+    return max >= 3;
+  };
+
+  const hotel = (n) => Array.from({ length: n }, () => ({ ville:"Nice", adresse:"12 promenade des Anglais" }));
+
+  it("trois interventions au même hôtel, hors de sa ville : signalé", () => {
+    expect(signale("Paris", hotel(3))).toBe(true);
+  });
+  it("deux seulement : pas encore un schéma", () => {
+    expect(signale("Paris", [...hotel(2), { ville:"Paris", adresse:"siège" }])).toBe(false);
+  });
+  it("un client qui commande chez lui n'est jamais signalé", () => {
+    expect(signale("Paris", [{ ville:"Paris" }, { ville:"paris" }, { ville:"PARIS" }])).toBe(false);
+  });
+  it("des déplacements dispersés ne forment pas un schéma", () => {
+    expect(signale("Paris", [
+      { ville:"Nice", adresse:"a" }, { ville:"Lyon", adresse:"b" }, { ville:"Lille", adresse:"c" },
+    ])).toBe(false);
+  });
+  it("la casse et les espaces ne créent pas de faux positifs", () => {
+    expect(signale(" Paris ", [{ ville:"paris" }, { ville:"PARIS" }, { ville:"Paris" }])).toBe(false);
+  });
+  it("sans ville de compte connue, on ne signale rien plutôt que de se tromper", () => {
+    expect(signale(null, hotel(5))).toBe(false);
+  });
+});
+
 // ── Montants affichés au prestataire ──────────────────────────────
 // Six copies d'une même formule privilégiaient `montant_total`, qui porte ce que le
 // CLIENT a payé, frais de service compris. Une prestation d'1 h à 15 €/h s'affichait

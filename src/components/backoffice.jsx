@@ -1565,6 +1565,23 @@ export function BOModerationTab({ d }) {
   const [commSending, setCommSending]     = useState(false);
   const [commResult, setCommResult]       = useState(null);
   const [lastSync, setLastSync]           = useState(null);
+  // Signaux de mise à disposition (CGPS art. 10B). Aucun n'est une preuve : ils
+  // désignent les comptes à qui poser une question, première marche de l'escalade.
+  const [signaux, setSignaux]             = useState(null);
+  const [signauxErr, setSignauxErr]       = useState(null);
+
+  useEffect(() => {
+    let vivant = true;
+    boFetch({ action:"signaux_mise_a_disposition" })
+      .then(async r => {
+        const j = await r.json().catch(() => null);
+        if (!vivant) return;
+        if (!r.ok) { setSignauxErr(j?.error || `Erreur ${r.status}`); setSignaux([]); return; }
+        setSignaux(Array.isArray(j) ? j : []);
+      })
+      .catch(e => { if (vivant) { setSignauxErr(e?.message || "Erreur réseau"); setSignaux([]); } });
+    return () => { vivant = false; };
+  }, []);
 
   const handleSuspend = async () => {
     if(!suspendEmail.trim()) return;
@@ -1603,6 +1620,32 @@ export function BOModerationTab({ d }) {
       {d.users.pending > 0 && <AlertRow a={{ icon:"📋", text:`${d.users.pending} compte(s) en attente de validation`, color:"#F39C12", urgent:true }} />}
       {d.tickets?.open > 0 && <AlertRow a={{ icon:"🎧", text:`${d.tickets.open} ticket(s) support non traités`, color:"#E74C3C", urgent:true }} />}
       {d.users.pending === 0 && !d.tickets?.open && <div style={{ color:C.textMuted, fontSize:12, textAlign:"center", padding:"12px 0" }}>✅ Aucune alerte active</div>}
+
+      <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🕵️ Schémas de mise à disposition</div>
+      <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
+        <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6, marginBottom:10 }}>
+          Intervenir chez un tiers est licite (CGPS art. 10B). Ce qui ne l'est pas, c'est de fournir
+          une personne désignée, à l'heure, à un tiers qui la dirige. Ces signaux ne prouvent rien —
+          ils indiquent à qui demander des explications.
+        </div>
+        {signaux === null && <div style={{ color:C.textMuted, fontSize:12 }}>Analyse en cours…</div>}
+        {signauxErr && <div style={{ color:C.danger, fontSize:12 }}>Analyse impossible : {signauxErr}</div>}
+        {signaux && signaux.length === 0 && !signauxErr && (
+          <div style={{ color:C.textMuted, fontSize:12 }}>Aucun schéma récurrent détecté.</div>
+        )}
+        {signaux && signaux.map(sg => (
+          <div key={sg.client_id} style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:10, padding:"10px 12px", marginBottom:8 }}>
+            <div style={{ color:C.accentGold, fontWeight:700, fontSize:12, marginBottom:4 }}>{sg.client}</div>
+            <div style={{ color:C.textSub, fontSize:11, lineHeight:1.7 }}>
+              {sg.occurrences_meme_lieu} interventions au même endroit hors de sa ville
+              {sg.ville_compte ? ` (compte déclaré à ${sg.ville_compte})` : ""}<br/>
+              Lieu récurrent : <span style={{ color:C.text }}>{sg.lieu_recurrent || "—"}</span><br/>
+              {sg.prestataires_distincts} prestataire{sg.prestataires_distincts > 1 ? "s" : ""} distinct{sg.prestataires_distincts > 1 ? "s" : ""} ·
+              durée moyenne {sg.duree_moyenne_h} h · {sg.interventions_hors_ville}/{sg.total_prestations} prestations concernées
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>🔒 Suspendre un compte</div>
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>

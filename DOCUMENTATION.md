@@ -458,6 +458,15 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**Détection des schémas de mise à disposition** — action `signaux_mise_a_disposition` de
+`api/bo-action.js`, affichée dans l'onglet Modération. Elle croise le lieu d'intervention des
+prestations avec la ville déclarée par le client et ne retient que la **récurrence au même
+endroit** (au moins trois fois, sur au moins trois prestations). Aucun signal ne prouve quoi
+que ce soit : il désigne les comptes à qui poser une question, première marche de l'escalade
+du 10B.4. Les seuils sont volontairement bas et la ville de compte est cherchée dans
+`profiles.ville` puis dans `user_metadata` — sans elle, rien n'est signalé plutôt que
+d'accuser à tort.
+
 **Article 10B des CGPS — intervention au bénéfice d'un tiers.** La sous-traitance n'est pas
 interdite : un client professionnel peut faire exécuter une prestation chez son propre client,
 c'est licite. Ce qui est prohibé est le schéma précis — fournir à un tiers un prestataire

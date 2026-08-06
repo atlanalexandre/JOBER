@@ -1322,6 +1322,95 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok:true, sent:notifs.length });
     }
 
+    // Détection des schémas de mise à disposition (CGPS art. 10B).
+    //
+    // Ce qui est interdit n'est pas d'intervenir chez un tiers — c'est licite — mais
+    // de fournir une personne nommément désignée, à l'heure, à un tiers qui la dirige.
+    // Aucun de ces indices ne prouve quoi que ce soit isolément : ils servent à savoir
+    // à qui demander des explications, conformément à l'escalade prévue au 10B.4.
+    //
+    // Trois signaux, tirés des données déjà présentes :
+    //   • le lieu d'intervention diffère de la ville déclarée par le client ;
+    //   • les prestations se répètent au même endroit, hors de chez lui ;
+    //   • elles sont ponctuelles et visent des prestataires nommément choisis.
+    if (action === "signaux_mise_a_disposition") {
+      const mrs = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status&order=created_at.desc&limit=1000`,
+        { headers }
+      );
+      const toutes = await mrs.json().catch(() => []);
+      if (!Array.isArray(toutes) || toutes.length === 0) return res.status(200).json([]);
+
+      const clientIds = [...new Set(toutes.map(m => m.client_id).filter(Boolean))];
+      if (!clientIds.length) return res.status(200).json([]);
+
+      const prs = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=in.(${clientIds.join(",")})&role=eq.client&select=id,prenom,nom,ville`,
+        { headers }
+      );
+      const profils = await prs.json().catch(() => []);
+      const parClient = Object.fromEntries((Array.isArray(profils) ? profils : []).map(p => [p.id, p]));
+
+      // La ville du compte peut n'exister que dans user_metadata pour les comptes anciens.
+      let metaVille = {};
+      try {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+        const ud = await ur.json();
+        for (const u of (ud.users || [])) {
+          const v = u.user_metadata?.ville;
+          if (v) metaVille[u.id] = v;
+        }
+      } catch (e) {
+        console.error("[signaux] villes user_metadata illisibles :", e.message);
+      }
+
+      const norm = v => String(v || "").trim().toLowerCase().replace(/[\s-]+/g, " ");
+      const resultat = [];
+
+      for (const cid of clientIds) {
+        const prof = parClient[cid];
+        if (!prof) continue;                       // comptes prestataires ignorés
+        const villeCompte = norm(prof.ville || metaVille[cid]);
+        const siennes = toutes.filter(m => m.client_id === cid);
+        if (siennes.length < 3) continue;          // trop peu pour dégager un schéma
+
+        const horsVille = villeCompte
+          ? siennes.filter(m => m.ville && norm(m.ville) !== villeCompte)
+          : [];
+        if (!horsVille.length) continue;
+
+        // Concentration : un même lieu revient-il ?
+        const parLieu = {};
+        for (const m of horsVille) {
+          const cle = norm([m.adresse, m.ville].filter(Boolean).join(" "));
+          if (!cle) continue;
+          parLieu[cle] = (parLieu[cle] || 0) + 1;
+        }
+        const [lieuTop, occurrences] = Object.entries(parLieu).sort((a, b) => b[1] - a[1])[0] || [null, 0];
+
+        const prestatairesDistincts = new Set(horsVille.map(m => m.prestataire_id).filter(Boolean)).size;
+        const dureeMoyenne = horsVille.reduce((s2, m) => s2 + (Number(m.hours) || 0), 0) / horsVille.length;
+
+        // Seuils délibérément bas : l'objet est de déclencher une question, pas une sanction.
+        if (occurrences < 3) continue;
+
+        resultat.push({
+          client_id: cid,
+          client: [prof.prenom, prof.nom].filter(Boolean).join(" ") || cid,
+          ville_compte: prof.ville || metaVille[cid] || null,
+          lieu_recurrent: lieuTop,
+          interventions_hors_ville: horsVille.length,
+          occurrences_meme_lieu: occurrences,
+          prestataires_distincts: prestatairesDistincts,
+          duree_moyenne_h: Math.round(dureeMoyenne * 10) / 10,
+          total_prestations: siennes.length,
+        });
+      }
+
+      resultat.sort((a, b) => b.occurrences_meme_lieu - a.occurrences_meme_lieu);
+      return res.status(200).json(resultat);
+    }
+
     if (action === "list_ratings") {
       const rr = await fetch(`${SUPABASE_URL}/rest/v1/ratings?select=id,rating,comment,created_at,reviewer_id,reviewee_id&order=created_at.desc&limit=200`, { headers });
       const ratings = await rr.json();
