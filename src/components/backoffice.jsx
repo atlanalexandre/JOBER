@@ -363,6 +363,29 @@ export function BOComptes() {
   const [actioning, setActioning] = useState(null);
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
+  // IBAN révélés dans cette session d'écran, par identifiant de compte.
+  const [ibansReveles, setIbansReveles] = useState({});
+  const [ibanEnCours, setIbanEnCours]   = useState(null);
+
+  // La valeur complète est demandée au serveur, une fiche à la fois, et
+  // l'appel est consigné dans bo_logs.
+  const revelerIban = async (id) => {
+    setIbanEnCours(id);
+    try {
+      const r = await fetch("/api/bo-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sessionStorage.getItem("bo_token") || ""}` },
+        body: JSON.stringify({ action: "reveal_iban", profileId: id }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.rib) setIbansReveles(v => ({ ...v, [id]: j.rib }));
+      else alert(j.error || "IBAN indisponible");
+    } catch (e) {
+      console.error("[reveal_iban] échec :", e.message);
+      alert("Connexion impossible");
+    }
+    setIbanEnCours(null);
+  };
   const [verifying, setVerifying] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
@@ -395,7 +418,7 @@ export function BOComptes() {
         // Le SIRET d'un prestataire est dans `siret` ; `kbis` n'est renseigné que
         // pour les clients professionnels. La vérification partait donc à vide sur
         // tous les prestataires, alors que c'est là qu'elle compte le plus.
-        body: JSON.stringify({ iban: p.rib||"", siret: p.siret || p.kbis || "" }),
+        body: JSON.stringify({ iban: ibansReveles[p.id] || "", siret: p.siret || p.kbis || "" }),
       });
       const data = await res.json();
       setVerifs(v => ({ ...v, [p.id]: data }));
@@ -779,7 +802,21 @@ export function BOComptes() {
                   <div>
                     <InfoRow icon="📧" label="Email" value={p.email} />
                     <InfoRow icon="📱" label="Tél" value={p.telephone} />
-                    <InfoRow icon="🏦" label="IBAN" value={p.rib} mono />
+                    {/* L'IBAN n'arrive plus dans la liste : il se demande une
+                        fiche à la fois, et la demande est tracée (RGPD art. 5.1.c). */}
+                    <InfoRow icon="🏦" label="IBAN" mono value={
+                      ibansReveles[p.id]
+                        ? ibansReveles[p.id]
+                        : p.rib_present
+                          ? <span>
+                              •••• {p.rib_fin}
+                              <button onClick={()=>revelerIban(p.id)} disabled={ibanEnCours === p.id}
+                                style={{ marginLeft:8, padding:"2px 8px", borderRadius:6, border:`1px solid ${C.violet}66`, background:"transparent", color:C.violet, fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                                {ibanEnCours === p.id ? "…" : "Afficher"}
+                              </button>
+                            </span>
+                          : null
+                    } />
                     <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
                     <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
                     <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
@@ -1852,9 +1889,14 @@ export function BOExportCSV({ d }) {
     try {
       const r = await boFetch({ action:"list" });
       const users = await r.json();
-      const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Date naissance","Téléphone","IBAN","Type compte","Société","Créé le"]];
+      // L'IBAN complet ne figure plus dans l'export : un fichier de coordonnées
+      // bancaires posé sur un poste de travail est le pire endroit où elles
+      // puissent se trouver. Les quatre derniers caractères suffisent à
+      // rapprocher une ligne d'un compte ; la valeur complète se consulte fiche
+      // par fiche, et cette consultation est tracée.
+      const rows = [["ID","Prénom","Nom","Email","Rôle","Statut","Date naissance","Téléphone","IBAN (4 derniers)","Type compte","Société","Créé le"]];
       (Array.isArray(users) ? users : []).forEach(u => {
-        rows.push([u.id,u.prenom||"",u.nom||"",u.email||"",u.role||"",u.status||"",u.date_naissance||"",u.telephone||"",u.rib||"",u.type_compte||"",u.societe_nom||"",u.created_at?.slice(0,10)||""]);
+        rows.push([u.id,u.prenom||"",u.nom||"",u.email||"",u.role||"",u.status||"",u.date_naissance||"",u.telephone||"",u.rib_fin?`••••${u.rib_fin}`:"",u.type_compte||"",u.societe_nom||"",u.created_at?.slice(0,10)||""]);
       });
       const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
       const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
