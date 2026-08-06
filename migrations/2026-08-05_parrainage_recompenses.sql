@@ -1,0 +1,58 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Parrainage : compteur des récompenses déjà accordées
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- La plateforme promet : « Dès que 3 de vos filleuls souscrivent un abonnement
+-- Premium, vous recevez 1 mois Premium offert. »
+--
+-- Le code accordait ce mois dès que trois personnes s'étaient simplement
+-- INSCRITES, sans qu'aucune ne souscrive quoi que ce soit. Trois créations de
+-- compte suffisaient donc à obtenir un abonnement payant.
+--
+-- Corriger cela impose de déplacer le déclenchement : la récompense ne peut plus
+-- être évaluée à l'inscription du filleul — il n'est pas encore abonné — mais au
+-- moment où il souscrit réellement, c'est-à-dire dans le webhook Stripe.
+--
+-- Il faut alors savoir combien de récompenses ont déjà été accordées, sans quoi
+-- chaque nouvel abonnement d'un filleul en redéclencherait une. C'est l'objet de
+-- cette colonne.
+--
+-- COMPATIBILITÉ
+--
+-- Sans cette migration, la récompense n'est pas accordée : le code lit le compteur,
+-- ne le trouve pas, et s'abstient plutôt que de risquer un cumul. L'absence est
+-- journalisée en erreur. Aucun blocage du parcours d'abonnement.
+--
+-- VÉRIFICATION et RETOUR ARRIÈRE — voir le bas du fichier.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS referral_rewards_granted integer NOT NULL DEFAULT 0;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    SELECT column_name, data_type, column_default
+--    FROM information_schema.columns
+--    WHERE table_name = 'profiles' AND column_name = 'referral_rewards_granted';
+--
+-- Pour voir les parrains et leurs filleuls réellement abonnés :
+--
+--    SELECT p.id, p.prenom, p.nom, p.referral_rewards_granted,
+--           (SELECT count(*) FROM profiles f
+--             WHERE f.referred_by = p.id AND f.plan_abonnement <> 'free') AS filleuls_abonnes
+--    FROM profiles p
+--    WHERE EXISTS (SELECT 1 FROM profiles f WHERE f.referred_by = p.id);
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    ALTER TABLE public.profiles DROP COLUMN IF EXISTS referral_rewards_granted;
+--
+-- La récompense cesse alors d'être accordée. Aucune donnée financière n'est perdue.
+-- ═══════════════════════════════════════════════════════════════════════════

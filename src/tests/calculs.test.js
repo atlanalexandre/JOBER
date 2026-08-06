@@ -224,6 +224,50 @@ describe("traitement d'un signal", () => {
   });
 });
 
+// ── Parrainage : récompense « 3 filleuls abonnés » ────────────────
+// La plateforme promet un mois offert quand trois filleuls SOUSCRIVENT. Le code
+// l'accordait dès trois créations de compte : trois inscriptions suffisaient à
+// obtenir un abonnement payant. Et il écrasait le plan du parrain par « premium »
+// avec une fin à trente jours — déclassant un Elite et tronquant sa souscription.
+describe("parrainage — récompense", () => {
+  const dues = (filleulsAbonnes) => Math.floor(filleulsAbonnes / 3);
+  const aAccorder = (filleulsAbonnes, dejaAccordees) => dues(filleulsAbonnes) > dejaAccordees;
+
+  it("trois inscrits mais aucun abonné : rien", () => {
+    expect(dues(0)).toBe(0);
+  });
+  it("trois filleuls abonnés : une récompense", () => {
+    expect(aAccorder(3, 0)).toBe(true);
+  });
+  it("un quatrième abonné ne redéclenche rien", () => {
+    expect(aAccorder(4, 1)).toBe(false);
+  });
+  it("le sixième ouvre une deuxième récompense", () => {
+    expect(aAccorder(6, 1)).toBe(true);
+  });
+
+  // Prolongation, jamais remplacement.
+  const J = 86400000;
+  const prolonger = ({ plan, finActuelle, maintenant }) => {
+    const base = Math.max(finActuelle || 0, maintenant);
+    return { plan: (plan && plan !== "free") ? plan : "premium", fin: base + 30 * J };
+  };
+  const T = 1_760_000_000_000;
+
+  it("un parrain gratuit reçoit Premium pour trente jours", () => {
+    expect(prolonger({ plan:"free", finActuelle:0, maintenant:T })).toEqual({ plan:"premium", fin:T + 30*J });
+  });
+  it("un parrain Elite reste Elite — il n'est pas déclassé", () => {
+    expect(prolonger({ plan:"elite", finActuelle:T + 90*J, maintenant:T }).plan).toBe("elite");
+  });
+  it("une souscription en cours est prolongée, pas tronquée", () => {
+    expect(prolonger({ plan:"elite", finActuelle:T + 90*J, maintenant:T }).fin).toBe(T + 120*J);
+  });
+  it("une souscription expirée repart de maintenant", () => {
+    expect(prolonger({ plan:"premium", finActuelle:T - 10*J, maintenant:T }).fin).toBe(T + 30*J);
+  });
+});
+
 // ── Contrat-cadre Client Professionnel ────────────────────────────
 // Les CGPS sont acceptées par tous et ne peuvent pas porter les engagements propres
 // au client professionnel qui fait intervenir chez son propre client. Le contrat-cadre

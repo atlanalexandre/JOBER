@@ -464,6 +464,19 @@ vulnérabilité de la plateforme : il est exactement le critère que l'article 1
 Le choix reste libre quand le client commande pour lui-même ; il disparaît dès qu'il déclare
 intervenir chez un tiers. Le code doit suivre : voir « affectation automatique » ci-dessous.
 
+**Parrainage** — la récompense « 3 filleuls abonnés = 1 mois offert » est évaluée dans
+`api/stripe-webhook.js`, au moment où un filleul **souscrit réellement**, et non plus dans
+`track_referral` à son inscription. Le code l'accordait dès trois créations de compte : trois
+inscriptions suffisaient à obtenir un abonnement payant. `profiles.referral_rewards_granted`
+compte les récompenses déjà versées, sans quoi chaque nouvel abonnement d'un filleul en
+redéclencherait une.
+
+La récompense **prolonge** l'abonnement du parrain, elle ne le remplace jamais : elle écrivait
+`plan_abonnement: "premium"` avec une fin à trente jours, ce qui déclassait un parrain Elite et
+tronquait sa souscription en cours. `track_referral` ne fait plus que rattacher le filleul, une
+seule fois — le filtre `referred_by IS NULL` interdit de réattribuer un parrainage — et
+recalcule le compteur depuis la source au lieu de l'incrémenter.
+
 **Contrat-cadre Client Professionnel** — `src/constants/contrat-cadre-pro.js`, huit articles,
 distinct des CGPS. Celles-ci sont acceptées par tous et ne peuvent pas porter les engagements
 propres au client professionnel : garantie de vendre un résultat, maintien du pouvoir
