@@ -1026,7 +1026,8 @@ export default function App() {
   const handleToggleOnline = async () => {
     const next = !onlineStatus;
     setOnlineStatus(next);
-    try { await supabase.auth.updateUser({ data: { is_online: next } }); } catch {}
+    // L'interrupteur a déjà basculé à l'écran : sans trace, le prestataire se croit en ligne alors qu'il ne l'est pas.
+    try { await supabase.auth.updateUser({ data: { is_online: next } }); } catch (e) { console.error("[statut] passage en ligne/hors ligne non enregistré :", e.message); }
   };
   const [pendingMission,setPendingMission]=useState(null);
   const [invoiceMission,setInvoiceMission]=useState(null);
@@ -1089,7 +1090,7 @@ export default function App() {
             // Invariant : plan payant → jamais trial_exhausted
             setTrialExhausted(_plan !== "free" ? false : !!pr?.trial_exhausted);
           }
-        } catch {}
+        } catch (e) { console.error("[profil] lecture du plan échouée — repli sur « free » :", e.message); }
       }, 2000);
     }
     if(params.get("sub_cancel") === "1") {
@@ -1110,7 +1111,7 @@ export default function App() {
         // Invariant : plan payant → jamais trial_exhausted
         setTrialExhausted(plan !== "free" ? false : !!pr?.trial_exhausted);
         setProfileLoaded(true);
-      } catch {}
+      } catch (e) { console.error("[profil] lecture du profil échouée — repli sur « free » :", e.message); }
     })();
   },[supaUser, role]);
 

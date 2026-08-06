@@ -149,7 +149,7 @@ export default async function handler(req, res) {
                   }).catch(e => console.error("[wallet_topup] email failed:", e));
                 }
               }
-            } catch {}
+            } catch (e) { console.error("[stripe-webhook] traitement de la recharge de portefeuille interrompu :", e.message); }
           }
         } catch (e) {
           console.error("[stripe-webhook/wallet_topup] error:", e);
@@ -265,7 +265,7 @@ export default async function handler(req, res) {
             const sub = await subR.json();
             if (sub.current_period_end) endDate = new Date(sub.current_period_end * 1000).toISOString();
           }
-        } catch {}
+        } catch (e) { console.error("[stripe-webhook] période d'abonnement Stripe illisible — date de fin non mise à jour :", e.message); }
       }
       if (!endDate) {
         const daysToAdd = billing === "yearly" ? 365 : 30;
@@ -451,7 +451,7 @@ export default async function handler(req, res) {
           const profData = await profR.json().catch(() => []);
           userId = Array.isArray(profData) && profData[0]?.id || null;
         }
-      } catch {}
+      } catch (e) { console.error("[stripe-webhook] compte introuvable pour ce client Stripe :", e.message); }
 
       if (!userId) {
         console.warn("[subscription] user not found for customer:", customerId);
@@ -466,7 +466,7 @@ export default async function handler(req, res) {
           const epData = await epR.json().catch(() => []);
           existingPlan = Array.isArray(epData) && epData[0]?.plan_abonnement || null;
         }
-      } catch {}
+      } catch (e) { console.error("[stripe-webhook] plan d'abonnement existant illisible :", e.message); }
 
       if (isActive) {
         const effectivePlan = plan || existingPlan || "premium";
@@ -561,7 +561,7 @@ export default async function handler(req, res) {
             }),
           }).catch(() => {});
         }
-      } catch {}
+      } catch (e) { console.error("[stripe-webhook] notification d'échec de paiement non envoyée :", e.message); }
       console.log("[payment_intent.payment_failed] mission remise en open:", missionId);
     }
   }
@@ -583,7 +583,7 @@ export default async function handler(req, res) {
           const profData = await profR.json().catch(() => []);
           userId = Array.isArray(profData) && profData[0]?.id || null;
         }
-      } catch {}
+      } catch (e) { console.error("[stripe-webhook] compte introuvable pour ce client Stripe :", e.message); }
       if (userId) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",

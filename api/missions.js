@@ -114,7 +114,7 @@ async function checkPrestaireConflict(prestataire_id, missionDate, heureDebut, h
       const eEnd   = eStart + Math.ceil(Number(em.hours || 1) * 60);
       if (startMin < eEnd && eStart < endMin) return em;
     }
-  } catch {}
+  } catch (e) { console.error("[missions] conflit de créneau non vérifié :", e.message); }
   return null;
 }
 
@@ -682,7 +682,7 @@ export default async function handler(req, res) {
               if (u?.user_metadata?.prenom || u?.user_metadata?.nom) {
                 metaMap[id] = { prenom: u.user_metadata.prenom || "", nom: u.user_metadata.nom || "" };
               }
-            } catch {}
+            } catch (e) { console.error("[missions] nom du prestataire illisible :", e.message); }
           }));
           Object.assign(profileMap, metaMap);
         }
@@ -805,7 +805,7 @@ export default async function handler(req, res) {
             if (u?.user_metadata?.prenom || u?.user_metadata?.nom) {
               nameMap[id] = { prenom: u.user_metadata.prenom || "", nom: u.user_metadata.nom || "" };
             }
-          } catch {}
+          } catch (e) { console.error("[missions] noms des participants illisibles :", e.message); }
         }));
       }
       // Notes moyennes par prestataire
@@ -822,7 +822,7 @@ export default async function handler(req, res) {
               ratingMap[id] = { avg: Math.round(rats.reduce((s, v) => s + v, 0) / rats.length * 10) / 10, count: rats.length };
             });
           }
-        } catch {}
+        } catch (e) { console.error("[missions] notes moyennes illisibles :", e.message); }
       }
 
       const enriched = candidatures.map(c => ({
@@ -1371,7 +1371,7 @@ export default async function handler(req, res) {
                 }),
               }).catch(() => {});
             }
-          } catch {}
+          } catch (e) { console.error("[missions] email de fin de prestation non envoyé :", e.message); }
         }
       }
 
@@ -1689,7 +1689,7 @@ export default async function handler(req, res) {
             }),
           }).catch(() => {});
         }
-      } catch {}
+      } catch (e) { console.error("[missions] email de confirmation non envoyé :", e.message); }
 
       return res.status(200).json({ success: true });
     }
@@ -1986,7 +1986,7 @@ export default async function handler(req, res) {
             body: JSON.stringify(patchBody),
           });
         }
-      } catch {}
+      } catch (e) { console.error("[missions] remise à zéro du quota mensuel échouée :", e.message); }
 
       // Notifier le client
       if (mission.client_id) {
@@ -2032,7 +2032,7 @@ export default async function handler(req, res) {
                   read: false,
                 }),
               });
-            } catch {}
+            } catch (e) { console.error("[missions] notification de prestation urgente non envoyée :", e.message); }
           }));
         }
       }
@@ -2246,7 +2246,7 @@ export default async function handler(req, res) {
               }
 
               notified++;
-            } catch {}
+            } catch (e) { console.error("[missions] diffusion à un prestataire échouée :", e.message); }
           }));
         }
       }
@@ -2554,7 +2554,7 @@ export default async function handler(req, res) {
             if (piData.amount_received > 0) missionAmount = piData.amount_received / 100;
             else if (piData.amount > 0) missionAmount = piData.amount / 100;
           }
-        } catch {}
+        } catch (e) { console.error("[missions] montant Stripe illisible — repli sur le montant en base :", e.message); }
       }
       // Frais réellement payés = total encaissé − part horaire (tarif × heures × jours)
       const nbJours = (mission.date_debut && mission.date_fin)
@@ -2631,7 +2631,7 @@ export default async function handler(req, res) {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
         const uData = await uRes.json();
         clientEmail = uData.email || null;
-      } catch {}
+      } catch (e) { console.error("[missions] email du client illisible :", e.message); }
 
       // ── Remboursement Stripe en PREMIER (avant de marquer cancelled en DB)
       // Si Vercel crashe entre les deux, la mission reste "assigned" (récupérable)
@@ -2814,7 +2814,7 @@ export default async function handler(req, res) {
                 }),
               }).catch(() => {});
             }
-          } catch {}
+          } catch (e) { console.error("[missions] SMS d'annulation non envoyé au prestataire :", e.message); }
         }
       }
 
@@ -2933,7 +2933,7 @@ export default async function handler(req, res) {
           prestaEmail = uData.email || null;
           prestaPhone = uData.user_metadata?.telephone || null;
           prestaName = [uData.user_metadata?.prenom, uData.user_metadata?.nom].filter(Boolean).join(" ") || "Prestataire";
-        } catch {}
+        } catch (e) { console.error("[missions] coordonnées du prestataire illisibles :", e.message); }
       }
 
       // Récupérer email client pour le ticket
@@ -2942,7 +2942,7 @@ export default async function handler(req, res) {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
         const uData = await uRes.json();
         clientEmail = uData.email || null;
-      } catch {}
+      } catch (e) { console.error("[missions] email du client illisible :", e.message); }
 
       const missionLabel = mission.metier || mission.sector || "Prestation";
 
@@ -3540,7 +3540,7 @@ export default async function handler(req, res) {
         if (Array.isArray(prData) && prData[0]) {
           resolvedPrestaName = [prData[0].prenom, prData[0].nom].filter(Boolean).join(" ") || resolvedPrestaName;
         }
-      } catch {}
+      } catch (e) { console.error("[missions] nom du prestataire illisible :", e.message); }
 
       // Refus d'une demande directe : la prestation ne repart pas en « open » avec
       // l'argent du client toujours bloqué. Elle passe en « refused » et le client
@@ -3936,7 +3936,7 @@ export default async function handler(req, res) {
               }),
             });
           }
-        } catch(e) {}
+        } catch (e) { console.error("[missions] email de demande d'heures supplémentaires non envoyé :", e.message); }
 
         // Web push au prestataire
         sendPushToUser(mission.prestataire_id, {
@@ -4785,7 +4785,7 @@ export default async function handler(req, res) {
         const uData = await uRes.json();
         clientEmail = uData.email || null;
         clientName = [uData.user_metadata?.prenom, uData.user_metadata?.nom].filter(Boolean).join(" ") || "Client";
-      } catch {}
+      } catch (e) { console.error("[missions] coordonnées du client illisibles :", e.message); }
 
       const label = mission.titre || mission.metier || "prestation";
       const ticketSubject = `⚠️ Litige — Prestation : ${label} (${mission.date || ""})`;

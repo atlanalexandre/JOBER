@@ -427,6 +427,36 @@ Sept ne le faisaient pas : `approve`/`reject`, `verify_doc`, `reject_doc`,
 `list_missions_export`, `seed_docs`. La validation des pièces d'identité et la modification
 des réglages — frais de service, cashback, seuils de vigilance — ne laissaient aucune trace.
 
+### Carte
+
+Leaflet est chargé dynamiquement par `loadLeaflet()` (`client-screens.jsx`). Il tente d'abord
+la copie locale `public/vendor/leaflet/`, puis retombe sur `unpkg.com` en le signalant dans
+la console.
+
+**La copie locale n'est pas dans le dépôt.** Pour la déposer et supprimer la dépendance au
+CDN — un CDN compromis exécuterait du code arbitraire sur le site, `admin.alane.fr` compris
+puisqu'il partage le même bundle :
+
+```bash
+mkdir -p public/vendor/leaflet
+curl -o public/vendor/leaflet/leaflet.js  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+curl -o public/vendor/leaflet/leaflet.css https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+```
+
+Une fois les fichiers présents et déployés, retirer `https://unpkg.com/leaflet@1.9.4/` de
+`script-src` **et** de `style-src` dans le CSP de `vercel.json`.
+
+### En-têtes de sécurité
+
+Le CSP de `vercel.json` n'autorise plus `'unsafe-inline'` dans **`script-src`** : le build ne
+contient aucun script inline (seulement des blocs `application/ld+json`, qui ne sont pas
+exécutés) ni aucun gestionnaire `on*`. Vérifié avant de retirer la directive.
+
+`'unsafe-inline'` reste **obligatoire dans `style-src`** : tout le projet est écrit en styles
+en ligne (règle 3.1). Ne pas le retirer.
+
+Ajoutés au passage : `form-action 'self'` et `frame-ancestors 'none'`.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et

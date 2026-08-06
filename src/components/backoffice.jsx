@@ -1434,7 +1434,8 @@ export function BOLitiges() {
       const r = await boFetch({ action: "list_disputes" });
       const d = await r.json();
       if (Array.isArray(d)) setDisputes(d);
-    } catch {}
+    // Sans trace, la liste reste vide et l'administrateur en conclut qu'il n'y a aucun litige.
+    } catch (e) { console.error("[BO] liste des litiges illisible :", e.message); }
     setLoading(false);
   };
 
@@ -1906,7 +1907,7 @@ export function BOExportCSV({ d }) {
       a.click(); URL.revokeObjectURL(url);
       // Journaliser l'export (piste d'audit — contient des données sensibles IBAN/KBIS)
       boFetch({ action:"bo_log_export", details:{ type:"csv_comptes", count:(Array.isArray(users)?users.length:0) } }).catch(()=>{});
-    } catch(_) {}
+    } catch (e) { console.error("[BO] export des comptes échoué :", e.message); }
     setExporting(false);
   };
   return (
@@ -1937,7 +1938,7 @@ export function BOExportMissions() {
       const a    = document.createElement("a");
       a.href = url; a.download = `alane-prestations-comptable-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
-    } catch(_) {}
+    } catch (e) { console.error("[BO] export comptable échoué :", e.message); }
     setExporting(false);
   };
   return (
