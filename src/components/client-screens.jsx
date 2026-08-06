@@ -4,6 +4,7 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
+import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
@@ -2665,8 +2666,54 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return () => { vivant = false; };
   }, []);
 
-  const declarationComplete = !chezTiers
-    || ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim());
+  // Contrat-cadre Client Professionnel : préalable à toute intervention chez un tiers.
+  const [contratCadre, setContratCadre] = useState(undefined);   // undefined = pas encore lu
+  const [signataire, setSignataire] = useState("");
+  const [qualiteSignataire, setQualiteSignataire] = useState("");
+  const [signatureEnCours, setSignatureEnCours] = useState(false);
+  const [contratDeplie, setContratDeplie] = useState(false);
+
+  useEffect(() => {
+    if (!estPro) return;
+    let vivant = true;
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data?.user?.id;
+      if (!uid || !vivant) return;
+      const { data: prof } = await supabase.from("profiles").select("contrat_cadre_pro").eq("id", uid).single();
+      if (vivant) setContratCadre(prof?.contrat_cadre_pro || null);
+    }).catch(() => { if (vivant) setContratCadre(null); });
+    return () => { vivant = false; };
+  }, [estPro]);
+
+  const contratAJour = !!(contratCadre && contratCadre.accepte_le && contratCadre.version === VERSION_CONTRAT_CADRE);
+
+  const signerContratCadre = async () => {
+    if (signataire.trim().length < 3) { showToast("Indiquez le nom et le prénom du signataire.", "error"); return; }
+    setSignatureEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "accepter_contrat_cadre", version: VERSION_CONTRAT_CADRE, signataire: signataire.trim(), qualite: qualiteSignataire.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || `Erreur ${r.status}`, "error"); setSignatureEnCours(false); return; }
+      setContratCadre(j.contrat || { version: VERSION_CONTRAT_CADRE, accepte_le: new Date().toISOString() });
+      showToast("Contrat-cadre accepté.", "success");
+    } catch (e) {
+      console.error("[contrat-cadre] acceptation impossible :", e?.message);
+      showToast(e?.message || "Erreur réseau", "error");
+    }
+    setSignatureEnCours(false);
+  };
+
+  // Réservation chez un tiers : contrat-cadre accepté ET déclaration complète.
+  // Hors de ce cas, rien n'est exigé.
+  const declarationComplete = !chezTiers || (
+    contratAJour
+    && ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim())
+  );
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
@@ -3292,6 +3339,47 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       C&apos;est autorisé (CGPS art. 10B) à condition que vous vendiez à ce tiers un <strong style={{ color:C.text }}>service défini par son résultat</strong>,
                       et non la présence d&apos;une personne. Ces éléments sont conservés avec la réservation.
                     </div>
+                    {/* Contrat-cadre : préalable obligatoire. Il porte les garanties
+                        que les CGPS, acceptées par tous, ne peuvent pas porter. */}
+                    {!contratAJour && (
+                      <div style={{ background:"rgba(242,94,94,0.07)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:10, padding:"12px 13px", marginBottom:12 }}>
+                        <div style={{ color:"#F25E5E", fontWeight:800, fontSize:12.5, marginBottom:6 }}>📄 Contrat-cadre Client Professionnel</div>
+                        <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6, marginBottom:10 }}>
+                          Une intervention chez un tiers suppose l&apos;acceptation préalable de ce contrat.
+                          Il précise ce que vous garantissez : vendre un service défini par son résultat, conserver
+                          l&apos;organisation du travail, et déclarer le bénéficiaire final.
+                        </div>
+                        <button onClick={()=>setContratDeplie(v=>!v)}
+                          style={{ background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:11.5, cursor:"pointer", padding:0, marginBottom:8, fontFamily:"inherit" }}>
+                          {contratDeplie ? "▲ Masquer le contrat" : "▼ Lire le contrat (8 articles)"}
+                        </button>
+                        {contratDeplie && (
+                          <div style={{ maxHeight:260, overflowY:"auto", background:"rgba(0,0,0,0.25)", borderRadius:8, padding:"10px 12px", marginBottom:10 }}>
+                            {CONTRAT_CADRE_PRO.map(a => (
+                              <div key={a.titre} style={{ marginBottom:12 }}>
+                                <div style={{ color:C.text, fontWeight:700, fontSize:11.5, marginBottom:3 }}>{a.titre}</div>
+                                <div style={{ color:C.textSub, fontSize:11, lineHeight:1.65, whiteSpace:"pre-line" }}>{a.texte}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <input value={signataire} onChange={e=>setSignataire(e.target.value)}
+                          placeholder="Nom et prénom du signataire"
+                          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:12.5, padding:"9px 11px", fontFamily:"inherit", marginBottom:7, boxSizing:"border-box" }} />
+                        <input value={qualiteSignataire} onChange={e=>setQualiteSignataire(e.target.value)}
+                          placeholder="Qualité — ex. gérant, directeur d'exploitation (facultatif)"
+                          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:12.5, padding:"9px 11px", fontFamily:"inherit", marginBottom:9, boxSizing:"border-box" }} />
+                        <button onClick={signerContratCadre} disabled={signatureEnCours}
+                          style={{ width:"100%", padding:"11px", borderRadius:9, border:"none", background:signatureEnCours?C.grayLight:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:"#fff", fontWeight:800, fontSize:13, cursor:signatureEnCours?"default":"pointer", fontFamily:"inherit" }}>
+                          {signatureEnCours ? "Enregistrement…" : "J'accepte le contrat-cadre"}
+                        </button>
+                      </div>
+                    )}
+                    {contratAJour && (
+                      <div style={{ color:C.success, fontSize:11, fontWeight:700, marginBottom:12 }}>
+                        ✓ Contrat-cadre accepté{contratCadre?.accepte_le ? ` le ${new Date(contratCadre.accepte_le).toLocaleDateString("fr-FR")}` : ""}
+                      </div>
+                    )}
                     {/* La sélection nominative est le critère même qui distingue une
                         prestation de services d'une fourniture de main-d'œuvre : le
                         client décrit un besoin, la plateforme affecte (CGPS art. 5.2). */}

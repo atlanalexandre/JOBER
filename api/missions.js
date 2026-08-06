@@ -3227,6 +3227,20 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Ce secteur n'est pas encore ouvert aux réservations." });
       }
 
+      // Le contrat-cadre est un préalable, pas une formalité : il porte les garanties
+      // sur la nature de ce qui est vendu et sur le maintien du pouvoir
+      // d'organisation. Sans lui, l'intervention chez un tiers n'est pas encadrée.
+      try {
+        const ccRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=contrat_cadre_pro`, { headers });
+        const cc = (await ccRes.json().catch(() => []))[0];
+        if (!cc || !cc.contrat_cadre_pro || !cc.contrat_cadre_pro.accepte_le) {
+          return res.status(403).json({ error: "Le contrat-cadre Client Professionnel doit être accepté avant toute intervention au bénéfice d'un tiers." });
+        }
+      } catch (e) {
+        console.error("[affecter_tiers] contrat-cadre illisible :", e.message);
+        return res.status(500).json({ error: "Vérification du contrat-cadre impossible. Réessayez." });
+      }
+
       const candidats = await candidatsPourMission({ ...am, id: mission_id }, SUPABASE_URL, headers);
       const patch = { status: "pending_acceptance" };
       if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
@@ -3256,6 +3270,42 @@ export default async function handler(req, res) {
       }
       console.log(`[affecter_tiers] ${mission_id} → ${candidats[0]} (${candidats.length} candidat(s))`);
       return res.status(200).json({ success: true, mode: "affectation", mission_id });
+    }
+
+    // Acceptation du contrat-cadre Client Professionnel.
+    //
+    // Écrite par le service role : le navigateur ne peut pas s'auto-attribuer une
+    // acceptation. La version est conservée — un contrat modifié devra être
+    // réaccepté, et l'on saura toujours quelle rédaction liait le client à la date
+    // d'une prestation donnée.
+    if (action === "accepter_contrat_cadre") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { version, signataire, qualite } = payload;
+      const v = String(version || "").trim().slice(0, 12);
+      const nom = String(signataire || "").trim().replace(/\s+/g, " ").slice(0, 120);
+      if (!v) return res.status(400).json({ error: "Version du contrat requise" });
+      if (nom.length < 3) return res.status(400).json({ error: "Nom et prénom du signataire requis" });
+
+      const corps = {
+        version: v,
+        accepte_le: new Date().toISOString(),
+        signataire: nom,
+        qualite: String(qualite || "").trim().slice(0, 80) || null,
+      };
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ contrat_cadre_pro: corps }),
+      });
+      const rows = await pr.json().catch(() => null);
+      if (!pr.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[contrat_cadre] acceptation NON enregistrée pour ${caller.id} : ${pr.status} `
+          + `${JSON.stringify(rows || {})}. Appliquer la migration 2026-08-05_contrat_cadre_professionnel.sql.`);
+        return res.status(500).json({ error: "Votre acceptation n'a pas pu être enregistrée. Réessayez ou contactez-nous." });
+      }
+      console.log(`[contrat_cadre] accepté par ${caller.id} — version ${v}`);
+      return res.status(200).json({ ok: true, contrat: corps });
     }
 
     if (action === "declarer_tiers") {

@@ -1,0 +1,70 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Contrat-cadre Client Professionnel
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- Les CGPS sont acceptées par tous et ne peuvent pas porter les engagements
+-- spécifiques d'un client professionnel qui fait intervenir un prestataire chez son
+-- propre client : garantie qu'il vend un résultat et non des heures, engagement de
+-- conserver la direction du travail, coopération aux audits, indemnisation.
+--
+-- Un conseil juridique le classe en mesure indispensable, au même rang que la
+-- suppression du choix nominatif. La raison tient en une phrase : face à un contrôle,
+-- ce qui distingue une plateforme complice d'une plateforme diligente, c'est
+-- l'existence d'engagements précis, acceptés en connaissance de cause et horodatés.
+--
+-- CE QUE STOCKE LA COLONNE
+--
+--   {
+--     "version":     "1.0",
+--     "accepte_le":  "2026-08-05T19:12:00.000Z",
+--     "signataire":  "Alexandre Atlan",
+--     "qualite":     "Gérant"
+--   }
+--
+-- La version est conservée : un contrat modifié devra être réaccepté, et l'on saura
+-- toujours quelle rédaction liait le client à la date d'une prestation donnée.
+--
+-- ÉCRITURE
+--
+-- Par le seul service role, via l'action `accepter_contrat_cadre` de /api/missions.
+-- Le navigateur ne peut pas s'auto-attribuer une acceptation.
+--
+-- COMPATIBILITÉ
+--
+-- Sans cette migration, l'acceptation ne peut pas être enregistrée : l'action le
+-- signale en erreur et refuse. Les réservations chez un tiers sont alors bloquées
+-- pour les comptes professionnels — c'est volontaire. Un engagement qu'on ne peut
+-- pas prouver ne sert à rien, et laisser passer serait pire que de refuser.
+-- Les réservations ordinaires ne sont pas affectées.
+--
+-- VÉRIFICATION et RETOUR ARRIÈRE — voir le bas du fichier.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS contrat_cadre_pro jsonb;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- 1. La colonne existe :
+--
+--    SELECT column_name FROM information_schema.columns
+--    WHERE table_name = 'profiles' AND column_name = 'contrat_cadre_pro';
+--
+-- 2. Les acceptations recueillies :
+--
+--    SELECT id, prenom, nom, contrat_cadre_pro
+--    FROM profiles WHERE contrat_cadre_pro IS NOT NULL;
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    ALTER TABLE public.profiles DROP COLUMN IF EXISTS contrat_cadre_pro;
+--
+-- Attention : efface les acceptations recueillies, qui ont une valeur probatoire.
+-- ═══════════════════════════════════════════════════════════════════════════
