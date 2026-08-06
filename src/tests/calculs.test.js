@@ -152,6 +152,42 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Contrat-cadre Client Professionnel ────────────────────────────
+// Les CGPS sont acceptées par tous et ne peuvent pas porter les engagements propres
+// au client professionnel qui fait intervenir chez son propre client. Le contrat-cadre
+// est donc un préalable, pas une formalité — et sa version est conservée pour qu'une
+// rédaction modifiée doive être réacceptée.
+describe("contrat-cadre professionnel", () => {
+  const VERSION = "1.0";
+  const aJour = (c) => !!(c && c.accepte_le && c.version === VERSION);
+  const peutReserverChezTiers = ({ pro, chezTiers, contrat, decl }) => {
+    if (!chezTiers) return true;
+    if (pro && !aJour(contrat)) return false;
+    return ["beneficiaire","service_vendu","perimetre","livrable","organisateur"]
+      .every(k => String(decl?.[k] || "").trim());
+  };
+  const complet = Object.fromEntries(
+    ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].map(k => [k, "x"]));
+
+  it("sans contrat accepté, la réservation chez un tiers est bloquée", () => {
+    expect(peutReserverChezTiers({ pro:true, chezTiers:true, contrat:null, decl:complet })).toBe(false);
+  });
+  it("contrat accepté et déclaration complète : la réservation passe", () => {
+    const c = { version:VERSION, accepte_le:"2026-08-05T10:00:00Z" };
+    expect(peutReserverChezTiers({ pro:true, chezTiers:true, contrat:c, decl:complet })).toBe(true);
+  });
+  it("une version périmée doit être réacceptée", () => {
+    const c = { version:"0.9", accepte_le:"2026-01-01T10:00:00Z" };
+    expect(aJour(c)).toBe(false);
+  });
+  it("une acceptation sans date ne vaut rien", () => {
+    expect(aJour({ version:VERSION })).toBe(false);
+  });
+  it("hors intervention chez un tiers, aucun contrat n'est exigé", () => {
+    expect(peutReserverChezTiers({ pro:true, chezTiers:false, contrat:null })).toBe(true);
+  });
+});
+
 // ── Affectation par la plateforme (CGPS art. 5.2) ─────────────────
 // Le choix nominatif d'un prestataire est le critère même qui distingue une
 // prestation de services d'une fourniture de main-d'œuvre. Il reste libre quand le

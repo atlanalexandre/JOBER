@@ -464,6 +464,24 @@ vulnérabilité de la plateforme : il est exactement le critère que l'article 1
 Le choix reste libre quand le client commande pour lui-même ; il disparaît dès qu'il déclare
 intervenir chez un tiers. Le code doit suivre : voir « affectation automatique » ci-dessous.
 
+**Contrat-cadre Client Professionnel** — `src/constants/contrat-cadre-pro.js`, huit articles,
+distinct des CGPS. Celles-ci sont acceptées par tous et ne peuvent pas porter les engagements
+propres au client professionnel : garantie de vendre un résultat, maintien du pouvoir
+d'organisation, coopération aux audits, indemnisation (civile uniquement), conservation des
+preuves cinq ans.
+
+Son acceptation est un **préalable bloquant** : `affecter_tiers` refuse une réservation chez
+un tiers si `profiles.contrat_cadre_pro` est absent. Elle est écrite par l'action
+`accepter_contrat_cadre` en service role — le navigateur ne peut pas se l'attribuer — et
+conserve la **version** acceptée. Toute modification de fond doit incrémenter
+`VERSION_CONTRAT_CADRE` : les clients devront réaccepter, et l'on saura quelle rédaction
+liait un client à la date d'une prestation donnée.
+
+Sans la migration `2026-08-05_contrat_cadre_professionnel.sql`, l'acceptation ne peut pas être
+enregistrée et les réservations chez un tiers restent bloquées pour les comptes
+professionnels. C'est volontaire : un engagement qu'on ne peut pas prouver ne sert à rien.
+Les réservations ordinaires ne sont pas affectées.
+
 **Affectation automatique chez un tiers** — `candidatsPourMission()` et l'action
 `affecter_tiers` dans `api/missions.js`. Dès qu'une prestation porte une
 `tiers_declaration`, le prestataire consulté par le client n'est **pas** transmis :
