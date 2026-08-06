@@ -1,4 +1,5 @@
 import { verifyUser } from "./_auth.js";
+import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -240,34 +241,14 @@ export default async function handler(req, res) {
   // tarifaire du tunnel de réservation : ce qui reste après la part horaire doit
   // être l'un des trois frais de service légitimes. Toute autre valeur signifie que
   // le total a été fabriqué.
-  const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
-  if (partHoraire > 0) {
-    let frais = { single: 4.90, range: 2.90, urgent: 9.90 };
-    try {
-      const fr = await fetch(`${SUPABASE_URL_PI}/rest/v1/platform_settings?key=eq.frais_service&select=value`, { headers: hdrsPI });
-      const fd = await fr.json();
-      if (Array.isArray(fd) && fd[0]?.value) frais = { ...frais, ...fd[0].value };
-    } catch (e) {
-      console.error("[stripe-intent] frais_service illisible, valeurs par défaut :", e.message);
-    }
-    const nbJours = (mission.date_debut && mission.date_fin)
-      ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
-      : 1;
-    const fraisAdmis = [
-      Number(frais.single) || 0,
-      Math.round((Number(frais.range) || 0) * nbJours * 100) / 100,
-      Number(frais.urgent) || 0,
-    ];
-    const fraisConstates = Math.round((computed - partHoraire * nbJours) * 100) / 100;
-    const coherent = fraisAdmis.some(f => Math.abs(f - fraisConstates) <= 0.01);
-    if (!coherent) {
-      console.error(`[stripe-intent] montant incohérent sur ${intentMissionId} : total ${computed} €, `
-        + `part horaire ${partHoraire} € × ${nbJours} j, frais déduits ${fraisConstates} € — `
-        + `attendus ${fraisAdmis.join(" / ")} €. Paiement refusé.`);
-      return res.status(400).json({
-        error: "Le montant de cette prestation ne correspond pas à son tarif. "
-             + "Revenez à l'écran de réservation et recommencez.",
-      });
+  // La règle vit dans _montant.js, partagée avec le paiement par portefeuille :
+  // deux chemins d'encaissement doivent appliquer le même contrôle.
+  {
+    const frais = await lireFraisService(SUPABASE_URL_PI, hdrsPI);
+    const v = verifierMontant(mission, computed, frais);
+    if (!v.ok) {
+      console.error("[stripe-intent] " + messageIncoherence(intentMissionId, computed, v));
+      return res.status(400).json({ error: ERREUR_MONTANT });
     }
   }
   const amount = computed;
