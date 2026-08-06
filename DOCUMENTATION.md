@@ -182,6 +182,27 @@ secteur relève désormais de la seule décision explicite de l'administrateur
 compte afin de récupérer l'essai gratuit. **Ne contient que des empreintes**, jamais de
 données en clair.
 
+**`mission_remplacements`** — le droit de remplacement du prestataire (CGPS art. 9), créé le
+06/08/2026 par `2026-08-06_droit_de_remplacement.sql`.
+
+Une ligne par demande : `mission_id`, `sortant_id`, `entrant_id`, `client_id`, `motif`,
+`statut` (`en_attente`, `accepte`, `refuse`, `annule`, `expire`), `accord_entrant_at`,
+`accord_client_at`, `refus_par`, `refus_motif`, `execute_at`.
+
+Le remplacement n'est exécuté **qu'une fois les deux accords recueillis** : celui du
+remplaçant — indépendant, il ne peut pas être volontaire d'office — et celui du client, qui
+reçoit quelqu'un chez lui. Tant qu'il en manque un, le sortant reste titulaire et engagé.
+Un index unique partiel garantit **une seule demande ouverte par prestation** : sans lui, un
+prestataire pourrait en proposer trois et laisser le client arbitrer, ce qui lui rendrait le
+choix nominatif que l'article 5.2 lui retire.
+
+L'exécution se réduit à basculer `missions.prestataire_id`. Le virement de fin de prestation
+lit ce champ : le remplaçant est donc payé de ce qu'il a réellement fait et facture en son
+nom, sans aucun code de paiement à modifier.
+
+RLS : **lecture seule**, réservée aux trois personnes concernées. Aucune policy d'écriture —
+tout passe par `/api/missions`, qui seul vérifie les qualifications et l'ordre des accords.
+
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
 ### Tables supprimées
@@ -623,6 +644,42 @@ s'il existe, sinon l'horaire prévu (`date` + `heure_debut` + `hours`). La règl
 endroits qui doivent rester alignés : `api/missions.js` (action `dispute`, seul juge) et
 `contestationOuverte()` dans `client-screens.jsx`, qui masque le bouton pour ne pas envoyer
 l'utilisateur dans un mur. Sans date exploitable, aucun des deux ne bloque.
+
+### Se faire remplacer
+
+Un prestataire empêché a deux issues : annuler, ou **se faire remplacer** par un confrère
+indépendant (CGPS art. 9). La seconde n'existait que dans le texte des CGPS jusqu'au
+06/08/2026 — un droit écrit mais jamais exerçable se lit, devant un contrôle, comme de
+l'habillage contractuel. C'est aussi l'indice d'indépendance le plus net : un salarié ne
+peut jamais envoyer quelqu'un à sa place, parce que son contrat porte sur sa personne.
+
+Quatre actions de `api/missions.js` :
+
+| Action | Appelant | Rôle |
+|---|---|---|
+| `remplacants_possibles` | prestataire assigné | Liste **fermée** de confrères éligibles — il choisit dedans, il ne saisit pas d'identifiant |
+| `proposer_remplacant` | prestataire assigné | Ouvre la demande, notifie le remplaçant **et** le client |
+| `repondre_remplacement` | client **ou** remplaçant | Accord ou refus. Le rôle découle de l'identité de l'appelant, jamais du corps de la requête |
+| `annuler_remplacement` | prestataire sortant | Retire sa demande |
+| `mes_remplacements` | les trois | Demandes ouvertes le concernant |
+
+**Les deux accords sont requis.** Le remplaçant est indépendant : il ne peut pas être
+volontaire d'office. Le client reçoit quelqu'un chez lui, ou chez son propre client : son
+accord préalable a été retenu comme condition. Tant qu'il en manque un, le sortant reste
+titulaire et engagé — un refus n'annule rien, il laisse la prestation à son titulaire.
+
+Contraintes appliquées par le serveur, jamais par le navigateur : le remplaçant est
+recalculé éligible au moment de la demande (`candidatsPourMission`) puis revérifié libre au
+moment de la bascule, le premier accord pouvant dater de plusieurs heures ; la demande doit
+arriver **au moins 2 h avant le début**, sinon le client n'a aucun délai réel pour se
+prononcer ; une prestation déjà commencée ne change plus de titulaire.
+
+L'exécution se réduit à basculer `missions.prestataire_id`. Le virement de fin de prestation
+lit ce champ : le remplaçant est payé de ce qu'il a réellement fait et facture en son nom,
+ce qui est aussi ce qu'attend l'URSSAF. Aucun code de paiement n'a été modifié.
+
+Une annulation par le prestataire (`presta_cancel`) clôt toute demande encore ouverte : sans
+cela, le client pourrait accepter un remplaçant pour une prestation qui n'existe plus.
 
 ### Paiement
 

@@ -111,6 +111,123 @@ function ContractModal({ title, contractText, onSign, onClose }) {
 
 
 
+// ── Se faire remplacer (CGPS art. 9) ────────────────────────────────────────
+//
+// Un salarié ne peut jamais envoyer quelqu'un à sa place ; un prestataire de
+// services le peut, parce que le contrat porte sur un service et non sur sa
+// personne. Ce droit figurait dans les CGPS sans exister dans le produit : la
+// seule issue était l'annulation, qui renvoyait la prestation à la place de
+// marché sans que le sortant n'ait son mot à dire.
+//
+// Le sortant choisit dans une liste fermée, il ne saisit pas d'identifiant : le
+// serveur ne propose que des professionnels du bon métier, libres sur le créneau
+// et dont le tarif tient dans la commande.
+function RemplacementModal({ missionId, onClose, onEnvoye }) {
+  const [candidats, setCandidats] = useState(null);   // null = chargement
+  const [erreur, setErreur]       = useState(null);
+  const [choisi, setChoisi]       = useState(null);
+  const [motif, setMotif]         = useState("");
+  const [envoi, setEnvoi]         = useState(false);
+
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+          body: JSON.stringify({ action: "remplacants_possibles", mission_id: missionId }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!vivant) return;
+        if (!r.ok) { setErreur(j.error || "Liste indisponible."); setCandidats([]); return; }
+        setCandidats(Array.isArray(j.candidats) ? j.candidats : []);
+      } catch {
+        if (vivant) { setErreur("Connexion impossible."); setCandidats([]); }
+      }
+    })();
+    return () => { vivant = false; };
+  }, [missionId]);
+
+  const envoyer = async () => {
+    if (!choisi || envoi) return;
+    setEnvoi(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "proposer_remplacant", mission_id: missionId, remplacant_id: choisi, motif: motif.trim() || null }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || "La demande n'a pas pu être envoyée."); setEnvoi(false); return; }
+      onEnvoye();
+    } catch {
+      showToast("Envoi impossible — vérifiez votre connexion.");
+      setEnvoi(false);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:520, width:"100%", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6, flexShrink:0 }}>
+          <h3 style={{ color:C.violet, fontSize:16, fontWeight:800, margin:0, fontFamily:font.display }}>Me faire remplacer</h3>
+          <button onClick={onClose} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+        <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:14, flexShrink:0 }}>
+          Vous proposez à un confrère indépendant de reprendre cette prestation.
+          Le remplacement n&apos;a lieu que si <strong style={{ color:C.text }}>le confrère et le client
+          l&apos;acceptent tous les deux</strong>. Tant que ce n&apos;est pas le cas, la prestation
+          reste à votre charge. Vous restez responsable de la bonne exécution devant le client.
+        </div>
+
+        <div style={{ overflowY:"auto", flex:1, marginBottom:14, WebkitOverflowScrolling:"touch" }}>
+          {candidats === null && <div style={{ color:C.textSub, fontSize:13, textAlign:"center", padding:"20px 0" }}>Recherche de confrères disponibles…</div>}
+          {candidats !== null && candidats.length === 0 && (
+            <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"14px 12px", textAlign:"center" }}>
+              <div style={{ color:C.text, fontSize:13, fontWeight:700, marginBottom:4 }}>Aucun confrère disponible</div>
+              <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>
+                {erreur || "Personne ne correspond au métier et au créneau pour l'instant. Vous pouvez réessayer plus tard ou annuler la prestation."}
+              </div>
+            </div>
+          )}
+          {(candidats || []).map(c => (
+            <button key={c.id} onClick={() => setChoisi(c.id)}
+              style={{ width:"100%", textAlign:"left", display:"flex", alignItems:"center", gap:12, padding:"11px 12px", marginBottom:8, borderRadius:12, cursor:"pointer", fontFamily:"inherit",
+                       border:`1px solid ${choisi===c.id ? C.violet : "rgba(255,255,255,0.12)"}`,
+                       background: choisi===c.id ? "rgba(124,111,224,0.15)" : "rgba(255,255,255,0.03)" }}>
+              <div style={{ width:34, height:34, borderRadius:"50%", background:C.violet, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:14, flexShrink:0 }}>
+                {(c.prenom || "?").slice(0,1).toUpperCase()}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.text, fontWeight:700, fontSize:13 }}>{c.prenom}{c.initiale ? ` ${c.initiale}.` : ""}</div>
+                <div style={{ color:C.textSub, fontSize:11 }}>{c.metier || "Professionnel qualifié"}{c.note ? ` · ★ ${Number(c.note).toFixed(1)}` : ""}</div>
+              </div>
+              {choisi===c.id && <span style={{ color:C.violet, fontWeight:800, fontSize:16 }}>✓</span>}
+            </button>
+          ))}
+        </div>
+
+        {candidats !== null && candidats.length > 0 && (
+          <div style={{ flexShrink:0 }}>
+            <textarea value={motif} onChange={e => setMotif(e.target.value.slice(0, 500))}
+              placeholder="Motif communiqué au client (facultatif) — ex. empêchement familial"
+              rows={2}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.12)", background:"rgba(255,255,255,0.04)", color:C.text, fontSize:13, fontFamily:"inherit", resize:"vertical", marginBottom:12 }} />
+            <button disabled={!choisi || envoi} onClick={envoyer}
+              style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:15, fontFamily:"inherit",
+                       cursor:(!choisi||envoi)?"not-allowed":"pointer", opacity:(!choisi||envoi)?0.4:1 }}>
+              {envoi ? "Envoi…" : "Proposer ce remplaçant →"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2-lat1)*Math.PI/180;
@@ -1798,6 +1915,33 @@ export function PMissionsTab({ onNavigate }) {
   const geoWatchRef = useRef(null);
   const [trialExhausted, setTrialExhausted] = useState(false);
   const [userPlan, setUserPlan] = useState("free");
+  // Remplacement (CGPS art. 9) : id de la prestation dont on ouvre la modale,
+  // et demandes déjà en attente pour ne pas en proposer deux.
+  const [remplacementPour, setRemplacementPour] = useState(null);
+  const [remplacementsEnCours, setRemplacementsEnCours] = useState({});
+
+  const chargerRemplacements = async () => {
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!sd?.session?.access_token) return;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd.session.access_token}` },
+        body: JSON.stringify({ action: "mes_remplacements" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      const parMission = {};
+      for (const d of (j.remplacements || [])) {
+        if (d.role === "sortant") parMission[d.mission_id] = d;
+      }
+      setRemplacementsEnCours(parMission);
+    } catch (e) {
+      // Échec silencieux acceptable : le bouton reste proposé, et le serveur
+      // refusera une seconde demande (index unique). Journalisé pour le suivi.
+      console.error("[remplacements] chargement échoué :", e.message);
+    }
+  };
+  useEffect(() => { chargerRemplacements(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const toggleTracking = async (missionId) => {
     if (sharingLocation[missionId]) {
@@ -2040,6 +2184,9 @@ export function PMissionsTab({ onNavigate }) {
 
   return (
     <div>
+      {/* Remplacements qu'un confrère propose à ce prestataire (CGPS art. 9) */}
+      <RemplacementsProposes onRepondu={()=>{ loadPending?.(); chargerRemplacements(); }} />
+
       {/* Contrat électronique prestataire */}
       {/* Contrat de prestation — acceptation prestation */}
       {contractAcceptMission && (
@@ -2532,6 +2679,36 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                     {sharingLocation[m.id] ? "⏹ Arrêter de partager mon trajet" : "📍 Partager mon trajet au client"}
                   </button>
+                  {/* Se faire remplacer plutôt qu'annuler : la prestation reste
+                      honorée, le client garde son créneau, et le droit prévu par
+                      les CGPS devient réellement exerçable. */}
+                  {!startedAtMap[m.id] && (
+                    remplacementsEnCours[m.id] ? (
+                      <div style={{ marginTop:8, background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:10, padding:"10px 12px" }}>
+                        <div style={{ color:C.violet, fontWeight:700, fontSize:12, marginBottom:3 }}>🔄 Remplacement proposé</div>
+                        <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5, marginBottom:8 }}>
+                          En attente de {remplacementsEnCours[m.id].accord_entrant ? "" : "l'accord du confrère"}
+                          {!remplacementsEnCours[m.id].accord_entrant && !remplacementsEnCours[m.id].accord_client ? " et de " : ""}
+                          {remplacementsEnCours[m.id].accord_client ? "" : "l'accord du client"}.
+                          {" "}La prestation reste à votre charge tant que les deux ne sont pas donnés.
+                        </div>
+                        <button onClick={async()=>{
+                          const { data:{ session } } = await supabase.auth.getSession();
+                          const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token||""}`}, body: JSON.stringify({ action:"annuler_remplacement", remplacement_id: remplacementsEnCours[m.id].id }) });
+                          const j = await r.json().catch(()=>({}));
+                          if (r.ok) chargerRemplacements();
+                          else showToast(j.error || "Retrait impossible.");
+                        }} style={{ width:"100%", padding:"8px", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:C.textSub, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                          Retirer ma demande
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={()=>setRemplacementPour(m.id)}
+                        style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(124,111,224,0.4)", background:"rgba(124,111,224,0.08)", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        🔄 Me faire remplacer
+                      </button>
+                    )
+                  )}
                   <button onClick={async()=>{
                     if(!await showConfirm("Annuler cette prestation ?")) return;
                     const { data:{ session } } = await supabase.auth.getSession();
@@ -2564,6 +2741,99 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vous serez notifié dès qu'un client vous choisit pour une prestation.</div>
         </div>
       )}
+
+      {remplacementPour && (
+        <RemplacementModal
+          missionId={remplacementPour}
+          onClose={()=>setRemplacementPour(null)}
+          onEnvoye={()=>{ setRemplacementPour(null); chargerRemplacements(); showToast("Demande envoyée. Le confrère et le client doivent l'accepter."); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Remplacements proposés à ce prestataire ─────────────────────────────────
+//
+// Le remplaçant est un indépendant : il ne peut pas être volontaire d'office
+// pour une prestation qu'il n'a pas acceptée. Son accord est donc requis, au
+// même titre que celui du client.
+export function RemplacementsProposes({ onRepondu }) {
+  const [demandes, setDemandes] = useState([]);
+  const [enCours, setEnCours]   = useState(null);
+
+  const charger = async () => {
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!sd?.session?.access_token) return;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd.session.access_token}` },
+        body: JSON.stringify({ action: "mes_remplacements" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setDemandes((j.remplacements || []).filter(d => d.role === "entrant" && !d.deja_repondu));
+    } catch (e) {
+      console.error("[remplacements proposés] chargement échoué :", e.message);
+    }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const repondre = async (id, reponse) => {
+    setEnCours(id);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "repondre_remplacement", remplacement_id: id, reponse }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || "Réponse non enregistrée."); setEnCours(null); return; }
+      showToast(reponse === "accepter"
+        ? (j.statut === "accepte" ? "Vous reprenez cette prestation." : "Accord enregistré — en attente du client.")
+        : "Vous avez décliné.");
+      await charger();
+      onRepondu?.();
+    } catch {
+      showToast("Connexion impossible.");
+    }
+    setEnCours(null);
+  };
+
+  if (!demandes.length) return null;
+
+  return (
+    <div style={{ marginBottom:16 }}>
+      {demandes.map(d => {
+        const m = d.mission || {};
+        const quand = [m.date, m.heure_debut ? String(m.heure_debut).slice(0,5).replace(":","h") : null].filter(Boolean).join(" à ");
+        return (
+          <div key={d.id} style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.35)", borderRadius:14, padding:"14px 14px", marginBottom:10 }}>
+            <div style={{ color:C.violet, fontWeight:800, fontSize:13, marginBottom:4 }}>🤝 On vous propose un remplacement</div>
+            <div style={{ color:C.text, fontSize:13, fontWeight:700, marginBottom:2 }}>
+              {m.titre || m.metier || "Prestation"}{m.ville ? ` — ${m.ville}` : ""}
+            </div>
+            <div style={{ color:C.textSub, fontSize:12, marginBottom:d.motif?6:10 }}>
+              {quand}{m.hours ? ` · ${m.hours}h` : ""} · proposé par {d.sortant?.prenom}{d.sortant?.initiale ? ` ${d.sortant.initiale}.` : ""}
+            </div>
+            {d.motif && <div style={{ color:C.textMuted, fontSize:11, fontStyle:"italic", marginBottom:10 }}>« {d.motif} »</div>}
+            <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.5, marginBottom:10 }}>
+              Vous êtes libre de refuser. Le client doit également donner son accord : rien n&apos;est acquis avant.
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button disabled={enCours===d.id} onClick={()=>repondre(d.id,"refuser")}
+                style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:C.textSub, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                Décliner
+              </button>
+              <button disabled={enCours===d.id} onClick={()=>repondre(d.id,"accepter")}
+                style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
+                {enCours===d.id ? "…" : "J'accepte de remplacer"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
