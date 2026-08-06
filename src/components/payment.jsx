@@ -791,9 +791,17 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 }
 
 // ── Informations légales ALANE ────────────────────────────────────
+//
+// Aucune valeur par défaut : la forme juridique était codée en dur à « SAS » et
+// s'affichait donc sur toutes les factures, y compris avant l'immatriculation de
+// la société. Un document qui a l'apparence d'une facture ne peut pas affirmer
+// l'existence d'une personne morale qui n'existe pas encore.
+//
+// Ces trois mentions ne s'affichent que si elles sont renseignées dans Vercel.
+// Tant qu'elles ne le sont pas, l'en-tête indique simplement le rôle d'ALANE.
 const ALANE_SIRET   = import.meta.env.VITE_ALANE_SIRET   || "";
 const ALANE_ADRESSE = import.meta.env.VITE_ALANE_ADRESSE || "";
-const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "SAS";
+const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "";
 
 // ── WALLET TOP-UP MODAL ───────────────────────────────────────────
 const TOPUP_AMOUNTS = [20, 50, 100, 200];
@@ -1108,9 +1116,19 @@ export function InvoiceScreen({ prestation, onBack }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
                 <div>
                   <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display, letterSpacing:1 }}>ALANE</div>
-                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Plateforme de services à la demande · {ALANE_FORME}</div>
+                  {/* La facture est établie par le prestataire au client :
+                      ALANE n'en est pas l'émetteur, seulement l'intermédiaire.
+                      Le dire évite qu'un lecteur — client, comptable, contrôleur
+                      — attribue la prestation à la plateforme. */}
+                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
+                    Plateforme de mise en relation{ALANE_FORME ? ` · ${ALANE_FORME}` : ""}
+                  </div>
                   {ALANE_ADRESSE && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>{ALANE_ADRESSE}</div>}
                   {ALANE_SIRET   && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>SIRET : {ALANE_SIRET}</div>}
+                  <div style={{ color:C.textMuted, fontSize:9, marginTop:3, maxWidth:210, lineHeight:1.4 }}>
+                    Facture établie par le prestataire au client. ALANE intervient
+                    comme intermédiaire et n&apos;est pas partie au contrat de prestation.
+                  </div>
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>FACTURE</div>
