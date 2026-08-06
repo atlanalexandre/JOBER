@@ -4013,11 +4013,393 @@ export default async function handler(req, res) {
     }
 
     // ── Annulation par le prestataire ─────────────────────────────────
+    // ── Droit de remplacement (CGPS art. 9) ───────────────────────────
+    //
+    // Un salarié ne peut jamais envoyer quelqu'un à sa place ; un prestataire de
+    // services le peut, parce que le contrat porte sur un service et non sur sa
+    // personne. C'est l'un des indices les plus forts d'indépendance, et il
+    // n'existait jusqu'ici que dans le texte des CGPS.
+    //
+    // Le remplacement n'est exécuté qu'une fois les DEUX accords recueillis :
+    // celui du remplaçant — indépendant, il ne peut pas être volontaire d'office
+    // — et celui du client, qui reçoit quelqu'un chez lui ou chez son propre
+    // client. Tant qu'il en manque un, le sortant reste titulaire et engagé.
+
+    // Candidats proposables : le sortant choisit parmi eux, il ne saisit pas un
+    // identifiant libre. Cela garantit que le remplaçant est un prestataire
+    // vérifié, du bon métier, et libre sur le créneau.
+    if (action === "remplacants_possibles") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,metier,sector,date,heure_debut,hours,ville,adresse,tarif_horaire,started_at`, { headers });
+      const mData = await mr.json().catch(() => []);
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non concernée" });
+      if (mission.started_at) return res.status(400).json({ error: "La prestation a déjà commencé : elle ne peut plus changer de titulaire" });
+
+      // candidatsPourMission applique déjà métier, secteur, tarif plancher du
+      // candidat, disponibilités déclarées et rayon d'intervention.
+      const ids = await candidatsPourMission(mission, SUPABASE_URL, headers, [caller.id]);
+      if (!ids.length) return res.status(200).json({ ok: true, candidats: [] });
+
+      // Un candidat déjà pris sur le créneau ne sert à rien : on l'écarte ici
+      // plutôt que de laisser le sortant proposer quelqu'un qui sera refusé.
+      const libres = [];
+      for (const id of ids.slice(0, 30)) {
+        const conflit = await checkPrestaireConflict(id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+        if (!conflit) libres.push(id);
+        if (libres.length >= 12) break;
+      }
+      if (!libres.length) return res.status(200).json({ ok: true, candidats: [] });
+
+      // On n'expose que ce qui est nécessaire pour choisir : un prénom, une
+      // initiale de nom, le métier et la note. Ni téléphone, ni email, ni adresse.
+      const candidats = [];
+      for (const id of libres) {
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+          const u = ur.ok ? await ur.json() : null;
+          const meta = u?.user_metadata || {};
+          candidats.push({
+            id,
+            prenom: meta.prenom || meta.first_name || "Prestataire",
+            initiale: String(meta.nom || meta.last_name || "").trim().slice(0, 1).toUpperCase() || null,
+            metier: meta.metier || mission.metier || null,
+            note: meta.note_moyenne ?? null,
+          });
+        } catch (e) {
+          console.error(`[remplacants_possibles] profil ${id} illisible :`, e.message);
+        }
+      }
+      return res.status(200).json({ ok: true, candidats });
+    }
+
+    if (action === "proposer_remplacant") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, remplacant_id, motif } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!remplacant_id || !isUuid(remplacant_id)) return res.status(400).json({ error: "remplacant_id requis" });
+      if (remplacant_id === caller.id) return res.status(400).json({ error: "Vous ne pouvez pas vous désigner vous-même" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,sector,titre,date,heure_debut,hours,ville,adresse,tarif_horaire,started_at`, { headers });
+      const mData = await mr.json().catch(() => []);
+      const mission = Array.isArray(mData) && mData[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non concernée" });
+      if (mission.started_at) return res.status(400).json({ error: "La prestation a déjà commencé : elle ne peut plus changer de titulaire" });
+
+      // Le remplacement doit rester utile : proposer quelqu'un une heure avant
+      // ne laisse au client aucun délai réel pour se prononcer.
+      const debutMs = debutPrestationMs(mission.date, mission.heure_debut);
+      if (debutMs !== null && debutMs - Date.now() < 2 * 3600000) {
+        return res.status(400).json({
+          error: "Un remplacement doit être proposé au moins 2 h avant le début, pour laisser au client le temps de se prononcer. Passé ce délai, utilisez l'annulation.",
+        });
+      }
+
+      // Le remplaçant doit être éligible aujourd'hui, pas seulement inscrit : on
+      // recalcule la liste plutôt que de faire confiance à l'identifiant reçu.
+      const eligibles = await candidatsPourMission(mission, SUPABASE_URL, headers, [caller.id]);
+      if (!eligibles.includes(remplacant_id)) {
+        return res.status(400).json({ error: "Ce professionnel ne remplit pas les critères de la prestation (métier, secteur, tarif, disponibilité ou zone)." });
+      }
+      const conflit = await checkPrestaireConflict(remplacant_id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, mission_id);
+      if (conflit) return res.status(409).json({ error: "Ce professionnel a déjà une prestation sur ce créneau." });
+
+      const insRes = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          mission_id,
+          sortant_id: caller.id,
+          entrant_id: remplacant_id,
+          client_id: mission.client_id,
+          motif: motif ? String(motif).slice(0, 500) : null,
+          statut: "en_attente",
+        }),
+      });
+      if (!insRes.ok) {
+        const txt = await insRes.text().catch(() => "");
+        // 404 : la migration 2026-08-06_droit_de_remplacement.sql n'est pas passée.
+        if (insRes.status === 404) {
+          console.error("[proposer_remplacant] table mission_remplacements absente — migration non appliquée");
+          return res.status(503).json({ error: "Le remplacement n'est pas encore disponible. Contactez direction@alane.fr." });
+        }
+        // 409 : l'index unique partiel a rejeté une seconde demande ouverte.
+        if (insRes.status === 409) {
+          return res.status(409).json({ error: "Une demande de remplacement est déjà en cours sur cette prestation." });
+        }
+        console.error(`[proposer_remplacant] insertion refusée (${insRes.status}) :`, txt.slice(0, 300));
+        return res.status(500).json({ error: "La demande de remplacement n'a pas pu être enregistrée." });
+      }
+      const ligne = (await insRes.json().catch(() => []))[0];
+
+      const libelle = mission.titre || mission.metier || "Prestation";
+      const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
+
+      // Le remplaçant : on lui demande s'il accepte de prendre la prestation.
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: remplacant_id, type: "mission", read: false, ref_id: mission_id,
+          title: "🤝 On vous propose de remplacer un confrère",
+          body: `Un prestataire vous propose de reprendre « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""}. Vous êtes libre d'accepter ou non ; le client doit également donner son accord.`,
+        }),
+      }).catch(() => {});
+      sendPushToUser(remplacant_id, {
+        title: "🤝 Remplacement proposé",
+        body: `« ${libelle} »${quand ? " le " + quand : ""} — à vous de décider.`,
+        url: "/",
+      }, SUPABASE_URL, headers).catch(() => {});
+
+      // Le client : son accord est requis, la prestation ne bouge pas sans lui.
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          user_id: mission.client_id, type: "mission", read: false, ref_id: mission_id,
+          title: "🔄 Votre prestataire propose un remplaçant",
+          body: `Pour « ${libelle} »${quand ? " le " + quand : ""}, votre prestataire propose qu'un confrère qualifié le remplace${motif ? ` (${String(motif).slice(0, 120)})` : ""}. Rien ne change tant que vous n'avez pas donné votre accord.`,
+        }),
+      }).catch(() => {});
+      sendPushToUser(mission.client_id, {
+        title: "🔄 Remplaçant proposé",
+        body: `« ${libelle} »${quand ? " le " + quand : ""} — votre accord est nécessaire.`,
+        url: "/",
+      }, SUPABASE_URL, headers).catch(() => {});
+
+      return res.status(200).json({ ok: true, remplacement_id: ligne?.id || null });
+    }
+
+    if (action === "repondre_remplacement") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { remplacement_id, reponse, motif } = payload;
+      if (!remplacement_id || !isUuid(remplacement_id)) return res.status(400).json({ error: "remplacement_id requis" });
+      if (!["accepter", "refuser"].includes(reponse)) return res.status(400).json({ error: "reponse invalide" });
+
+      const rr = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&select=*`, { headers });
+      if (rr.status === 404) return res.status(503).json({ error: "Le remplacement n'est pas encore disponible. Contactez direction@alane.fr." });
+      const rData = await rr.json().catch(() => []);
+      const dem = Array.isArray(rData) && rData[0];
+      if (!dem) return res.status(404).json({ error: "Demande introuvable" });
+      if (dem.statut !== "en_attente") return res.status(400).json({ error: "Cette demande a déjà été traitée" });
+
+      // Le rôle découle de l'identité de l'appelant, jamais du corps de la requête.
+      const role = caller.id === dem.client_id ? "client"
+                 : caller.id === dem.entrant_id ? "entrant"
+                 : null;
+      if (!role) return res.status(403).json({ error: "Non autorisé" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&select=id,status,prestataire_id,client_id,metier,titre,date,heure_debut,hours,ville,started_at`, { headers });
+      const mission = (await mr.json().catch(() => []))[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+
+      const libelle = mission.titre || mission.metier || "Prestation";
+      const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
+
+      if (reponse === "refuser") {
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "refuse", refus_par: role, refus_motif: motif ? String(motif).slice(0, 500) : null }),
+        });
+        // Le sortant reste titulaire : il doit le savoir sans ambiguïté, sinon il
+        // croira être déchargé et ne se présentera pas.
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: dem.sortant_id, type: "mission", read: false, ref_id: dem.mission_id,
+            title: "❌ Remplacement refusé",
+            body: `${role === "client" ? "Le client" : "Le confrère que vous aviez proposé"} a refusé le remplacement pour « ${libelle} »${quand ? " le " + quand : ""}. Vous restez titulaire de cette prestation.`,
+          }),
+        }).catch(() => {});
+        sendPushToUser(dem.sortant_id, {
+          title: "❌ Remplacement refusé",
+          body: "Vous restez titulaire de la prestation.",
+          url: "/",
+        }, SUPABASE_URL, headers).catch(() => {});
+        return res.status(200).json({ ok: true, statut: "refuse" });
+      }
+
+      // Accord : on pose le sien, puis on regarde si les deux sont réunis.
+      const champ = role === "client" ? "accord_client_at" : "accord_entrant_at";
+      const patch = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ [champ]: new Date().toISOString() }),
+      });
+      const maj = (await patch.json().catch(() => []))[0];
+      if (!maj) return res.status(409).json({ error: "Cette demande vient d'être traitée" });
+
+      const complet = Boolean(maj.accord_client_at && maj.accord_entrant_at);
+      if (!complet) {
+        const enAttenteDe = maj.accord_client_at ? "du remplaçant" : "du client";
+        return res.status(200).json({ ok: true, statut: "en_attente", en_attente_de: enAttenteDe });
+      }
+
+      // Les deux accords sont là. Dernière vérification avant de basculer : la
+      // prestation n'a pas commencé et le remplaçant n'a pas pris autre chose
+      // entre-temps. Le premier accord peut dater de plusieurs heures.
+      if (mission.started_at || mission.status !== "assigned") {
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "expire" }),
+        });
+        return res.status(409).json({ error: "La prestation a changé d'état entre-temps : le remplacement ne peut plus être exécuté." });
+      }
+      const conflitFinal = await checkPrestaireConflict(dem.entrant_id, mission.date, mission.heure_debut, mission.hours, SUPABASE_URL, headers, dem.mission_id);
+      if (conflitFinal) {
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "expire" }),
+        });
+        return res.status(409).json({ error: "Le remplaçant a pris une autre prestation sur ce créneau entre-temps." });
+      }
+
+      // Bascule. Le virement de fin de prestation lit prestataire_id : changer ce
+      // champ suffit pour que le remplaçant soit payé de ce qu'il a réellement
+      // fait, et facture en son nom.
+      const swap = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${dem.mission_id}&prestataire_id=eq.${dem.sortant_id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ prestataire_id: dem.entrant_id }),
+      });
+      const swapOk = Array.isArray(await swap.json().catch(() => [])) && swap.ok;
+      if (!swapOk) {
+        console.error(`[repondre_remplacement] bascule refusée sur ${dem.mission_id}`);
+        return res.status(500).json({ error: "Le changement de titulaire a échoué. La prestation reste au prestataire initial." });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ statut: "accepte", execute_at: new Date().toISOString() }),
+      });
+
+      const messages = [
+        [dem.entrant_id, "✅ Vous reprenez une prestation", `Le remplacement est validé : « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} vous revient. Les détails sont dans votre espace.`],
+        [dem.client_id,  "✅ Remplacement validé",          `« ${libelle} »${quand ? " le " + quand : ""} sera assurée par le professionnel que vous avez accepté.`],
+        [dem.sortant_id, "✅ Vous avez été remplacé",        `« ${libelle} »${quand ? " le " + quand : ""} a été reprise par le confrère que vous aviez proposé. Vous restez responsable de la bonne exécution devant le client (CGPS art. 9).`],
+      ];
+      for (const [uid, title, body] of messages) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: uid, type: "mission", read: false, ref_id: dem.mission_id, title, body }),
+        }).catch(() => {});
+        sendPushToUser(uid, { title, body, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true, statut: "accepte" });
+    }
+
+    // Demandes ouvertes concernant l'appelant, quel que soit son rôle. Sert aux
+    // trois écrans : le client voit ce qu'on lui soumet, le remplaçant ce qu'on
+    // lui propose, le sortant où en est sa demande.
+    if (action === "mes_remplacements") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const rr = await fetch(
+        `${SUPABASE_URL}/rest/v1/mission_remplacements`
+        + `?statut=eq.en_attente`
+        + `&or=(client_id.eq.${caller.id},entrant_id.eq.${caller.id},sortant_id.eq.${caller.id})`
+        + `&select=id,mission_id,sortant_id,entrant_id,client_id,motif,accord_client_at,accord_entrant_at,created_at`
+        + `&order=created_at.desc&limit=20`,
+        { headers }
+      );
+      // Migration non appliquée : on ne casse pas l'écran, on renvoie une liste vide.
+      if (rr.status === 404) return res.status(200).json({ ok: true, remplacements: [], indisponible: true });
+      const lignes = rr.ok ? await rr.json().catch(() => []) : [];
+      if (!Array.isArray(lignes) || !lignes.length) return res.status(200).json({ ok: true, remplacements: [] });
+
+      // On enrichit avec le strict nécessaire à l'affichage : de quelle
+      // prestation il s'agit, et qui est proposé. Pas de coordonnées.
+      const missionIds = [...new Set(lignes.map(l => l.mission_id))];
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=in.(${missionIds.join(",")})&select=id,titre,metier,sector,date,heure_debut,hours,ville`,
+        { headers }
+      );
+      const missions = mRes.ok ? await mRes.json().catch(() => []) : [];
+      const parId = Object.fromEntries((Array.isArray(missions) ? missions : []).map(m => [m.id, m]));
+
+      const nomsRequis = [...new Set(lignes.flatMap(l => [l.sortant_id, l.entrant_id]))];
+      const noms = {};
+      for (const id of nomsRequis) {
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, { headers });
+          const meta = ur.ok ? (await ur.json())?.user_metadata || {} : {};
+          noms[id] = {
+            prenom: meta.prenom || meta.first_name || "Prestataire",
+            initiale: String(meta.nom || meta.last_name || "").trim().slice(0, 1).toUpperCase() || null,
+          };
+        } catch (e) {
+          console.error(`[mes_remplacements] profil ${id} illisible :`, e.message);
+          noms[id] = { prenom: "Prestataire", initiale: null };
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        remplacements: lignes.map(l => ({
+          id: l.id,
+          mission_id: l.mission_id,
+          motif: l.motif,
+          role: caller.id === l.client_id ? "client" : caller.id === l.entrant_id ? "entrant" : "sortant",
+          deja_repondu: caller.id === l.client_id ? Boolean(l.accord_client_at)
+                      : caller.id === l.entrant_id ? Boolean(l.accord_entrant_at)
+                      : null,
+          accord_client: Boolean(l.accord_client_at),
+          accord_entrant: Boolean(l.accord_entrant_at),
+          sortant: noms[l.sortant_id],
+          entrant: noms[l.entrant_id],
+          mission: parId[l.mission_id] || null,
+        })),
+      });
+    }
+
+    if (action === "annuler_remplacement") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { remplacement_id } = payload;
+      if (!remplacement_id || !isUuid(remplacement_id)) return res.status(400).json({ error: "remplacement_id requis" });
+
+      const rr = await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&sortant_id=eq.${caller.id}&statut=eq.en_attente&select=id,mission_id,entrant_id,client_id`, { headers });
+      if (rr.status === 404) return res.status(503).json({ error: "Le remplacement n'est pas encore disponible. Contactez direction@alane.fr." });
+      const dem = (await rr.json().catch(() => []))[0];
+      if (!dem) return res.status(404).json({ error: "Demande introuvable ou déjà traitée" });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?id=eq.${remplacement_id}&statut=eq.en_attente`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ statut: "annule" }),
+      });
+      for (const uid of [dem.entrant_id, dem.client_id]) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: uid, type: "mission", read: false, ref_id: dem.mission_id,
+            title: "↩️ Demande de remplacement retirée",
+            body: "Le prestataire initial a retiré sa demande : il assurera finalement la prestation lui-même.",
+          }),
+        }).catch(() => {});
+      }
+      return res.status(200).json({ ok: true, statut: "annule" });
+    }
+
     if (action === "presta_cancel") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      // Une demande de remplacement encore ouverte n'a plus d'objet si le
+      // prestataire annule : la laisser en attente exposerait le client à
+      // accepter un remplaçant pour une prestation qui n'existe plus.
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/mission_remplacements?mission_id=eq.${mission_id}&statut=eq.en_attente`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ statut: "annule" }),
+        });
+      } catch (e) {
+        console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
+      }
 
       const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours`, { headers });
       const mData = await mr.json();

@@ -5582,7 +5582,7 @@ export function LegalScreen({ type, onBack }) {
         },
         {
           title:"Article 9 — Obligations du Prestataire",
-          text:"En acceptant une Prestation sur la Plateforme, le Prestataire s'engage à :\n\n• Assurer sa présence sur le lieu et durant le créneau convenus à la commande, dans une tenue professionnelle adaptée à son secteur d'activité. Le lieu et le créneau font partie de l'objet même du service vendu et ne procèdent d'aucun pouvoir de direction\n• Prévenir le Client et ALANE dans les meilleurs délais en cas d'empêchement ou de décalage\n• Exécuter la prestation avec soin, diligence et professionnalisme, selon les règles de l'art applicables à son secteur d'activité\n• Collaborer avec le Client afin d'atteindre le résultat convenu à la commande, en tenant compte du cahier des charges et des contraintes propres au site. Le Client définit le résultat attendu ; le Prestataire choisit seul ses méthodes, ses moyens et l'organisation de son travail, y compris le rythme de son exécution et ses temps de pause\n• Respecter les règles d'hygiène, de sécurité et de confidentialité applicables sur le lieu d'intervention, lesquelles s'imposent à tout intervenant extérieur et ne caractérisent pas une subordination\n• Le Prestataire peut, sous sa seule responsabilité, se faire remplacer pour tout ou partie de la Prestation par un autre professionnel indépendant disposant des qualifications requises. Ce remplacement est subordonné à l'information préalable du Client et à la vérification administrative, par ALANE, de l'inscription et des justificatifs du remplaçant. Le Prestataire initial demeure responsable de la bonne exécution devant le Client et conserve la charge de la rémunération de son remplaçant. En dehors de cette faculté, le Prestataire ne sous-traite pas la Prestation\n• Maintenir en règle son statut d'auto-entrepreneur (immatriculation URSSAF, déclarations périodiques)\n• Disposer des qualifications, certifications et habilitations professionnelles requises pour l'exécution de la Prestation\n• Souscrire et maintenir une assurance Responsabilité Civile Professionnelle couvrant son activité\n• Traiter les données personnelles du Client auxquelles il aurait accès dans le strict cadre de la Prestation et conformément au RGPD\n• Valider la fin de Prestation via la Plateforme dans les 2 heures suivant la fin effective de la prestation"
+          text:"En acceptant une Prestation sur la Plateforme, le Prestataire s'engage à :\n\n• Assurer sa présence sur le lieu et durant le créneau convenus à la commande, dans une tenue professionnelle adaptée à son secteur d'activité. Le lieu et le créneau font partie de l'objet même du service vendu et ne procèdent d'aucun pouvoir de direction\n• Prévenir le Client et ALANE dans les meilleurs délais en cas d'empêchement ou de décalage\n• Exécuter la prestation avec soin, diligence et professionnalisme, selon les règles de l'art applicables à son secteur d'activité\n• Collaborer avec le Client afin d'atteindre le résultat convenu à la commande, en tenant compte du cahier des charges et des contraintes propres au site. Le Client définit le résultat attendu ; le Prestataire choisit seul ses méthodes, ses moyens et l'organisation de son travail, y compris le rythme de son exécution et ses temps de pause\n• Respecter les règles d'hygiène, de sécurité et de confidentialité applicables sur le lieu d'intervention, lesquelles s'imposent à tout intervenant extérieur et ne caractérisent pas une subordination\n• Le Prestataire peut, sous sa seule responsabilité, se faire remplacer pour tout ou partie de la Prestation par un autre professionnel indépendant disposant des qualifications requises. La Plateforme met cette faculté à sa disposition : il désigne son remplaçant parmi les professionnels vérifiés répondant aux critères de la Prestation. Le remplacement n'est effectif qu'une fois recueillis l'accord du remplaçant, qui reste libre de refuser, et l'accord préalable du Client. À défaut de l'un de ces accords, le Prestataire initial demeure titulaire de la Prestation. Une fois le remplacement effectif, le remplaçant exécute la Prestation en son nom propre, la facture et en perçoit le prix ; le Prestataire initial demeure responsable de la bonne exécution devant le Client. En dehors de cette faculté, le Prestataire ne sous-traite pas la Prestation\n• Maintenir en règle son statut d'auto-entrepreneur (immatriculation URSSAF, déclarations périodiques)\n• Disposer des qualifications, certifications et habilitations professionnelles requises pour l'exécution de la Prestation\n• Souscrire et maintenir une assurance Responsabilité Civile Professionnelle couvrant son activité\n• Traiter les données personnelles du Client auxquelles il aurait accès dans le strict cadre de la Prestation et conformément au RGPD\n• Valider la fin de Prestation via la Plateforme dans les 2 heures suivant la fin effective de la prestation"
         },
         {
           title:"Article 10 — Obligations du Client",
@@ -5647,7 +5647,7 @@ export function LegalScreen({ type, onBack }) {
         { title:"Article 2 — Statut du prestataire", text:"Le prestataire intervient en qualité d'auto-entrepreneur indépendant, immatriculé au RCS ou au répertoire des métiers. Il n'existe aucun lien de subordination entre le prestataire et le client ni entre le prestataire et ALANE. La relation est régie par les dispositions applicables aux auto-entrepreneurs (art. L8221-6 du Code du travail)." },
         { title:"Article 3 — Description de la prestation", text:"La prestation comprend : le métier et secteur sélectionnés lors de la réservation, la date et l'heure de début confirmées, la durée exprimée en heures, l'adresse d'intervention, le tarif horaire HT tel qu'affiché. Ces éléments sont consignés dans le récapitulatif de réservation accessible dans l'historique." },
         { title:"Article 4 — Tarifs et paiement", text:"Le montant total TTC est calculé sur la base du tarif horaire × durée + frais de service ALANE. Le paiement est sécurisé via Stripe. Les fonds sont bloqués à la confirmation et libérés au prestataire après validation mutuelle de la fin de prestation. ALANE ne détient jamais les fonds directement." },
-        { title:"Article 5 — Obligations du prestataire", text:"Le prestataire s'engage à : assurer sa présence sur le lieu et durant le créneau convenus, qui font partie de l'objet même du service vendu ; atteindre le résultat convenu à la commande, selon les règles de l'art de son secteur ; respecter les règles d'hygiène, de sécurité et de confidentialité applicables sur le site, lesquelles s'imposent à tout intervenant extérieur ; disposer des assurances professionnelles requises.\n\nLe prestataire choisit seul ses méthodes, ses moyens et l'organisation de son travail, y compris le rythme de son exécution et ses temps de pause. Le client définit le résultat attendu et les contraintes propres au site, non la manière de les exécuter.\n\nLe prestataire peut, sous sa seule responsabilité, se faire remplacer par un autre professionnel indépendant disposant des qualifications requises, sous réserve d'en informer préalablement le client et de la vérification administrative du remplaçant par ALANE. Il demeure alors responsable de la bonne exécution devant le client. En dehors de cette faculté, il ne sous-traite pas la prestation." },
+        { title:"Article 5 — Obligations du prestataire", text:"Le prestataire s'engage à : assurer sa présence sur le lieu et durant le créneau convenus, qui font partie de l'objet même du service vendu ; atteindre le résultat convenu à la commande, selon les règles de l'art de son secteur ; respecter les règles d'hygiène, de sécurité et de confidentialité applicables sur le site, lesquelles s'imposent à tout intervenant extérieur ; disposer des assurances professionnelles requises.\n\nLe prestataire choisit seul ses méthodes, ses moyens et l'organisation de son travail, y compris le rythme de son exécution et ses temps de pause. Le client définit le résultat attendu et les contraintes propres au site, non la manière de les exécuter.\n\nLe prestataire peut, sous sa seule responsabilité, se faire remplacer par un autre professionnel indépendant disposant des qualifications requises. Le remplacement n'est effectif qu'avec l'accord du remplaçant, libre de refuser, et l'accord préalable du client ; à défaut, le prestataire initial reste titulaire. Le remplaçant exécute alors la prestation en son nom propre, la facture et en perçoit le prix, le prestataire initial demeurant responsable de la bonne exécution devant le client. En dehors de cette faculté, il ne sous-traite pas la prestation." },
         { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, valider la prestation dans les 24 heures suivant son terme, payer le montant convenu via la plateforme. Le client n'exerce sur le prestataire aucun pouvoir de direction, de contrôle ni de sanction : il ne l'intègre pas à une équipe placée sous son autorité hiérarchique, ne le soumet à aucun dispositif interne de suivi du temps de travail et ne lui applique aucune mesure disciplinaire. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité. Si la prestation est exécutée chez un tiers, le client le déclare et reste seul à organiser le travail." },
         { title:"Article 7 — Annulation", text:"Annulation par le client : les frais de service restent dus dans tous les cas, car ils couvrent des coûts déjà engagés. Le montant de la prestation (tarif horaire × durée) est remboursé intégralement, que l'annulation intervienne plus ou moins de 24h avant le début. Après le début de la prestation, le montant intégral est dû au prestataire. Annulation par le prestataire : le client en est informé immédiatement via la plateforme, une proposition de remplacement lui est faite, et il est intégralement remboursé — frais de service compris — si aucun remplaçant n'intervient." },
         { title:"Article 8 — Responsabilité", text:"ALANE agit en qualité d'intermédiaire de mise en relation et ne peut être tenu responsable de la mauvaise exécution de la prestation, des dommages causés durant la prestation ou de tout litige entre client et prestataire. La responsabilité professionnelle du prestataire est engagée dans le cadre de son activité indépendante." },
@@ -5822,6 +5822,95 @@ export function PayslipScreen({ provider, prestation, onBack }) {
   );
 }
 
+// ── Remplacements soumis à l'accord du client (CGPS art. 9) ─────────────────
+//
+// Le prestataire peut se faire remplacer par un confrère indépendant qualifié,
+// mais rien ne bouge sans l'accord préalable du client : c'est lui qui reçoit
+// quelqu'un dans ses locaux, ou chez son propre client.
+//
+// Tant qu'il n'a pas répondu, le prestataire initial reste titulaire et engagé.
+// S'il refuse, la prestation lui reste également : refuser n'annule rien.
+export function RemplacementsAValider({ onValide }) {
+  const [demandes, setDemandes] = useState([]);
+  const [enCours, setEnCours]   = useState(null);
+
+  const charger = async () => {
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      if (!sd?.session?.access_token) return;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd.session.access_token}` },
+        body: JSON.stringify({ action: "mes_remplacements" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setDemandes((j.remplacements || []).filter(d => d.role === "client" && !d.deja_repondu));
+    } catch (e) {
+      console.error("[remplacements client] chargement échoué :", e.message);
+    }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const repondre = async (id, reponse) => {
+    setEnCours(id);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "repondre_remplacement", remplacement_id: id, reponse }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || "Réponse non enregistrée."); setEnCours(null); return; }
+      showToast(reponse === "accepter"
+        ? (j.statut === "accepte" ? "Remplacement validé." : "Accord enregistré — en attente du remplaçant.")
+        : "Refus enregistré. Votre prestataire initial reste engagé.");
+      await charger();
+      onValide?.();
+    } catch {
+      showToast("Connexion impossible.");
+    }
+    setEnCours(null);
+  };
+
+  if (!demandes.length) return null;
+
+  return (
+    <div style={{ padding:"14px 18px 0" }}>
+      {demandes.map(d => {
+        const m = d.mission || {};
+        const quand = [m.date, m.heure_debut ? String(m.heure_debut).slice(0,5).replace(":","h") : null].filter(Boolean).join(" à ");
+        return (
+          <div key={d.id} style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.35)", borderRadius:14, padding:14, marginBottom:10 }}>
+            <div style={{ color:C.violet, fontWeight:800, fontSize:13, marginBottom:4 }}>🔄 Votre accord est demandé</div>
+            <div style={{ color:C.text, fontSize:13, lineHeight:1.6, marginBottom:d.motif?6:10 }}>
+              <strong>{d.sortant?.prenom}{d.sortant?.initiale ? ` ${d.sortant.initiale}.` : ""}</strong> ne peut pas assurer
+              {" "}<strong>{m.titre || m.metier || "votre prestation"}</strong>{quand ? ` du ${quand}` : ""} et propose
+              que <strong>{d.entrant?.prenom}{d.entrant?.initiale ? ` ${d.entrant.initiale}.` : ""}</strong>, professionnel
+              indépendant qualifié pour ce métier, le remplace.
+            </div>
+            {d.motif && <div style={{ color:C.textMuted, fontSize:11, fontStyle:"italic", marginBottom:10 }}>« {d.motif} »</div>}
+            <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.5, marginBottom:10 }}>
+              Le tarif, l&apos;horaire et le montant ne changent pas. Si vous refusez,
+              {" "}{d.sortant?.prenom} reste engagé sur cette prestation.
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button disabled={enCours===d.id} onClick={()=>repondre(d.id,"refuser")}
+                style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:C.textSub, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                Refuser
+              </button>
+              <button disabled={enCours===d.id} onClick={()=>repondre(d.id,"accepter")}
+                style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:enCours===d.id?0.5:1 }}>
+                {enCours===d.id ? "…" : "J'accepte ce remplaçant"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
@@ -5895,23 +5984,26 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     if (mission) setSelected(mission);
   }, [openMissionId, loading, prestations]);
 
-  useEffect(() => {
-    Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]).then(async ([{ data }, { data: sd }]) => {
-      const user = data?.user; if (!user) return;
-      const token = sd?.session?.access_token;
-      if (token) setAccessToken(token);
-      const res = await fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: "list_client" }),
-      });
-      const data2 = await res.json();
-      setMissions(Array.isArray(data2) ? data2 : []);
-      setLoading(false);
-      const { data: rData } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", user.id);
-      if (Array.isArray(rData)) setRatedMissions(new Set(rData.map(r=>r.mission_id).filter(Boolean)));
+  // Extrait du useEffect pour pouvoir être rappelé : après validation d'un
+  // remplacement, la liste doit refléter le nouveau titulaire immédiatement.
+  const chargerPrestations = async () => {
+    const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+    const user = data?.user; if (!user) return;
+    const token = sd?.session?.access_token;
+    if (token) setAccessToken(token);
+    const res = await fetch("/api/missions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action: "list_client" }),
     });
-  }, []);
+    const data2 = await res.json();
+    setMissions(Array.isArray(data2) ? data2 : []);
+    setLoading(false);
+    const { data: rData } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", user.id);
+    if (Array.isArray(rData)) setRatedMissions(new Set(rData.map(r=>r.mission_id).filter(Boolean)));
+  };
+
+  useEffect(() => { chargerPrestations(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   useEffect(() => {
     if (selected?.prestataire_id) {
@@ -6995,6 +7087,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
         </div>
       </div>
+
+      {/* Remplacements en attente de l'accord du client (CGPS art. 9) — placés
+          avant les onglets : c'est une décision à prendre, pas une consultation. */}
+      <RemplacementsAValider onValide={chargerPrestations} />
 
       {/* ── Onglets scrollables ── */}
       <div style={{ overflowX:"auto", display:"flex", gap:8, padding:"14px 18px 0", scrollbarWidth:"none" }}>
