@@ -125,8 +125,12 @@ Une ligne `missions` est **insérée par le navigateur du client** (`App.jsx`,
 `montant_total`. Ne jamais considérer ces deux champs comme fiables. Ils sont contrôlés
 côté serveur à deux endroits, et il faut les deux :
 
-- `api/stripe-intent.js` — le total moins la part horaire doit correspondre à l'un des trois
-  frais de service du barème, sinon le paiement est refusé ;
+- `api/_montant.js` (`verifierMontant`) — le total moins la part horaire doit correspondre à
+  l'un des trois frais de service du barème, sinon le paiement est refusé. Appelé par
+  **`stripe-intent.js` ET `wallet.js`** : il existe deux chemins d'encaissement, et le
+  portefeuille prépayé n'était pas contrôlé jusqu'au 06/08/2026. Un client pouvait créer sa
+  prestation avec `montant_total = tarif × heures`, la régler depuis son portefeuille et ne
+  payer aucun frais de service ;
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
   inférieur au `tarif_net` réellement annoncé par le prestataire affecté.
 
@@ -285,6 +289,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
+| `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. **Appelé par les deux chemins de paiement**, carte et portefeuille. Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 
 ### Comment l'appelant est vérifié

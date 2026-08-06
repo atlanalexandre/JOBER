@@ -1,4 +1,5 @@
 import { verifyUser } from "./_auth.js";
+import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
 
     // 1. Fetch mission
     const mRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,montant_total,tarif_horaire,hours,status`,
+      `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,montant_total,tarif_horaire,hours,status,date_debut,date_fin`,
       { headers: hdrs }
     );
     const mData = await mRes.json().catch(() => []);
@@ -105,6 +106,26 @@ export default async function handler(req, res) {
       ? Number(mission.montant_total)
       : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);
     if (!amount || amount <= 0) return res.status(400).json({ error: "Montant de la prestation invalide" });
+
+    // Cohérence du montant — même contrôle que le paiement par carte.
+    //
+    // La ligne `missions` est insérée par le navigateur du client, et la garde
+    // SQL `missions_creation_guard` ne pose qu'une borne basse : elle refuse des
+    // frais de service négatifs, pas des frais nuls. Un client pouvait donc créer
+    // sa prestation avec montant_total = tarif × heures, la régler depuis son
+    // portefeuille, et ne payer aucun frais de service — soit l'intégralité de la
+    // rémunération d'ALANE sur cette réservation.
+    //
+    // Le tunnel carte refusait ce montage depuis toujours. Le portefeuille était
+    // le second chemin d'encaissement, et il n'était pas contrôlé.
+    {
+      const frais = await lireFraisService(SUPABASE_URL, hdrs);
+      const v = verifierMontant(mission, amount, frais);
+      if (!v.ok) {
+        console.error("[wallet/pay_mission] " + messageIncoherence(mission_id, amount, v));
+        return res.status(400).json({ error: ERREUR_MONTANT });
+      }
+    }
 
     // 2. Fetch current balance
     const profRes = await fetch(
