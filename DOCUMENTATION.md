@@ -369,6 +369,28 @@ Pour modifier les CGPS : éditer `src/constants/cgps.js`, mettre à jour `maj` s
 d'une évolution de fond, puis `npm run cgps`. La CI (`npm run cgps:verifier`) refuse toute
 divergence avec `public/cgps.html`.
 
+### Facturation
+
+La facture est établie **par le prestataire au client**. ALANE n'en est pas l'émetteur :
+elle apparaît en en-tête comme intermédiaire, et le document le dit explicitement.
+
+`VITE_ALANE_FORME` n'a **plus de valeur par défaut**. Elle valait `"SAS"`, si bien que toute
+facture affirmait l'existence d'une société qui n'était pas encore immatriculée. Les trois
+mentions (`VITE_ALANE_SIRET`, `VITE_ALANE_ADRESSE`, `VITE_ALANE_FORME`) ne s'affichent que si
+elles sont renseignées dans Vercel.
+
+**Numérotation** — `platform_settings.invoice_sequence`, incrémenté par compare-and-swap avec
+trois tentatives, puis figé dans `missions.invoice_number`. Format `FAC-{année}-{6 chiffres}`.
+La séquence est continue et **ne se réinitialise pas** au changement d'année : c'est la
+continuité qui compte, pas l'alignement sur l'exercice.
+
+Si aucun numéro ne peut être tiré, **l'édition est refusée** (503). Le repli précédent
+fabriquait `FAC-{8 caractères de l'identifiant}` — hors séquence, non chronologique, et non
+conservé : au réaffichage suivant la même prestation recevait un vrai numéro, soit deux
+documents portant deux numéros pour une seule opération, ce qu'interdit l'article 242 nonies A
+de l'annexe II au CGI. Ne pas produire de document est rattrapable ; en produire un mal
+numéroté ne l'est pas.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et

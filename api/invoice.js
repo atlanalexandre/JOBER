@@ -204,7 +204,31 @@ export default async function handler(req, res) {
     }
   }
 
-  if (!invoiceNum) invoiceNum = `FAC-${mission_id.slice(0, 8).toUpperCase()}`;
+  // Aucun numéro n'a pu être tiré du compteur — les trois tentatives de
+  // compare-and-swap ont échoué, ou le réglage `invoice_sequence` est illisible.
+  //
+  // Le repli précédent fabriquait `FAC-{8 premiers caractères de l'identifiant}`.
+  // Ce numéro n'appartient pas à la séquence, n'est pas chronologique, et n'était
+  // pas conservé : au réaffichage suivant, la même prestation recevait un vrai
+  // numéro. Deux documents portant deux numéros différents pour une seule
+  // opération, ce que l'article 242 nonies A de l'annexe II au CGI interdit.
+  //
+  // On refuse donc d'éditer la facture. Ne pas produire de document est
+  // rattrapable ; en produire un mal numéroté ne l'est pas.
+  if (!invoiceNum) {
+    console.error(`[invoice] numéro indisponible pour ${mission_id} — édition refusée. `
+      + "Vérifier le réglage platform_settings.invoice_sequence.");
+    return res.status(503).send(
+      `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
+      + `<meta name="viewport" content="width=device-width, initial-scale=1"></head>`
+      + `<body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
+      + `<h2>Facture momentanément indisponible</h2>`
+      + `<p>Le numéro de facture n'a pas pu être attribué. Réessayez dans un instant.</p>`
+      + `<p>Si le problème persiste, écrivez à `
+      + `<a href="mailto:direction@alane.fr" style="color:#7C6FE0">direction@alane.fr</a>.</p>`
+      + `</body></html>`
+    );
+  }
   const today = new Date();
   const issueDate = today.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
