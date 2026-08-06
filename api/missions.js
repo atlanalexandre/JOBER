@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs } from "./_temps.js";
 import crypto from "crypto";
 
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
@@ -2413,11 +2413,11 @@ export default async function handler(req, res) {
           if (mission?.client_id) {
             let withinWindow = true;
             if (mission.date && mission.heure_debut) {
-              try {
-                const missionStart = new Date(`${mission.date}T${mission.heure_debut}:00`);
-                const msUntilStart = missionStart.getTime() - Date.now();
-                withinWindow = msUntilStart <= 60 * 60 * 1000;
-              } catch(e) { /* date parse failed — allow notification */ }
+              // Sans la conversion heure française → UTC, le début calculé était
+              // deux heures trop tard en été : la fenêtre « moins d'une heure
+              // avant » s'ouvrait en réalité une heure APRÈS le début prévu.
+              const debutMs = debutPrestationMs(mission.date, mission.heure_debut);
+              if (debutMs !== null) withinWindow = (debutMs - Date.now()) <= 60 * 60 * 1000;
             }
             if (withinWindow) {
               const notif = { title: "📍 Prestataire en route", body: `Votre prestataire est en route${mission.ville ? ` vers ${mission.ville}` : ""} et partage sa position en direct.`, url: "/mission_history" };
@@ -4095,8 +4095,10 @@ export default async function handler(req, res) {
         // Urgence : la prestation a-t-elle lieu dans moins de 24 h ?
         let urgent = false;
         if (mission.date) {
-          const [uh, um] = String(mission.heure_debut || "08:00").split(":").map(Number);
-          const debutMs = new Date(`${mission.date}T${String(uh).padStart(2,"0")}:${String(um).padStart(2,"0")}:00`).getTime();
+          // Conversion heure française → UTC : sans elle, un désistement 23 h
+          // avant le début réel était compté comme 25 h et ne déclenchait pas
+          // le SMS, alors que c'est précisément le cas urgent.
+          const debutMs = debutPrestationMs(mission.date, mission.heure_debut) ?? 0;
           urgent = debutMs - Date.now() < 24 * 3600000;
         }
 
