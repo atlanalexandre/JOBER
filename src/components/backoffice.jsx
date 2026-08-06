@@ -82,14 +82,14 @@ export function BackofficeLogin({ onLogin, onBack }) {
   const [pwd, setPwd]           = useState("");
   const [show, setShow]         = useState(false);
   const [error, setError]       = useState("");
-  const [tempPwd, setTempPwd]   = useState(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [checking, setChecking] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
 
   const handleSubmit = () => {
     if (!pwd.trim() || checking || locked) return;
-    setChecking(true); setError(""); setTempPwd(null);
+    setChecking(true); setError("");
     fetch("/api/bo-verify-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -105,7 +105,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
         setChecking(false);
         if (j.ok) { try { sessionStorage.setItem("bo_token", j.token || ""); } catch(e) {} onLogin(); }
         else {
-          if (j.tempPassword) setTempPwd(j.tempPassword);
+          if (j.needsSetup) setNeedsSetup(true);
           setError(j.error || "Mot de passe incorrect");
           setPwd(""); setAttempts(a => a + 1);
         }
@@ -123,16 +123,21 @@ export function BackofficeLogin({ onLogin, onBack }) {
 
       {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
       {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>{error}</p>}
-      {tempPwd && (
+      {/* Le mot de passe de repli était affiché ici, en clair, avec un bouton
+          pour s'en servir : une variable d'environnement absente ouvrait le
+          backoffice à quiconque ouvrait cette page. Il ne se lit désormais que
+          dans les journaux Vercel, auxquels seul le propriétaire a accès. */}
+      {needsSetup && (
         <div style={{ background:"rgba(196,169,107,0.12)", border:"1px solid rgba(196,169,107,0.4)", borderRadius:10, padding:"10px 14px", marginBottom:12, maxWidth:320, width:"100%" }}>
-          <p style={{ color:"rgba(196,169,107,0.9)", fontSize:11, margin:"0 0 6px", fontWeight:600 }}>BO_PASSWORD non configuré — mot de passe temporaire :</p>
-          <p style={{ color:"#fff", fontSize:15, fontFamily:"monospace", fontWeight:700, margin:"0 0 8px", letterSpacing:1 }}>{tempPwd}</p>
-          <button onClick={() => { setPwd(tempPwd); setError(""); }} style={{ width:"100%", padding:"8px", borderRadius:8, border:"1px solid rgba(196,169,107,0.6)", background:"rgba(196,169,107,0.2)", color:"rgba(196,169,107,1)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"monospace" }}>
-            👆 Utiliser ce mot de passe
-          </button>
+          <p style={{ color:"rgba(196,169,107,0.9)", fontSize:11, margin:"0 0 6px", fontWeight:700 }}>BO_PASSWORD n&apos;est pas configuré</p>
+          <p style={{ color:"rgba(255,255,255,0.7)", fontSize:11, margin:0, lineHeight:1.6 }}>
+            Définissez-le dans Vercel → Settings → Environment Variables, puis redéployez.
+            Un mot de passe de repli figure dans les journaux du projet
+            (Vercel → Logs, fonction <span style={{ fontFamily:"monospace" }}>bo-verify-pin</span>).
+          </p>
         </div>
       )}
-      {!locked && !error && !tempPwd && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
+      {!locked && !error && !needsSetup && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
 
       <div style={{ width:"100%", maxWidth:320, position:"relative", marginBottom:16 }}>
         <input
