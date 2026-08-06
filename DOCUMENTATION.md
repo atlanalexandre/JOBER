@@ -458,6 +458,22 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**`missions.tiers_declaration`** (migration `2026-08-05_declaration_intervention_tiers.sql`)
+conserve la déclaration de l'article 10B : bénéficiaire final, service vendu, périmètre et
+critères, livrable attendu, et identité de la personne qui organise le travail sur place.
+Elle n'est demandée qu'aux **comptes professionnels** qui cochent « exécutée au bénéfice ou
+dans les locaux d'un tiers », et les cinq champs conditionnent alors la réservation.
+
+Le point de droit qui justifie ce formulaire : **il n'existe aucun seuil de durée ni de
+récurrence**. Une mission d'une journée peut être requalifiée, une prestation récurrente peut
+rester licite. Ce qui distingue les deux, c'est l'objet de ce qui est vendu — un livrable, ou
+la présence d'une personne. Le formulaire force la première formulation.
+
+La déclaration est envoyée par l'action `declarer_tiers`, **après** la création de la
+prestation et sans bloquer : elle a une valeur probatoire, pas opérationnelle, et perdre une
+réservation payante parce que la colonne manque serait un remède pire que le mal. Un échec est
+journalisé en erreur, avec le contenu déclaré.
+
 **Détection des schémas de mise à disposition** — action `signaux_mise_a_disposition` de
 `api/bo-action.js`, affichée dans l'onglet Modération. Elle croise le lieu d'intervention des
 prestations avec la ville déclarée par le client et ne retient que la **récurrence au même

@@ -1335,7 +1335,7 @@ export default async function handler(req, res) {
     //   • elles sont ponctuelles et visent des prestataires nommément choisis.
     if (action === "signaux_mise_a_disposition") {
       const mrs = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status&order=created_at.desc&limit=1000`,
+        `${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status,tiers_declaration&order=created_at.desc&limit=1000`,
         { headers }
       );
       const toutes = await mrs.json().catch(() => []);
@@ -1394,7 +1394,14 @@ export default async function handler(req, res) {
         // Seuils délibérément bas : l'objet est de déclencher une question, pas une sanction.
         if (occurrences < 3) continue;
 
+        // Une déclaration au titre du 10B change la lecture du signal : le client a
+        // qualifié sa mission au lieu de commander une présence. Ce n'est pas un
+        // blanc-seing, mais c'est exactement ce que la clause cherche à obtenir.
+        const declarees = horsVille.filter(m => m.tiers_declaration).length;
+
         resultat.push({
+          declarations: declarees,
+          exemple_declaration: (horsVille.find(m => m.tiers_declaration) || {}).tiers_declaration || null,
           client_id: cid,
           client: [prof.prenom, prof.nom].filter(Boolean).join(" ") || cid,
           ville_compte: prof.ville || metaVille[cid] || null,

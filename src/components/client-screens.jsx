@@ -2647,6 +2647,26 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   // une adresse parisienne. Le serveur refuse désormais l'affectation ; on prévient
   // ici avant le paiement plutôt que de laisser l'échec survenir après.
   const [horsZone, setHorsZone] = useState(null);
+  // Déclaration d'intervention au bénéfice d'un tiers (CGPS art. 10B). Réservée aux
+  // comptes professionnels : c'est chez eux que le schéma de mise à disposition peut
+  // apparaître, et leur imposer ces champs oriente la commande vers un livrable
+  // plutôt que vers la présence d'une personne — ce qui distingue, en droit, une
+  // prestation de services d'une fourniture de main-d'œuvre.
+  const [estPro, setEstPro] = useState(false);
+  const [chezTiers, setChezTiers] = useState(false);
+  const [tiersDecl, setTiersDecl] = useState({ beneficiaire:"", service_vendu:"", perimetre:"", livrable:"", organisateur:"" });
+
+  useEffect(() => {
+    let vivant = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!vivant) return;
+      setEstPro((data?.user?.user_metadata?.type_compte || "") === "professionnel");
+    }).catch(() => {});
+    return () => { vivant = false; };
+  }, []);
+
+  const declarationComplete = !chezTiers
+    || ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim());
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
@@ -3245,7 +3265,49 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             </div>
           )}
-          <Btn full disabled={!!horsZone} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          {estPro && (() => {
+            const champ = (cle, libelle, exemple, lignes) => (
+              <div style={{ marginBottom:10 }}>
+                <div style={{ color:C.textSub, fontSize:11, fontWeight:700, marginBottom:4 }}>{libelle}</div>
+                <textarea value={tiersDecl[cle]} onChange={e=>setTiersDecl(d=>({ ...d, [cle]: e.target.value }))}
+                  placeholder={exemple} rows={lignes||1}
+                  style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid ${tiersDecl[cle].trim() ? C.border : "rgba(240,180,41,0.45)"}`, borderRadius:9, color:C.text, fontSize:12.5, padding:"9px 11px", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box" }} />
+              </div>
+            );
+            return (
+              <div style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:r, padding:"14px 15px", marginBottom:16, textAlign:"left" }}>
+                <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
+                  <input type="checkbox" checked={chezTiers} onChange={e=>setChezTiers(e.target.checked)}
+                    style={{ marginTop:2, width:17, height:17, accentColor:C.accentGold, flexShrink:0 }} />
+                  <span style={{ color:C.text, fontSize:13, fontWeight:600, lineHeight:1.5 }}>
+                    Cette prestation est exécutée au bénéfice ou dans les locaux d&apos;un tiers
+                    <span style={{ display:"block", color:C.textSub, fontSize:11, fontWeight:400, marginTop:3 }}>
+                      Par exemple : vous êtes prestataire de services et intervenez chez votre propre client.
+                    </span>
+                  </span>
+                </label>
+                {chezTiers && (
+                  <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid rgba(240,180,41,0.2)" }}>
+                    <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6, marginBottom:12 }}>
+                      C&apos;est autorisé (CGPS art. 10B) à condition que vous vendiez à ce tiers un <strong style={{ color:C.text }}>service défini par son résultat</strong>,
+                      et non la présence d&apos;une personne. Ces éléments sont conservés avec la réservation.
+                    </div>
+                    {champ("beneficiaire", "Bénéficiaire final", "Nom et lieu — ex. Hôtel Riviera, Nice")}
+                    {champ("service_vendu", "Service que vous lui avez vendu", "Ex. contrôle qualité de l'étage 3", 2)}
+                    {champ("perimetre", "Périmètre et critères", "Ex. 24 chambres, grille de contrôle interne", 2)}
+                    {champ("livrable", "Livrable attendu du prestataire", "Ex. grille remplie et remise en fin de journée", 2)}
+                    {champ("organisateur", "Qui organise le travail sur place", "Nom et fonction — ex. Mme Y, gouvernante générale, notre salariée")}
+                    {!declarationComplete && (
+                      <div style={{ color:C.accentGold, fontSize:11.5, fontWeight:600 }}>
+                        Ces cinq éléments sont nécessaires pour valider la réservation.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
