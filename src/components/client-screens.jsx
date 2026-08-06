@@ -364,11 +364,41 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
       setSavedCard({ pmId, customerId, brand, last4 });
       stripeCardRef.current.destroy(); stripeCardRef.current = null;
       setAddingCard(false);
-    } catch(e) { setCardError("Erreur lors de l'enregistrement"); }
+    } catch(e) {
+      // La cause était perdue : l'utilisateur voyait « Erreur lors de
+      // l'enregistrement » sans qu'aucune trace ne permette de diagnostiquer.
+      console.error("[carte] enregistrement échoué :", e.message);
+      setCardError("Erreur lors de l'enregistrement");
+    }
     setCardSaving(false);
   };
 
   const handleRemoveCard = async () => {
+    // La carte est d'abord détachée chez Stripe : n'effacer que l'affichage
+    // laissait la donnée bancaire conservée alors que l'utilisateur la croyait
+    // supprimée. Si le détachement échoue, on n'efface rien et on le dit —
+    // afficher « supprimée » sur une carte toujours enregistrée serait un
+    // mensonge sur une donnée personnelle.
+    const pmId = savedCard?.pmId;
+    if (pmId) {
+      try {
+        const { data: sd } = await supabase.auth.getSession();
+        const r = await fetch("/api/stripe-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+          body: JSON.stringify({ action: "detach_pm", pmId }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          showToast(j.error || "La carte n'a pas pu être supprimée. Réessayez.");
+          return;
+        }
+      } catch (e) {
+        console.error("[carte] détachement impossible :", e.message);
+        showToast("Suppression impossible — vérifiez votre connexion.");
+        return;
+      }
+    }
     await supabase.auth.updateUser({ data: { stripe_pm_id: null, stripe_customer_id: null, card_brand: null, card_last4: null } });
     setSavedCard(null);
   };

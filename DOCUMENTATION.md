@@ -284,6 +284,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
+| `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 
 ### Comment l'appelant est vérifié
