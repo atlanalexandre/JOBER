@@ -2654,7 +2654,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   // plutôt que vers la présence d'une personne — ce qui distingue, en droit, une
   // prestation de services d'une fourniture de main-d'œuvre.
   const [estPro, setEstPro] = useState(false);
-  const [chezTiers, setChezTiers] = useState(false);
+  // null tant que le client n'a pas répondu : on ne présume ni l'un ni l'autre.
+  const [chezTiers, setChezTiers] = useState(null);
   const [tiersDecl, setTiersDecl] = useState({ beneficiaire:"", service_vendu:"", perimetre:"", livrable:"", organisateur:"" });
 
   useEffect(() => {
@@ -2710,10 +2711,13 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
 
   // Réservation chez un tiers : contrat-cadre accepté ET déclaration complète.
   // Hors de ce cas, rien n'est exigé.
-  const declarationComplete = !chezTiers || (
-    contratAJour
-    && ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim())
-  );
+  // Un professionnel doit répondre à la question du lieu — c'est elle qui décide de
+  // tout le reste, et une absence de réponse ne peut pas valoir « dans mon entreprise ».
+  const declarationComplete = !estPro ? true
+    : chezTiers === null ? false
+    : chezTiers === false ? true
+    : (contratAJour
+       && ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim()));
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   useEffect(() => {
@@ -3323,16 +3327,31 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             );
             return (
               <div style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:r, padding:"14px 15px", marginBottom:16, textAlign:"left" }}>
-                <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer" }}>
-                  <input type="checkbox" checked={chezTiers} onChange={e=>setChezTiers(e.target.checked)}
-                    style={{ marginTop:2, width:17, height:17, accentColor:C.accentGold, flexShrink:0 }} />
-                  <span style={{ color:C.text, fontSize:13, fontWeight:600, lineHeight:1.5 }}>
-                    Cette prestation est exécutée au bénéfice ou dans les locaux d&apos;un tiers
-                    <span style={{ display:"block", color:C.textSub, fontSize:11, fontWeight:400, marginTop:3 }}>
-                      Par exemple : vous êtes prestataire de services et intervenez chez votre propre client.
-                    </span>
-                  </span>
-                </label>
+                {/* Une adresse différente de celle du compte ne signifie pas qu'on
+                    intervient chez un tiers : une entreprise multi-sites commande
+                    légitimement pour ses propres établissements. Plutôt que de le
+                    deviner — et de se tromper —, on pose la question une fois, au
+                    moment où la réponse ne coûte rien et où elle a un sens. */}
+                <div style={{ color:C.text, fontSize:13, fontWeight:600, marginBottom:9 }}>
+                  Où se déroule cette prestation ?
+                </div>
+                <div style={{ display:"flex", gap:8, marginBottom:2 }}>
+                  {[
+                    { v:false, l:"Dans mon entreprise", d:"Mes locaux ou l'un de mes établissements" },
+                    { v:true,  l:"Chez un tiers",       d:"Au bénéfice de mon propre client" },
+                  ].map(opt => {
+                    const actif = chezTiers === opt.v;
+                    return (
+                      <button key={String(opt.v)} onClick={()=>setChezTiers(opt.v)}
+                        style={{ flex:1, textAlign:"left", padding:"10px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit",
+                          border:`1.5px solid ${actif ? C.accentGold : C.border}`,
+                          background: actif ? "rgba(240,180,41,0.12)" : "rgba(255,255,255,0.03)" }}>
+                        <div style={{ color: actif ? C.accentGold : C.text, fontWeight:700, fontSize:12.5 }}>{opt.l}</div>
+                        <div style={{ color:C.textSub, fontSize:10.5, marginTop:2, lineHeight:1.4 }}>{opt.d}</div>
+                      </button>
+                    );
+                  })}
+                </div>
                 {chezTiers && (
                   <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid rgba(240,180,41,0.2)" }}>
                     <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6, marginBottom:12 }}>
@@ -3408,7 +3427,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}

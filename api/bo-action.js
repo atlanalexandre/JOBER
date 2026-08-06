@@ -1333,6 +1333,51 @@ export default async function handler(req, res) {
     //   • le lieu d'intervention diffère de la ville déclarée par le client ;
     //   • les prestations se répètent au même endroit, hors de chez lui ;
     //   • elles sont ponctuelles et visent des prestataires nommément choisis.
+    // Traitement d'un signal de conformité, consigné dans bo_logs.
+    //
+    // Une détection qui tourne sans que personne n'agisse est pire que pas de
+    // détection du tout : elle établit que la plateforme savait. La trace de ce qui a
+    // été fait — et quand — est ce qui distingue une plateforme diligente d'une
+    // plateforme complice.
+    if (action === "traiter_signal") {
+      const { clientId, decision, note } = req.body || {};
+      if (!isUuidId(clientId)) return res.status(400).json({ error: "clientId invalide" });
+      const DECISIONS = ["explications_demandees", "justificatifs_recus", "conforme", "suspendu", "sans_suite"];
+      if (!DECISIONS.includes(decision)) return res.status(400).json({ error: "Décision inconnue" });
+      const commentaire = String(note || "").trim().replace(/\s+/g, " ").slice(0, 500) || null;
+      if (decision === "sans_suite" && !commentaire) {
+        return res.status(400).json({ error: "Classer sans suite demande un motif écrit." });
+      }
+
+      const insRes = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          action: `conformite_${decision}`,
+          target_id: clientId,
+          reason: commentaire,
+        }),
+      });
+      const rows = await insRes.json().catch(() => null);
+      if (!insRes.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[traiter_signal] enregistrement refusé pour ${clientId} : ${insRes.status} ${JSON.stringify(rows || {})}`);
+        return res.status(500).json({ error: "La décision n'a pas pu être consignée. Réessayez." });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    // Historique des décisions de conformité prises sur un client.
+    if (action === "historique_conformite") {
+      const { clientId } = req.body || {};
+      if (!isUuidId(clientId)) return res.status(400).json({ error: "clientId invalide" });
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/bo_logs?target_id=eq.${clientId}&action=like.conformite_*&select=action,reason,created_at&order=created_at.desc&limit=20`,
+        { headers }
+      );
+      const l = await r.json().catch(() => []);
+      return res.status(200).json(Array.isArray(l) ? l : []);
+    }
+
     if (action === "signaux_mise_a_disposition") {
       const mrs = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?select=id,client_id,prestataire_id,ville,adresse,date,hours,status,tiers_declaration&order=created_at.desc&limit=1000`,
@@ -1374,8 +1419,13 @@ export default async function handler(req, res) {
         const siennes = toutes.filter(m => m.client_id === cid);
         if (siennes.length < 3) continue;          // trop peu pour dégager un schéma
 
+        // Une adresse différente de celle du compte ne signifie pas qu'on intervient
+        // chez un tiers : une entreprise multi-sites commande légitimement ailleurs.
+        // Seules comptent les prestations pour lesquelles le client n'a RIEN déclaré.
+        // Celles déclarées — « chez un tiers » comme « dans mon entreprise » — sont
+        // écartées : la question a été posée et une réponse a été donnée.
         const horsVille = villeCompte
-          ? siennes.filter(m => m.ville && norm(m.ville) !== villeCompte)
+          ? siennes.filter(m => m.ville && norm(m.ville) !== villeCompte && !m.tiers_declaration)
           : [];
         if (!horsVille.length) continue;
 
@@ -1397,11 +1447,14 @@ export default async function handler(req, res) {
         // Une déclaration au titre du 10B change la lecture du signal : le client a
         // qualifié sa mission au lieu de commander une présence. Ce n'est pas un
         // blanc-seing, mais c'est exactement ce que la clause cherche à obtenir.
-        const declarees = horsVille.filter(m => m.tiers_declaration).length;
+        // Compté sur l'ensemble des prestations du client, pas sur les seules
+        // non déclarées — qui par construction n'en portent aucune.
+        const declarees = siennes.filter(m => m.tiers_declaration).length;
+        const exemple = (siennes.find(m => m.tiers_declaration?.beneficiaire) || {}).tiers_declaration || null;
 
         resultat.push({
           declarations: declarees,
-          exemple_declaration: (horsVille.find(m => m.tiers_declaration) || {}).tiers_declaration || null,
+          exemple_declaration: exemple,
           client_id: cid,
           client: [prof.prenom, prof.nom].filter(Boolean).join(" ") || cid,
           ville_compte: prof.ville || metaVille[cid] || null,

@@ -1716,6 +1716,21 @@ export default function App() {
           // réservation payante parce qu'elle n'a pas pu être écrite serait absurde.
           // Un échec est journalisé côté serveur, en erreur.
           setPendingTiersDeclaration(data?.tiersDeclaration || null);
+          // Réponse « dans mon entreprise » : elle vaut déclaration et doit être
+          // conservée. Sans elle, la détection ne saurait pas distinguer un client
+          // multi-sites — qui commande légitimement ailleurs — d'un client silencieux.
+          if (data?.lieuDeclare === "etablissement_propre") {
+            try {
+              const { data:sdE } = await supabase.auth.getSession();
+              await fetch("/api/missions", {
+                method:"POST",
+                headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdE?.session?.access_token||""}` },
+                body: JSON.stringify({ action:"declarer_tiers", mission_id:newId, declaration:{ lieu:"etablissement_propre" } }),
+              });
+            } catch(errE) {
+              console.error("[reservation] déclaration de lieu non transmise :", errE?.message);
+            }
+          }
           if (data?.tiersDeclaration) {
             try {
               const { data:sdT } = await supabase.auth.getSession();

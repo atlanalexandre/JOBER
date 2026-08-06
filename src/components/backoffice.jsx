@@ -1569,6 +1569,42 @@ export function BOModerationTab({ d }) {
   // désignent les comptes à qui poser une question, première marche de l'escalade.
   const [signaux, setSignaux]             = useState(null);
   const [signauxErr, setSignauxErr]       = useState(null);
+  const [traitement, setTraitement]       = useState({});   // clientId → { decision, note, envoi }
+  const [historiques, setHistoriques]     = useState({});   // clientId → décisions passées
+
+  const DECISIONS_CONFORMITE = [
+    { id:"explications_demandees", l:"Explications demandées" },
+    { id:"justificatifs_recus",    l:"Justificatifs reçus" },
+    { id:"conforme",               l:"Vérifié — conforme" },
+    { id:"suspendu",               l:"Mise en relation suspendue" },
+    { id:"sans_suite",             l:"Classé sans suite" },
+  ];
+
+  const chargerHistorique = async (clientId) => {
+    try {
+      const r = await boFetch({ action:"historique_conformite", clientId });
+      const j = await r.json().catch(() => []);
+      setHistoriques(h => ({ ...h, [clientId]: Array.isArray(j) ? j : [] }));
+    } catch (e) { console.error("[conformité] historique illisible :", e?.message); }
+  };
+
+  const traiterSignal = async (clientId) => {
+    const t = traitement[clientId] || {};
+    if (!t.decision) { showToast("Choisissez une décision.", "error"); return; }
+    setTraitement(p2 => ({ ...p2, [clientId]: { ...t, envoi:true } }));
+    try {
+      const r = await boFetch({ action:"traiter_signal", clientId, decision:t.decision, note:t.note || "" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || `Erreur ${r.status}`, "error"); }
+      else {
+        showToast("Décision consignée.", "success");
+        setTraitement(p2 => ({ ...p2, [clientId]: { decision:"", note:"", envoi:false } }));
+        chargerHistorique(clientId);
+        return;
+      }
+    } catch (e) { showToast(e?.message || "Erreur réseau", "error"); }
+    setTraitement(p2 => ({ ...p2, [clientId]: { ...t, envoi:false } }));
+  };
 
   useEffect(() => {
     let vivant = true;
@@ -1637,15 +1673,15 @@ export function BOModerationTab({ d }) {
           <div key={sg.client_id} style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:10, padding:"10px 12px", marginBottom:8 }}>
             <div style={{ color:C.accentGold, fontWeight:700, fontSize:12, marginBottom:4 }}>{sg.client}</div>
             <div style={{ color:C.textSub, fontSize:11, lineHeight:1.7 }}>
-              {sg.occurrences_meme_lieu} interventions au même endroit hors de sa ville
+              {sg.occurrences_meme_lieu} interventions <strong style={{ color:C.text }}>non déclarées</strong> au même endroit, hors de sa ville
               {sg.ville_compte ? ` (compte déclaré à ${sg.ville_compte})` : ""}<br/>
               Lieu récurrent : <span style={{ color:C.text }}>{sg.lieu_recurrent || "—"}</span><br/>
               {sg.prestataires_distincts} prestataire{sg.prestataires_distincts > 1 ? "s" : ""} distinct{sg.prestataires_distincts > 1 ? "s" : ""} ·
               durée moyenne {sg.duree_moyenne_h} h · {sg.interventions_hors_ville}/{sg.total_prestations} prestations concernées<br/>
               <span style={{ color: sg.declarations > 0 ? C.success : C.danger, fontWeight:700 }}>
                 {sg.declarations > 0
-                  ? `${sg.declarations} déclaration(s) art. 10B fournie(s)`
-                  : "Aucune déclaration art. 10B — première question à poser"}
+                  ? `${sg.declarations} prestation(s) déclarée(s) par ailleurs — schéma probablement légitime`
+                  : "Ce client n'a jamais déclaré le lieu d'aucune prestation"}
               </span>
             </div>
             {sg.exemple_declaration && (
@@ -1656,6 +1692,52 @@ export function BOModerationTab({ d }) {
                 <div><strong style={{ color:C.textSub }}>Organise le travail :</strong> {sg.exemple_declaration.organisateur}</div>
               </div>
             )}
+            {/* Une détection qu'on ne traite pas prouve qu'on savait. La décision et
+                son motif sont consignés dans bo_logs, horodatés. */}
+            <div style={{ marginTop:10, paddingTop:9, borderTop:"1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:7 }}>
+                {DECISIONS_CONFORMITE.map(d => {
+                  const actif = traitement[sg.client_id]?.decision === d.id;
+                  return (
+                    <button key={d.id}
+                      onClick={()=>setTraitement(p2=>({ ...p2, [sg.client_id]: { ...(p2[sg.client_id]||{}), decision:d.id } }))}
+                      style={{ padding:"5px 9px", borderRadius:7, cursor:"pointer", fontFamily:"inherit", fontSize:10.5, fontWeight:700,
+                        border:`1px solid ${actif ? C.violet : C.border}`,
+                        background: actif ? `${C.violet}22` : "transparent",
+                        color: actif ? C.violet : C.textSub }}>
+                      {d.l}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                value={traitement[sg.client_id]?.note || ""}
+                onChange={e=>setTraitement(p2=>({ ...p2, [sg.client_id]: { ...(p2[sg.client_id]||{}), note:e.target.value } }))}
+                placeholder="Motif ou observation — obligatoire pour classer sans suite"
+                style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:7, color:C.text, fontSize:11, padding:"7px 9px", fontFamily:"inherit", marginBottom:7, boxSizing:"border-box" }} />
+              <div style={{ display:"flex", gap:7 }}>
+                <button onClick={()=>traiterSignal(sg.client_id)} disabled={traitement[sg.client_id]?.envoi}
+                  style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:11.5, cursor:"pointer", fontFamily:"inherit", opacity:traitement[sg.client_id]?.envoi?0.5:1 }}>
+                  {traitement[sg.client_id]?.envoi ? "Enregistrement…" : "Consigner la décision"}
+                </button>
+                <button onClick={()=>chargerHistorique(sg.client_id)}
+                  style={{ padding:"8px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:700, fontSize:11.5, cursor:"pointer", fontFamily:"inherit" }}>
+                  Historique
+                </button>
+              </div>
+              {historiques[sg.client_id] && (
+                <div style={{ marginTop:8, color:C.textMuted, fontSize:10.5, lineHeight:1.6 }}>
+                  {historiques[sg.client_id].length === 0
+                    ? "Aucune décision consignée à ce jour."
+                    : historiques[sg.client_id].map((h,i) => (
+                        <div key={i}>
+                          {new Date(h.created_at).toLocaleDateString("fr-FR")} — {String(h.action).replace("conformite_","").replace(/_/g," ")}
+                          {h.reason ? ` · ${h.reason}` : ""}
+                        </div>
+                      ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
