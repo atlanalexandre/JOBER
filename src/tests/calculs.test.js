@@ -152,6 +152,40 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Déclaration d'intervention chez un tiers (CGPS art. 10B) ──────
+// Il n'existe aucun seuil de durée ni de récurrence : ce qui distingue une
+// prestation de services d'une fourniture de main-d'œuvre, c'est l'objet de ce qui
+// est vendu. Les cinq champs obligent le client professionnel à qualifier sa mission
+// par un livrable plutôt que par la présence d'une personne.
+describe("déclaration art. 10B", () => {
+  const CHAMPS = ["beneficiaire","service_vendu","perimetre","livrable","organisateur"];
+  const complete = ({ pro, chezTiers, decl = {} }) => {
+    if (!pro || !chezTiers) return true;                    // rien à déclarer
+    return CHAMPS.every(k => String(decl[k] || "").trim());
+  };
+
+  it("un particulier n'a jamais à déclarer", () => {
+    expect(complete({ pro:false, chezTiers:false })).toBe(true);
+  });
+  it("un professionnel qui commande pour lui-même non plus", () => {
+    expect(complete({ pro:true, chezTiers:false })).toBe(true);
+  });
+  it("un professionnel intervenant chez un tiers doit tout renseigner", () => {
+    expect(complete({ pro:true, chezTiers:true, decl:{} })).toBe(false);
+  });
+  it("une déclaration partielle ne suffit pas", () => {
+    expect(complete({ pro:true, chezTiers:true, decl:{ beneficiaire:"Hôtel X", livrable:"Grille" } })).toBe(false);
+  });
+  it("des espaces ne valent pas une réponse", () => {
+    const decl = Object.fromEntries(CHAMPS.map(k => [k, "   "]));
+    expect(complete({ pro:true, chezTiers:true, decl })).toBe(false);
+  });
+  it("les cinq champs renseignés débloquent la réservation", () => {
+    const decl = Object.fromEntries(CHAMPS.map(k => [k, "renseigné"]));
+    expect(complete({ pro:true, chezTiers:true, decl })).toBe(true);
+  });
+});
+
 // ── Détection des schémas de mise à disposition (CGPS art. 10B) ───
 // Intervenir chez un tiers est licite. Ce qui ne l'est pas, c'est de fournir une
 // personne désignée, à l'heure, à un tiers qui la dirige. La détection ne prouve

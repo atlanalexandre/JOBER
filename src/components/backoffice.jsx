@@ -1641,8 +1641,21 @@ export function BOModerationTab({ d }) {
               {sg.ville_compte ? ` (compte déclaré à ${sg.ville_compte})` : ""}<br/>
               Lieu récurrent : <span style={{ color:C.text }}>{sg.lieu_recurrent || "—"}</span><br/>
               {sg.prestataires_distincts} prestataire{sg.prestataires_distincts > 1 ? "s" : ""} distinct{sg.prestataires_distincts > 1 ? "s" : ""} ·
-              durée moyenne {sg.duree_moyenne_h} h · {sg.interventions_hors_ville}/{sg.total_prestations} prestations concernées
+              durée moyenne {sg.duree_moyenne_h} h · {sg.interventions_hors_ville}/{sg.total_prestations} prestations concernées<br/>
+              <span style={{ color: sg.declarations > 0 ? C.success : C.danger, fontWeight:700 }}>
+                {sg.declarations > 0
+                  ? `${sg.declarations} déclaration(s) art. 10B fournie(s)`
+                  : "Aucune déclaration art. 10B — première question à poser"}
+              </span>
             </div>
+            {sg.exemple_declaration && (
+              <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.08)", color:C.textMuted, fontSize:10.5, lineHeight:1.6 }}>
+                <div><strong style={{ color:C.textSub }}>Bénéficiaire :</strong> {sg.exemple_declaration.beneficiaire}</div>
+                <div><strong style={{ color:C.textSub }}>Service vendu :</strong> {sg.exemple_declaration.service_vendu}</div>
+                <div><strong style={{ color:C.textSub }}>Livrable :</strong> {sg.exemple_declaration.livrable}</div>
+                <div><strong style={{ color:C.textSub }}>Organise le travail :</strong> {sg.exemple_declaration.organisateur}</div>
+              </div>
+            )}
           </div>
         ))}
       </div>

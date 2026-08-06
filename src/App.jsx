@@ -1706,6 +1706,25 @@ export default function App() {
             status: "pending_acceptance",
           });
           if(insErr) { setBookingError("Impossible de préparer la prestation : " + (insErr.message || "erreur inconnue")); return; }
+
+          // Déclaration d'intervention chez un tiers (CGPS art. 10B), enregistrée par
+          // le serveur. Volontairement après la création et sans bloquer : la
+          // déclaration a une valeur probatoire, pas opérationnelle — perdre une
+          // réservation payante parce qu'elle n'a pas pu être écrite serait absurde.
+          // Un échec est journalisé côté serveur, en erreur.
+          if (data?.tiersDeclaration) {
+            try {
+              const { data:sdT } = await supabase.auth.getSession();
+              await fetch("/api/missions", {
+                method:"POST",
+                headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdT?.session?.access_token||""}` },
+                body: JSON.stringify({ action:"declarer_tiers", mission_id:newId, declaration:data.tiersDeclaration }),
+              });
+            } catch(errT) {
+              console.error("[reservation] déclaration 10B non transmise :", errT?.message);
+            }
+          }
+
           setSelectedMissionId(newId);
           setScreen("stripe_pay");
         } catch(e) {

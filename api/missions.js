@@ -3062,6 +3062,62 @@ export default async function handler(req, res) {
     // Tout est revérifié ici : la prestation existe, l'auteur y a pris part, elle est
     // terminée, et il n'a pas déjà donné son avis. Le destinataire est déduit de la
     // prestation, jamais transmis par l'appelant.
+    // Déclaration d'intervention au bénéfice d'un tiers (CGPS art. 10B).
+    //
+    // Volontairement séparée de la création de la prestation : si la colonne
+    // `tiers_declaration` n'existe pas encore, la réservation doit aboutir malgré
+    // tout. Bloquer un tunnel de paiement sur une colonne manquante serait un
+    // remède pire que le mal.
+    if (action === "declarer_tiers") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, declaration } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (!declaration || typeof declaration !== "object") return res.status(400).json({ error: "declaration requise" });
+
+      const mdRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id`, { headers });
+      const md = (await mdRes.json().catch(() => []))[0];
+      if (!md) return res.status(404).json({ error: "Prestation introuvable" });
+      if (md.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+
+      // Champs bornés et normalisés : ce texte est destiné à être relu par un tiers,
+      // il ne doit ni déborder ni contenir de contenu arbitraire.
+      const champ = (v, max) => {
+        const t = String(v == null ? "" : v).trim().replace(/\s+/g, " ");
+        return t ? t.slice(0, max) : null;
+      };
+      const propre = {
+        beneficiaire:  champ(declaration.beneficiaire, 200),
+        service_vendu: champ(declaration.service_vendu, 300),
+        perimetre:     champ(declaration.perimetre, 500),
+        livrable:      champ(declaration.livrable, 300),
+        organisateur:  champ(declaration.organisateur, 200),
+        declare_le:    new Date().toISOString(),
+      };
+      const manquants = ["beneficiaire", "service_vendu", "perimetre", "livrable", "organisateur"]
+        .filter(k => !propre[k]);
+      if (manquants.length) {
+        return res.status(400).json({ error: `Déclaration incomplète : ${manquants.join(", ")}.` });
+      }
+
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ tiers_declaration: propre }),
+      });
+      const rows = await patchRes.json().catch(() => null);
+      if (!patchRes.ok || !Array.isArray(rows) || rows.length === 0) {
+        // Colonne absente : migration 2026-08-05_declaration_intervention_tiers non
+        // appliquée. La réservation reste valide, la déclaration est perdue — d'où
+        // le niveau « erreur », pour que ça se voie dans les journaux.
+        console.error(`[declarer_tiers] déclaration NON enregistrée pour ${mission_id} : ${patchRes.status} `
+          + `${JSON.stringify(rows || {})}. Appliquer la migration 2026-08-05_declaration_intervention_tiers.sql. `
+          + `Contenu déclaré : ${JSON.stringify(propre)}`);
+        return res.status(200).json({ ok: false, enregistre: false });
+      }
+      return res.status(200).json({ ok: true, enregistre: true });
+    }
+
     if (action === "submit_rating") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
