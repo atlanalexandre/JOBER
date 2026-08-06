@@ -458,6 +458,23 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**Article 5.2 des CGPS — l'affectation est faite par ALANE dès qu'un tiers est en jeu.** Le
+choix libre d'un prestataire nommément désigné a été identifié comme le principal point de
+vulnérabilité de la plateforme : il est exactement le critère que l'article 10B.2 interdit.
+Le choix reste libre quand le client commande pour lui-même ; il disparaît dès qu'il déclare
+intervenir chez un tiers. Le code doit suivre : voir « affectation automatique » ci-dessous.
+
+**Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
+conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
+pas le pénal, qui reste personnel), et fondement contractuel des mécanismes de détection avec
+conservation des vérifications.
+
+**Le contrat de prestation ne prétend plus interdire une requalification.** Il affirmait
+« Aucune requalification en contrat de travail ne saurait résulter du présent accord » — une
+clause qu'un juge ignore, et qui donne l'impression de vouloir neutraliser une règle d'ordre
+public. Elle est remplacée par la reconnaissance que la qualification dépend des conditions
+réelles d'exécution et relève de l'appréciation souveraine des juridictions.
+
 **Article 10C des CGPS — horaires, décalage et durée facturée.** Le mécanisme de décalage
 modifie le montant dû : il devait donc figurer dans les conditions, et y être qualifié. Le
 10C.3 énonce que l'ajustement détermine le prix du service réellement exécuté et **n'est ni
