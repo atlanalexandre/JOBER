@@ -1015,6 +1015,9 @@ export default function App() {
   const [paymentVille,setPaymentVille]=useState("");
   const [paymentStartTime,setPaymentStartTime]=useState("08:00");
   const [bookingError,setBookingError]=useState(null);
+  // Déclaration art. 10B de la réservation en cours : elle décide du mode
+  // d'affectation après paiement, et ne doit pas se perdre entre les deux écrans.
+  const [pendingTiersDeclaration, setPendingTiersDeclaration] = useState(null);
   const [boUnlocked,setBoUnlocked]=useState(false);
   const [boTestMode,setBoTestMode]=useState(false);
   const [legalType,setLegalType]=useState("cgu");
@@ -1712,6 +1715,7 @@ export default function App() {
           // déclaration a une valeur probatoire, pas opérationnelle — perdre une
           // réservation payante parce qu'elle n'a pas pu être écrite serait absurde.
           // Un échec est journalisé côté serveur, en erreur.
+          setPendingTiersDeclaration(data?.tiersDeclaration || null);
           if (data?.tiersDeclaration) {
             try {
               const { data:sdT } = await supabase.auth.getSession();
@@ -1749,10 +1753,16 @@ export default function App() {
               // prevent_missions_field_tampering interdit au client de modifier
               // prestataire_id et status depuis le navigateur (audit B-01).
               const { data:sdA } = await supabase.auth.getSession();
+              // Intervention chez un tiers : la plateforme affecte, le client n'a
+              // désigné personne (CGPS art. 5.2). Le prestataire consulté au moment
+              // de la réservation n'est donc pas transmis.
+              const chezUnTiers = !!pendingTiersDeclaration;
               const rA = await fetch("/api/missions", {
                 method:"POST",
                 headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
-                body: JSON.stringify({ action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }),
+                body: JSON.stringify(chezUnTiers
+                  ? { action:"affecter_tiers", mission_id:missionId, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }
+                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }),
               });
               if(!rA.ok){
                 const jA = await rA.json().catch(()=>({}));

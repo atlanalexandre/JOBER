@@ -464,6 +464,23 @@ vulnérabilité de la plateforme : il est exactement le critère que l'article 1
 Le choix reste libre quand le client commande pour lui-même ; il disparaît dès qu'il déclare
 intervenir chez un tiers. Le code doit suivre : voir « affectation automatique » ci-dessous.
 
+**Affectation automatique chez un tiers** — `candidatsPourMission()` et l'action
+`affecter_tiers` dans `api/missions.js`. Dès qu'une prestation porte une
+`tiers_declaration`, le prestataire consulté par le client n'est **pas** transmis :
+`affecter_tiers` remplace `assign_after_payment` et la plateforme sélectionne elle-même.
+
+Les critères sont **objectifs et uniquement objectifs** : métier (principal ou secondaire),
+secteur, tarif — jamais en dessous du `tarif_net` du prestataire —, jour de disponibilité
+déclaré, rayon d'intervention, quota restant. L'ordre est la distance puis la charge du mois.
+**Ni note, ni abonnement, ni ancienneté** : un classement fondé sur le comportement donnerait
+prise au reproche d'un pouvoir de direction déguisé. Ne pas en ajouter.
+
+`affecterCandidatSuivant()` fait la cascade : un refus (`respond_mission`) ou un délai dépassé
+(`acceptance_timeout`) passe au candidat suivant au lieu de rembourser — le client n'a désigné
+personne, sa commande tient. À court de candidats, la prestation bascule en `open`, donc en
+diffusion : c'est alors le prestataire qui se propose, ce qui rend son autonomie visible et
+horodatée.
+
 **Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
 conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
 pas le pénal, qui reste personnel), et fondement contractuel des mécanismes de détection avec
