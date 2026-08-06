@@ -458,6 +458,16 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**Le décalage est un ajustement de prix, jamais une sanction.** La distinction n'est pas
+cosmétique : un ajustement automatique décidé par le seul client, appliqué en silence et sans
+droit de réponse, constitue un indice de pouvoir disciplinaire — ce qu'une plateforme ne peut
+exercer sur un indépendant sans risquer la requalification. Trois règles en découlent, à
+préserver : les textes parlent de **durée facturée** et de **temps réalisé**, jamais de
+pénalité ni de refus ; le prestataire est **notifié avec les chiffres** et une voie de
+contestation (`direction@alane.fr`) ; et le retard **n'alimente ni suspension, ni classement,
+ni quota** — vérifié le 05/08/2026, `arrival_delay_minutes` et `delay_status` ne servent qu'au
+calcul du prix.
+
 **Un démarrage tardif ne décale pas la fin sans l'accord du client.** Le décalage est
 mesuré à deux moments — au pointage d'arrivée (`checkin_mission`) **et** au démarrage
 (`start_mission`), le plus défavorable au client étant retenu — au-delà de 15 minutes. Il est

@@ -997,11 +997,16 @@ export default async function handler(req, res) {
       // l'heure de fin initialement prévue. Le champ était lu ici sans être utilisé —
       // un client qui n'avait rien accepté payait quand même les heures pleines.
       // Un refus explicite (`rejected`) a déjà ajusté `hours` et `actual_hours`.
+      let ajustementRetard = null;
       if (mission.delay_status === "pending") {
         const retardH = (Number(mission.arrival_delay_minutes) || 0) / 60;
         const plafonnees = Math.max(0, Math.round((Number(mission.hours || 0) - retardH) * 100) / 100);
         if (plafonnees < heuresEffectives) {
           console.log(`[complete] décalage non accepté sur ${mission_id} : ${heuresEffectives}h ramenées à ${plafonnees}h`);
+          // Conservé pour prévenir le prestataire : un ajustement appliqué en
+          // silence, sans que l'intéressé sache pourquoi ni puisse répondre, est
+          // exactement ce qui distingue une sanction d'un ajustement de prix.
+          ajustementRetard = { avant: heuresEffectives, apres: plafonnees, retard: Number(mission.arrival_delay_minutes) || 0 };
           heuresEffectives = plafonnees;
         }
       }
@@ -1120,6 +1125,28 @@ export default async function handler(req, res) {
           read: false,
         }),
       }).catch(() => {});
+
+      // Le prestataire est informé de l'ajustement de durée, avec les chiffres et
+      // une voie de contestation. Sans cela, il découvrirait un montant réduit sans
+      // explication : c'est le silence, plus que l'ajustement lui-même, qui donne au
+      // mécanisme l'allure d'une sanction.
+      if (ajustementRetard && mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mission.prestataire_id,
+            type: "mission",
+            title: "Durée facturée ajustée ⏱",
+            body: `La prestation « ${mission.metier || mission.sector || ""} » a démarré avec `
+              + `${ajustementRetard.retard} min de décalage, non arbitré par le client. `
+              + `${ajustementRetard.apres} h ont été facturées au lieu de ${ajustementRetard.avant} h, `
+              + `soit le temps effectivement réalisé. Si ce décalage ne vous est pas imputable, `
+              + `écrivez à direction@alane.fr : la prestation sera réexaminée.`,
+            read: false,
+          }),
+        }).catch(() => {});
+      }
 
       // Notification cashback dédiée uniquement si RPC a réussi
       if (cashbackEarned > 0 && rpcRes.ok) {
@@ -3007,10 +3034,17 @@ export default async function handler(req, res) {
           method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
             user_id: m2.prestataire_id, type: "mission",
-            title: response === "approved" ? "Décalage accepté ✅" : "Décalage refusé ⏰",
+            // Formulation volontairement contractuelle et non disciplinaire : ce
+            // n'est pas une pénalité, c'est le prix du temps réellement effectué.
+            // Le prestataire dispose d'un droit de réponse — sans lui, un ajustement
+            // automatique décidé par le seul client s'apparente à un pouvoir de
+            // sanction, ce qu'une plateforme n'exerce pas sur un indépendant.
+            title: response === "approved" ? "Fin de prestation décalée ✅" : "Durée facturée ajustée ⏱",
             body: response === "approved"
-              ? `Le client a accepté le décalage de ${delayMins} min pour « ${label} ». La prestation se termine à l'heure ajustée.`
-              : `Le client a refusé le décalage pour « ${label} ». Fin à l'heure initiale (${actualHours}h facturées).`,
+              ? `Le client a accepté de décaler la fin de « ${label} » de ${delayMins} min. La durée initialement prévue reste due.`
+              : `La prestation « ${label} » prend fin à l'heure convenue : ${actualHours} h seront facturées au lieu de ${plannedHours} h, `
+                + `soit le temps effectivement réalisé après un démarrage décalé de ${delayMins} min. `
+                + `Si ce décalage ne vous est pas imputable, écrivez à direction@alane.fr : la prestation sera réexaminée.`,
             read: false,
           }),
         }).catch(() => {});
