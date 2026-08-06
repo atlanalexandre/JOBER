@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
+import { couplesADependance, SEUILS_PAR_DEFAUT } from "./_dependance.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -1376,6 +1377,81 @@ export default async function handler(req, res) {
       );
       const l = await r.json().catch(() => []);
       return res.status(200).json(Array.isArray(l) ? l : []);
+    }
+
+    // ── Vigilance sur la dépendance économique (CGPS art. 10D) ────────
+    //
+    // Un conseil juridique a relevé que le risque résiduel ne tient plus à la
+    // rédaction des CGPS mais aux comportements réels, et que le cas le plus
+    // exposé est celui d'un auto-entrepreneur travaillant cinq jours par semaine
+    // pendant des mois pour un seul client.
+    //
+    // L'article 10D réserve à ALANE le droit de demander des justificatifs dans
+    // cette situation. Cette action la détecte : une clause de vigilance qu'on
+    // n'exerce jamais ne vaut rien devant un contrôle.
+    if (action === "signaux_dependance") {
+      const seuilsDemandes = payload?.seuils && typeof payload.seuils === "object" ? payload.seuils : null;
+
+      // Seuils réglables sans redéploiement. Un réglage absent n'est pas une
+      // erreur : les valeurs par défaut du module s'appliquent.
+      let seuils = { ...SEUILS_PAR_DEFAUT };
+      try {
+        const sr = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.seuils_dependance&select=value`, { headers });
+        const sd = await sr.json().catch(() => []);
+        if (Array.isArray(sd) && sd[0]?.value) seuils = { ...seuils, ...sd[0].value };
+      } catch (e) {
+        console.error("[conformite] seuils_dependance illisible, valeurs par défaut :", e.message);
+      }
+      if (seuilsDemandes) seuils = { ...seuils, ...seuilsDemandes };
+
+      // Seules les prestations réellement exécutées comptent : une réservation
+      // annulée ne crée ni dépendance ni intégration.
+      const depuis = new Date(Date.now() - (Number(seuils.fenetre_jours) || 180) * 86400000)
+        .toISOString().slice(0, 10);
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions`
+        + `?status=in.(completed,closed)`
+        + `&date=gte.${depuis}`
+        + `&select=client_id,prestataire_id,date,hours,actual_hours,tarif_horaire`
+        + `&limit=20000`,
+        { headers }
+      );
+      const brutes = mr.ok ? await mr.json().catch(() => []) : [];
+      if (!Array.isArray(brutes)) return res.status(200).json({ signaux: [], seuils });
+
+      // Le montant retenu est la rémunération du prestataire, pas ce que le
+      // client a payé : c'est son chiffre d'affaires qui mesure sa dépendance.
+      const prestations = brutes.map(m => ({
+        client_id: m.client_id,
+        prestataire_id: m.prestataire_id,
+        date: m.date,
+        montant: Number(m.actual_hours ?? m.hours ?? 0) * Number(m.tarif_horaire || 0),
+      }));
+
+      const signaux = couplesADependance(prestations, seuils);
+      if (!signaux.length) return res.status(200).json({ signaux: [], seuils, examines: prestations.length });
+
+      // Noms des personnes concernées, pour que l'écran soit lisible.
+      const ids = [...new Set(signaux.flatMap(s => [s.prestataire_id, s.client_id]))];
+      const noms = {};
+      try {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom,societe_nom`, { headers });
+        for (const p of (await pr.json().catch(() => []))) {
+          noms[p.id] = p.societe_nom || [p.prenom, p.nom].filter(Boolean).join(" ") || p.id;
+        }
+      } catch (e) {
+        console.error("[conformite] noms illisibles :", e.message);
+      }
+
+      return res.status(200).json({
+        seuils,
+        examines: prestations.length,
+        signaux: signaux.map(s => ({
+          ...s,
+          prestataire: noms[s.prestataire_id] || s.prestataire_id,
+          client: noms[s.client_id] || s.client_id,
+        })),
+      });
     }
 
     if (action === "signaux_mise_a_disposition") {
