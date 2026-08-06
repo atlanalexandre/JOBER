@@ -270,9 +270,12 @@ Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En rés
 
 - **S-06** — l'insertion de notifications reste ouverte aux comptes connectés. Il faut router
   trois appels du front vers `/api` avant de fermer la policy.
-- **Six tables mortes** conservées volontairement (`prestataires`, `metiers`, `disponibilites`,
-  `abonnements`, `bookings`, `mission_responses`) : à zéro ligne, jamais lues par le code.
-  **Ne pas s'appuyer dessus** pour de nouveaux développements.
+- **S-06** est clos. Les six tables mortes (`prestataires`, `metiers`, `disponibilites`,
+  `abonnements`, `bookings`, `mission_responses`) ont été **supprimées le 05/08/2026** après
+  vérification : zéro ligne, aucune référence dans le code, aucune clé étrangère venue de
+  l'extérieur. Elles portaient à elles seules **25 règles RLS que plus personne ne relisait**,
+  dont une, sur `prestataires`, ouverte au rôle `public`. Une table oubliée avec une policy
+  permissive n'encombre pas : elle expose.
 - **`messages`** n'a pas de vrai modèle de conversation : les participants sont extraits d'une
   chaîne de caractères, y compris dans les règles de sécurité. À refondre avant montée en charge.
 - **Trois fichiers de schéma SQL** divergents à la racine (`supabase-schema.sql`,

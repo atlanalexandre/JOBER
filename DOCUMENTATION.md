@@ -184,12 +184,19 @@ données en clair.
 
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
-### Tables inutilisées
+### Tables supprimées
 
-`prestataires`, `metiers`, `disponibilites`, `abonnements`, `bookings`, `mission_responses`
-sont **vides et jamais lues par le code**. Elles doublonnent des données qui vivent
-aujourd'hui dans `profiles`, `missions` et `candidatures`. Conservées par choix — **ne pas
-les utiliser pour de nouveaux développements**.
+`prestataires`, `metiers`, `disponibilites`, `abonnements`, `bookings` et `mission_responses`
+ont été **supprimées le 05/08/2026** (migration `2026-08-05_nettoyage_tables_mortes.sql`).
+Elles doublonnaient des données vivant dans `profiles`, `missions` et `candidatures`, et
+n'étaient lues par aucune ligne de code.
+
+Elles portaient **25 règles RLS** — 4, 6, 5, 2, 5 et 3 respectivement — que plus personne ne
+relisait, dont une sur `prestataires` ouverte au rôle `public` : un visiteur non connecté
+pouvait y créer une fiche. C'est la raison de fond du nettoyage, bien plus que l'encombrement.
+
+Si ces noms réapparaissent dans un ancien fichier `.sql` de la racine, c'est un vestige :
+**ne pas les recréer**.
 
 ### Où vivent les données
 

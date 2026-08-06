@@ -194,6 +194,85 @@ export default async function handler(req, res) {
     } catch (e) { console.error("[cron] zombie expiry error:", e); }
   }
 
+  // ── Clôture et remboursement des prestations dépassées (toutes routes) ──
+  //
+  // Ce bloc se trouvait après le retour du mode « rappels » : il ne s'exécutait donc
+  // qu'au passage mensuel, le 1er du mois. Or c'est lui qui rembourse une prestation
+  // payée que personne n'a honorée. Un client dont le prestataire s'était désisté le 2
+  // attendait son remboursement jusqu'au 1er du mois suivant — près de trente jours
+  // d'argent immobilisé, pour une prestation qui n'a jamais eu lieu.
+  //
+  // Il tourne désormais à chaque passage, comme l'expiration des zombies au-dessus,
+  // soit toutes les deux heures.
+  {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    try {
+      const pastRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&date=lt.${todayStr}&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total`,
+        { headers }
+      );
+      const pastMissions = await pastRes.json().catch(() => []);
+      if (Array.isArray(pastMissions) && pastMissions.length) {
+        let cloturees = 0, remboursees = 0, differees = 0;
+        await Promise.all(pastMissions.map(async m => {
+          // Une prestation en « needs_replacement » a DÉJÀ été payée : c'est
+          // précisément ce qui la distingue d'une prestation « open » réouverte
+          // (voir missions.js, presta_cancel). Elle était pourtant clôturée sans le
+          // moindre remboursement, avec une notification annonçant simplement
+          // qu'aucun prestataire n'avait été trouvé. Le client avait payé, personne
+          // n'était venu, et l'argent restait acquis à la plateforme — en
+          // contradiction directe avec le contrat, qui promet un remboursement
+          // intégral en l'absence de remplaçant.
+          const aPaye = !!m.stripe_payment_intent;
+          let rembourse = false;
+          if (aPaye) {
+            rembourse = await rembourserPrestation(m, SUPABASE_URL, headers);
+            if (!rembourse) {
+              differees++;
+              console.error(`[cron] remboursement impossible pour la prestation ${m.id} — `
+                + `clôture différée, elle sera reprise au prochain passage.`);
+              return; // ne pas clôturer : la prestation doit rester visible tant que l'argent n'est pas rendu
+            }
+            remboursees++;
+          }
+          cloturees++;
+          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: rembourse ? "cancelled" : "closed" }),
+          }).catch(() => {});
+          // Rejeter toutes candidatures en attente
+          await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ status: "rejected" }),
+          }).catch(() => {});
+          if (m.client_id) {
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST",
+              headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({
+                user_id: m.client_id,
+                type: "mission",
+                title: rembourse ? "Prestation annulée — vous êtes remboursé 💶" : "Prestation clôturée automatiquement",
+                body: rembourse
+                  ? `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date. `
+                    + `L'intégralité de votre paiement vous est remboursée, frais de service compris — comptez 5 à 10 jours ouvrés selon votre banque.`
+                  : `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
+                read: false,
+              }),
+            }).catch(() => {});
+          }
+        }));
+        // Le journal annonçait la clôture de toutes les prestations examinées, y
+        // compris celles qui avaient échoué. Il dit maintenant ce qui s'est
+        // réellement passé, remboursements et reports compris.
+        console.log(`[cron] prestations dépassées : ${cloturees} clôturée(s) dont `
+          + `${remboursees} remboursée(s), ${differees} différée(s) sur ${pastMissions.length} examinée(s)`);
+      }
+    } catch (e) { console.error("[cron] auto-close past missions error:", e); }
+  }
+
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
     const RESEND_API_KEY    = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
@@ -678,75 +757,6 @@ ${(() => {
     }
   } catch (e) { console.error("cron zombie expiry error:", e); }
 
-  // ── Auto-clôture des missions ouvertes dont la date est passée ──
-  {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    try {
-      const pastRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&date=lt.${todayStr}&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total`,
-        { headers }
-      );
-      const pastMissions = await pastRes.json().catch(() => []);
-      if (Array.isArray(pastMissions) && pastMissions.length) {
-        let cloturees = 0, remboursees = 0, differees = 0;
-        await Promise.all(pastMissions.map(async m => {
-          // Une prestation en « needs_replacement » a DÉJÀ été payée : c'est
-          // précisément ce qui la distingue d'une prestation « open » réouverte
-          // (voir missions.js, presta_cancel). Elle était pourtant clôturée sans le
-          // moindre remboursement, avec une notification annonçant simplement
-          // qu'aucun prestataire n'avait été trouvé. Le client avait payé, personne
-          // n'était venu, et l'argent restait acquis à la plateforme — en
-          // contradiction directe avec le contrat, qui promet un remboursement
-          // intégral en l'absence de remplaçant.
-          const aPaye = !!m.stripe_payment_intent;
-          let rembourse = false;
-          if (aPaye) {
-            rembourse = await rembourserPrestation(m, SUPABASE_URL, headers);
-            if (!rembourse) {
-              differees++;
-              console.error(`[cron] remboursement impossible pour la prestation ${m.id} — `
-                + `clôture différée, elle sera reprise au prochain passage.`);
-              return; // ne pas clôturer : la prestation doit rester visible tant que l'argent n'est pas rendu
-            }
-            remboursees++;
-          }
-          cloturees++;
-          await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: rembourse ? "cancelled" : "closed" }),
-          }).catch(() => {});
-          // Rejeter toutes candidatures en attente
-          await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${m.id}&status=eq.pending`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ status: "rejected" }),
-          }).catch(() => {});
-          if (m.client_id) {
-            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-              method: "POST",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({
-                user_id: m.client_id,
-                type: "mission",
-                title: rembourse ? "Prestation annulée — vous êtes remboursé 💶" : "Prestation clôturée automatiquement",
-                body: rembourse
-                  ? `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date. `
-                    + `L'intégralité de votre paiement vous est remboursée, frais de service compris — comptez 5 à 10 jours ouvrés selon votre banque.`
-                  : `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
-                read: false,
-              }),
-            }).catch(() => {});
-          }
-        }));
-        // Le journal annonçait la clôture de toutes les prestations examinées, y
-        // compris celles qui avaient échoué. Il dit maintenant ce qui s'est
-        // réellement passé, remboursements et reports compris.
-        console.log(`[cron] prestations dépassées : ${cloturees} clôturée(s) dont `
-          + `${remboursees} remboursée(s), ${differees} différée(s) sur ${pastMissions.length} examinée(s)`);
-      }
-    } catch (e) { console.error("[cron] auto-close past missions error:", e); }
-  }
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
