@@ -458,6 +458,18 @@ de défaillance du prestataire. Le retard est recalculé par `cancel_client` et 
 la requête. Le seuil est dupliqué dans `seuilAnnulationRetardMin()` côté front pour
 n'afficher le bouton qu'à bon escient : les deux doivent rester alignés.
 
+**Article 10C des CGPS — horaires, décalage et durée facturée.** Le mécanisme de décalage
+modifie le montant dû : il devait donc figurer dans les conditions, et y être qualifié. Le
+10C.3 énonce que l'ajustement détermine le prix du service réellement exécuté et **n'est ni
+une pénalité, ni une sanction**, sans conséquence sur l'accès à la plateforme, le classement
+ou le quota — ce qui doit rester vrai dans le code. Le 10C.4 ouvre un réexamen contradictoire
+sous quinze jours, le 10C.5 décrit l'annulation sans frais pour retard substantiel.
+
+**La grille de cashback des CGPS doit suivre `CASHBACK_TIERS`.** Elle annonçait une grille qui
+n'a jamais existé — 0,5 % sous 10 prestations, 1 % de 10 à 29, 1,5 % au-delà de 30 — alors que
+la grille réelle est 0,5 / 0,75 / 1 / 1,5 % aux paliers 0-2, 3-5, 6-9 et 10+. Trois endroits à
+garder alignés : `plans.js`, `platform_settings.cashback_rates` et l'article 5B.1.
+
 **`missions.tiers_declaration`** (migration `2026-08-05_declaration_intervention_tiers.sql`)
 conserve la déclaration de l'article 10B : bénéficiaire final, service vendu, périmètre et
 critères, livrable attendu, et identité de la personne qui organise le travail sur place.
