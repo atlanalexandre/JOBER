@@ -317,6 +317,129 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
   return limite;
 }
 
+// Candidats à l'affectation automatique d'une prestation exécutée chez un tiers.
+//
+// L'article 5.2 des CGPS interdit au client d'exiger une personne déterminée dès
+// qu'un tiers est en jeu : c'est le critère même que la loi retient pour distinguer
+// une prestation de services d'une fourniture de main-d'œuvre. La sélection revient
+// donc à la plateforme, et elle ne s'opère que sur des critères objectifs — métier,
+// secteur, rayon d'intervention, disponibilité, tarif, quota.
+//
+// L'ordre retenu est lui aussi objectif : le plus proche d'abord, puis celui qui a
+// réalisé le moins de prestations ce mois-ci. Ni note, ni abonnement, ni ancienneté :
+// un classement fondé sur le comportement donnerait prise au reproche d'un pouvoir de
+// direction déguisé.
+async function candidatsPourMission(mission, supabaseUrl, headers, exclure = []) {
+  const JOURS_SEMAINE = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const jourDemande = mission.date ? JOURS_SEMAINE[new Date(`${mission.date}T12:00:00`).getDay()] : null;
+  const tarifMax = Number(mission.tarif_horaire) || 0;
+
+  const pr = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,missions_completed_month,trial_exhausted,plan_abonnement`,
+    { headers }
+  );
+  const profils = await pr.json().catch(() => []);
+  if (!Array.isArray(profils) || !profils.length) return [];
+
+  const exclus = new Set(exclure.filter(Boolean));
+  const eligibles = profils.filter(p => !exclus.has(p.id) && !p.trial_exhausted);
+  if (!eligibles.length) return [];
+
+  // user_metadata porte métier, secteur, tarif, disponibilités et rayon.
+  let metas = {};
+  try {
+    const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=10000`, { headers });
+    const ud = await ur.json();
+    for (const u of (ud.users || [])) metas[u.id] = u.user_metadata || {};
+  } catch (e) {
+    console.error("[affectation] métadonnées prestataires illisibles :", e.message);
+    return [];
+  }
+
+  const lieuMission = [mission.adresse, mission.ville].filter(Boolean).join(" ") || mission.ville;
+  const coordMission = lieuMission ? await geocodeFR(lieuMission) : null;
+
+  const retenus = [];
+  for (const p of eligibles) {
+    const m = metas[p.id] || {};
+
+    // Métier : principal ou secondaire.
+    const metiers = [m.metier, ...(Array.isArray(m.metiers_list) ? m.metiers_list.map(x => x?.metier || x) : [])]
+      .filter(Boolean).map(x => String(x).toLowerCase());
+    if (mission.metier && metiers.length && !metiers.includes(String(mission.metier).toLowerCase())) continue;
+    if (mission.sector && (m.secteur || m.sector) && String(m.secteur || m.sector) !== String(mission.sector)) continue;
+
+    // Tarif : le prestataire ne peut être affecté en dessous de ce qu'il demande.
+    const tarifSien = Number(m.tarif_net) || 0;
+    if (tarifMax > 0 && tarifSien > tarifMax + 0.01) continue;
+
+    // Disponibilité déclarée ce jour-là.
+    if (jourDemande && Array.isArray(m.dispon_jours) && m.dispon_jours.length && !m.dispon_jours.includes(jourDemande)) continue;
+
+    // Rayon d'intervention.
+    let distance = 0;
+    if (coordMission && (m.ville || m.code_postal)) {
+      const cp = await geocodeFR(m.ville || m.code_postal);
+      if (cp) {
+        distance = haversineKm(cp.lat, cp.lon, coordMission.lat, coordMission.lon);
+        if (distance > (Number(m.zone_km) || 50)) continue;
+      }
+    }
+
+    retenus.push({ id: p.id, distance, charge: Number(p.missions_completed_month) || 0 });
+  }
+
+  retenus.sort((a, b) => (a.distance - b.distance) || (a.charge - b.charge));
+  return retenus.map(r => r.id);
+}
+
+// Passe au candidat suivant après un refus ou une absence de réponse, pour les
+// prestations affectées par la plateforme (CGPS art. 5.2).
+//
+// Sans cela, un refus renverrait la prestation en « refused » et déclencherait un
+// remboursement : le client serait renvoyé à la case départ pour un choix qu'il n'a
+// jamais fait. La cascade préserve sa commande et, à défaut de candidat, bascule en
+// diffusion — c'est alors le prestataire qui se propose, ce qui rend son autonomie
+// visible et horodatée.
+//
+// Renvoie ce qui a été fait, pour que l'appelant journalise et notifie en conséquence.
+async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
+  const dejaVus = [];
+  if (mission.prestataire_id) dejaVus.push(mission.prestataire_id);
+  try {
+    const rf = await fetch(
+      `${supabaseUrl}/rest/v1/candidatures?mission_id=eq.${mission.id}&select=prestataire_id`,
+      { headers }
+    );
+    const cs = await rf.json().catch(() => []);
+    if (Array.isArray(cs)) for (const c of cs) if (c.prestataire_id) dejaVus.push(c.prestataire_id);
+  } catch (e) {
+    console.error("[cascade] candidatures illisibles :", e.message);
+  }
+
+  const suivants = await candidatsPourMission(mission, supabaseUrl, headers, dejaVus);
+  if (!suivants.length) {
+    await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ status: "open", prestataire_id: null, acceptance_deadline: null }),
+    }).catch(e => console.error("[cascade] bascule en diffusion échouée :", e.message));
+    return { mode: "diffusion", prestataire_id: null };
+  }
+
+  // Même délai que l'affectation initiale : quatre heures, borné par le début prévu.
+  const echeance = new Date(Date.now() + 4 * 3600000).toISOString();
+  const pr = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}`, {
+    method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+    body: JSON.stringify({ status: "pending_acceptance", prestataire_id: suivants[0], acceptance_deadline: echeance }),
+  });
+  const rows = await pr.json().catch(() => []);
+  if (!pr.ok || !Array.isArray(rows) || rows.length === 0) {
+    console.error(`[cascade] affectation du suivant refusée pour ${mission.id} : ${pr.status}`);
+    return { mode: "echec", prestataire_id: null };
+  }
+  return { mode: "affectation", prestataire_id: suivants[0] };
+}
+
 // ── Email one-click action (GET) ────────────────────────────────────────────
 const APP_URL_DEFAULT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
@@ -1729,7 +1852,7 @@ export default async function handler(req, res) {
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,acceptance_deadline,stripe_payment_intent,montant_total`, { headers });
+      const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,status,acceptance_deadline,stripe_payment_intent,montant_total,tiers_declaration,metier,sector,date,heure_debut,tarif_horaire,ville,adresse`, { headers });
       const mData = await mRes.json().catch(() => []);
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1739,6 +1862,17 @@ export default async function handler(req, res) {
       }
       if (!mission.acceptance_deadline || new Date(mission.acceptance_deadline).getTime() > Date.now()) {
         return res.status(400).json({ error: "Le délai d'acceptation n'est pas écoulé" });
+      }
+
+      // Prestation affectée par la plateforme : l'absence de réponse fait passer au
+      // candidat suivant, comme un refus. Le client n'a désigné personne et sa
+      // commande tient toujours — la rembourser reviendrait à l'annuler pour une
+      // indisponibilité qui ne le concerne pas.
+      let cascadeTimeout = null;
+      if (mission.tiers_declaration) {
+        cascadeTimeout = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
+        console.log(`[acceptance_timeout] délai dépassé sur prestation affectée ${mission_id} → ${cascadeTimeout.mode}`);
+        return res.status(200).json({ success: true, cascade: cascadeTimeout.mode });
       }
 
       // Filtre sur le statut : évite d'écraser une acceptation concurrente
@@ -3068,6 +3202,62 @@ export default async function handler(req, res) {
     // `tiers_declaration` n'existe pas encore, la réservation doit aboutir malgré
     // tout. Bloquer un tunnel de paiement sur une colonne manquante serait un
     // remède pire que le mal.
+    // Affectation par la plateforme d'une prestation exécutée chez un tiers.
+    // Remplace `assign_after_payment` dans ce cas : le client ne désigne personne, il
+    // décrit un besoin (CGPS art. 5.2). Appelée après paiement, comme l'autre chemin.
+    if (action === "affecter_tiers") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, acceptance_deadline, stripe_payment_intent } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const amRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,metier,sector,date,heure_debut,ville,adresse,tarif_horaire,titre`,
+        { headers }
+      );
+      const am = (await amRes.json().catch(() => []))[0];
+      if (!am) return res.status(404).json({ error: "Prestation introuvable" });
+      if (am.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
+      if (!["open", "pending_acceptance"].includes(am.status)) {
+        return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
+      }
+
+      const secteurFerme = await secteursDesactives(SUPABASE_URL, headers);
+      if (am.sector && secteurFerme.includes(am.sector)) {
+        return res.status(400).json({ error: "Ce secteur n'est pas encore ouvert aux réservations." });
+      }
+
+      const candidats = await candidatsPourMission({ ...am, id: mission_id }, SUPABASE_URL, headers);
+      const patch = { status: "pending_acceptance" };
+      if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
+
+      if (!candidats.length) {
+        // Personne ne correspond : la prestation part en diffusion plutôt que de
+        // rester bloquée. Un prestataire pourra l'accepter de lui-même — ce qui rend
+        // son autonomie visible, et n'enferme pas le client dans une impasse.
+        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ ...patch, status: "open", prestataire_id: null }),
+        });
+        console.log(`[affecter_tiers] aucun candidat pour ${mission_id} — diffusion`);
+        return res.status(200).json({ success: true, mode: "diffusion", mission_id });
+      }
+
+      patch.prestataire_id = candidats[0];
+      if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify(patch),
+      });
+      const rows = await patchRes.json().catch(() => []);
+      if (!patchRes.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[affecter_tiers] affectation refusée pour ${mission_id} : ${patchRes.status}`);
+        return res.status(500).json({ error: "Affectation impossible" });
+      }
+      console.log(`[affecter_tiers] ${mission_id} → ${candidats[0]} (${candidats.length} candidat(s))`);
+      return res.status(200).json({ success: true, mode: "affectation", mission_id });
+    }
+
     if (action === "declarer_tiers") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
@@ -3273,7 +3463,7 @@ export default async function handler(req, res) {
         if (quotaResult) return res.status(403).json(quotaResult);
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,client_id,sector,metier,titre,acceptance_deadline,date,heure_debut,hours,stripe_payment_intent,montant_total,tarif_horaire,ville,adresse,tiers_declaration,prestataire_id`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou délai dépassé" });
@@ -3327,9 +3517,16 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "La prestation n'est plus en attente — délai dépassé ou déjà assignée." });
       }
 
-      // Remboursement du client en cas de refus
+      // Prestation affectée par la plateforme (CGPS art. 5.2) : un refus n'annule
+      // rien, il fait passer au candidat suivant. Le client n'a désigné personne, il
+      // n'a donc pas à être renvoyé à la case départ ni remboursé d'une commande qui
+      // tient toujours. À défaut de candidat, la prestation part en diffusion.
       let rembRefus = { ok: true, mode: "sans_objet" };
-      if (response !== "accept") {
+      let cascade = null;
+      if (response !== "accept" && mission.tiers_declaration) {
+        cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
+        console.log(`[respond_mission] refus sur prestation affectée ${mission_id} → ${cascade.mode}`);
+      } else if (response !== "accept") {
         rembRefus = await rembourserPrestation(mission, SUPABASE_URL, headers, "refus-presta");
         if (!rembRefus.ok) console.error(`[respond_mission] remboursement à reprendre manuellement — prestation ${mission_id}`);
       }
@@ -3345,10 +3542,18 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             user_id: mission.client_id,
             type: "mission",
-            title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée",
+            // Sur une prestation affectée par la plateforme, le client n'a désigné
+            // personne : lui annoncer un « refus » et l'inviter à choisir quelqu'un
+            // d'autre n'aurait aucun sens. On lui dit ce qui se passe réellement.
+            title: isAccepted ? "Prestation acceptée ! 🎉"
+              : cascade ? "Recherche d'un autre prestataire 🔄" : "Prestation refusée",
             body: isAccepted
               ? `${resolvedPrestaName} a accepté votre demande de mission.`
-              : `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
+              : cascade
+                ? (cascade.mode === "affectation"
+                    ? "Le prestataire pressenti n'est pas disponible. Un autre professionnel correspondant à votre mission vient d'être sollicité — votre réservation et votre paiement sont conservés."
+                    : "Le prestataire pressenti n'est pas disponible. Votre mission a été proposée à l'ensemble des professionnels du secteur — votre réservation et votre paiement sont conservés.")
+                : `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
             read: false,
             ref_id: mission_id,
           }),

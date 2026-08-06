@@ -152,6 +152,74 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Affectation par la plateforme (CGPS art. 5.2) ─────────────────
+// Le choix nominatif d'un prestataire est le critère même qui distingue une
+// prestation de services d'une fourniture de main-d'œuvre. Il reste libre quand le
+// client commande pour lui-même ; il disparaît dès qu'un tiers est en jeu, et la
+// sélection s'opère alors sur des critères objectifs — jamais sur la note ou
+// l'abonnement, qui donneraient prise au reproche d'un pouvoir de direction.
+describe("affectation chez un tiers — sélection objective", () => {
+  const JOURS = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const eligible = (p, m) => {
+    if (p.trial_exhausted) return false;
+    const metiers = [p.metier, ...(p.metiers_list || [])].filter(Boolean).map(x => x.toLowerCase());
+    if (m.metier && metiers.length && !metiers.includes(m.metier.toLowerCase())) return false;
+    if (m.sector && p.secteur && p.secteur !== m.sector) return false;
+    if (m.tarif_horaire > 0 && p.tarif_net > m.tarif_horaire + 0.01) return false;
+    const jour = JOURS[new Date(`${m.date}T12:00:00`).getDay()];
+    if (p.dispon_jours?.length && !p.dispon_jours.includes(jour)) return false;
+    if (p.distance != null && p.distance > (p.zone_km || 50)) return false;
+    return true;
+  };
+  // 2026-08-06 est un jeudi.
+  const M = { metier:"Femme/Valet de chambre", sector:"hotellerie", tarif_horaire:15, date:"2026-08-06" };
+  const base = { metier:"Femme/Valet de chambre", secteur:"hotellerie", tarif_net:14,
+                 dispon_jours:["Jeudi","Vendredi"], distance:8, zone_km:20 };
+
+  it("un prestataire conforme est retenu", () => {
+    expect(eligible(base, M)).toBe(true);
+  });
+  it("un tarif supérieur à la commande exclut : on ne l'affecte pas sous son prix", () => {
+    expect(eligible({ ...base, tarif_net:18 }, M)).toBe(false);
+  });
+  it("hors du rayon d'intervention déclaré : exclu", () => {
+    expect(eligible({ ...base, distance:45 }, M)).toBe(false);
+  });
+  it("indisponible ce jour-là : exclu", () => {
+    expect(eligible({ ...base, dispon_jours:["Lundi","Mardi"] }, M)).toBe(false);
+  });
+  it("autre métier : exclu", () => {
+    expect(eligible({ ...base, metier:"Plongeur", metiers_list:[] }, M)).toBe(false);
+  });
+  it("un métier secondaire suffit", () => {
+    expect(eligible({ ...base, metier:"Plongeur", metiers_list:["Femme/Valet de chambre"] }, M)).toBe(true);
+  });
+  it("quota épuisé : exclu", () => {
+    expect(eligible({ ...base, trial_exhausted:true }, M)).toBe(false);
+  });
+
+  // L'ordre : le plus proche, puis le moins chargé. Ni note, ni abonnement.
+  const ordonner = (l) => [...l].sort((a,b) => (a.distance-b.distance) || (a.charge-b.charge)).map(x => x.id);
+  it("le plus proche passe devant", () => {
+    expect(ordonner([{id:"a",distance:12,charge:0},{id:"b",distance:3,charge:9}])).toEqual(["b","a"]);
+  });
+  it("à distance égale, le moins chargé passe devant", () => {
+    expect(ordonner([{id:"a",distance:5,charge:7},{id:"b",distance:5,charge:1}])).toEqual(["b","a"]);
+  });
+
+  // Cascade : refus ou silence → suivant ; plus personne → diffusion.
+  const cascade = (candidats, dejaVus) => {
+    const restants = candidats.filter(c => !dejaVus.includes(c));
+    return restants.length ? { mode:"affectation", id:restants[0] } : { mode:"diffusion", id:null };
+  };
+  it("un refus fait passer au candidat suivant", () => {
+    expect(cascade(["a","b","c"], ["a"])).toEqual({ mode:"affectation", id:"b" });
+  });
+  it("plus aucun candidat : la mission part en diffusion, pas en remboursement", () => {
+    expect(cascade(["a","b"], ["a","b"])).toEqual({ mode:"diffusion", id:null });
+  });
+});
+
 // ── Déclaration d'intervention chez un tiers (CGPS art. 10B) ──────
 // Il n'existe aucun seuil de durée ni de récurrence : ce qui distingue une
 // prestation de services d'une fourniture de main-d'œuvre, c'est l'objet de ce qui

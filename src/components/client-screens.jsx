@@ -3292,6 +3292,19 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       C&apos;est autorisé (CGPS art. 10B) à condition que vous vendiez à ce tiers un <strong style={{ color:C.text }}>service défini par son résultat</strong>,
                       et non la présence d&apos;une personne. Ces éléments sont conservés avec la réservation.
                     </div>
+                    {/* La sélection nominative est le critère même qui distingue une
+                        prestation de services d'une fourniture de main-d'œuvre : le
+                        client décrit un besoin, la plateforme affecte (CGPS art. 5.2). */}
+                    <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:9, padding:"10px 12px", marginBottom:12 }}>
+                      <div style={{ color:C.violet, fontWeight:700, fontSize:12, marginBottom:3 }}>👥 Le prestataire sera affecté par ALANE</div>
+                      <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
+                        Pour une intervention chez un tiers, vous ne pouvez pas désigner une personne
+                        déterminée (CGPS art. 5.2). Nous affectons un professionnel répondant aux critères
+                        de votre mission — métier, secteur, rayon d&apos;intervention, disponibilité — et vous
+                        pourrez refuser cette affectation avant confirmation. Le tarif ci-dessus reste celui
+                        de votre commande.
+                      </div>
+                    </div>
                     {champ("beneficiaire", "Bénéficiaire final", "Nom et lieu — ex. Hôtel Riviera, Nice")}
                     {champ("service_vendu", "Service que vous lui avez vendu", "Ex. contrôle qualité de l'étage 3", 2)}
                     {champ("perimetre", "Périmètre et critères", "Ex. 24 chambres, grille de contrôle interne", 2)}
