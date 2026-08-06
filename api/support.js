@@ -191,40 +191,33 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     };
 
     try {
-      // Set referred_by on new user
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}`, {
-        method: "PATCH", headers: hdrs,
+      // Rattachement du filleul à son parrain. La récompense n'est PLUS évaluée
+      // ici : la plateforme promet « 3 filleuls ABONNÉS », et un filleul qui vient
+      // de s'inscrire n'a rien souscrit. L'évaluation se fait donc au moment où il
+      // souscrit réellement, dans le webhook Stripe.
+      const patchFilleul = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUserId}&referred_by=is.null`, {
+        method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
         body: JSON.stringify({ referred_by: referrerUUID }),
       });
+      const lignes = await patchFilleul.json().catch(() => []);
+      if (!patchFilleul.ok || !Array.isArray(lignes) || lignes.length === 0) {
+        // Filtre sur referred_by IS NULL : un parrainage ne se réattribue pas.
+        console.error(`[track_referral] rattachement refusé — filleul ${newUserId} déjà parrainé ou écriture impossible (${patchFilleul.status})`);
+        return res.status(409).json({ error: "Ce compte est déjà rattaché à un parrain." });
+      }
 
-      // Increment referral_count on referrer and get updated count
-      const countRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerUUID}&select=referral_count`, { headers: hdrs });
-      const countData = await countRes.json();
-      const currentCount = countData?.[0]?.referral_count || 0;
-      const newCount = currentCount + 1;
-
+      // Le compteur est recalculé depuis la source plutôt qu'incrémenté : deux
+      // inscriptions simultanées se perdaient mutuellement.
+      const cntRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?referred_by=eq.${referrerUUID}&select=id`,
+        { method: "HEAD", headers: { ...hdrs, "Prefer": "count=exact" } }
+      );
+      const plage = cntRes.headers.get("content-range") || "";
+      const newCount = parseInt(plage.split("/")[1], 10) || 0;
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerUUID}`, {
         method: "PATCH", headers: hdrs,
         body: JSON.stringify({ referral_count: newCount }),
-      });
-
-      // If referrer reaches 3 filleuls, grant 1 month Premium
-      if (newCount >= 3 && newCount % 3 === 0) {
-        const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
-        // GET first to merge — PUT replaces entirely, so we must preserve existing metadata
-        const hdrsAdmin = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "Content-Type": "application/json" };
-        const getR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${referrerUUID}`, { headers: hdrsAdmin }).catch(() => null);
-        const existingMeta = (getR?.ok ? ((await getR.json().catch(() => ({}))).user_metadata || {}) : {});
-        await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${referrerUUID}`, {
-          method: "PUT",
-          headers: hdrsAdmin,
-          body: JSON.stringify({ user_metadata: { ...existingMeta, plan_abonnement: "premium", subscription_end_date: endDate } }),
-        }).catch(() => {});
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: hdrs,
-          body: JSON.stringify({ user_id: referrerUUID, type: "system", title: "🎁 1 mois Premium offert !", body: "Bravo ! Vous avez parrainé 3 filleuls abonnés. Votre mois Premium est activé automatiquement.", read: false }),
-        }).catch(() => {});
-      }
+      }).catch(e => console.error("[track_referral] compteur non mis à jour :", e.message));
 
       return res.status(200).json({ ok: true, newCount });
     } catch (e) {

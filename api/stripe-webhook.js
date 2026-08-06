@@ -321,6 +321,80 @@ export default async function handler(req, res) {
         body: JSON.stringify(profilePatch),
       }).catch(e => console.error("[checkout] profile patch failed:", e.message));
 
+      // ── Récompense de parrainage ──────────────────────────────────
+      //
+      // C'est ici, et pas à l'inscription, qu'elle se joue : la plateforme promet
+      // « 3 filleuls ABONNÉS = 1 mois offert », et c'est à cet instant qu'un filleul
+      // devient abonné. Le code l'accordait autrefois dès trois simples créations de
+      // compte — trois inscriptions suffisaient donc à obtenir un abonnement payant.
+      await (async () => {
+        try {
+          const fRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=referred_by`, { headers: hdrs });
+          const parrainId = ((await fRes.json().catch(() => []))[0] || {}).referred_by;
+          if (!parrainId) return;
+
+          const pRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}&select=plan_abonnement,subscription_end_date,referral_rewards_granted`,
+            { headers: hdrs }
+          );
+          const parrain = (await pRes.json().catch(() => []))[0];
+          if (!parrain) return;
+          if (parrain.referral_rewards_granted === undefined) {
+            console.error("[parrainage] colonne referral_rewards_granted absente — récompense non accordée. "
+              + "Appliquer la migration 2026-08-05_parrainage_recompenses.sql.");
+            return;
+          }
+
+          // Filleuls réellement abonnés, recomptés depuis la source.
+          const cRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?referred_by=eq.${parrainId}&plan_abonnement=neq.free&select=id`,
+            { method: "HEAD", headers: { ...hdrs, "Prefer": "count=exact" } }
+          );
+          const abonnes = parseInt((cRes.headers.get("content-range") || "").split("/")[1], 10) || 0;
+          const duesTotal = Math.floor(abonnes / 3);
+          const dejaAccordees = Number(parrain.referral_rewards_granted) || 0;
+          if (duesTotal <= dejaAccordees) return;
+
+          // Jamais de déclassement : un parrain déjà Elite conservait autrefois son
+          // plan écrasé en « premium », avec une date de fin à trente jours — sa
+          // souscription réelle s'en trouvait tronquée. On prolonge, on ne remplace.
+          const finActuelle = parrain.subscription_end_date ? new Date(parrain.subscription_end_date).getTime() : 0;
+          const base = Math.max(finActuelle, Date.now());
+          const nouvelleFin = new Date(base + 30 * 86400000).toISOString();
+          const planParrain = (parrain.plan_abonnement && parrain.plan_abonnement !== "free")
+            ? parrain.plan_abonnement
+            : "premium";
+
+          const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${parrainId}`, {
+            method: "PATCH",
+            headers: { ...hdrs, "Prefer": "return=representation" },
+            body: JSON.stringify({
+              plan_abonnement: planParrain,
+              subscription_end_date: nouvelleFin.split("T")[0],
+              referral_rewards_granted: duesTotal,
+            }),
+          });
+          const majRows = await maj.json().catch(() => []);
+          if (!maj.ok || !Array.isArray(majRows) || majRows.length === 0) {
+            console.error(`[parrainage] récompense NON accordée à ${parrainId} : ${maj.status}`);
+            return;
+          }
+
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
+            body: JSON.stringify({
+              user_id: parrainId, type: "system",
+              title: "🎁 1 mois offert — parrainage",
+              body: `Trois de vos filleuls sont désormais abonnés. Votre abonnement ${planParrain === "elite" ? "Elite" : "Premium"} est prolongé d'un mois, jusqu'au ${new Date(nouvelleFin).toLocaleDateString("fr-FR")}.`,
+              read: false,
+            }),
+          }).catch(() => {});
+          console.log(`[parrainage] mois offert à ${parrainId} — ${abonnes} filleuls abonnés, ${duesTotal} récompense(s) au total`);
+        } catch (e) {
+          console.error("[parrainage] évaluation impossible :", e.message);
+        }
+      })();
+
       // Email de confirmation d'abonnement
       const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
