@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "cgps": "node scripts/generer-cgps-html.mjs",
+    "cgps:verifier": "node scripts/generer-cgps-html.mjs --verifier",
     "preview": "vite preview"
   },
   "dependencies": {
