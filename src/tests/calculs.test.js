@@ -152,6 +152,78 @@ describe("Btn — fusion des styles", () => {
   });
 });
 
+// ── Déclaration du lieu et détection recalibrée ───────────────────
+// Une adresse différente de celle du compte ne signifie pas qu'on intervient chez un
+// tiers : une entreprise multi-sites commande légitimement ailleurs. On ne le devine
+// donc pas — on pose la question, et la détection ne retient que ce qui n'a JAMAIS
+// été déclaré.
+describe("lieu déclaré et détection", () => {
+  const reponseRequise = ({ pro, reponse }) => !pro || reponse !== null;
+
+  it("un professionnel doit répondre à la question du lieu", () => {
+    expect(reponseRequise({ pro:true, reponse:null })).toBe(false);
+    expect(reponseRequise({ pro:true, reponse:false })).toBe(true);
+  });
+  it("un particulier n'a pas à y répondre", () => {
+    expect(reponseRequise({ pro:false, reponse:null })).toBe(true);
+  });
+
+  const norm = v => String(v || "").trim().toLowerCase();
+  const aSignaler = (villeCompte, prestations) => {
+    const vc = norm(villeCompte);
+    if (!vc) return false;
+    const nonDeclarees = prestations.filter(m => m.ville && norm(m.ville) !== vc && !m.declaration);
+    const parLieu = {};
+    for (const m of nonDeclarees) parLieu[norm(m.adresse)] = (parLieu[norm(m.adresse)] || 0) + 1;
+    return Math.max(0, ...Object.values(parLieu)) >= 3;
+  };
+  const site = (n, decl) => Array.from({ length:n }, () => ({ ville:"Nice", adresse:"12 rue X", declaration:decl }));
+
+  it("trois interventions non déclarées au même endroit : signalé", () => {
+    expect(aSignaler("Paris", site(3, null))).toBe(true);
+  });
+  it("les mêmes, déclarées « dans mon entreprise » : plus de signal", () => {
+    expect(aSignaler("Paris", site(3, { lieu:"etablissement_propre" }))).toBe(false);
+  });
+  it("les mêmes, déclarées « chez un tiers » : plus de signal non plus", () => {
+    expect(aSignaler("Paris", site(3, { beneficiaire:"Hôtel X" }))).toBe(false);
+  });
+  it("une entreprise multi-sites qui répond n'est jamais inquiétée", () => {
+    const sites = [
+      { ville:"Nice", adresse:"a", declaration:{ lieu:"etablissement_propre" } },
+      { ville:"Lyon", adresse:"b", declaration:{ lieu:"etablissement_propre" } },
+      { ville:"Nice", adresse:"a", declaration:{ lieu:"etablissement_propre" } },
+      { ville:"Nice", adresse:"a", declaration:{ lieu:"etablissement_propre" } },
+    ];
+    expect(aSignaler("Paris", sites)).toBe(false);
+  });
+});
+
+// ── Traitement des signaux de conformité ──────────────────────────
+// Une détection qu'on ne traite pas prouve qu'on savait. Classer sans suite exige un
+// motif écrit : c'est la décision la plus exposée, celle qu'il faudra justifier.
+describe("traitement d'un signal", () => {
+  const DECISIONS = ["explications_demandees","justificatifs_recus","conforme","suspendu","sans_suite"];
+  const recevable = ({ decision, note }) => {
+    if (!DECISIONS.includes(decision)) return false;
+    if (decision === "sans_suite" && !String(note || "").trim()) return false;
+    return true;
+  };
+
+  it("une décision connue est recevable", () => {
+    expect(recevable({ decision:"conforme" })).toBe(true);
+  });
+  it("une décision inventée est rejetée", () => {
+    expect(recevable({ decision:"on_verra_plus_tard" })).toBe(false);
+  });
+  it("classer sans suite sans motif : refusé", () => {
+    expect(recevable({ decision:"sans_suite", note:"" })).toBe(false);
+  });
+  it("classer sans suite avec motif : accepté", () => {
+    expect(recevable({ decision:"sans_suite", note:"Multi-sites, contrat vérifié" })).toBe(true);
+  });
+});
+
 // ── Contrat-cadre Client Professionnel ────────────────────────────
 // Les CGPS sont acceptées par tous et ne peuvent pas porter les engagements propres
 // au client professionnel qui fait intervenir chez son propre client. Le contrat-cadre

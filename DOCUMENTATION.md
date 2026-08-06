@@ -538,6 +538,19 @@ prestation et sans bloquer : elle a une valeur probatoire, pas opérationnelle, 
 réservation payante parce que la colonne manque serait un remède pire que le mal. Un échec est
 journalisé en erreur, avec le contenu déclaré.
 
+**La question du lieu est posée, pas devinée.** Une adresse différente de celle du compte ne
+signifie **pas** qu'on intervient chez un tiers : une entreprise multi-sites commande
+légitimement ailleurs. Le client professionnel répond donc explicitement — « dans mon
+entreprise » ou « chez un tiers » — et sa réponse est enregistrée dans `tiers_declaration`
+dans les deux cas. C'est ce qui permet à la détection de distinguer un multi-sites d'un compte
+silencieux, au lieu de les confondre.
+
+**Traçabilité des signaux** — actions `traiter_signal` et `historique_conformite` de
+`api/bo-action.js`, consignées dans `bo_logs` sous le préfixe `conformite_`. Une détection
+qu'on ne traite pas est **pire que pas de détection** : elle établit que la plateforme savait.
+Cinq décisions possibles, et « classer sans suite » exige un motif écrit — c'est la plus
+exposée, celle qu'il faudra justifier.
+
 **Détection des schémas de mise à disposition** — action `signaux_mise_a_disposition` de
 `api/bo-action.js`, affichée dans l'onglet Modération. Elle croise le lieu d'intervention des
 prestations avec la ville déclarée par le client et ne retient que la **récurrence au même

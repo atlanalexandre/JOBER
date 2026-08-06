@@ -3334,6 +3334,23 @@ export default async function handler(req, res) {
         organisateur:  champ(declaration.organisateur, 200),
         declare_le:    new Date().toISOString(),
       };
+      // Réponse « dans mon entreprise » : rien d'autre à déclarer. Elle est conservée
+      // pour que la détection distingue un client multi-sites, qui commande
+      // légitimement ailleurs, d'un client qui n'a jamais répondu.
+      if (declaration.lieu === "etablissement_propre") {
+        const patchLieu = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ tiers_declaration: { lieu: "etablissement_propre", declare_le: new Date().toISOString() } }),
+        });
+        const okLieu = await patchLieu.json().catch(() => null);
+        if (!patchLieu.ok || !Array.isArray(okLieu) || okLieu.length === 0) {
+          console.error(`[declarer_tiers] déclaration de lieu NON enregistrée pour ${mission_id} : ${patchLieu.status}`);
+          return res.status(200).json({ ok: false, enregistre: false });
+        }
+        return res.status(200).json({ ok: true, enregistre: true });
+      }
+
       const manquants = ["beneficiaire", "service_vendu", "perimetre", "livrable", "organisateur"]
         .filter(k => !propre[k]);
       if (manquants.length) {
