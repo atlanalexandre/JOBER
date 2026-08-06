@@ -31,6 +31,12 @@ jobs:
       - name: Tests
         run: npm test
 
+      # public/cgps.html est le contrat public d'ALANE. Il a divergé pendant une
+      # semaine de la version affichée dans l'application, sans article 10B ni
+      # 10C. Deux versions d'un même contrat, dont une fausse, engagent ALANE.
+      - name: CGPS publiques à jour
+        run: npm run cgps:verifier
+
       - name: Audit dependencies
         run: npm audit --audit-level=high
         continue-on-error: true
