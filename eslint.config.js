@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // `public/leaflet.js` est une bibliothèque tierce minifiée, hébergée localement
+  // pour ne plus dépendre d'un CDN. On ne la modifie pas, donc on ne l'analyse pas.
+  globalIgnores(['dist', 'public/leaflet.js', 'public/leaflet.css']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

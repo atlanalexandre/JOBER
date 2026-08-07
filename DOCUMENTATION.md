@@ -178,10 +178,33 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `invoice_sequence` | `api/invoice.js` — compteur incrémenté **une fois par facture**, à sa première consultation, jamais aux suivantes |
 | `commission_rate` | **personne** — vestige : la plateforme se rémunère sur les frais de service, `prixClient()` applique 0 % de commission. Ne pas s'y fier. |
 
-`sector_min_prestataires` a été retirée : elle fermait automatiquement tout secteur comptant
-moins de 30 prestataires, ce qui aurait verrouillé la plateforme entière. L'ouverture d'un
-secteur relève désormais de la seule décision explicite de l'administrateur
-(`disabled_sectors`). La clé peut rester en base, plus rien ne la lit.
+**Ouverture des secteurs** — la règle vit dans `api/_secteurs.js`, seul endroit, et repose
+sur trois réglages :
+
+| Clé | Effet |
+|---|---|
+| `sector_min_prestataires` | Seuil d'ouverture automatique. **20** par défaut. `0` ouvre tout |
+| `disabled_sectors` | Fermés d'autorité, quoi qu'il arrive |
+| `forced_open_sectors` | Ouverts malgré un effectif insuffisant |
+
+Ordre de priorité : fermeture d'autorité → ouverture forcée → effectif ≥ seuil → fermé.
+La fermeture d'autorité l'emporte sur l'ouverture forcée : entre deux réglages
+contradictoires, on retient le plus prudent.
+
+Le seuil a existé à 30, puis a été **retiré le 30/07/2026** — non parce qu'il était mauvais,
+mais parce qu'il n'avait jamais fonctionné : `get_sector_status` répondait 401 à ses deux
+appelants. Le jour où ce défaut a été corrigé, appliquer le seuil aurait fermé tous les
+secteurs d'un coup. Il est **rétabli le 07/08/2026** à la demande d'Alexandre, avec
+`forced_open_sectors` en plus : sans cette échappatoire, aucune plateforme ne peut démarrer —
+il faudrait vingt prestataires pour accepter la première commande, et une première commande
+pour attirer des prestataires.
+
+Le décompte ne retient que les prestataires **approuvés ET avec `missions_enabled`** : un
+compte que l'administration n'a pas activé n'est pas réservable, le compter serait mentir.
+
+Trois chemins consomment cet état — l'accueil client, le refus de réservation après paiement
+(`assign_after_payment`), et l'affectation chez un tiers — via `etatSecteursAvecCache()`, avec
+un cache de 5 minutes. **Un changement de réglage met donc jusqu'à 5 minutes à se refléter.**
 
 **`account_blacklist`** — empreintes des comptes supprimés, pour empêcher qu'on recrée un
 compte afin de récupérer l'essai gratuit. **Ne contient que des empreintes**, jamais de

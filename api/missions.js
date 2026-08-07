@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs } from "./_temps.js";
+import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
 
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
@@ -258,15 +259,64 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
 // Secteurs fermés aux clients, réglés depuis le backoffice (`disabled_sectors`).
 // Renvoie toujours un tableau : en cas d'échec de lecture on ne ferme rien, mais
 // on journalise — fermer par défaut bloquerait toute la plateforme sur une panne.
-async function secteursDesactives(supabaseUrl, headers) {
+// État d'ouverture de tous les secteurs, avec cache de cinq minutes.
+//
+// Le décompte des prestataires impose d'énumérer les comptes : c'est coûteux, et
+// trois chemins en ont besoin — l'accueil client, le refus de réservation après
+// paiement, et l'affectation chez un tiers. Un seul calcul les sert tous.
+//
+// La règle elle-même vit dans _secteurs.js : seuil réglable, fermeture d'autorité
+// et ouverture forcée. Elle ne doit exister qu'à un seul endroit, sinon un
+// secteur sera ouvert ici et fermé là.
+async function etatSecteursAvecCache(supabaseUrl, headers) {
+  const cache = globalThis.__alaneSectorCache;
+  if (cache && Date.now() - cache.ts < 300_000) return cache.data;
+
+  const reglages = await lireReglagesSecteurs(supabaseUrl, headers);
+
+  const pr = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id`,
+    { headers }
+  );
+  const profileData = await pr.json().catch(() => []);
+  const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
+
+  // Pagination : au-delà de 1000 comptes, une seule page en oublierait.
+  let allUsers = [];
+  let page = 1;
+  while (true) {
+    const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+    const ud = await ur.json().catch(() => ({}));
+    const batch = ud.users || [];
+    allUsers = allUsers.concat(batch);
+    if (batch.length < 1000) break;
+    page++;
+  }
+
+  const counts = {};
+  for (const u of allUsers) {
+    if (!approvedIds.has(u.id)) continue;
+    const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
+    if (sector) counts[sector] = (counts[sector] || 0) + 1;
+  }
+
+  const data = etatDesSecteurs(counts, reglages);
+  globalThis.__alaneSectorCache = { ts: Date.now(), data };
+  return data;
+}
+
+// Le secteur est-il réservable ? Un secteur inconnu n'est pas bloqué : la liste
+// des secteurs connus est côté code, et refuser sur cette base casserait toute
+// réservation le jour où un secteur est ajouté sans mise à jour du module.
+async function secteurOuvert(secteur, supabaseUrl, headers) {
+  if (!secteur) return true;
   try {
-    const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.disabled_sectors&select=value`, { headers });
-    const d = await r.json();
-    const v = Array.isArray(d) && d[0]?.value;
-    return Array.isArray(v) ? v : [];
+    const etats = await etatSecteursAvecCache(supabaseUrl, headers);
+    const e = etats[secteur];
+    return e ? e.open : true;
   } catch (e) {
-    console.error("[secteurs] lecture de disabled_sectors impossible :", e.message);
-    return [];
+    console.error("[secteurs] état indisponible, réservation autorisée :", e.message);
+    return true;
   }
 }
 
@@ -1722,9 +1772,8 @@ export default async function handler(req, res) {
       const mSecRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=sector`, { headers });
       const secteurMission = ((await mSecRes.json().catch(() => []))[0] || {}).sector;
       if (secteurMission) {
-        const fermes = await secteursDesactives(SUPABASE_URL, headers);
-        if (fermes.includes(secteurMission)) {
-          return res.status(400).json({ error: "Ce secteur n'est pas encore ouvert aux réservations." });
+        if (!await secteurOuvert(secteurMission, SUPABASE_URL, headers)) {
+          return res.status(400).json({ error: messageSecteurFerme(secteurMission) });
         }
       }
 
@@ -2462,54 +2511,9 @@ export default async function handler(req, res) {
     // répondait toujours 401. Le verrou des secteurs et le compteur du backoffice
     // étaient donc inertes depuis leur création.
     if (action === "get_sector_status") {
-      const cache = globalThis.__alaneSectorCache;
-      if (cache && Date.now() - cache.ts < 300_000) {
-        return res.status(200).json(cache.data);
-      }
-
-      const fermes = await secteursDesactives(SUPABASE_URL, headers);
-
-      // IDs des prestataires approuvés
-      const pr = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&select=id`,
-        { headers }
-      );
-      const profileData = await pr.json();
-      const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
-
-      // Récupérer tous les users (metadata contient le secteur) — pagination pour > 1000 users
-      let allUsers = [];
-      let page = 1;
-      while (true) {
-        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
-        const ud = await ur.json();
-        const batch = ud.users || [];
-        allUsers = allUsers.concat(batch);
-        if (batch.length < 1000) break;
-        page++;
-      }
-
-      // Compter par secteur
-      const counts = {};
-      for (const u of allUsers) {
-        if (!approvedIds.has(u.id)) continue;
-        const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
-        if (sector) counts[sector] = (counts[sector] || 0) + 1;
-      }
-
-      // L'ouverture dépend de la seule décision explicite de l'administrateur.
-      // Elle dépendait auparavant d'un seuil de prestataires (`sector_min_prestataires`,
-      // 30 par défaut) : dès que cette action redevenait joignable, tous les secteurs
-      // se verrouillaient d'un coup et la plateforme n'était plus réservable. Le
-      // nombre de prestataires reste renvoyé, pour information dans le backoffice.
-      const KNOWN_SECTORS = ["proprete","logistique","hotellerie","restauration","commercial","distribution","divers"];
-      const result = {};
-      for (const s of KNOWN_SECTORS) {
-        const disabled = fermes.includes(s);
-        result[s] = { count: counts[s] || 0, open: !disabled, disabled };
-      }
-      globalThis.__alaneSectorCache = { ts: Date.now(), data: result };
-      return res.status(200).json(result);
+      // Le calcul, le cache et la règle vivent dans etatSecteursAvecCache /
+      // _secteurs.js : cette action n'en est qu'une des trois consommatrices.
+      return res.status(200).json(await etatSecteursAvecCache(SUPABASE_URL, headers));
     }
 
     if (action === "cancel_client") {
@@ -3198,9 +3202,8 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Cette prestation a déjà été traitée" });
       }
 
-      const secteurFerme = await secteursDesactives(SUPABASE_URL, headers);
-      if (am.sector && secteurFerme.includes(am.sector)) {
-        return res.status(400).json({ error: "Ce secteur n'est pas encore ouvert aux réservations." });
+      if (!await secteurOuvert(am.sector, SUPABASE_URL, headers)) {
+        return res.status(400).json({ error: messageSecteurFerme(am.sector) });
       }
 
       // Le contrat-cadre est un préalable, pas une formalité : il porte les garanties
