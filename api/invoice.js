@@ -271,6 +271,50 @@ export default async function handler(req, res) {
   // déclaré — donc ses cotisations URSSAF et son plafond de micro-entreprise — sur
   // un argent qu'il n'a jamais reçu. Ils figurent dans un récapitulatif séparé, pour
   // que le client retrouve le montant qu'il a effectivement réglé.
+  // ── Archive immuable ──────────────────────────────────────────────
+  //
+  // La facture était reconstruite depuis les données vivantes à chaque
+  // affichage. Un prestataire qui change de raison sociale voyait donc toutes
+  // ses factures passées changer ; une suppression de compte les vidait de
+  // l'identité des parties et de l'adresse d'intervention, alors que l'article
+  // L123-22 du Code de commerce impose de les conserver dix ans.
+  //
+  // À la première émission — celle qui attribue le numéro — l'état est figé.
+  // Les affichages suivants relisent cet instantané.
+  //
+  // Un archivage indisponible (migration non appliquée, base en panne) ne bloque
+  // pas l'édition : on retombe sur les données vivantes, en le signalant.
+  const dejaEmise = Boolean(mission.invoice_number);
+  let archive = null;
+  try {
+    const ar = await fetch(
+      `${supabaseUrl}/rest/v1/factures_archives?numero=eq.${encodeURIComponent(invoiceNum)}&select=contenu&limit=1`,
+      { headers: hdrsDB }
+    );
+    if (ar.ok) {
+      const ad = await ar.json().catch(() => []);
+      archive = (Array.isArray(ad) && ad[0]?.contenu) || null;
+    } else if (ar.status === 404) {
+      console.error("[invoice] table factures_archives absente — migration "
+        + "2026-08-07_factures_archivees.sql non appliquée. La facture reste "
+        + "reconstruite depuis les données vivantes.");
+    }
+  } catch (e) {
+    console.error("[invoice] archive illisible :", e.message);
+  }
+
+  if (archive) {
+    // La facture est relue telle qu'elle a été émise. Les données vivantes ont
+    // pu changer depuis — c'est précisément ce qu'on refuse de refléter.
+    clientName     = archive.client?.nom          ?? clientName;
+    clientEmail    = archive.client?.email        ?? clientEmail;
+    clientCompany  = archive.client?.societe      ?? clientCompany;
+    clientSiret    = archive.client?.siret        ?? clientSiret;
+    prestaName     = archive.prestataire?.nom     ?? prestaName;
+    prestaCompany  = archive.prestataire?.societe ?? prestaCompany;
+    prestaSiret    = archive.prestataire?.siret   ?? prestaSiret;
+  }
+
   const totalPayeClient = Number(mission.montant_total || 0);
   const fraisServiceCalc = Math.round((totalPayeClient - ttc) * 100) / 100;
   // Une valeur négative ou aberrante signifie que montant_total ne correspond pas à
@@ -286,6 +330,63 @@ export default async function handler(req, res) {
   const missionDate = mission.date || "";
   const heureDebut = mission.heure_debut || "";
   const metier = mission.metier || "Prestation de service";
+
+  // Première émission : on fige l'état. Écriture en insertion simple — le
+  // déclencheur de la table refuse toute modification ultérieure, et le numéro
+  // en est la clé primaire : une seconde tentative sur le même numéro échoue en
+  // conflit, ce qui est le comportement voulu.
+  //
+  // L'échec n'interrompt pas l'édition : le client attend sa facture, et un
+  // archivage manqué se rattrape. Il est journalisé en erreur pour être vu.
+  //
+  // La condition ne porte que sur l'absence d'archive, pas sur la première
+  // émission : les factures numérotées AVANT cette migration n'en ont aucune et
+  // continueraient sinon de se réécrire indéfiniment. Les figer maintenant fige
+  // un état peut-être déjà dérivé — c'est toujours mieux que de le laisser
+  // dériver encore.
+  if (!archive) {
+    if (dejaEmise) {
+      console.log(`[invoice] archivage tardif de ${invoiceNum} — facture émise avant la mise en place de l'archive.`);
+    }
+    try {
+      const ins = await fetch(`${supabaseUrl}/rest/v1/factures_archives`, {
+        method: "POST",
+        headers: { ...hdrsDB, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          numero: invoiceNum,
+          mission_id,
+          emise_le: today.toISOString(),
+          montant_ht: ht,
+          montant_tva: tvaAmount,
+          montant_ttc: ttc,
+          contenu: {
+            version: 1,
+            emise_le: today.toISOString(),
+            client: { nom: clientName, email: clientEmail, societe: clientCompany, siret: clientSiret },
+            prestataire: { nom: prestaName, societe: prestaCompany, siret: prestaSiret, statut_pro: prestaStatutPro },
+            prestation: {
+              metier, secteur: mission.sector || null,
+              date: missionDate, heure_debut: heureDebut,
+              heures: hours, nb_jours: nbJours, tarif_horaire: tarifHoraire,
+              adresse: mission.adresse || null, ville: mission.ville || null,
+            },
+            montants: {
+              ht, tva: tvaAmount, ttc,
+              taux_tva: tvaRate,
+              frais_service: fraisService,
+              total_paye_client: totalPayeClient,
+            },
+          },
+        }),
+      });
+      if (!ins.ok && ins.status !== 409) {
+        const txt = await ins.text().catch(() => "");
+        console.error(`[invoice] archivage de ${invoiceNum} échoué (${ins.status}) : ${txt.slice(0, 200)}`);
+      }
+    } catch (e) {
+      console.error(`[invoice] archivage de ${invoiceNum} impossible :`, e.message);
+    }
+  }
   const secteur = mission.sector || "";
   const ville = mission.ville || "";
   const adresse = mission.adresse || "";

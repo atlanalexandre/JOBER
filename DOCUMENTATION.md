@@ -404,6 +404,24 @@ facture affirmait l'existence d'une société qui n'était pas encore immatricul
 mentions (`VITE_ALANE_SIRET`, `VITE_ALANE_ADRESSE`, `VITE_ALANE_FORME`) ne s'affichent que si
 elles sont renseignées dans Vercel.
 
+**Archive immuable** — `factures_archives` (migration `2026-08-07`). La facture était
+**reconstruite depuis les données vivantes à chaque affichage** : un prestataire qui changeait
+de raison sociale voyait toutes ses factures passées changer avec lui, et une suppression de
+compte les vidait de l'identité des parties. Un document comptable ne se réécrit pas.
+
+L'état est désormais figé **à l'émission**, c'est-à-dire à l'attribution du numéro — le moment
+où la facture existe juridiquement. Les affichages suivants relisent cet instantané. Deux
+déclencheurs interdisent en base toute modification et toute suppression : une erreur se
+corrige par un avoir, pas par une réécriture.
+
+Conservation **dix ans** (art. L123-22 du Code de commerce). Le droit à l'effacement ne s'y
+oppose pas : le RGPD art. 17.3.b réserve les traitements nécessaires à une obligation légale.
+C'est ce qui rend licite l'anonymisation des prestations à la suppression de compte — la pièce
+comptable, elle, subsiste.
+
+Les factures numérotées **avant** cette migration sont archivées au premier affichage suivant,
+avec une trace en journal : leur contenu a pu dériver entre-temps, mais il cesse de dériver.
+
 **Numérotation** — `platform_settings.invoice_sequence`, incrémenté par compare-and-swap avec
 trois tentatives, puis figé dans `missions.invoice_number`. Format `FAC-{année}-{6 chiffres}`.
 La séquence est continue et **ne se réinitialise pas** au changement d'année : c'est la
@@ -516,6 +534,25 @@ le corps de la requête et servait à relever la limite anti-spam de 3 à 20 mes
 minutes, ainsi qu'à rattacher le ticket à un compte : inventer un identifiant suffisait pour
 la limite haute, en copier un vrai pour écrire au nom d'autrui. Le jeton est désormais
 vérifié quand il est présent, et c'est lui qui fait foi.
+
+### Le webhook Stripe
+
+Signature vérifiée systématiquement : HMAC-SHA256 sur le corps brut, comparaison à temps
+constant, tolérance de 300 s. Sans `STRIPE_WEBHOOK_SECRET`, le webhook est **rejeté**, jamais
+accepté par défaut.
+
+**Idempotence** — Stripe réémet tant qu'il n'a pas reçu de 2xx. Deux protections :
+la recharge de portefeuille passe par la procédure `crediter_portefeuille`, dont la clé
+primaire est l'identifiant du paiement ; l'affectation d'une prestation vérifie
+`stripe_payment_intent` puis filtre le `PATCH` sur les statuts non terminaux, si bien qu'une
+seconde livraison ne modifie aucune ligne et s'arrête là.
+
+**Le webhook est un chemin parallèle à `assign_after_payment`.** Il ne vérifiait pas que le
+prestataire a toujours accès aux prestations : entre la création du paiement et sa
+confirmation, l'administration peut avoir suspendu le compte. Depuis le 07/08/2026, le
+webhook contrôle `status=approved` **et** `missions_enabled`. Si le prestataire ne remplit
+plus les conditions, la prestation passe en `needs_replacement` plutôt qu'en `assigned` —
+l'argent est encaissé, le client doit être servi — et le client est prévenu.
 
 ### Migrations
 
