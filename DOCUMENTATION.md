@@ -430,18 +430,21 @@ des réglages — frais de service, cashback, seuils de vigilance — ne laissai
 ### Carte
 
 Leaflet est chargé dynamiquement par `loadLeaflet()` (`client-screens.jsx`). Il tente d'abord
-la copie locale `public/vendor/leaflet/`, puis retombe sur `unpkg.com` en le signalant dans
-la console.
+la copie locale (`public/leaflet.js` et `public/leaflet.css`), puis retombe sur `unpkg.com`
+en le signalant dans la console.
 
 **La copie locale n'est pas dans le dépôt.** Pour la déposer et supprimer la dépendance au
 CDN — un CDN compromis exécuterait du code arbitraire sur le site, `admin.alane.fr` compris
 puisqu'il partage le même bundle :
 
 ```bash
-mkdir -p public/vendor/leaflet
-curl -o public/vendor/leaflet/leaflet.js  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
-curl -o public/vendor/leaflet/leaflet.css https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+curl -o public/leaflet.js  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+curl -o public/leaflet.css https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
 ```
+
+Les fichiers sont **à la racine de `public/`** et non dans un sous-dossier : le dépôt se gère
+depuis l'interface web de GitHub, où l'envoi de fichiers ne permet pas de choisir un chemin
+imbriqué. Un chemin plus profond aurait été plus propre, mais il ne serait jamais déposé.
 
 Une fois les fichiers présents et déployés, retirer `https://unpkg.com/leaflet@1.9.4/` de
 `script-src` **et** de `style-src` dans le CSP de `vercel.json`.
