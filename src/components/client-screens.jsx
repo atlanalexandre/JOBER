@@ -1629,56 +1629,38 @@ export function useProviders() {
   return { providers, loading };
 }
 
-// Chargement de Leaflet — copie locale d'abord, CDN en secours.
+// Chargement de Leaflet depuis la copie locale.
 //
-// La bibliothèque était chargée depuis unpkg.com, ce qui oblige la CSP à
-// autoriser l'exécution de scripts venus de ce domaine. Si le CDN est compromis,
-// du code arbitraire s'exécute sur le site — y compris sur admin.alane.fr, qui
-// partage le même bundle, avec accès au jeton de session du backoffice.
+// La bibliothèque venait d'unpkg.com. Un CDN compromis y exécuterait du code
+// arbitraire sur le site — y compris sur admin.alane.fr, qui partage le même
+// bundle, avec accès au jeton de session du backoffice.
 //
-// La copie locale supprime cette dépendance. Elle n'est pas dans le dépôt : elle
-// se dépose en deux commandes (voir DOCUMENTATION.md, « Carte »). Tant qu'elle
-// n'est pas là, on retombe sur le CDN pour ne pas casser la carte, et on le dit
-// dans la console plutôt que de laisser croire que le problème est réglé.
-// Fichiers déposés à la racine de `public/`, et non dans un sous-dossier : le
-// dépôt se gère depuis l'interface web de GitHub, où l'envoi de fichiers ne
-// permet pas de choisir un chemin imbriqué. Un chemin plus profond aurait été
-// plus propre, mais il ne serait jamais déposé.
+// Les fichiers sont désormais servis par ALANE (`public/leaflet.js` et
+// `public/leaflet.css`), et le CSP n'autorise plus aucun script tiers hors
+// Stripe. Il n'y a donc plus de repli sur le CDN : il serait bloqué par le CSP,
+// et laisser ce chemin donnerait l'illusion d'un filet qui n'existe pas.
 const LEAFLET_LOCAL = "/leaflet";
-const LEAFLET_CDN   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
 
 export function loadLeaflet() {
   return new Promise(resolve => {
     if (window.L) { resolve(window.L); return; }
 
-    const poserStyle = (base) => {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = `${base}.css`;
-      document.head.appendChild(link);
-    };
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `${LEAFLET_LOCAL}.css`;
+    document.head.appendChild(link);
 
-    const poserScript = (base, onError) => {
-      const script = document.createElement("script");
-      script.src = `${base}.js`;
-      script.onload = () => resolve(window.L);
-      script.onerror = onError;
-      document.head.appendChild(script);
-    };
-
-    poserStyle(LEAFLET_LOCAL);
-    poserScript(LEAFLET_LOCAL, () => {
-      console.warn(
-        "[carte] Leaflet n'est pas hébergé localement — repli sur unpkg.com. "
-        + "Déposez public/vendor/leaflet/ pour supprimer cette dépendance externe "
-        + "(voir DOCUMENTATION.md, section « Carte »)."
+    const script = document.createElement("script");
+    script.src = `${LEAFLET_LOCAL}.js`;
+    script.onload  = () => resolve(window.L);
+    script.onerror = () => {
+      console.error(
+        `[carte] ${LEAFLET_LOCAL}.js introuvable — la carte ne s'affichera pas. `
+        + "Vérifier que public/leaflet.js est bien déployé (voir DOCUMENTATION.md, « Carte »)."
       );
-      poserStyle(LEAFLET_CDN);
-      poserScript(LEAFLET_CDN, () => {
-        console.error("[carte] Leaflet introuvable, en local comme sur le CDN — la carte ne s'affichera pas.");
-        resolve(null);
-      });
-    });
+      resolve(null);
+    };
+    document.head.appendChild(script);
   });
 }
 
