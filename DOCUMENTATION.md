@@ -488,6 +488,35 @@ en ligne (règle 3.1). Ne pas le retirer.
 
 Ajoutés au passage : `form-action 'self'` et `frame-ancestors 'none'`.
 
+### Suppression de compte et anti-recréation
+
+`account_blacklist` ne contient que des **empreintes** (`hashPii`) de l'email, du téléphone,
+de l'IBAN et du SIRET — jamais de données en clair. Elle sert à empêcher qu'un compte
+supprimé se recrée pour retrouver un essai gratuit, et reste compatible avec le droit à
+l'effacement : elle évite précisément d'avoir à conserver les identifiants.
+
+Deux chemins de suppression, et **un seul l'alimentait** jusqu'au 07/08/2026 :
+
+| Chemin | Fichier | Empreinte enregistrée |
+|---|---|---|
+| Suppression par l'administration | `bo-action.js` (`delete`) | Oui, depuis toujours |
+| Suppression par l'utilisateur | `support.js` (`delete_account`) | **Non — corrigé le 07/08/2026** |
+
+Or c'est le second que les utilisateurs empruntent. Il suffisait de supprimer son compte
+depuis l'application puis de se réinscrire pour retrouver un essai gratuit, autant de fois
+que voulu.
+
+Le contrôle à l'inscription (`support.js`, action `welcome`) était par ailleurs **incapable de
+lire l'IBAN** : il référençait `SUPABASE_URL`, déclaré plus bas dans la même fonction, ce qui
+levait « Cannot access before initialization » à chaque appel. Le `catch` l'avalait, la valeur
+retombait sur `user_metadata.rib` — vide depuis la migration RGPD qui a sorti l'IBAN du jeton.
+
+**Formulaire de contact** — public, mais l'identité ne se déclare plus. `userId` était lu dans
+le corps de la requête et servait à relever la limite anti-spam de 3 à 20 messages par dix
+minutes, ainsi qu'à rattacher le ticket à un compte : inventer un identifiant suffisait pour
+la limite haute, en copier un vrai pour écrire au nom d'autrui. Le jeton est désormais
+vérifié quand il est présent, et c'est lui qui fait foi.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et

@@ -62,7 +62,13 @@ export default async function handler(req, res) {
           // `profiles.rib` d'abord — voir migration 2026-07-30_rgpd_iban_hors_du_jeton.
           let rib3 = meta3.rib;
           try {
-            const rP3 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${newUser.id}&select=rib&limit=1`, { headers: svcHeaders });
+            // SUPABASE_URL2, pas SUPABASE_URL : ce dernier est déclaré plus bas
+            // dans la même fonction, si bien que le lire ici levait
+            // « Cannot access before initialization » à chaque inscription. Le
+            // catch l'avalait, `rib3` restait à `meta3.rib` — vide depuis que
+            // l'IBAN a quitté le jeton — et le contrôle anti-recréation ne
+            // reconnaissait plus jamais un IBAN déjà blacklisté.
+            const rP3 = await fetch(`${SUPABASE_URL2}/rest/v1/profiles?id=eq.${newUser.id}&select=rib&limit=1`, { headers: svcHeaders });
             const dP3 = await rP3.json().catch(() => []);
             if (Array.isArray(dP3) && dP3[0]?.rib) rib3 = dP3[0].rib;
           } catch (e) {
@@ -246,6 +252,49 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une prestation en cours. Terminez ou annulez vos prestations actives avant de supprimer votre compte." });
       }
 
+      // Empreinte anti-recréation, AVANT l'anonymisation qui rend les données
+      // illisibles.
+      //
+      // La suppression par le backoffice alimentait `account_blacklist` ; la
+      // suppression par l'utilisateur lui-même, non. Or c'est le chemin que les
+      // gens empruntent. Il suffisait donc de supprimer son compte depuis
+      // l'application, puis de se réinscrire, pour retrouver un essai gratuit —
+      // et recommencer autant de fois que voulu. Le dispositif anti-abus
+      // n'existait que pour les comptes supprimés par l'administration.
+      //
+      // La table ne stocke que des empreintes, jamais de données en clair : elle
+      // reste compatible avec le droit à l'effacement, qu'elle sert même, en
+      // évitant de conserver les identifiants pour arriver au même résultat.
+      try {
+        const prSup = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=rib&limit=1`, { headers: hdrs });
+        const pdSup = prSup.ok ? await prSup.json().catch(() => []) : [];
+        const ribSup = (Array.isArray(pdSup) && pdSup[0]?.rib) || caller.user_metadata?.rib || null;
+        const ibanSup = ribSup ? String(ribSup).replace(/\s/g, "").toUpperCase() : null;
+        const telSup   = caller.user_metadata?.telephone || null;
+        const siretSup = caller.user_metadata?.siret || caller.user_metadata?.kbis || null;
+
+        if (caller.email || telSup || ibanSup || siretSup) {
+          const blRes = await fetch(`${SUPABASE_URL}/rest/v1/account_blacklist`, {
+            method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
+            body: JSON.stringify({
+              email_hash:     hashPii(caller.email),
+              telephone_hash: hashPii(telSup),
+              iban_hash:      hashPii(ibanSup),
+              siret_hash:     hashPii(siretSup),
+              reason:         "account_deleted: suppression par l'utilisateur",
+            }),
+          });
+          if (!blRes.ok) {
+            console.error(`[delete_account] empreinte non enregistrée (${blRes.status}) — `
+              + "le compte pourra être recréé avec un nouvel essai gratuit.");
+          }
+        }
+      } catch (blErr) {
+        // On ne bloque pas la suppression : le droit à l'effacement prime sur le
+        // dispositif anti-abus. Mais on le signale.
+        console.error("[delete_account] empreinte anti-recréation non calculée :", blErr.message);
+      }
+
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0 }),
@@ -284,7 +333,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   }
 
   // ── default: support ticket ───────────────────────────────────────
-  const { subject, message, userEmail, userName, userId, _hp } = req.body || {};
+  const { subject, message, userEmail, userName, _hp } = req.body || {};
   if (!subject || !message) return res.status(400).json({ error: "Sujet et message requis" });
   if (message.length < 10) return res.status(400).json({ error: "Le message doit contenir au moins 10 caractères" });
   if (subject.length > 200) return res.status(400).json({ error: "Le sujet ne doit pas dépasser 200 caractères" });
@@ -292,9 +341,6 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) return res.status(400).json({ error: "Adresse email invalide" });
   // Anti-spam : honeypot + rate limit (tous les utilisateurs, limite plus haute si authentifié)
   if (_hp) return res.status(200).json({ success: true }); // Champ honeypot rempli = bot
-  const rlIp = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",").at(-1).trim();
-  const rlMax = userId ? 20 : 3; // 20/10min pour authentifiés, 3/10min pour anonymes
-  if (checkContactRateLimit(rlIp, rlMax)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
@@ -302,6 +348,26 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
   }
+
+  // Le formulaire est public — il sert aussi aux visiteurs non inscrits — mais
+  // l'identité, elle, ne se déclare pas.
+  //
+  // `userId` était lu depuis le corps de la requête, et servait à deux choses :
+  // relever la limite anti-spam de 3 à 20 messages par dix minutes, et attribuer
+  // le ticket à un compte. Il suffisait donc d'inventer un identifiant pour
+  // obtenir la limite haute, et d'en copier un vrai pour faire écrire un ticket
+  // au nom de quelqu'un d'autre.
+  //
+  // Le jeton est vérifié quand il est présent ; l'identifiant retenu est celui
+  // qu'il porte, jamais celui du corps.
+  const ticketCaller = req.headers.authorization
+    ? await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY)
+    : null;
+  const ticketUserId = ticketCaller?.id || null;
+
+  const rlIp = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",").at(-1).trim();
+  const rlMax = ticketUserId ? 20 : 3; // 20/10min pour authentifiés, 3/10min pour anonymes
+  if (checkContactRateLimit(rlIp, rlMax)) return res.status(429).json({ error: "Trop de messages envoyés — réessayez dans 10 minutes" });
 
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
@@ -312,7 +378,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         "Content-Type": "application/json",
         "Prefer": "return=minimal",
       },
-      body: JSON.stringify({ subject, message, user_email: userEmail||null, user_name: userName||null, user_id: userId||null, status: "open" }),
+      body: JSON.stringify({ subject, message, user_email: userEmail||null, user_name: userName||null, user_id: ticketUserId, status: "open" }),
     });
 
     if (!r.ok) {

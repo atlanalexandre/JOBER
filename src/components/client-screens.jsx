@@ -121,17 +121,24 @@ export function ContactSupportScreen({ onBack }) {
 
     const { data } = await supabase.auth.getUser();
     const user = data?.user;
+    // Le jeton, et non `userId` dans le corps : le serveur ne se fie plus à une
+    // identité déclarée. Sans lui, un utilisateur connecté serait traité comme
+    // un visiteur anonyme — limite de 3 messages au lieu de 20, et ticket non
+    // rattaché à son compte.
+    const { data: { session: sessCtc } } = await supabase.auth.getSession();
 
     try {
       const res = await fetch("/api/support", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(sessCtc?.access_token ? { "Authorization": `Bearer ${sessCtc.access_token}` } : {}),
+        },
         body: JSON.stringify({
           subject,
           message,
           userEmail: user?.email || "",
           userName:  user?.user_metadata?.prenom || user?.email || "Inconnu",
-          userId:    user?.id || "",
         }),
       });
       if (!res.ok) throw new Error("Erreur serveur");
@@ -4081,8 +4088,10 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                     status: "open",
                   });
                   try {
+                    const { data: { session: sessLit } } = await supabase.auth.getSession();
                     await fetch("/api/support", {
-                      method:"POST", headers:{"Content-Type":"application/json"},
+                      method:"POST",
+                      headers:{ "Content-Type":"application/json", ...(sessLit?.access_token ? { "Authorization": `Bearer ${sessLit.access_token}` } : {}) },
                       body: JSON.stringify({ subject:`Litige ${refNum} — ${p.name}`, message: disputeMsg.trim(), userEmail: user?.email, userName: user?.user_metadata?.prenom }),
                     });
                   } catch(err) {
