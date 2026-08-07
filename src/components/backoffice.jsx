@@ -2253,6 +2253,10 @@ export function BOSettingsTab() {
   const [localUs,  setLocalUs]  = useState("5");
   const [localFs,  setLocalFs]  = useState({ single:"4.90", range:"2.90", urgent:"9.90" });
   const [localDs,  setLocalDs]  = useState([]);
+  // Ouverture forcée d'un secteur sous le seuil, et seuil lui-même (CGPS n/a —
+  // règle produit). Voir api/_secteurs.js pour l'ordre de priorité.
+  const [localFo,  setLocalFo]  = useState([]);
+  const [localSeuil, setLocalSeuil] = useState("20");
   const [localCbr, setLocalCbr] = useState([{ id:"standard",min:0,max:2,rate:"0.5" },{ id:"silver",min:3,max:5,rate:"0.75" },{ id:"gold",min:6,max:9,rate:"1" },{ id:"platinum",min:10,max:999,rate:"1.5" }]);
   const [launchPhase, setLaunchPhase] = useState(true);
   const [sectorCounts, setSectorCounts] = useState({});
@@ -2264,6 +2268,8 @@ export function BOSettingsTab() {
       if (s.urgency_surcharge != null) setLocalUs(String(s.urgency_surcharge));
       if (s.frais_service) setLocalFs({ single: String(s.frais_service.single ?? "4.90"), range: String(s.frais_service.range ?? "2.90"), urgent: String(s.frais_service.urgent ?? "9.90") });
       if (s.disabled_sectors)        setLocalDs(s.disabled_sectors);
+      if (s.forced_open_sectors)     setLocalFo(s.forced_open_sectors);
+      if (s.sector_min_prestataires != null) setLocalSeuil(String(s.sector_min_prestataires));
       // 2 décimales obligatoires : le palier silver vaut 0,75 %, qu'un arrondi à
       // une décimale transformait en 0,8 % à l'affichage — puis en base au premier
       // enregistrement, soit 0,8 % réellement crédité au client.
@@ -2347,23 +2353,78 @@ export function BOSettingsTab() {
       </div>
 
       {/* ── Secteurs ── */}
-      <SectionTitle>🗂️ Secteurs d'activité</SectionTitle>
+      <SectionTitle>🗂️ Secteurs d&apos;activité</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Les secteurs désactivés sont masqués pour les clients et ne peuvent plus être réservés. Compter jusqu'à 5 minutes après l'enregistrement.</div>
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:14, lineHeight:1.6 }}>
+          Un secteur s&apos;ouvre automatiquement dès qu&apos;il compte assez de prestataires
+          approuvés et activés. Un secteur ouvert sans prestataire disponible est une promesse
+          qu&apos;on ne peut pas tenir : le client commande, personne n&apos;accepte, il est
+          remboursé et ne revient pas.
+        </div>
+
+        {/* Seuil */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, marginBottom:14 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ color:C.text, fontSize:13, fontWeight:700 }}>Seuil d&apos;ouverture automatique</div>
+            <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>Nombre de prestataires requis. 0 = tous les secteurs ouverts.</div>
+          </div>
+          <input type="number" min="0" value={localSeuil} onChange={e => setLocalSeuil(e.target.value.replace(/[^0-9]/g, ""))}
+            style={{ width:70, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:"#0A1628", color:C.text, fontSize:14, fontWeight:700, textAlign:"center", fontFamily:"inherit" }} />
+          <SaveBtn k="sector_min_prestataires" onClick={() => save("sector_min_prestataires", Number(localSeuil) || 0)} />
+        </div>
+
+        {/* État par secteur */}
         {Object.entries(SECTOR_LABELS).map(([id, label]) => {
-          const disabled = localDs.includes(id);
+          const ferme  = localDs.includes(id);
+          const force  = localFo.includes(id);
+          const nb     = sectorCounts[id]?.count ?? 0;
+          const seuil  = Number(localSeuil) || 0;
+          const atteint = nb >= seuil;
+          const ouvert = !ferme && (force || atteint);
+
+          const etiquette = ferme ? "Fermé (décision manuelle)"
+                          : force ? `Ouvert de force — ${nb} prestataire${nb > 1 ? "s" : ""}`
+                          : atteint ? `Ouvert — ${nb} prestataire${nb > 1 ? "s" : ""}`
+                          : `Fermé — ${nb}/${seuil} prestataire${seuil > 1 ? "s" : ""}`;
+          const couleur = ferme ? "#F25E5E" : ouvert ? C.success : C.accentGold;
+
           return (
-            <div key={id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
-              <span style={{ color: disabled ? C.textMuted : C.text, fontSize:13, fontWeight:600 }}>{SECTORS.find(s => s.id === id)?.icon} {label}</span>
-              <div onClick={() => setLocalDs(prev => disabled ? prev.filter(x => x !== id) : [...prev, id])}
-                style={{ width:40, height:22, borderRadius:11, background:disabled?"rgba(242,94,94,0.4)":C.success, position:"relative", cursor:"pointer", transition:"background 0.2s", flexShrink:0 }}>
-                <div style={{ position:"absolute", top:2, left:disabled?2:20, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+            <div key={id} style={{ padding:"10px 0", borderBottom:`1px solid ${C.grayLight}` }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                <span style={{ color: ouvert ? C.text : C.textMuted, fontSize:13, fontWeight:700 }}>
+                  {SECTORS.find(sx => sx.id === id)?.icon} {label}
+                </span>
+                <span style={{ color:couleur, fontSize:11, fontWeight:700 }}>{etiquette}</span>
+              </div>
+              <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+                <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+                  <input type="checkbox" checked={ferme}
+                    onChange={() => setLocalDs(prev => ferme ? prev.filter(x => x !== id) : [...prev, id])} />
+                  <span style={{ color:C.textSub, fontSize:11 }}>Fermer d&apos;autorité</span>
+                </label>
+                <label style={{ display:"flex", alignItems:"center", gap:6, cursor: ferme ? "not-allowed" : "pointer", opacity: ferme ? 0.4 : 1 }}>
+                  <input type="checkbox" checked={force} disabled={ferme}
+                    onChange={() => setLocalFo(prev => force ? prev.filter(x => x !== id) : [...prev, id])} />
+                  <span style={{ color:C.textSub, fontSize:11 }}>Ouvrir malgré le seuil</span>
+                </label>
               </div>
             </div>
           );
         })}
-        <div style={{ marginTop:12 }}>
-          <SaveBtn k="disabled_sectors" onClick={() => save("disabled_sectors", localDs)} />
+
+        <div style={{ color:C.textMuted, fontSize:11, lineHeight:1.6, margin:"12px 0" }}>
+          « Fermer d&apos;autorité » l&apos;emporte sur tout le reste. « Ouvrir malgré le seuil »
+          sert au démarrage : sans lui, il faudrait vingt prestataires pour accepter la première
+          commande, et une première commande pour attirer des prestataires.
+        </div>
+
+        <div style={{ display:"flex", gap:8 }}>
+          <SaveBtn k="disabled_sectors"    onClick={() => save("disabled_sectors", localDs)} />
+          <SaveBtn k="forced_open_sectors" onClick={() => save("forced_open_sectors", localFo)} />
+        </div>
+        <div style={{ color:C.textMuted, fontSize:10, marginTop:8 }}>
+          Les compteurs sont mis en cache 5 minutes côté serveur : un changement peut mettre
+          quelques minutes à se refléter côté client.
         </div>
       </div>
 
