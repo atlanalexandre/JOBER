@@ -1640,7 +1640,11 @@ export function useProviders() {
 // se dépose en deux commandes (voir DOCUMENTATION.md, « Carte »). Tant qu'elle
 // n'est pas là, on retombe sur le CDN pour ne pas casser la carte, et on le dit
 // dans la console plutôt que de laisser croire que le problème est réglé.
-const LEAFLET_LOCAL = "/vendor/leaflet/leaflet";
+// Fichiers déposés à la racine de `public/`, et non dans un sous-dossier : le
+// dépôt se gère depuis l'interface web de GitHub, où l'envoi de fichiers ne
+// permet pas de choisir un chemin imbriqué. Un chemin plus profond aurait été
+// plus propre, mais il ne serait jamais déposé.
+const LEAFLET_LOCAL = "/leaflet";
 const LEAFLET_CDN   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
 
 export function loadLeaflet() {
