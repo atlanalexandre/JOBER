@@ -357,7 +357,7 @@ function PublicContactScreen({ onBack }) {
       const res = await fetch("/api/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), userId: "", _hp: hp }),
+        body: JSON.stringify({ subject, message, userEmail: email.trim(), userName: name.trim(), _hp: hp }),
       });
       if (!res.ok) {
         const d = await res.json().catch(()=>({}));
