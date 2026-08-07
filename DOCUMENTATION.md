@@ -453,30 +453,35 @@ des réglages — frais de service, cashback, seuils de vigilance — ne laissai
 ### Carte
 
 Leaflet est chargé dynamiquement par `loadLeaflet()` (`client-screens.jsx`). Il tente d'abord
-la copie locale (`public/leaflet.js` et `public/leaflet.css`), puis retombe sur `unpkg.com`
-en le signalant dans la console.
+**la copie locale uniquement** : `public/leaflet.js` et `public/leaflet.css`, déposés le
+07/08/2026 et servis par ALANE.
 
-**La copie locale n'est pas dans le dépôt.** Pour la déposer et supprimer la dépendance au
-CDN — un CDN compromis exécuterait du code arbitraire sur le site, `admin.alane.fr` compris
-puisqu'il partage le même bundle :
+Il n'y a **aucun repli sur un CDN**. La bibliothèque venait d'`unpkg.com` ; un CDN compromis y
+exécuterait du code arbitraire sur le site, `admin.alane.fr` compris puisqu'il partage le même
+bundle, avec accès au jeton de session du backoffice. `unpkg.com` a été retiré de `script-src`
+et de `style-src` : un repli serait de toute façon bloqué par le CSP, et le laisser dans le
+code donnerait l'illusion d'un filet qui n'existe pas.
+
+Les fichiers sont **à la racine de `public/`** et non dans un sous-dossier : le dépôt se gère
+depuis l'interface web de GitHub, où l'envoi de fichiers ne permet pas de choisir un chemin
+imbriqué. Un chemin plus profond aurait été plus propre, mais il ne serait jamais déposé.
+
+**Si la carte cesse de s'afficher**, la console indique le fichier manquant. Pour le
+reconstituer :
 
 ```bash
 curl -o public/leaflet.js  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
 curl -o public/leaflet.css https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
 ```
 
-Les fichiers sont **à la racine de `public/`** et non dans un sous-dossier : le dépôt se gère
-depuis l'interface web de GitHub, où l'envoi de fichiers ne permet pas de choisir un chemin
-imbriqué. Un chemin plus profond aurait été plus propre, mais il ne serait jamais déposé.
-
-Une fois les fichiers présents et déployés, retirer `https://unpkg.com/leaflet@1.9.4/` de
-`script-src` **et** de `style-src` dans le CSP de `vercel.json`.
-
 ### En-têtes de sécurité
 
 Le CSP de `vercel.json` n'autorise plus `'unsafe-inline'` dans **`script-src`** : le build ne
 contient aucun script inline (seulement des blocs `application/ld+json`, qui ne sont pas
 exécutés) ni aucun gestionnaire `on*`. Vérifié avant de retirer la directive.
+
+`script-src` n'autorise plus qu'**un seul domaine tiers : `js.stripe.com`**. Toute
+bibliothèque ajoutée devra être hébergée par ALANE, ou le CSP la bloquera — c'est voulu.
 
 `'unsafe-inline'` reste **obligatoire dans `style-src`** : tout le projet est écrit en styles
 en ligne (règle 3.1). Ne pas le retirer.
