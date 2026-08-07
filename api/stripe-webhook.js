@@ -198,8 +198,44 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Supabase unavailable" });
       }
 
-      const patch = { stripe_payment_intent: intent.id, status: "assigned" };
-      if (prestataireId) patch.prestataire_id = prestataireId;
+      // Le prestataire doit toujours avoir accès aux prestations au moment de
+      // l'affectation.
+      //
+      // Ce chemin est parallèle à `assign_after_payment` de /api/missions, qui
+      // vérifie `status=approved` et `missions_enabled`. Le webhook, lui, ne
+      // vérifiait rien : entre la création du paiement et sa confirmation par
+      // Stripe, l'administration peut avoir suspendu le compte ou retiré son
+      // accès. La prestation lui était malgré tout attribuée.
+      //
+      // En cas de refus, on n'abandonne pas le paiement : la prestation est
+      // marquée payée et repart en recherche de prestataire, comme après un
+      // désistement. L'argent est encaissé, le client doit être servi.
+      let prestataireRetenu = prestataireId;
+      if (prestataireId) {
+        try {
+          const pv = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}&status=eq.approved&missions_enabled=is.true&select=id`,
+            { headers: { ...headers, "Prefer": "return=representation" } }
+          );
+          const pvd = pv.ok ? await pv.json().catch(() => []) : [];
+          if (!Array.isArray(pvd) || pvd.length === 0) {
+            console.error(`[stripe-webhook] ${prestataireId} n'a plus accès aux prestations — `
+              + `prestation ${missionId} payée mais remise en recherche.`);
+            prestataireRetenu = null;
+          }
+        } catch (e) {
+          // Indisponibilité de la base : on renvoie 500 pour que Stripe réémette,
+          // plutôt que d'affecter sans avoir pu vérifier.
+          console.error("[stripe-webhook] vérification du prestataire impossible :", e.message);
+          return res.status(500).json({ error: "Supabase unavailable" });
+        }
+      }
+
+      const patch = prestataireRetenu
+        ? { stripe_payment_intent: intent.id, status: "assigned", prestataire_id: prestataireRetenu }
+        : prestataireId
+          ? { stripe_payment_intent: intent.id, status: "needs_replacement", prestataire_id: null }
+          : { stripe_payment_intent: intent.id, status: "assigned" };
 
       // Opération critique : si Supabase est down, retourner 500 → Stripe retentera
       let missionPatch;
@@ -221,18 +257,39 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true });
       }
 
-      // Opérations secondaires : on ne bloque pas Stripe si elles échouent
-      if (candidatureId) {
+      // Prestataire écarté : le client doit savoir que sa prestation est payée
+      // mais qu'on lui cherche quelqu'un d'autre. Sans ce message, il attend un
+      // professionnel qui ne viendra pas.
+      if (prestataireId && !prestataireRetenu) {
+        const clientMission = patchedRows[0] || {};
+        if (clientMission.client_id) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers,
+            body: JSON.stringify({
+              user_id: clientMission.client_id, type: "mission", read: false, ref_id: missionId,
+              title: "Recherche d'un autre professionnel 🔄",
+              body: "Votre paiement est bien enregistré. Le professionnel pressenti n'est plus disponible : "
+                  + "nous recherchons un remplaçant et vous préviendrons dès qu'il est trouvé.",
+            }),
+          }).catch(e => console.error("[stripe-webhook] notification client échouée :", e.message));
+        }
+      }
+
+      // Opérations secondaires : on ne bloque pas Stripe si elles échouent.
+      // Elles n'ont de sens que si le prestataire a bien été retenu : accepter sa
+      // candidature et lui annoncer « proposition acceptée » alors qu'il vient
+      // d'être écarté serait un message faux.
+      if (candidatureId && prestataireRetenu) {
         await fetch(`${SUPABASE_URL}/rest/v1/candidatures?id=eq.${candidatureId}`, {
           method: "PATCH", headers, body: JSON.stringify({ status: "accepted" }),
         }).catch(e => console.error("candidature accept failed:", e));
         await fetch(`${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${missionId}&id=neq.${candidatureId}`, {
           method: "PATCH", headers, body: JSON.stringify({ status: "rejected" }),
         }).catch(e => console.error("candidature reject failed:", e));
-        if (prestataireId) {
+        if (prestataireRetenu) {
           await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
             method: "POST", headers,
-            body: JSON.stringify({ user_id: prestataireId, type: "mission", title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
+            body: JSON.stringify({ user_id: prestataireRetenu, type: "mission", title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
           }).catch(e => console.error("notification failed:", e));
         }
       }

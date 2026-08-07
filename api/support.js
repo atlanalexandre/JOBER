@@ -299,6 +299,29 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
         body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0 }),
       });
+      // L'anonymisation des prestations efface l'adresse d'intervention, y compris
+      // sur des prestations déjà facturées. C'est licite tant que la facture, elle,
+      // est conservée : l'article L123-22 du Code de commerce impose dix ans de
+      // conservation des pièces justificatives, et le RGPD art. 17.3.b réserve
+      // expressément les traitements nécessaires à une obligation légale.
+      //
+      // C'est l'objet de `factures_archives` (migration 2026-08-07) : la facture y
+      // est figée à l'émission, avec l'identité des parties et l'adresse telles
+      // qu'elles étaient. Effacer ici ne détruit donc plus la pièce comptable.
+      //
+      // Si l'archive est absente — migration non appliquée — on le signale : sans
+      // elle, cette anonymisation détruirait une pièce à conserver.
+      try {
+        const archRes = await fetch(`${SUPABASE_URL}/rest/v1/factures_archives?select=numero&limit=1`, { headers: hdrs });
+        if (archRes.status === 404) {
+          console.error("[delete_account] factures_archives absente — l'anonymisation des "
+            + "prestations va effacer des données figurant sur des factures déjà émises. "
+            + "Appliquer 2026-08-07_factures_archivees.sql.");
+        }
+      } catch (e) {
+        console.error("[delete_account] vérification de l'archive impossible :", e.message);
+      }
+
       for (const filter of [`client_id=eq.${userId}`, `prestataire_id=eq.${userId}`]) {
         await fetch(`${SUPABASE_URL}/rest/v1/missions?${filter}`, {
           method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
