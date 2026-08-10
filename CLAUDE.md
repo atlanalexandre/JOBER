@@ -263,6 +263,34 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | Réécriture Vercel | La destination doit être `/` et non `/index.html` (à cause de `cleanUrls`) |
 | CGPS | Source unique : `src/constants/cgps.js`. Ne jamais recopier un extrait dans un écran — quatre copies divergentes, dont deux fausses sur l'argent, étaient présentées à l'inscription. Après modification : `npm run cgps` |
 | CI eslint | Doit rester à 0 erreur |
+| Contrôle de cohérence | `npm run coherence` vérifie automatiquement les règles ci-dessus. Il bloque la CI. Avant d'ajouter une exception, se demander si ce n'est pas le code qui a tort |
+
+---
+
+## 4bis. La surveillance automatique
+
+Deux niveaux, volontairement séparés.
+
+**`npm run coherence`** — déterministe, gratuit, bloquant en CI. Il vérifie neuf règles de
+ce fichier, toutes nées de pannes réelles : `catch` vides dans `/api`, variables
+d'environnement non nettoyées, clé service role hors `/api`, appel Supabase dans
+`onAuthStateChange`, casse du bucket `Documents`, conversion de fuseau sur `heure_debut`,
+champ de diagnostic dans une réponse HTTP, script tiers dans le CSP, écran de rôle non classé.
+
+Il ne signale que ce qu'il peut prouver. **Un contrôle qui produit des faux positifs finit
+ignoré, et un garde-fou ignoré ne protège plus rien** : avant d'élargir une règle, vérifier
+qu'elle ne crie pas sur du code légitime.
+
+**`.github/workflows/veille.yml`** — relecture IA quotidienne du diff de la veille. Elle
+cherche ce qu'un script ne sait pas voir : une règle appliquée sur un chemin et pas sur
+l'autre, une règle recopiée qui a divergé, un réglage que plus personne ne lit, une promesse
+sans implémentation.
+
+Elle **ouvre une pull request, elle ne pousse jamais sur `main`**. La raison tient dans un cas
+réel : le correctif évident de la carte enregistrée aurait ouvert une faille permettant de
+débiter la carte d'autrui, parce qu'un paramètre voisin était lu depuis le navigateur. Il
+fallait corriger les deux ensemble. Sur une application qui manipule de l'argent, la revue
+humaine n'est pas une lenteur administrative.
 
 ---
 
