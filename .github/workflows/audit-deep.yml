@@ -31,6 +31,16 @@ jobs:
         uses: anthropics/claude-code-action@beta
         if: steps.check.outputs.commits != '0'
         with:
+          # `agent` et non le mode par défaut `tag`.
+          #
+          # Le mode `tag` réagit à une mention @claude dans une issue ou une pull
+          # request : il a besoin d'un commentaire déclencheur. Sur un événement
+          # `schedule`, il n'y en a aucun, et l'action s'arrête aussitôt sur
+          # « Tag mode cannot handle schedule events ».
+          #
+          # C'est la raison pour laquelle cet audit a échoué toutes les semaines
+          # depuis sa création, en sept secondes, sans jamais produire d'issue.
+          mode: agent
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token:      ${{ secrets.GITHUB_TOKEN }}
           direct_prompt: |
@@ -76,6 +86,7 @@ jobs:
         if: steps.check.outputs.commits == '0'
         uses: anthropics/claude-code-action@beta
         with:
+          mode: agent   # même raison que ci-dessus
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token:      ${{ secrets.GITHUB_TOKEN }}
           direct_prompt: |
