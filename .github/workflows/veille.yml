@@ -1,0 +1,167 @@
+name: Veille du code
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Deux niveaux de surveillance, volontairement séparés.
+#
+#   1. CONTRÔLE DÉTERMINISTE — à chaque poussée sur main, gratuit, immédiat.
+#      Il vérifie les règles de CLAUDE.md, qui viennent toutes de pannes
+#      réelles. Il ne se trompe pas : il ne signale que ce qu'il peut prouver.
+#
+#   2. RELECTURE IA — une fois par jour, sur le diff de la veille.
+#      Elle cherche ce qu'un script ne sait pas voir : une condition inversée,
+#      un montant mal calculé, une règle appliquée sur un chemin et pas sur
+#      l'autre. Elle OUVRE UNE PULL REQUEST, elle ne pousse jamais sur main.
+#
+# POURQUOI PAS DE CORRECTION AUTOMATIQUE SUR MAIN
+#
+# L'audit du 06-07/08/2026 a produit un cas qui tranche la question. La carte
+# enregistrée ne fonctionnait pas : le correctif évident — persister
+# l'identifiant client Stripe — aurait ouvert une faille permettant de débiter
+# la carte d'autrui, parce qu'un paramètre voisin était lu depuis le navigateur.
+# Il fallait corriger les deux ensemble.
+#
+# Un agent qui pousse ses correctifs seul aurait livré le premier sans le
+# second, sur une application qui manipule de l'argent réel. La revue humaine
+# n'est pas une lenteur administrative ici : c'est ce qui a évité la faille.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * *"   # tous les jours à 5 h UTC (7 h Paris en été)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ── Niveau 1 : déterministe, bloquant ────────────────────────────────────
+  coherence:
+    name: Cohérence — règles CLAUDE.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Contrôle de cohérence
+        run: node .github/scripts/coherence.cjs
+
+  # ── Niveau 2 : relecture IA, quotidienne, propose sans imposer ───────────
+  relecture:
+    name: Relecture IA du diff de la veille
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: coherence
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Y a-t-il eu des changements ?
+        id: diff
+        run: |
+          COUNT=$(git log --since='24 hours ago' --oneline --no-merges | wc -l | tr -d ' ')
+          echo "commits=$COUNT" >> $GITHUB_OUTPUT
+          echo "Commits depuis 24 h : $COUNT"
+
+      - name: Relecture
+        if: steps.diff.outputs.commits != '0'
+        uses: anthropics/claude-code-action@beta
+        with:
+          # `agent` et non `tag` : sans commentaire déclencheur, le mode par
+          # défaut échoue immédiatement sur un événement planifié.
+          mode: agent
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token:      ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Tu relis le code d'ALANE (React/Vite + Supabase + Vercel), une place
+            de marché qui manipule de l'argent réel.
+
+            Lis d'abord CLAUDE.md et DOCUMENTATION.md. Ils ne sont pas
+            décoratifs : chaque règle vient d'une panne survenue en production.
+
+            ## Ce que tu examines
+
+            Le diff des dernières 24 heures :
+
+            ```bash
+            git log --since='24 hours ago' --oneline --no-merges
+            git diff "$(git log --since='24 hours ago' --format='%H' --no-merges | tail -1)~1"...HEAD
+            ```
+
+            ## Ce que tu cherches
+
+            Un contrôle déterministe passe déjà avant toi
+            (.github/scripts/coherence.cjs) : catch vides, variables
+            d'environnement, clé service role, fuseau horaire, casse du bucket,
+            CSP, classement des écrans. NE LES CHERCHE PAS, ils sont couverts.
+
+            Cherche ce qu'un script ne sait pas voir. Les défauts réellement
+            trouvés dans ce projet, par ordre de fréquence :
+
+            1. **Une règle appliquée sur un chemin et pas sur l'autre.** Le
+               contrôle du montant existait sur le paiement par carte, pas sur
+               le portefeuille. L'affectation vérifiait l'accès du prestataire
+               côté application, pas côté webhook Stripe. La liste noire était
+               alimentée par la suppression administrateur, pas par
+               l'auto-suppression. À chaque fois : deux chemins, un seul gardé.
+
+            2. **Une règle recopiée qui a divergé.** La conversion de fuseau
+               existait en quatre exemplaires, trois faux. Les CGPS en quatre
+               exemplaires, deux faux sur l'argent. Quand tu vois une formule ou
+               un texte dupliqué, vérifie que les copies disent la même chose.
+
+            3. **Un réglage que plus personne ne lit.** Une clé de
+               `platform_settings` configurable dans le backoffice mais qu'aucun
+               code n'interroge : l'administrateur croit agir, rien ne bouge.
+
+            4. **Une promesse sans implémentation.** Une clause des CGPS, un
+               message d'interface ou une FAQ qui annonce un comportement que le
+               code ne produit pas. Exemple réel : le droit de se faire remplacer
+               figurait au contrat sans exister dans l'application.
+
+            5. **Un échec silencieux.** Une écriture dont on ne vérifie pas le
+               résultat, un `await` manquant sur un appel critique, une réponse
+               `success: true` alors que l'opération a échoué.
+
+            6. **Une donnée personnelle qui sort trop largement.** Un IBAN, une
+               pièce d'identité, une adresse envoyés en masse là où une seule
+               ligne suffit.
+
+            ## Ce que tu fais des trouvailles
+
+            - **Défaut clair, correctif contenu, sans effet de bord** :
+              crée une branche `veille/<sujet-court>`, applique le correctif,
+              lance `npm run lint`, `npx vitest run` et `npm run build`, puis
+              ouvre une PULL REQUEST. Explique dans la description ce qui casse
+              concrètement et pour qui.
+
+            - **Doute, correctif étendu, ou décision produit** :
+              ouvre une ISSUE avec le label `veille`. Décris le scénario de
+              déclenchement précis. N'ouvre pas de PR.
+
+            - **Rien trouvé** : n'ouvre rien. Le silence est une information.
+
+            ## Interdits
+
+            - Ne pousse JAMAIS sur `main`. Toujours une branche et une PR.
+            - Ne touche PAS aux CGPS ni aux contrats (`src/constants/cgps.js`,
+              `contrat-cadre-pro.js`) : ce sont des documents juridiques, ils
+              relèvent d'une décision d'Alexandre et de son conseil.
+            - Ne modifie PAS la logique de calcul des montants sans ajouter un
+              test qui échoue avant ton correctif et passe après.
+            - Ne signale rien sans scénario de déclenchement concret. « Ceci
+              pourrait poser problème » n'a aucune valeur.
+            - Une seule PR par exécution. Si tu trouves plusieurs défauts,
+              corrige le plus grave et ouvre des issues pour les autres.
+
+            ## Ton lecteur
+
+            Alexandre n'est pas développeur. Écris en français courant : ce qui
+            casse, pour qui, dans quelle situation. La technique vient après.

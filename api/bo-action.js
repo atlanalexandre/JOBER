@@ -1173,7 +1173,12 @@ export default async function handler(req, res) {
       if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Prestation déjà validée ou statut changé" });
       // Cashback client
       let CASHBACK_TIERS = [{ min:0,max:2,rate:0.005 },{ min:3,max:5,rate:0.0075 },{ min:6,max:9,rate:0.01 },{ min:10,max:999,rate:0.015 }];
-      try { const cbR = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`,{headers}); const cbD = await cbR.json(); if(Array.isArray(cbD)&&Array.isArray(cbD[0]?.value)) CASHBACK_TIERS=cbD[0].value; } catch {}
+      try { const cbR = await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.cashback_rates&select=value`,{headers}); const cbD = await cbR.json(); if(Array.isArray(cbD)&&Array.isArray(cbD[0]?.value)) CASHBACK_TIERS=cbD[0].value; }
+      catch (e) {
+        // Repli sur les paliers par défaut : le cashback crédité ne serait pas
+        // celui que le backoffice affiche, et personne ne le saurait.
+        console.error("[cashback] paliers illisibles, valeurs par défaut appliquées :", e.message);
+      }
       const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
       const profileD = await profileR.json();
       const prof = Array.isArray(profileD) && profileD[0];

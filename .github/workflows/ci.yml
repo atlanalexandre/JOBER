@@ -37,6 +37,11 @@ jobs:
       - name: CGPS publiques à jour
         run: npm run cgps:verifier
 
+      # Les règles de CLAUDE.md viennent toutes de pannes réelles. Elles étaient
+      # respectées par relecture humaine, c'est-à-dire pas toujours.
+      - name: Cohérence — règles CLAUDE.md
+        run: npm run coherence
+
       - name: Audit dependencies
         run: npm audit --audit-level=high
         continue-on-error: true

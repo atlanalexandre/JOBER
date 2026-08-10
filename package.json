@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "cgps": "node scripts/generer-cgps-html.mjs",
     "cgps:verifier": "node scripts/generer-cgps-html.mjs --verifier",
+    "coherence": "node .github/scripts/coherence.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
