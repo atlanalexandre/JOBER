@@ -864,6 +864,37 @@ endroits qui doivent rester alignés : `api/missions.js` (action `dispute`, seul
 `contestationOuverte()` dans `client-screens.jsx`, qui masque le bouton pour ne pas envoyer
 l'utilisateur dans un mur. Sans date exploitable, aucun des deux ne bloque.
 
+### Signaler un litige
+
+Deux boutons « Signaler un problème » existent, à deux moments différents. Ils faisaient
+**deux choses différentes** jusqu'au 12/08/2026, et un seul protégeait le client.
+
+| Où | Ce qu'il fait |
+|---|---|
+| Écran de validation (`ValidationScreen`) | Appelle l'action `dispute`. **Corrigé le 12/08** : il se contentait auparavant de créer un ticket de support |
+| Historique des prestations (`MissionHistoryScreen`) | Appelle l'action `dispute` — correct depuis toujours |
+
+Le défaut : le bouton de l'écran de validation insérait une ligne dans `support_tickets` et
+envoyait un email. La prestation restait `assigned`, **l'auto-validation la clôturait 24 h plus
+tard et le virement partait au prestataire**. Le client croyait s'être opposé au paiement ; il
+ne s'était opposé à rien.
+
+**Recevabilité** — l'action `dispute` acceptait uniquement `status = completed`. Or le moment
+décisif est celui d'avant : c'est la validation du client qui déclenche le virement
+(`complete` crée le Transfer Stripe dans la foulée). Elle accepte désormais aussi une
+prestation `assigned` dont `validation_prestataire` est vrai — c'est-à-dire exactement
+l'instant où le client est invité à valider.
+
+**Ce qui gèle les fonds** : le passage en `disputed` fait sortir la prestation du filtre
+`status=eq.assigned` de l'auto-validation (`cron-reset-monthly.js`). Il n'y a pas d'autre
+verrou — un statut qui resterait `assigned` serait clôturé automatiquement.
+
+**Décision produit ouverte** : `complete` déclenche le virement immédiatement, alors que
+l'article 17.1 accorde au client 48 h pour signaler un problème après la fin de la
+prestation. Une validation explicite libère donc les fonds avant la fin de cette fenêtre.
+Deux options — différer le virement jusqu'à la clôture de la fenêtre, ou s'appuyer sur la
+réversibilité du Transfer Stripe tant que le solde du compte connecté le permet. Non tranché.
+
 ### Se faire remplacer
 
 Un prestataire empêché a deux issues : annuler, ou **se faire remplacer** par un confrère

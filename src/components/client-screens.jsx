@@ -4079,6 +4079,39 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
                   const { data:authData } = await supabase.auth.getUser();
                   const user = authData?.user;
                   const refNum = "LIT-" + new Date().getFullYear() + "-" + Math.floor(Math.random()*9000+1000);
+
+                  // Ce bouton n'ouvrait PAS de litige : il créait un ticket de
+                  // support et envoyait un email. La prestation restait `assigned`,
+                  // l'auto-validation la clôturait 24 h plus tard et l'argent
+                  // partait au prestataire. Le client croyait s'être opposé au
+                  // paiement ; il ne s'était opposé à rien.
+                  //
+                  // On passe par l'action serveur, seule à faire basculer le statut
+                  // en `disputed` — ce qui sort la prestation du filtre de
+                  // l'auto-validation et gèle les fonds.
+                  let litigeOuvert = false;
+                  try {
+                    const { data: { session: sessDis } } = await supabase.auth.getSession();
+                    const rd = await fetch("/api/missions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sessDis?.access_token || ""}` },
+                      body: JSON.stringify({ action: "dispute", mission_id: missionId, message: disputeMsg.trim() }),
+                    });
+                    const jd = await rd.json().catch(() => ({}));
+                    if (rd.ok) litigeOuvert = true;
+                    else console.error("[litige] ouverture refusée :", rd.status, jd?.error || "");
+                  } catch (err) {
+                    console.error("[litige] ouverture impossible :", err.message);
+                  }
+
+                  if (!litigeOuvert) {
+                    // Ne jamais afficher « litige transmis » si les fonds ne sont
+                    // pas gelés : le client cesserait de surveiller.
+                    setDisputeSending(false);
+                    showToast("Le signalement n'a pas pu être enregistré. Réessayez, ou écrivez à direction@alane.fr.");
+                    return;
+                  }
+
                   await supabase.from("support_tickets").insert({
                     subject: `Litige prestation — ${refNum}`,
                     message: `Prestation avec ${p.name}${missionId ? ` (ID: ${missionId})` : ""}.\n\n${disputeMsg.trim()}`,
