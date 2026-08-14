@@ -1,6 +1,7 @@
 import { resendBody } from "./_email.js";
 import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
+import { repartirCompensation } from "./_creances.js";
 import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
@@ -283,6 +284,42 @@ export default async function handler(req, res) {
     if (STRIPE_SK_V) {
       try {
         const maintenant = new Date().toISOString();
+
+        // ── Retenues arrivées à leur terme (CGPS art. 7.4) ──
+        //
+        // « Elle ne peut excéder quatre-vingt-dix jours [...] Passé ce délai sans
+        // réclamation confirmée, les sommes sont versées. » Une retenue qu'on ne
+        // lève jamais n'est plus une retenue, c'est une confiscation : elle doit
+        // tomber d'elle-même, sans qu'un humain ait à y penser.
+        try {
+          const levees = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions`
+            + `?payout_status=eq.held&payout_hold_until=lte.${encodeURIComponent(maintenant)}`
+            + `&select=id,prestataire_id`,
+            { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+              body: JSON.stringify({ payout_status: "pending", payout_hold_reason: null,
+                                     payout_hold_at: null, payout_hold_until: null }) }
+          );
+          if (levees.ok) {
+            const rows = await levees.json().catch(() => []);
+            for (const r of (Array.isArray(rows) ? rows : [])) {
+              console.log(`[versements] retenue levée d'office (90 j) — prestation ${r.id}`);
+              if (r.prestataire_id) {
+                await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: r.prestataire_id, type: "system",
+                    title: "Retenue levée ✅",
+                    body: "Le délai de retenue est écoulé sans réclamation confirmée : votre versement est de nouveau programmé.",
+                    read: false }),
+                }).catch(() => {});
+              }
+            }
+          } else if (levees.status !== 400) {
+            console.error(`[versements] levée des retenues impossible (${levees.status})`);
+          }
+        } catch (e) {
+          console.error("[versements] levée des retenues interrompue :", e.message);
+        }
         // `status=eq.completed` est le verrou : un litige fait passer la
         // prestation en `disputed` et l'exclut d'office. Une retenue au titre de
         // l'article 7.4 des CGPS suivra le même chemin quand elle sera outillée.
@@ -340,7 +377,44 @@ export default async function handler(req, res) {
               // client n'a jamais arbitré un décalage d'horaire, sans réécrire
               // `actual_hours`. Refaire le calcul verserait plus que le facturé.
               const part = Number(m.payout_amount ?? 0);
-              const cents = Math.round(part * (1 - COMMISSION_V) * 100);
+              let net = Math.round(part * (1 - COMMISSION_V) * 100) / 100;
+
+              // ── Compensation d'une créance (CGPS art. 8B.3) ──
+              //
+              // Retenue au maximum de la MOITIÉ du versement, sur les créances
+              // actives et déjà notifiées. Le calcul et ses limites vivent dans
+              // api/_creances.js ; ici on ne fait que l'appliquer et l'inscrire.
+              let compensation = 0;
+              let imputations = [];
+              try {
+                const cRes = await fetch(
+                  `${SUPABASE_URL}/rest/v1/creances_prestataires`
+                  + `?prestataire_id=eq.${m.prestataire_id}&statut=eq.active&montant_restant=gt.0`
+                  + `&select=id,montant_restant,statut,notifiee_at,created_at&order=created_at`,
+                  { headers }
+                );
+                if (cRes.ok) {
+                  const creances = await cRes.json().catch(() => []);
+                  if (Array.isArray(creances) && creances.length) {
+                    const r = repartirCompensation(net, creances);
+                    compensation = r.compensationTotale;
+                    imputations = r.imputations;
+                    net = r.montantVerse;
+                    for (const e of r.ecartees) {
+                      console.log(`[versements] créance ${e.creance_id} écartée sur ${m.id} : ${e.motif}`);
+                    }
+                  }
+                } else if (cRes.status !== 400 && cRes.status !== 404) {
+                  console.error(`[versements] lecture des créances impossible (${cRes.status}) — prestation ${m.id}`);
+                }
+              } catch (e) {
+                // On verse le montant plein plutôt que de bloquer : ne pas
+                // récupérer une créance est rattrapable au versement suivant,
+                // ne pas payer un prestataire ne l'est pas.
+                console.error(`[versements] compensation non appliquée sur ${m.id} :`, e.message);
+              }
+
+              const cents = Math.round(net * 100);
 
               if (cents < 100) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
@@ -372,10 +446,50 @@ export default async function handler(req, res) {
               if (tr.ok && td.id) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: td.id }),
+                  body: JSON.stringify({
+                    payout_status: "transferred", stripe_transfer_id: td.id,
+                    ...(compensation > 0 ? { payout_compensation: compensation } : {}),
+                  }),
                 }).catch(e => console.error(`[versements] statut non écrit ${m.id} :`, e.message));
+
+                // Les imputations s'inscrivent APRÈS le virement : une créance
+                // décrémentée sur un virement qui n'est jamais parti serait une
+                // somme réclamée deux fois au prestataire.
+                for (const imp of imputations) {
+                  const dec = await fetch(`${SUPABASE_URL}/rest/v1/creances_prestataires?id=eq.${imp.creance_id}`, {
+                    method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({
+                      montant_restant: imp.restantApres,
+                      statut: imp.restantApres <= 0 ? "eteinte" : "active",
+                      updated_at: new Date().toISOString(),
+                    }),
+                  }).catch(() => null);
+                  if (!dec || !dec.ok) {
+                    console.error(`[versements] créance ${imp.creance_id} NON décrémentée après le virement ${td.id} `
+                      + `(${imp.montant} € retenus sur ${m.id}) — à reprendre à la main.`);
+                    continue;
+                  }
+                  await fetch(`${SUPABASE_URL}/rest/v1/compensations_versements`, {
+                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({ creance_id: imp.creance_id, mission_id: m.id, montant: imp.montant }),
+                  }).catch(e => console.error(`[versements] journal de compensation non écrit :`, e.message));
+                }
+
+                if (compensation > 0 && m.prestataire_id) {
+                  await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({ user_id: m.prestataire_id, type: "system",
+                      title: "Retenue sur votre versement",
+                      body: `${compensation.toFixed(2)} € ont été retenus sur ce versement au titre d'une somme due (CGPS art. 8B.3). `
+                          + `Montant versé : ${(cents/100).toFixed(2)} €. Le détail figure dans votre espace ; `
+                          + `vous pouvez contester à direction@alane.fr sous quinze jours.`,
+                      read: false }),
+                  }).catch(() => {});
+                }
+
                 emis++;
-                console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €) — prestation ${m.id}`);
+                console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
+                  + `${compensation > 0 ? `, ${compensation.toFixed(2)} € compensés` : ""}) — prestation ${m.id}`);
               } else {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
