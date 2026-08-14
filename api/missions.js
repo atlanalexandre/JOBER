@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
@@ -1622,13 +1622,9 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "Prestation non assignée" });
       if (mission.validation_prestataire) return res.status(400).json({ error: "Vous avez déjà confirmé la fin de cette prestation" });
       if (mission.date) {
-        const [h, mn] = (mission.heure_debut || "08:00").split(":").map(Number);
-        // heure_debut is stored as French local time (e.g. "14:00" = 14h CEST).
-        // Vercel runs in UTC, so new Date("...T14:00:00") parses as 14:00 UTC (naive, 2h too late).
-        // frenchOffsetMs returns the NEGATIVE UTC offset: -7200000 in summer, -3600000 in winter.
-        // To convert French local → UTC: UTC = naive + frenchOffsetMs (adds a negative = subtracts).
-        const missionStartNaive = new Date(`${mission.date}T${String(h).padStart(2,"0")}:${String(mn||0).padStart(2,"0")}:00`);
-        const missionStartUTC = new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive));
+        // `heure_debut` est une heure locale française et Vercel tourne en UTC :
+        // la conversion vit dans _temps.js, on ne la recopie pas.
+        const missionStartUTC = new Date(debutPrestationMs(mission.date, mission.heure_debut));
         const missionEndUTC = new Date(missionStartUTC.getTime() + Math.ceil(mission.hours || 1) * 3600000 - 15 * 60000);
         if (missionEndUTC > new Date()) return res.status(400).json({ error: "Vous ne pouvez pas confirmer une prestation qui n'est pas encore terminée" });
       }
@@ -2575,10 +2571,9 @@ export default async function handler(req, res) {
       let annulationPourRetard = false;
       if (!mission.started_at && mission.date && mission.heure_debut && mission.prestataire_id) {
         try {
-          const [hR, mR] = String(mission.heure_debut).split(":").map(Number);
-          const prevuNaive = new Date(`${mission.date}T${String(hR).padStart(2,"0")}:${String(mR||0).padStart(2,"0")}:00`);
-          const prevuMs = prevuNaive.getTime() + frenchOffsetMs(prevuNaive);
-          const retardMin = Math.floor((Date.now() - prevuMs) / 60000);
+          // Conversion déportée dans _temps.js : la formule ne se recopie plus.
+          const retardMin = retardMinutes(mission.date, mission.heure_debut);
+          if (retardMin === null) throw new Error("horaire illisible");
           const dureeMin = Math.max(1, Number(mission.hours) || 1) * 60;
           const seuilMin = Math.min(60, Math.max(20, Math.round(dureeMin * 0.25)));
           if (retardMin >= seuilMin) {
@@ -3058,10 +3053,8 @@ export default async function handler(req, res) {
       // Calcul du retard
       let delayMinutes = 0;
       if (m.heure_debut && m.date) {
-        const [h, mn] = m.heure_debut.split(":").map(Number);
-        const scheduledNaive = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`);
-        const scheduledMs = scheduledNaive.getTime() + frenchOffsetMs(scheduledNaive);
-        delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
+        const scheduledMs = debutPrestationMs(m.date, m.heure_debut);
+        if (scheduledMs !== null) delayMinutes = Math.round((new Date(arrivedAt).getTime() - scheduledMs) / 60000);
       }
       // Seuil aligné sur le reste de la plateforme, qui tolère 15 minutes avant de
       // s'inquiéter. À 5 minutes, un simple aléa de circulation imposait au client
@@ -4656,9 +4649,7 @@ export default async function handler(req, res) {
       // Only allow start within [H-5min … H+2h] — rejects stale auto-start calls
       if (m.date && m.heure_debut) {
         try {
-          const [h2, mn2] = m.heure_debut.split(":").map(Number);
-          const missionStartNaive2 = new Date(`${m.date}T${String(h2).padStart(2,"0")}:${String(mn2||0).padStart(2,"0")}:00`);
-          const missionStartUTC2 = new Date(missionStartNaive2.getTime() + frenchOffsetMs(missionStartNaive2));
+          const missionStartUTC2 = new Date(debutPrestationMs(m.date, m.heure_debut));
           const now = Date.now();
           if (now < missionStartUTC2.getTime() - 5 * 60 * 1000) {
             return res.status(400).json({ error: "Trop tôt pour démarrer la prestation (disponible 5 minutes avant l'heure prévue)" });
@@ -4682,9 +4673,9 @@ export default async function handler(req, res) {
       const patchStart = { started_at: startedAt };
       if (m.date && m.heure_debut && m.delay_status !== "approved") {
         try {
-          const [hd, md] = String(m.heure_debut).split(":").map(Number);
-          const prevuNaive = new Date(`${m.date}T${String(hd).padStart(2,"0")}:${String(md||0).padStart(2,"0")}:00`);
-          const prevuMs = prevuNaive.getTime() + frenchOffsetMs(prevuNaive);
+          // Conversion déportée dans _temps.js : la formule ne se recopie plus.
+          const prevuMs = debutPrestationMs(m.date, m.heure_debut);
+          if (prevuMs === null) throw new Error("horaire illisible");
           const retardDemarrage = Math.round((new Date(startedAt).getTime() - prevuMs) / 60000);
           // On retient le décalage le plus défavorable au client : celui de l'arrivée
           // ou celui du démarrage, sans jamais l'effacer.
