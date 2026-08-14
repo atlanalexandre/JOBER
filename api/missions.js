@@ -86,7 +86,15 @@ async function geocodeFR(query) {
     const result = { lat, lon };
     _geocodeCache[q] = result;
     return result;
-  } catch { return null; }
+  } catch (e) {
+    // Repli volontaire sur null : sans coordonnées, le filtre de distance ne
+    // s'applique pas et le prestataire reste candidat. Mieux vaut proposer trop
+    // large que ne proposer personne pendant une panne de l'API Adresse.
+    // Mais on le dit — sinon le rayon d'intervention cesse silencieusement de
+    // fonctionner et personne ne s'en aperçoit (règle 1.2).
+    console.error(`[geocode] « ${q} » non résolue :`, e.message);
+    return null;
+  }
 }
 
 // HTML escaping — prevents XSS in email templates
@@ -399,6 +407,24 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
 
   const lieuMission = [mission.adresse, mission.ville].filter(Boolean).join(" ") || mission.ville;
   const coordMission = lieuMission ? await geocodeFR(lieuMission) : null;
+
+  // Géocodage de toutes les villes candidates EN PARALLÈLE, et une seule fois par
+  // ville distincte.
+  //
+  // Il se faisait auparavant dans la boucle, prestataire par prestataire : autant
+  // d'allers-retours réseau que de candidats, exécutés l'un après l'autre. Avec
+  // soixante prestataires dans soixante communes, et trois secondes de délai
+  // maximum par appel, la recherche pouvait dépasser à elle seule le temps
+  // d'exécution d'une fonction serverless — c'est-à-dire ne jamais répondre.
+  //
+  // Le cache de geocodeFR dédoublonne déjà les appels répétés ; ce qui manquait,
+  // c'était de ne pas les attendre en file.
+  const villesCandidates = [...new Set(
+    eligibles.map(p => { const m = metas[p.id] || {}; return m.ville || m.code_postal; }).filter(Boolean)
+  )];
+  if (coordMission && villesCandidates.length) {
+    await Promise.all(villesCandidates.map(v => geocodeFR(v)));
+  }
 
   const retenus = [];
   for (const p of eligibles) {
