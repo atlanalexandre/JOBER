@@ -3527,6 +3527,32 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     }
                     return null;
                   })()}
+                  {m.status === "completed" && (
+                    // La facture est celle du PRESTATAIRE au client : elle porte son
+                    // nom, son SIRET et son numéro séquentiel, et c'est sur elle qu'il
+                    // déclare son chiffre d'affaires. Le serveur l'autorisait déjà à
+                    // l'ouvrir — il manquait seulement le bouton, et lui n'avait donc
+                    // aucun moyen d'accéder à son propre document comptable.
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const { data: sd } = await supabase.auth.getSession();
+                        const jwt = sd?.session?.access_token;
+                        if (!jwt) { showToast("Session expirée — reconnectez-vous"); return; }
+                        const r = await fetch("/api/missions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+                          body: JSON.stringify({ action: "generate_invoice_token", mission_id: m.id }),
+                        }).catch(() => null);
+                        const d = r ? await r.json().catch(() => null) : null;
+                        if (!d?.token) { showToast(d?.error || "Impossible d'ouvrir la facture"); return; }
+                        window.open(`/api/invoice?mission_id=${encodeURIComponent(m.id)}&token=${encodeURIComponent(d.token)}`, "_blank");
+                      }}
+                      style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}
+                    >
+                      📄 Ma facture
+                    </button>
+                  )}
                   {m.status === "completed" && !ratedMissions.has(m.id) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }}
