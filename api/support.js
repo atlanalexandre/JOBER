@@ -252,6 +252,41 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
         return res.status(409).json({ error: "Impossible de supprimer votre compte : vous avez une prestation en cours. Terminez ou annulez vos prestations actives avant de supprimer votre compte." });
       }
 
+      // Versement encore en attente : depuis que le virement est différé de 48 h
+      // après la fin (CGPS art. 17.1), une prestation validée n'est plus payée
+      // dans la foulée. Un prestataire qui supprimait son compte le soir même
+      // perdait donc son argent : son profil disparaît, le traitement des
+      // versements ne retrouve plus son compte Stripe, et la somme reste bloquée
+      // sans que personne ne s'en aperçoive.
+      //
+      // L'article 16.1 des CGPS l'écrivait déjà — « la résiliation n'est pas
+      // possible si des fonds sont en séquestre au nom de l'utilisateur » — mais
+      // rien ne le vérifiait.
+      const versementsRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${userId}`
+        + `&payout_status=in.(pending,processing)&status=eq.completed`
+        + `&select=id,payout_due_at&order=payout_due_at&limit=1`,
+        { headers: hdrs }
+      );
+      if (versementsRes.ok) {
+        const enAttente = await versementsRes.json().catch(() => []);
+        if (Array.isArray(enAttente) && enAttente.length > 0) {
+          const due = enAttente[0].payout_due_at
+            ? new Date(enAttente[0].payout_due_at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })
+            : null;
+          return res.status(409).json({
+            error: "Impossible de supprimer votre compte : un versement vous est encore dû"
+              + (due ? `, prévu le ${due}` : "")
+              + ". Attendez qu'il soit émis, ou écrivez à support@alane.fr.",
+          });
+        }
+      } else {
+        // On ne supprime pas un compte sans avoir pu vérifier qu'on ne lui doit
+        // rien : le silence coûterait de l'argent à quelqu'un.
+        console.error(`[delete_account] contrôle des versements impossible (${versementsRes.status}) — suppression refusée pour ${userId}`);
+        return res.status(503).json({ error: "Vérification impossible pour le moment — réessayez dans quelques minutes." });
+      }
+
       // Empreinte anti-recréation, AVANT l'anonymisation qui rend les données
       // illisibles.
       //
