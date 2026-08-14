@@ -111,7 +111,23 @@ leur reste à recouvrer, leur notification et leur date d'exigibilité.
 deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; créer ou
 éteindre une créance passe par `/api`.
 
-**`documents`** — les pièces justificatives des prestataires.
+**`documents`** — les pièces justificatives des prestataires. `verified_at` date la
+vérification, `expires_at` porte la fin de validité des attestations qui en ont une (RC Pro,
+URSSAF), `purged_at` marque la suppression du fichier.
+
+**La purge des pièces d'identité supprime le FICHIER, pas la LIGNE.** CNI, Kbis et
+justificatif de domicile partent du stockage 30 jours après la vérification, et au plus tard
+12 mois après le dépôt même sans vérification (CGPS art. 14.4, `api/_conservation.js`). La
+ligne survit avec `purged_at` : elle est la preuve que la vérification a eu lieu, ce
+qu'ALANE doit pouvoir justifier (art. L8222-1 du Code du travail, CGPS art. 10B.8 et 10D.4).
+Supprimer la ligne effacerait la démarche en même temps que la pièce. Si la suppression du
+fichier échoue, `purged_at` n'est **pas** écrit — sinon la pièce serait réputée supprimée
+alors qu'elle est toujours là, et plus rien ne repasserait dessus.
+
+Les attestations RC Pro sont relancées 30 jours avant l'échéance, puis à l'expiration, et
+l'accès aux propositions est suspendu 30 jours après (`missions_enabled = false`), comme
+l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
+terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
 `autre`. **Un seul document par prestataire et par type** (contrainte unique).
 

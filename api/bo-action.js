@@ -1042,10 +1042,23 @@ export default async function handler(req, res) {
         console.error(`[verify_doc] document ${req.body.docId} rattaché à ${docTrouve.prestataire_id}, demandé pour ${profileId}`);
         return res.status(403).json({ error: "Ce document appartient à un autre compte prestataire." });
       }
+      // `expires_at` : fin de validité, saisie pour les documents qui en ont
+      // une (attestation RC Pro, URSSAF). Sans elle, rien ne suit l'expiration
+      // et l'article 19.1 des CGPS — renouvellement annuel, suspension après
+      // trente jours — reste une promesse sans effet.
+      const expiresAt = req.body.expiresAt ? String(req.body.expiresAt).slice(0, 10) : null;
+      if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+        return res.status(400).json({ error: "Date de validité invalide (attendu AAAA-MM-JJ)" });
+      }
+
       const patchDocRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ verified: true }),
+        // `verified_at` date la vérification : c'est de lui que court le délai
+        // de trente jours au terme duquel la pièce d'identité est supprimée
+        // (CGPS art. 14.4).
+        body: JSON.stringify({ verified: true, verified_at: new Date().toISOString(),
+                               ...(expiresAt ? { expires_at: expiresAt } : {}) }),
       });
       // L'écriture n'était pas vérifiée : un refus de PostgREST renvoyait quand même
       // « success: true » et l'écran affichait le document comme validé alors qu'il

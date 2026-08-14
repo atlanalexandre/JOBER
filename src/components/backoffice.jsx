@@ -439,12 +439,14 @@ export function BOComptes() {
     setDocsLoading(l => ({ ...l, [profileId]: false }));
   };
 
-  const handleVerifyDoc = async (profileId, docId) => {
+  const handleVerifyDoc = async (profileId, docId, docType) => {
+    const validite = await demanderValidite(docType);
+    if (!validite.ok) return;
     setDocVerifying(docId);
     // L'état n'est mis à jour que si le serveur a réellement validé : l'écran
     // affichait « vérifié » même quand l'appel échouait.
     try {
-      const r = await boFetch({ action:"verify_doc", profileId, docId });
+      const r = await boFetch({ action:"verify_doc", profileId, docId, expiresAt: validite.expiresAt });
       const j = await r.json().catch(() => ({}));
       if (r.ok) setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
       else showToast(j.error || `Erreur ${r.status}`, "error");
@@ -1039,7 +1041,7 @@ export function BOComptes() {
                             <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}
                           {!doc.verified && !doc.isVirtual && (
-                            <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                            <button onClick={()=>handleVerifyDoc(p.id, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               {docVerifying===doc.id ? "…" : "✓"}
                             </button>
                           )}
@@ -1267,7 +1269,7 @@ export function BOComptes() {
                                     <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                                   )}
                                   {!doc.verified && !doc.isVirtual && (
-                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
+                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
                                       {docVerifying===doc.id ? "…" : "✓"}
                                     </button>
                                   )}
@@ -1642,6 +1644,29 @@ export function BOVersements() {
       ))}
     </>
   );
+}
+
+// Documents dont la validité est datée : sans cette date, rien ne suit
+// l'expiration et l'article 19.1 des CGPS — renouvellement annuel de la RC Pro,
+// suspension trente jours après l'échéance — reste une promesse sans effet.
+const DOCS_A_ECHEANCE = ["rc_pro", "urssaf"];
+
+async function demanderValidite(type) {
+  if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };
+  const saisie = await showPrompt(
+    `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
+    + `Elle déclenche la relance du prestataire avant l'échéance, puis la suspension `
+    + `de son accès trente jours après (CGPS art. 19.1).\n\n`
+    + `Laissez vide si le document n'en porte pas.`
+  );
+  if (saisie === null) return { ok: false };
+  const v = String(saisie).trim();
+  if (!v) return { ok: true };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    showToast("Date invalide — attendu AAAA-MM-JJ. Vérification annulée.", "error");
+    return { ok: false };
+  }
+  return { ok: true, expiresAt: v };
 }
 
 export function BOLitiges() {
@@ -2796,11 +2821,13 @@ export function BODocuments() {
   useEffect(() => { load(); }, []);
 
   const handleVerify = async (doc) => {
+    const validite = await demanderValidite(doc.type);
+    if (!validite.ok) return;
     setVerifying(doc.id);
     try {
       // Même précaution que dans l'onglet Comptes : l'écran affichait « vérifié »
       // sans regarder si le serveur avait accepté.
-      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id, expiresAt: validite.expiresAt }) });
       const j = await r.json().catch(()=>({}));
       if (r.ok) setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
       else showToast(j.error || `Erreur ${r.status}`, "error");
