@@ -23,6 +23,11 @@ const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 // Volontairement non exportée : exporter une fonction depuis un fichier de
 // composants casse le rafraîchissement à chaud (react-refresh).
 function montantPrestataire(m) {
+  // Une prestation clôturée porte le montant exact qui lui sera versé, figé par
+  // le serveur (`payout_amount`). Il fait foi : le recalcul ci-dessous ignore le
+  // plafonnement des heures appliqué quand un décalage d'horaire n'a jamais été
+  // arbitré, et afficherait donc plus que ce que le prestataire touchera.
+  if (m?.payout_amount != null) return Number(m.payout_amount);
   const heures = Number(m?.actual_hours ?? m?.hours ?? 0);
   const tarif  = Number(m?.tarif_horaire || 0);
   const jours  = (m?.date_debut && m?.date_fin)
@@ -3043,7 +3048,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,date,heure_debut,sector,metier,titre,status").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
@@ -3482,6 +3487,30 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       <span style={{ background:`${statusColor}20`, border:`1px solid ${statusColor}44`, borderRadius:20, padding:"2px 8px", color:statusColor, fontSize:10, fontWeight:700 }}>{statusLabel}</span>
                     </div>
                   </div>
+                  {m.status === "completed" && (() => {
+                    // Le versement n'est plus immédiat : il part à la fermeture du
+                    // délai de 48 h dont le client dispose pour signaler un problème
+                    // (CGPS art. 17.1). Un prestataire qui ne voit rien arriver et
+                    // qu'on n'a pas prévenu ouvre un ticket — puis en perd confiance.
+                    if (m.payout_status === "transferred") {
+                      return <div style={{ marginTop:8, color:C.success, fontSize:11, fontWeight:600 }}>💸 Versement envoyé sur votre IBAN</div>;
+                    }
+                    if (m.payout_status === "pending" || m.payout_status === "processing") {
+                      const du = m.payout_due_at ? new Date(m.payout_due_at) : null;
+                      const aVenir = du && du.getTime() > Date.now();
+                      return (
+                        <div style={{ marginTop:8, color:C.textSub, fontSize:11, lineHeight:1.5 }}>
+                          ⏳ Versement {aVenir
+                            ? `prévu le ${du.toLocaleDateString("fr-FR", { day:"numeric", month:"long" })}`
+                            : "en cours"} — le client dispose de 48 h après la fin de la prestation pour signaler un problème.
+                        </div>
+                      );
+                    }
+                    if (m.payout_status === "failed") {
+                      return <div style={{ marginTop:8, color:"#F25E5E", fontSize:11, fontWeight:600 }}>⚠️ Versement bloqué — écrivez à support@alane.fr</div>;
+                    }
+                    return null;
+                  })()}
                   {m.status === "completed" && !ratedMissions.has(m.id) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setRatingTarget(m); }}

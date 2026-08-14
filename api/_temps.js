@@ -88,6 +88,30 @@ export function finPrestationMs(m) {
 }
 
 /**
+ * Fenêtre de contestation ouverte au client par l'article 17.1 des CGPS :
+ * quarante-huit heures à compter de la FIN de la prestation.
+ */
+export const DELAI_CONTESTATION_MS = 48 * 3600000;
+
+/**
+ * Instant UTC (ms) à partir duquel le virement au prestataire devient émissible.
+ *
+ * Le point de départ est la fin de la prestation, jamais l'instant de la
+ * validation : un client qui valide trois jours après coup a déjà laissé la
+ * fenêtre se fermer, son prestataire ne doit pas attendre deux jours de plus.
+ * À l'inverse, une validation immédiate en fin de service n'abrège pas la
+ * fenêtre — c'est précisément ce que le versement immédiat faisait.
+ *
+ * @param {object} m       la prestation (voir finPrestationMs)
+ * @param {number} nowMs   repli si l'horaire de la prestation est illisible
+ * @returns {number}
+ */
+export function echeanceVersementMs(m, nowMs = Date.now()) {
+  const fin = finPrestationMs(m);
+  return (fin === null ? nowMs : fin) + DELAI_CONTESTATION_MS;
+}
+
+/**
  * Retard de démarrage, en minutes, par rapport à l'horaire prévu.
  * Négatif si l'on est encore en avance. null si l'horaire est inconnu.
  */
