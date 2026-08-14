@@ -892,6 +892,17 @@ une prestation `assigned` dont `validation_prestataire` est vrai.
 filtres qui la feraient avancer — `status=eq.assigned` de l'auto-validation, et
 `status=eq.completed` du versement différé. Il n'y a pas d'autre verrou.
 
+**Le signalement avant validation ne fonctionnait pas** malgré son ouverture le 12/08 :
+l'action l'acceptait à l'entrée, mais l'écriture filtrait sur `status=eq.completed` seul.
+Une prestation encore `assigned` ne correspondait à aucune ligne et le client recevait un
+409. Corrigé le 14/08 — le filtre couvre `completed` et `assigned`.
+
+**Le délai de contestation et l'échéance de versement partent du même instant**, la fin
+*prévue* de la prestation : `echeanceVersementMs` neutralise `actual_hours`, comme le
+contrôle de délai de l'action `dispute`. Sans cela, une prestation écourtée — 2 h déclarées
+sur 4 h commandées — voyait son versement partir deux heures avant la fermeture de la
+fenêtre, le client pouvant encore signaler un problème sur un argent déjà versé.
+
 **Tranché le 14/08/2026 — le versement est différé de 48 h.** Le virement partait auparavant
 à l'instant de la validation, alors que l'article 17.1 accorde au client 48 h pour signaler
 un problème *après la fin de la prestation* : ces heures n'existaient donc pas. Un client qui

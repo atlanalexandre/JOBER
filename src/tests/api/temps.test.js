@@ -84,6 +84,15 @@ describe("echeanceVersementMs", () => {
       .toBe(AOUT_14H_UTC + 60 * 60000 + 3 * 3600000 + 48 * 3600000);
   });
 
+  it("ignore actual_hours — le versement ne doit jamais précéder la fermeture de la fenêtre", () => {
+    // Prestation de 3 h commandée, 1 h réellement déclarée. Le délai de
+    // contestation de l'action `dispute` part de la fin PRÉVUE : si l'échéance de
+    // versement partait de la fin réelle, l'argent serait versé deux heures avant
+    // que le client ne perde son droit de signaler.
+    expect(echeanceVersementMs({ ...PRESTA, actual_hours: 1 }))
+      .toBe(echeanceVersementMs(PRESTA));
+  });
+
   it("retombe sur l'instant courant + 48 h quand l'horaire est illisible", () => {
     const maintenant = AOUT_14H_UTC;
     expect(echeanceVersementMs({ hours: 2 }, maintenant)).toBe(maintenant + 48 * 3600000);
