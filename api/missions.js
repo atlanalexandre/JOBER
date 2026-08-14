@@ -1540,12 +1540,28 @@ export default async function handler(req, res) {
       // l'identifiant part directement dans une URL PostgREST.
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at,validation_prestataire`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
       if (mission.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
-      if (mission.status !== "completed") return res.status(400).json({ error: "La prestation doit être terminée pour signaler un litige" });
+      // Le litige était réservé aux prestations déjà clôturées. Or le moment
+      // décisif est celui d'AVANT : le prestataire a confirmé la fin, le client
+      // est invité à valider, et c'est cette validation qui déclenche le virement.
+      // Un client qui constate un problème à cet instant devait valider d'abord
+      // — donc libérer l'argent — pour pouvoir contester ensuite.
+      //
+      // On accepte donc aussi une prestation encore `assigned` dont le prestataire
+      // a confirmé la fin. Le passage en `disputed` la fait sortir du filtre
+      // `status=eq.assigned` de l'auto-validation : les fonds cessent d'être
+      // libérables tant que le litige n'est pas tranché.
+      const contestableAvantValidation =
+        mission.status === "assigned" && mission.validation_prestataire;
+      if (mission.status !== "completed" && !contestableAvantValidation) {
+        return res.status(400).json({
+          error: "Un litige ne peut être signalé qu'une fois la prestation terminée.",
+        });
+      }
 
       // Délai de contestation de 48 h, imposé par les CGPS : « Au-delà de 48 heures
       // sans signalement par le Client, la Prestation est réputée définitivement
