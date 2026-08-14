@@ -107,7 +107,12 @@ export const DELAI_CONTESTATION_MS = 48 * 3600000;
  * @returns {number}
  */
 export function echeanceVersementMs(m, nowMs = Date.now()) {
-  const fin = finPrestationMs(m);
+  // `actual_hours` est neutralisé, exactement comme dans le contrôle du délai de
+  // contestation de l'action `dispute`. Les deux doivent partir du MÊME instant :
+  // sinon une prestation écourtée — 2 h déclarées sur 4 h commandées — voit son
+  // versement partir deux heures avant la fermeture de la fenêtre du client, qui
+  // se retrouve à pouvoir signaler un problème sur un argent déjà versé.
+  const fin = finPrestationMs({ ...m, actual_hours: null });
   return (fin === null ? nowMs : fin) + DELAI_CONTESTATION_MS;
 }
 

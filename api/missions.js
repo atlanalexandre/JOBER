@@ -1560,7 +1560,12 @@ export default async function handler(req, res) {
       // la prestation en « completed » alors que le client lisait « Signalement
       // envoyé » — le litige n'existait alors nulle part (règle 1.2). Le filtre sur
       // le statut évite aussi deux signalements concurrents.
-      const patchLitige = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.completed`, {
+      // Le filtre portait sur `status=eq.completed` seul. Or l'action accepte aussi
+      // une prestation encore `assigned` dont le prestataire a confirmé la fin —
+      // exactement l'instant où le client est invité à valider. Dans ce cas la
+      // requête ne trouvait aucune ligne et le signalement était refusé en 409 :
+      // le chemin ouvert au-dessus n'aboutissait jamais.
+      const patchLitige = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(completed,assigned)`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ status: "disputed" }),
