@@ -97,6 +97,11 @@ Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approve
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,
 `completed`, `closed`, `cancelled`, `disputed`, `rejected`, `refused`.
 
+Le versement au prestataire se suit sur trois colonnes : `payout_status`
+(`pending` → `processing` → `transferred`, ou `failed`), `payout_amount` (le montant dû,
+figé à la clôture) et `payout_due_at` (l'instant à partir duquel le virement est émissible,
+soit la fin de la prestation + 48 h). Voir « Le versement au prestataire » au §6.
+
 **`documents`** — les pièces justificatives des prestataires.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
 `autre`. **Un seul document par prestataire et par type** (contrainte unique).
@@ -880,20 +885,19 @@ tard et le virement partait au prestataire**. Le client croyait s'être opposé 
 ne s'était opposé à rien.
 
 **Recevabilité** — l'action `dispute` acceptait uniquement `status = completed`. Or le moment
-décisif est celui d'avant : c'est la validation du client qui déclenche le virement
-(`complete` crée le Transfer Stripe dans la foulée). Elle accepte désormais aussi une
-prestation `assigned` dont `validation_prestataire` est vrai — c'est-à-dire exactement
-l'instant où le client est invité à valider.
+décisif est celui d'avant, quand le client est invité à valider. Elle accepte désormais aussi
+une prestation `assigned` dont `validation_prestataire` est vrai.
 
-**Ce qui gèle les fonds** : le passage en `disputed` fait sortir la prestation du filtre
-`status=eq.assigned` de l'auto-validation (`cron-reset-monthly.js`). Il n'y a pas d'autre
-verrou — un statut qui resterait `assigned` serait clôturé automatiquement.
+**Ce qui gèle les fonds** : le passage en `disputed` fait sortir la prestation des deux
+filtres qui la feraient avancer — `status=eq.assigned` de l'auto-validation, et
+`status=eq.completed` du versement différé. Il n'y a pas d'autre verrou.
 
-**Décision produit ouverte** : `complete` déclenche le virement immédiatement, alors que
-l'article 17.1 accorde au client 48 h pour signaler un problème après la fin de la
-prestation. Une validation explicite libère donc les fonds avant la fin de cette fenêtre.
-Deux options — différer le virement jusqu'à la clôture de la fenêtre, ou s'appuyer sur la
-réversibilité du Transfer Stripe tant que le solde du compte connecté le permet. Non tranché.
+**Tranché le 14/08/2026 — le versement est différé de 48 h.** Le virement partait auparavant
+à l'instant de la validation, alors que l'article 17.1 accorde au client 48 h pour signaler
+un problème *après la fin de la prestation* : ces heures n'existaient donc pas. Un client qui
+validait de bonne foi en fin de service puis constatait un défaut l'après-midi même n'avait
+plus rien à bloquer, l'annulation du Transfer échouant dès que Stripe a viré les fonds sur le
+compte bancaire du prestataire. Voir « Le versement au prestataire » ci-dessous.
 
 ### Se faire remplacer
 
@@ -937,6 +941,32 @@ Le client paie via Stripe. Le webhook `stripe-webhook.js` confirme le paiement e
 la mission en `assigned`. À la validation finale, le prestataire est payé et le cashback client
 est crédité.
 
+#### Le versement au prestataire
+
+Le virement ne part **pas** à la validation. La clôture — quel que soit son chemin — se
+contente d'inscrire sur la prestation :
+
+| Colonne | Contenu |
+|---|---|
+| `payout_status` | `pending` |
+| `payout_amount` | le montant exact dû, **figé** |
+| `payout_due_at` | fin effective de la prestation + 48 h |
+
+`api/cron-reset-monthly.js` repasse **toutes les deux heures** (route `?action=reminders`) et
+émet les virements dont l'échéance est atteinte, à la seule condition que la prestation soit
+toujours `completed` — un litige la fait passer en `disputed` et l'exclut d'office. Le verrou
+est atomique (`pending` → `processing` avant l'appel Stripe) et la clé d'idempotence
+`payout-<id>` interdit tout double virement.
+
+Le montant est **figé à la clôture et jamais recalculé** : la clôture plafonne les heures
+quand le client n'a jamais arbitré un décalage d'horaire, sans réécrire `actual_hours`. Un
+traitement différé qui referait le calcul verserait plus que ce que le client a payé.
+
+Il n'existe **qu'un seul chemin d'émission**. `account.updated` dans `stripe-webhook.js` en
+émettait un second, avec son propre calcul et sans regarder `payout_due_at` : un prestataire
+qui activait son compte Stripe pendant la fenêtre était payé aussitôt. Ce bloc a été retiré
+le 14/08/2026 — le cron reprend seul les prestations restées en attente.
+
 **Ce que reçoit le prestataire** (décision du 30/07/2026) : `tarif_horaire × heures × jours`,
 soit la part horaire seule. Les frais de service restent acquis à ALANE — c'est sa
 rémunération, et c'est ce qu'annonce le contrat signé par les deux parties (« Montant net dû
@@ -948,11 +978,21 @@ doit rester alignée : six copies d'une formule privilégiant `montant_total` su
 les montants montrés au prestataire — revenu du mois, fiche de fin de prestation, historique,
 totaux et export comptable. Une prestation d'1 h à 15 €/h s'affichait « 19,90 € gagnés ».
 
-Deux chemins émettent ce virement et **doivent rester alignés** : `api/missions.js` (action
-`complete`, cas normal) et `api/stripe-webhook.js` (`account.updated`, rattrapage des
-virements en attente quand le compte Stripe du prestataire devient opérationnel). Ils
-calculaient auparavant deux montants différents, tous deux faux : le premier omettait le
-nombre de jours, le second versait `montant_total` frais compris.
+Le calcul lui-même vit dans **`api/_cloture.js`** (`montantsDeCloture`), et nulle part
+ailleurs. Il en existait quatre copies divergentes, toutes fausses à leur façon :
+`api/missions.js` omettait le nombre de jours, `api/stripe-webhook.js` versait
+`montant_total` frais compris, et l'auto-validation de `api/cron-reset-monthly.js` cumulait
+l'oubli des jours, l'écrasement de `montant_total` par la seule part horaire — effaçant les
+frais encaissés, donc la trace de ce que le client avait payé — et l'absence de plafonnement
+des heures en cas de décalage non arbitré. Surtout, **elle ne programmait aucun virement** :
+la prestation était clôturée, le prestataire recevait un e-mail lui annonçant un paiement
+« sous 3 à 5 jours ouvrés », et rien n'était jamais émis.
+
+La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : mêmes défauts,
+plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé.
+`release_dispute` remet désormais `payout_status` à `pending` — sans quoi une prestation dont
+le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
+libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
 
 **La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
 donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`.

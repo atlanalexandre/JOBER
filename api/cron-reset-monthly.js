@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs } from "./_temps.js";
+import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
+import { montantsDeCloture } from "./_cloture.js";
 import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
@@ -266,6 +267,140 @@ export default async function handler(req, res) {
     } catch (e) { console.error("[cron] auto-close past missions error:", e); }
   }
 
+  // ── Versements arrivés à échéance (toutes routes) ──────────────────
+  //
+  // Le virement au prestataire ne part plus à la validation du client mais à la
+  // fermeture de la fenêtre de contestation de quarante-huit heures prévue par
+  // l'article 17.1 des CGPS.
+  //
+  // Ce bloc est placé AVANT le retour anticipé du mode « rappels » : il doit
+  // tourner à chaque passage, soit toutes les deux heures, et non une fois par
+  // mois. C'est l'erreur qu'avait faite le remboursement des prestations non
+  // honorées, découverte le 06/08 — un client attendait son argent jusqu'au
+  // 1er du mois suivant.
+  {
+    const STRIPE_SK_V = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+    if (STRIPE_SK_V) {
+      try {
+        const maintenant = new Date().toISOString();
+        // `status=eq.completed` est le verrou : un litige fait passer la
+        // prestation en `disputed` et l'exclut d'office. Une retenue au titre de
+        // l'article 7.4 des CGPS suivra le même chemin quand elle sera outillée.
+        const aVerser = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions`
+          + `?payout_status=eq.pending&status=eq.completed`
+          + `&payout_due_at=lte.${encodeURIComponent(maintenant)}`
+          + `&select=id,prestataire_id,payout_amount`
+          + `&limit=200`,
+          { headers }
+        );
+        if (!aVerser.ok) {
+          // PostgREST répond 400 (code 42703) sur une colonne inconnue, pas 404.
+          // C'est le symptôme d'une migration non appliquée, et il faut qu'il se
+          // voie : sans elle, plus aucun prestataire n'est payé.
+          const detail = await aVerser.text().catch(() => "");
+          console.error(`[versements] lecture impossible (${aVerser.status}) : ${detail.slice(0, 200)}`
+            + " — vérifier que la migration 2026-08-12_versement_differe_48h.sql est appliquée.");
+        } else {
+          const lots = await aVerser.json().catch(() => []);
+          const COMMISSION_V = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
+          let emis = 0;
+
+          for (const m of (Array.isArray(lots) ? lots : [])) {
+            // Verrou atomique : on passe en `processing` AVANT d'appeler Stripe.
+            // Deux exécutions concurrentes du cron ne peuvent pas verser deux fois.
+            const verrou = await fetch(
+              `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&payout_status=eq.pending`,
+              { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+                body: JSON.stringify({ payout_status: "processing" }) }
+            );
+            const pris = await verrou.json().catch(() => []);
+            if (!Array.isArray(pris) || pris.length === 0) continue;
+
+            try {
+              const pr = await fetch(
+                `${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=stripe_account_id,stripe_account_status`,
+                { headers }
+              );
+              const pd = await pr.json().catch(() => []);
+              const pp = Array.isArray(pd) && pd[0];
+
+              if (!pp?.stripe_account_id || pp.stripe_account_status !== "enabled") {
+                // Compte Connect pas encore actif : on repasse en attente. Le
+                // webhook `account.updated` rattrapera le versement à l'activation.
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "pending" }),
+                }).catch(e => console.error(`[versements] retour en attente ${m.id} :`, e.message));
+                continue;
+              }
+
+              // Le montant a été figé à la clôture par api/missions.js. On ne le
+              // recalcule PAS ici : la clôture plafonne les heures quand le
+              // client n'a jamais arbitré un décalage d'horaire, sans réécrire
+              // `actual_hours`. Refaire le calcul verserait plus que le facturé.
+              const part = Number(m.payout_amount ?? 0);
+              const cents = Math.round(part * (1 - COMMISSION_V) * 100);
+
+              if (cents < 100) {
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "failed" }),
+                }).catch(() => {});
+                console.error(m.payout_amount == null
+                  ? `[versements] montant absent — prestation ${m.id} : payout_amount non renseigné à la clôture, virement à faire à la main`
+                  : `[versements] montant trop faible (${cents} c) — prestation ${m.id}`);
+                continue;
+              }
+
+              const tr = await fetch("https://api.stripe.com/v1/transfers", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${STRIPE_SK_V}`,
+                  "Content-Type": "application/x-www-form-urlencoded",
+                  // Une prestation ne peut donner lieu qu'à un seul virement, quel
+                  // que soit le nombre de passages du cron.
+                  "Idempotency-Key": `payout-${m.id}`,
+                },
+                body: new URLSearchParams({
+                  amount: String(cents), currency: "eur", destination: pp.stripe_account_id,
+                  "metadata[mission_id]": m.id, "metadata[prestataire_id]": m.prestataire_id,
+                }).toString(),
+              });
+              const td = await tr.json().catch(() => ({}));
+
+              if (tr.ok && td.id) {
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: td.id }),
+                }).catch(e => console.error(`[versements] statut non écrit ${m.id} :`, e.message));
+                emis++;
+                console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €) — prestation ${m.id}`);
+              } else {
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ payout_status: "failed" }),
+                }).catch(() => {});
+                console.error(`[versements] Stripe a refusé — prestation ${m.id} :`, td?.error?.message || tr.status);
+              }
+            } catch (e) {
+              // On ne laisse jamais une prestation coincée en `processing` :
+              // elle ne serait plus jamais reprise par aucun passage.
+              await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ payout_status: "pending" }),
+              }).catch(() => {});
+              console.error(`[versements] échec sur ${m.id} :`, e.message);
+            }
+          }
+          if (emis) console.log(`[versements] ${emis} virement(s) émis`);
+        }
+      } catch (e) {
+        console.error("[versements] traitement interrompu :", e.message);
+      }
+    }
+  }
+
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
     const RESEND_API_KEY    = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
@@ -507,7 +642,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,heure_debut,validation_prestataire,cashback_credited`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -516,10 +651,11 @@ ${(() => {
         const nowTs = Date.now();
         const autoMissions = Array.isArray(autoMissionsRaw) ? autoMissionsRaw.filter(m => {
           if (!m.date) return true;
-          const [h = 8, mn = 0] = (m.heure_debut || "08:00").split(":").map(Number);
-          const naiveMs = new Date(`${m.date}T${String(h).padStart(2,"0")}:${String(mn).padStart(2,"0")}:00`).getTime();
-          const missionEndMs = naiveMs + frenchOffsetMs(new Date(naiveMs)) + Number(m.hours || 1) * 3600000;
-          return nowTs - missionEndMs >= 24 * 3600000;
+          // Formule de fuseau déportée dans _temps.js (règle CLAUDE.md : on ne la
+          // recopie plus). Horaire prévu, pas le pointage réel : le délai de 24 h
+          // court depuis la fin annoncée au client.
+          const missionEndMs = finPrestationMs({ ...m, started_at: null, actual_hours: null });
+          return missionEndMs === null || nowTs - missionEndMs >= 24 * 3600000;
         }) : [];
 
         if (autoMissions.length) {
@@ -542,10 +678,19 @@ ${(() => {
                 console.log(`cron auto-validate: cashback already credited for mission ${m.id}, skipping`);
                 continue;
               }
-              // B-02: use actual_hours (validated by prestataire) if available, fallback to planned hours
-              const hours = m.actual_hours ?? m.hours ?? 0;
-              const tarif = m.tarif_horaire || 0;
-              const montantTotal = Math.round(hours * tarif * 100) / 100;
+              // Montants calculés par api/_cloture.js, comme la validation par le
+              // client. Ce chemin en tenait sa propre version : elle omettait le
+              // nombre de jours (une prestation de cinq jours n'en payait qu'un),
+              // écrasait `montant_total` par la seule part horaire — effaçant les
+              // frais de service encaissés, donc la trace de ce que le client avait
+              // payé — et ignorait le plafonnement des heures en cas de décalage
+              // d'horaire jamais arbitré.
+              const { jours, partPrestataire, totalClient } = montantsDeCloture(m);
+              if (partPrestataire <= 0) {
+                console.error(`cron auto-validate: montant nul pour ${m.id} `
+                  + `(heures=${m.actual_hours ?? m.hours}, tarif=${m.tarif_horaire}) — non clôturée`);
+                continue;
+              }
               const mLabel = esc(m.metier || m.sector || "Prestation");
               const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 
@@ -553,15 +698,25 @@ ${(() => {
               const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
               const cpData = await cpRes.json();
               const profile = Array.isArray(cpData) && cpData[0] ? cpData[0] : {};
-              const missionsThisMonth = (profile.missions_completed_month || 0) + 1;
+              const missionsThisMonth = (profile.missions_completed_month || 0) + jours;
               const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
-              const cashbackEarned = Math.round(montantTotal * rate * 100) / 100;
+              const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
 
               // Marquer la mission complétée et cashback crédité (B-05: cashback_credited = idempotence guard)
               const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                 method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ status: "completed", validation_client: true, validation_prestataire: true, montant_total: montantTotal, cashback_credited: true }),
+                body: JSON.stringify({
+                  status: "completed", validation_client: true, validation_prestataire: true,
+                  montant_total: totalClient, cashback_credited: true,
+                  // Ce chemin ne programmait AUCUN virement : la prestation était
+                  // clôturée, le prestataire recevait un e-mail lui annonçant un
+                  // paiement « sous 3 à 5 jours ouvrés », et rien n'était jamais
+                  // émis. Seule la validation explicite par le client payait.
+                  payout_status: "pending",
+                  payout_amount: partPrestataire,
+                  payout_due_at: new Date(echeanceVersementMs(m)).toISOString(),
+                }),
               });
               if (!patchRes.ok) {
                 console.error(`cron auto-validate: PATCH mission ${m.id} failed`, await patchRes.text());
@@ -572,7 +727,7 @@ ${(() => {
                 // Mise à jour atomique du cashback via RPC pour éviter les race conditions
                 fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=representation" },
-                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
+                  body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: jours }),
                 }).catch(e => console.error("cron cashback update error:", e)),
                 // Notification client
                 fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -582,7 +737,7 @@ ${(() => {
                 // Notification prestataire
                 m.prestataire_id && fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${montantTotal.toFixed(2)} € est en cours de traitement.`, read: false }),
+                  body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée ✅", body: `Votre prestation "${mLabel}" a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`, read: false }),
                 }).catch(()=>{}),
                 // Email prestataire — réutilise userMap déjà chargé
                 (async () => {
@@ -593,7 +748,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${montantTotal.toFixed(2)} €</strong> est en cours de traitement et sera versé sur votre IBAN sous 3 à 5 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
                 // Email client — confirmation auto-validation

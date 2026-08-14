@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT } from "./_dependance.js";
+import { montantsDeCloture } from "./_cloture.js";
+import { echeanceVersementMs } from "./_temps.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -1156,18 +1158,35 @@ export default async function handler(req, res) {
       const { mission_id } = req.body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,tarif_horaire,metier,sector,recurrence,date,heure_debut,ville`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (!["assigned","pending_acceptance"].includes(m.status)) return res.status(400).json({ error: `Statut ${m.status} — seules les prestations assigned/pending_acceptance peuvent être validées` });
-      const montantTotal = Math.round((m.hours||0) * (m.tarif_horaire||0) * 100) / 100;
+
+      // Montants calculés par api/_cloture.js, comme les deux autres chemins de
+      // clôture. Celui-ci en tenait une quatrième version : elle omettait le nombre
+      // de jours et écrasait `montant_total` par la seule part horaire, effaçant les
+      // frais de service encaissés — donc la trace de ce que le client avait payé.
+      const { partPrestataire, totalClient } = montantsDeCloture(m);
       // PATCH atomique — garde le guard status=eq.assigned pour éviter double-crédit
       const patchStatus = m.status === "pending_acceptance" ? "pending_acceptance" : "assigned";
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=eq.${patchStatus}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation", "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", montant_total: montantTotal, validation_prestataire: true, validation_client: true }),
+        body: JSON.stringify({
+          status: "completed", montant_total: totalClient,
+          validation_prestataire: true, validation_client: true,
+          // Ce chemin ne programmait aucun virement : la prestation était clôturée,
+          // le prestataire recevait « votre paiement est en cours », et rien n'était
+          // jamais émis. Il suit désormais la même règle que les autres — versement
+          // à la fermeture du délai de réclamation de 48 h (CGPS art. 17.1).
+          ...(partPrestataire > 0 && m.prestataire_id ? {
+            payout_status: "pending",
+            payout_amount: partPrestataire,
+            payout_due_at: new Date(echeanceVersementMs(m)).toISOString(),
+          } : {}),
+        }),
       });
       const patched = await patchRes.json().catch(() => []);
       if (!Array.isArray(patched) || patched.length === 0) return res.status(409).json({ error: "Prestation déjà validée ou statut changé" });
@@ -1184,12 +1203,12 @@ export default async function handler(req, res) {
       const prof = Array.isArray(profileD) && profileD[0];
       const mCount = (prof?.missions_completed_month||0)+1;
       const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
-      const cashback = Math.round(montantTotal*rate*100)/100;
+      const cashback = Math.round(partPrestataire*rate*100)/100;
       const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>null);
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement est en cours.`, read:false }) }).catch(()=>{});
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`, read:false }) }).catch(()=>{});
       }
       // Notification client
       await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
@@ -1205,7 +1224,7 @@ export default async function handler(req, res) {
         }).catch(() => {});
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(()=>{});
-      return res.status(200).json({ success:true, montantTotal, cashback });
+      return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
     }
 
     if (action === "release_dispute") {
@@ -1221,7 +1240,10 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "completed" }),
+        // Le versement repasse en attente : le cron le reprendra au prochain
+        // passage. Sans cette remise à zéro, une prestation dont le virement avait
+        // échoué avant le litige resterait `failed` et ne serait jamais payée.
+        body: JSON.stringify({ status: "completed", payout_status: "pending" }),
       });
 
       // Notification client

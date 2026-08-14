@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
+import { montantsDeCloture } from "./_cloture.js";
 import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
 
@@ -1137,7 +1138,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1146,57 +1147,26 @@ export default async function handler(req, res) {
       if (!mission.stripe_payment_intent) return res.status(400).json({ error: "Aucun paiement Stripe enregistré pour cette prestation — impossible de valider" });
       if (!mission.validation_prestataire) return res.status(400).json({ error: "Le prestataire n'a pas encore confirmé la fin de prestation" });
 
-      let heuresEffectives = mission.actual_hours ?? mission.hours ?? 0;
-      const tarifHoraire     = mission.tarif_horaire || 0;
+      // Le calcul vit dans api/_cloture.js : il est partagé avec l'auto-validation
+      // du cron, qui en tenait auparavant une version divergente.
+      const { heuresEffectives, jours: missionDayCount, partPrestataire, totalClient, ajustementRetard } =
+        montantsDeCloture(mission);
 
-      // Décalage jamais arbitré par le client : la prestation est facturée jusqu'à
-      // l'heure de fin initialement prévue. Le champ était lu ici sans être utilisé —
-      // un client qui n'avait rien accepté payait quand même les heures pleines.
-      // Un refus explicite (`rejected`) a déjà ajusté `hours` et `actual_hours`.
-      let ajustementRetard = null;
-      if (mission.delay_status === "pending") {
-        const retardH = (Number(mission.arrival_delay_minutes) || 0) / 60;
-        const plafonnees = Math.max(0, Math.round((Number(mission.hours || 0) - retardH) * 100) / 100);
-        if (plafonnees < heuresEffectives) {
-          console.log(`[complete] décalage non accepté sur ${mission_id} : ${heuresEffectives}h ramenées à ${plafonnees}h`);
-          // Conservé pour prévenir le prestataire : un ajustement appliqué en
-          // silence, sans que l'intéressé sache pourquoi ni puisse répondre, est
-          // exactement ce qui distingue une sanction d'un ajustement de prix.
-          ajustementRetard = { avant: heuresEffectives, apres: plafonnees, retard: Number(mission.arrival_delay_minutes) || 0 };
-          heuresEffectives = plafonnees;
-        }
+      if (ajustementRetard) {
+        console.log(`[complete] décalage non accepté sur ${mission_id} : `
+          + `${ajustementRetard.avant}h ramenées à ${ajustementRetard.apres}h`);
       }
 
-      // Nombre de jours de la mission (missions multi-dates : 1 jour = 1 mission au compteur)
-      const missionDayCount = (mission.date_debut && mission.date_fin)
-        ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
-        : 1;
-
-      // Part revenant au prestataire : tarif × heures × JOURS.
-      //
-      // Le nombre de jours était omis. Sur une prestation récurrente de 5 jours, le
-      // prestataire recevait donc une seule journée — 112 € au lieu de 560 € — et la
-      // valeur écrasait `montant_total`, effaçant du même coup la trace de ce que le
-      // client avait réellement payé. Le cashback, la facture et un éventuel
-      // remboursement se calculaient ensuite tous sur ce montant amputé.
-      const partPrestataire = Math.round(heuresEffectives * tarifHoraire * missionDayCount * 100) / 100;
+      // Échéance du virement au prestataire : fermeture de la fenêtre de
+      // contestation de 48 h ouverte au client par l'article 17.1 des CGPS.
+      // Calculée ici parce que l'e-mail de validation l'annonce au prestataire
+      // avant que le versement lui-même ne soit programmé, plus bas.
+      const echeanceVersement = echeanceVersementMs(mission);
 
       if (partPrestataire <= 0) {
-        console.error(`[complete] montant nul — prestation ${mission_id} heures=${heuresEffectives} tarif=${tarifHoraire} jours=${missionDayCount}`);
+        console.error(`[complete] montant nul — prestation ${mission_id} heures=${heuresEffectives} tarif=${mission.tarif_horaire} jours=${missionDayCount}`);
         return res.status(400).json({ error: "Le montant de la prestation est nul ou invalide — contactez le support pour finaliser manuellement." });
       }
-
-      // Total facturé au client : la part horaire plus les frais de service réellement
-      // encaissés. Ces frais se déduisent de ce qui a été payé à la réservation, ce qui
-      // évite de reproduire ici la grille tarifaire du tunnel. Ils sont conservés même
-      // si la durée réelle diffère de la durée prévue — ils rémunèrent la mise en
-      // relation, pas les heures.
-      const totalPaye    = Number(mission.montant_total || 0);
-      const partPrevue   = Math.round((Number(mission.hours) || 0) * tarifHoraire * missionDayCount * 100) / 100;
-      const fraisService = (partPrevue > 0 && totalPaye > partPrevue)
-        ? Math.round((totalPaye - partPrevue) * 100) / 100
-        : 0;
-      const totalClient  = Math.round((partPrestataire + fraisService) * 100) / 100;
 
       // Récupérer le palier cashback du client (missions_completed_month)
       const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
@@ -1410,12 +1380,12 @@ export default async function handler(req, res) {
                 body: resendBody({
                   from: RESEND_FROM,
                   to: prestaEmail,
-                  subject: "Prestation validée — votre paiement est en cours 💰",
+                  subject: "Prestation validée — votre paiement est programmé 💰",
                   html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
                     <h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée ✅</h2>
                     <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
-                    <p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> a été initié automatiquement et sera versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
+                    <p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
@@ -1425,50 +1395,45 @@ export default async function handler(req, res) {
         }
       }
 
-      // Virement automatique Stripe Connect
-      const STRIPE_SK_PAYOUT = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-      const COMMISSION = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
-      if (STRIPE_SK_PAYOUT && partPrestataire > 0 && mission.prestataire_id) {
-        try {
-          const ppRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mission.prestataire_id}&select=stripe_account_id,stripe_account_status`, { headers });
-          const ppData = await ppRes.json();
-          const pp = Array.isArray(ppData) && ppData[0];
-          if (pp?.stripe_account_id && pp.stripe_account_status === "enabled") {
-            const netCents = Math.round(partPrestataire * (1 - COMMISSION) * 100);
-            if (netCents >= 100) {
-              const tParams = new URLSearchParams({
-                amount: String(netCents), currency: "eur", destination: pp.stripe_account_id,
-                "metadata[mission_id]": mission_id, "metadata[prestataire_id]": mission.prestataire_id,
-              });
-              const tRes = await fetch("https://api.stripe.com/v1/transfers", {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${STRIPE_SK_PAYOUT}`, "Content-Type": "application/x-www-form-urlencoded" },
-                body: tParams.toString(),
-              });
-              if (tRes.ok) {
-                const tData = await tRes.json();
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: tData.id }),
-                }).catch(() => {});
-                console.log(`[complete] Transfer ${tData.id} → ${pp.stripe_account_id} (${(netCents/100).toFixed(2)}€)`);
-              } else {
-                const eData = await tRes.json().catch(() => ({}));
-                console.error("[complete] Transfer failed:", eData?.error?.message);
-                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "failed" }),
-                }).catch(() => {});
-              }
-            }
-          } else if (pp?.stripe_account_id) {
-            await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ payout_status: "pending" }),
-            }).catch(() => {});
-            console.log(`[complete] Payout pending — Connect not yet enabled for ${mission.prestataire_id}`);
-          }
-        } catch (pe) { console.error("[complete] Payout error:", pe.message); }
+      // ── Versement différé à la fermeture de la fenêtre de contestation ──
+      //
+      // Le virement partait ici même, à l'instant de la validation. Or l'article
+      // 17.1 des CGPS accorde au client quarante-huit heures après la fin de la
+      // prestation pour signaler un problème : ces heures n'existaient donc pas.
+      // Un client qui validait de bonne foi puis constatait un défaut le
+      // lendemain n'avait plus rien à bloquer.
+      //
+      // La prestation est désormais mise en attente de versement, avec son
+      // échéance. Le cron des rappels, toutes les deux heures, émet le virement
+      // une fois l'échéance passée — et seulement si la prestation est toujours
+      // `completed`, un litige la faisant basculer en `disputed`.
+      //
+      // Le MONTANT est figé ici, il n'est pas recalculé au moment du virement :
+      // `partPrestataire` tient compte du plafonnement des heures appliqué plus
+      // haut quand le client n'a jamais arbitré un décalage d'horaire, et ce
+      // plafonnement n'est pas réécrit dans `actual_hours`. Un traitement
+      // différé qui referait le calcul verserait plus que ce qui a été facturé.
+      if (partPrestataire > 0 && mission.prestataire_id) {
+        const echeance = new Date(echeanceVersement).toISOString();
+        const misEnAttente = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            payout_status: "pending",
+            payout_due_at: echeance,
+            payout_amount: partPrestataire,
+          }),
+        }).catch(e => { console.error("[complete] mise en attente du versement :", e.message); return null; });
+
+        if (!misEnAttente || !misEnAttente.ok) {
+          // Colonne absente : migration 2026-08-12_versement_differe_48h non
+          // appliquée. Sans échéance, aucun virement ne sera jamais émis — c'est
+          // le prestataire qui ne serait pas payé, il faut que cela se voie.
+          console.error(`[complete] échéance de versement NON enregistrée pour ${mission_id} `
+            + `(${misEnAttente?.status}). Appliquer 2026-08-12_versement_differe_48h.sql — `
+            + "sans elle, le prestataire ne sera pas payé.");
+        } else {
+          console.log(`[complete] versement programmé au ${echeance} — prestation ${mission_id}`);
+        }
       }
 
       // Incrémenter missions_completed_month du prestataire + auto-marquer trial_exhausted si limite atteinte

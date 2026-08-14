@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -54,6 +54,39 @@ describe("finPrestationMs", () => {
   it("préfère actual_hours à hours", () => {
     expect(finPrestationMs({ date: "2026-08-06", heure_debut: "14:00", hours: 3, actual_hours: 1.5 }))
       .toBe(AOUT_14H_UTC + 1.5 * 3600000);
+  });
+});
+
+describe("echeanceVersementMs", () => {
+  const PRESTA = { date: "2026-08-06", heure_debut: "14:00", hours: 3 };
+
+  it("place le virement 48 h après la FIN de la prestation", () => {
+    expect(echeanceVersementMs(PRESTA))
+      .toBe(AOUT_14H_UTC + 3 * 3600000 + 48 * 3600000);
+  });
+
+  it("ne dépend pas de l'instant de validation — un client qui valide tard ne repousse rien", () => {
+    const valideTroisJoursApres = AOUT_14H_UTC + 3 * 86400000;
+    expect(echeanceVersementMs(PRESTA, valideTroisJoursApres))
+      .toBe(echeanceVersementMs(PRESTA, AOUT_14H_UTC));
+  });
+
+  it("une validation immédiate en fin de service n'abrège pas la fenêtre", () => {
+    // C'est exactement ce que faisait le versement immédiat : le client validait
+    // de bonne foi, l'argent partait, et ses 48 h de contestation n'existaient plus.
+    const finReelle = AOUT_14H_UTC + 3 * 3600000;
+    expect(echeanceVersementMs(PRESTA, finReelle)).toBeGreaterThan(finReelle);
+  });
+
+  it("part du pointage réel quand la prestation a démarré en retard", () => {
+    const demarrage = new Date(AOUT_14H_UTC + 60 * 60000).toISOString();
+    expect(echeanceVersementMs({ ...PRESTA, started_at: demarrage }))
+      .toBe(AOUT_14H_UTC + 60 * 60000 + 3 * 3600000 + 48 * 3600000);
+  });
+
+  it("retombe sur l'instant courant + 48 h quand l'horaire est illisible", () => {
+    const maintenant = AOUT_14H_UTC;
+    expect(echeanceVersementMs({ hours: 2 }, maintenant)).toBe(maintenant + 48 * 3600000);
   });
 });
 
