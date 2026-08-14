@@ -1,6 +1,8 @@
 import { resendBody } from "./_email.js";
 import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
+import { repartirCompensation } from "./_creances.js";
+import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
 import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
@@ -283,6 +285,42 @@ export default async function handler(req, res) {
     if (STRIPE_SK_V) {
       try {
         const maintenant = new Date().toISOString();
+
+        // ── Retenues arrivées à leur terme (CGPS art. 7.4) ──
+        //
+        // « Elle ne peut excéder quatre-vingt-dix jours [...] Passé ce délai sans
+        // réclamation confirmée, les sommes sont versées. » Une retenue qu'on ne
+        // lève jamais n'est plus une retenue, c'est une confiscation : elle doit
+        // tomber d'elle-même, sans qu'un humain ait à y penser.
+        try {
+          const levees = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions`
+            + `?payout_status=eq.held&payout_hold_until=lte.${encodeURIComponent(maintenant)}`
+            + `&select=id,prestataire_id`,
+            { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+              body: JSON.stringify({ payout_status: "pending", payout_hold_reason: null,
+                                     payout_hold_at: null, payout_hold_until: null }) }
+          );
+          if (levees.ok) {
+            const rows = await levees.json().catch(() => []);
+            for (const r of (Array.isArray(rows) ? rows : [])) {
+              console.log(`[versements] retenue levée d'office (90 j) — prestation ${r.id}`);
+              if (r.prestataire_id) {
+                await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: r.prestataire_id, type: "system",
+                    title: "Retenue levée ✅",
+                    body: "Le délai de retenue est écoulé sans réclamation confirmée : votre versement est de nouveau programmé.",
+                    read: false }),
+                }).catch(() => {});
+              }
+            }
+          } else if (levees.status !== 400) {
+            console.error(`[versements] levée des retenues impossible (${levees.status})`);
+          }
+        } catch (e) {
+          console.error("[versements] levée des retenues interrompue :", e.message);
+        }
         // `status=eq.completed` est le verrou : un litige fait passer la
         // prestation en `disputed` et l'exclut d'office. Une retenue au titre de
         // l'article 7.4 des CGPS suivra le même chemin quand elle sera outillée.
@@ -340,7 +378,44 @@ export default async function handler(req, res) {
               // client n'a jamais arbitré un décalage d'horaire, sans réécrire
               // `actual_hours`. Refaire le calcul verserait plus que le facturé.
               const part = Number(m.payout_amount ?? 0);
-              const cents = Math.round(part * (1 - COMMISSION_V) * 100);
+              let net = Math.round(part * (1 - COMMISSION_V) * 100) / 100;
+
+              // ── Compensation d'une créance (CGPS art. 8B.3) ──
+              //
+              // Retenue au maximum de la MOITIÉ du versement, sur les créances
+              // actives et déjà notifiées. Le calcul et ses limites vivent dans
+              // api/_creances.js ; ici on ne fait que l'appliquer et l'inscrire.
+              let compensation = 0;
+              let imputations = [];
+              try {
+                const cRes = await fetch(
+                  `${SUPABASE_URL}/rest/v1/creances_prestataires`
+                  + `?prestataire_id=eq.${m.prestataire_id}&statut=eq.active&montant_restant=gt.0`
+                  + `&select=id,montant_restant,statut,notifiee_at,created_at&order=created_at`,
+                  { headers }
+                );
+                if (cRes.ok) {
+                  const creances = await cRes.json().catch(() => []);
+                  if (Array.isArray(creances) && creances.length) {
+                    const r = repartirCompensation(net, creances);
+                    compensation = r.compensationTotale;
+                    imputations = r.imputations;
+                    net = r.montantVerse;
+                    for (const e of r.ecartees) {
+                      console.log(`[versements] créance ${e.creance_id} écartée sur ${m.id} : ${e.motif}`);
+                    }
+                  }
+                } else if (cRes.status !== 400 && cRes.status !== 404) {
+                  console.error(`[versements] lecture des créances impossible (${cRes.status}) — prestation ${m.id}`);
+                }
+              } catch (e) {
+                // On verse le montant plein plutôt que de bloquer : ne pas
+                // récupérer une créance est rattrapable au versement suivant,
+                // ne pas payer un prestataire ne l'est pas.
+                console.error(`[versements] compensation non appliquée sur ${m.id} :`, e.message);
+              }
+
+              const cents = Math.round(net * 100);
 
               if (cents < 100) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
@@ -372,10 +447,50 @@ export default async function handler(req, res) {
               if (tr.ok && td.id) {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                  body: JSON.stringify({ payout_status: "transferred", stripe_transfer_id: td.id }),
+                  body: JSON.stringify({
+                    payout_status: "transferred", stripe_transfer_id: td.id,
+                    ...(compensation > 0 ? { payout_compensation: compensation } : {}),
+                  }),
                 }).catch(e => console.error(`[versements] statut non écrit ${m.id} :`, e.message));
+
+                // Les imputations s'inscrivent APRÈS le virement : une créance
+                // décrémentée sur un virement qui n'est jamais parti serait une
+                // somme réclamée deux fois au prestataire.
+                for (const imp of imputations) {
+                  const dec = await fetch(`${SUPABASE_URL}/rest/v1/creances_prestataires?id=eq.${imp.creance_id}`, {
+                    method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({
+                      montant_restant: imp.restantApres,
+                      statut: imp.restantApres <= 0 ? "eteinte" : "active",
+                      updated_at: new Date().toISOString(),
+                    }),
+                  }).catch(() => null);
+                  if (!dec || !dec.ok) {
+                    console.error(`[versements] créance ${imp.creance_id} NON décrémentée après le virement ${td.id} `
+                      + `(${imp.montant} € retenus sur ${m.id}) — à reprendre à la main.`);
+                    continue;
+                  }
+                  await fetch(`${SUPABASE_URL}/rest/v1/compensations_versements`, {
+                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({ creance_id: imp.creance_id, mission_id: m.id, montant: imp.montant }),
+                  }).catch(e => console.error(`[versements] journal de compensation non écrit :`, e.message));
+                }
+
+                if (compensation > 0 && m.prestataire_id) {
+                  await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                    body: JSON.stringify({ user_id: m.prestataire_id, type: "system",
+                      title: "Retenue sur votre versement",
+                      body: `${compensation.toFixed(2)} € ont été retenus sur ce versement au titre d'une somme due (CGPS art. 8B.3). `
+                          + `Montant versé : ${(cents/100).toFixed(2)} €. Le détail figure dans votre espace ; `
+                          + `vous pouvez contester à direction@alane.fr sous quinze jours.`,
+                      read: false }),
+                  }).catch(() => {});
+                }
+
                 emis++;
-                console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €) — prestation ${m.id}`);
+                console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
+                  + `${compensation > 0 ? `, ${compensation.toFixed(2)} € compensés` : ""}) — prestation ${m.id}`);
               } else {
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
@@ -397,6 +512,169 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         console.error("[versements] traitement interrompu :", e.message);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Conservation des documents — CGPS art. 14.4 (purge RGPD) et 19.1 (RC Pro)
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Deux promesses écrites que rien n'exécutait : les pièces d'identité
+  // dormaient indéfiniment dans le stockage, et une RC Pro périmée depuis deux
+  // ans passait inaperçue.
+  //
+  // Une fois par jour suffit — la fenêtre est en mois, pas en heures. Le
+  // traitement passe toutes les deux heures : on ne l'exécute qu'au premier
+  // passage suivant minuit, pour ne pas relancer douze fois le même prestataire.
+  {
+    const heureUTC = new Date().getUTCHours();
+    let purges = 0, rcRelances = 0, rcSuspendus = 0;
+    if (heureUTC < 2) {
+      // ── Purge des pièces d'identité (art. 14.4) ──
+      try {
+        const dRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/documents`
+          + `?purged_at=is.null&type=in.(${TYPES_A_PURGER.join(",")})`
+          + `&select=id,prestataire_id,type,storage_path,verified,verified_at,created_at,purged_at`
+          + `&limit=500`,
+          { headers }
+        );
+        if (!dRes.ok) {
+          const detail = await dRes.text().catch(() => "");
+          console.error(`[conservation] lecture des documents impossible (${dRes.status}) : ${detail.slice(0, 200)}`
+            + " — vérifier que la migration 2026-08-14_conservation_documents.sql est appliquée.");
+        } else {
+          const docs = await dRes.json().catch(() => []);
+          const aSupprimer = (Array.isArray(docs) ? docs : [])
+            .map(d => ({ d, verdict: aPurger(d) }))
+            .filter(x => x.verdict.purger && x.d.storage_path);
+
+          for (const { d, verdict } of aSupprimer) {
+            // Le FICHIER part, la LIGNE reste. Elle est la preuve que la
+            // vérification a eu lieu — obligation de vigilance (art. L8222-1
+            // du Code du travail, CGPS art. 10B.8 et 10D.4). Supprimer la ligne
+            // effacerait la démarche en même temps que la pièce.
+            //
+            // Casse du bucket : « Documents » avec une majuscule. Une erreur de
+            // casse a empêché toute suppression de fichier pendant des mois.
+            const del = await fetch(`${SUPABASE_URL}/storage/v1/object/Documents`, {
+              method: "DELETE", headers,
+              body: JSON.stringify({ prefixes: [d.storage_path] }),
+            }).catch(e => { console.error(`[conservation] suppression ${d.storage_path} :`, e.message); return null; });
+
+            if (!del || !del.ok) {
+              // On n'écrit surtout pas `purged_at` : la ligne serait marquée
+              // purgée alors que le fichier est toujours là, et plus rien ne
+              // repasserait dessus. Le silence ici, c'est la pièce d'identité
+              // qu'on croit supprimée et qui ne l'est pas.
+              console.error(`[conservation] fichier NON supprimé (${del?.status}) — document ${d.id}, `
+                + `chemin ${d.storage_path}. Il sera repris au prochain passage.`);
+              continue;
+            }
+
+            const maj = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${d.id}`, {
+              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ purged_at: new Date().toISOString(), storage_path: null }),
+            }).catch(() => null);
+            if (!maj || !maj.ok) {
+              console.error(`[conservation] document ${d.id} : fichier supprimé mais ligne non marquée (${maj?.status})`);
+              continue;
+            }
+            purges++;
+            console.log(`[conservation] ${d.type} purgé (${verdict.cause}) — document ${d.id}`);
+          }
+          if (purges) console.log(`[conservation] ${purges} pièce(s) d'identité supprimée(s)`);
+        }
+      } catch (e) {
+        console.error("[conservation] purge interrompue :", e.message);
+      }
+
+      // ── Attestations RC Pro (art. 19.1) ──
+      try {
+        const rcRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/documents?type=eq.rc_pro&expires_at=not.is.null`
+          + `&select=id,prestataire_id,expires_at&order=expires_at&limit=500`,
+          { headers }
+        );
+        if (rcRes.ok) {
+          const rcs = await rcRes.json().catch(() => []);
+          // Une seule attestation par prestataire et par type (contrainte
+          // unique), mais on garde la plus lointaine par sécurité : un
+          // renouvellement déposé ne doit pas être ignoré au profit de l'ancien.
+          const parPresta = new Map();
+          for (const rc of (Array.isArray(rcs) ? rcs : [])) {
+            if (!rc.prestataire_id) continue;
+            const prec = parPresta.get(rc.prestataire_id);
+            if (!prec || String(rc.expires_at) > String(prec.expires_at)) parPresta.set(rc.prestataire_id, rc);
+          }
+
+          for (const [prestataireId, rc] of parPresta) {
+            const etat = etatRcPro(rc.expires_at);
+            if (etat === "valide" || etat === "inconnue") continue;
+
+            const pRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}&select=missions_enabled,rc_pro_relance_at`,
+              { headers }
+            ).catch(() => null);
+            const pRows = pRes?.ok ? await pRes.json().catch(() => []) : [];
+            const prof = Array.isArray(pRows) && pRows[0];
+            if (!prof) continue;
+
+            // Une relance tous les sept jours au plus : on prévient, on ne harcèle pas.
+            const derniere = prof.rc_pro_relance_at ? new Date(prof.rc_pro_relance_at).getTime() : 0;
+            const relancable = Date.now() - derniere >= 7 * 86400000;
+
+            const finLe = new Date(`${String(rc.expires_at).slice(0,10)}T12:00:00Z`)
+              .toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+
+            // La suspension ne dépend PAS de la relance : elle intervient au
+            // terme des trente jours de tolérance, que l'e-mail soit parti ou non.
+            if (etat === "suspendable" && prof.missions_enabled === true) {
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ missions_enabled: false }),
+              }).catch(e => console.error(`[rc_pro] suspension impossible ${prestataireId} :`, e.message));
+              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ user_id: prestataireId, type: "system",
+                  title: "Accès suspendu — attestation RC Pro expirée",
+                  body: `Votre attestation de responsabilité civile professionnelle a expiré le ${finLe} et n'a pas été renouvelée `
+                      + `dans les trente jours (CGPS art. 19.1). Vous ne recevez plus de propositions de prestation. `
+                      + `Déposez une attestation à jour depuis votre espace Documents pour rétablir votre accès.`,
+                  read: false }),
+              }).catch(() => {});
+              rcSuspendus++;
+              console.log(`[rc_pro] prestataire ${prestataireId} suspendu — attestation expirée le ${rc.expires_at}`);
+              continue;
+            }
+
+            if (!relancable) continue;
+            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+              method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ user_id: prestataireId, type: "system",
+                title: etat === "expiree" ? "Attestation RC Pro expirée" : "Attestation RC Pro bientôt expirée",
+                body: etat === "expiree"
+                  ? `Votre attestation RC Pro a expiré le ${finLe}. Sans renouvellement sous trente jours, votre accès aux `
+                    + `propositions sera suspendu (CGPS art. 19.1). Déposez la nouvelle depuis votre espace Documents.`
+                  : `Votre attestation RC Pro expire le ${finLe}. Pensez à déposer la nouvelle depuis votre espace Documents `
+                    + `pour continuer à recevoir des propositions.`,
+                read: false }),
+            }).catch(() => {});
+            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}`, {
+              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ rc_pro_relance_at: new Date().toISOString() }),
+            }).catch(() => {});
+            rcRelances++;
+          }
+          if (rcRelances || rcSuspendus) {
+            console.log(`[rc_pro] ${rcRelances} relance(s), ${rcSuspendus} suspension(s)`);
+          }
+        } else if (rcRes.status !== 400) {
+          console.error(`[rc_pro] lecture impossible (${rcRes.status})`);
+        }
+      } catch (e) {
+        console.error("[rc_pro] traitement interrompu :", e.message);
       }
     }
   }

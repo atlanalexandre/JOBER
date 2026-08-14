@@ -97,12 +97,37 @@ Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approve
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,
 `completed`, `closed`, `cancelled`, `disputed`, `rejected`, `refused`.
 
-Le versement au prestataire se suit sur trois colonnes : `payout_status`
-(`pending` → `processing` → `transferred`, ou `failed`), `payout_amount` (le montant dû,
-figé à la clôture) et `payout_due_at` (l'instant à partir duquel le virement est émissible,
-soit la fin de la prestation + 48 h). Voir « Le versement au prestataire » au §6.
+Le versement au prestataire se suit sur `payout_status`
+(`pending` → `processing` → `transferred`, ou `failed`, ou `held` en cas de retenue),
+`payout_amount` (le montant dû, figé à la clôture), `payout_due_at` (l'instant à partir
+duquel le virement est émissible, soit la fin de la prestation + 48 h),
+`payout_hold_reason` / `payout_hold_at` / `payout_hold_until` (retenue de l'art. 7.4) et
+`payout_compensation` (somme retenue au titre de l'art. 8B.3).
+Voir « Le versement au prestataire » au §6.
 
-**`documents`** — les pièces justificatives des prestataires.
+**`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
+leur reste à recouvrer, leur notification et leur date d'exigibilité.
+**`compensations_versements`** — le journal des retenues opérées sur chaque versement. Les
+deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; créer ou
+éteindre une créance passe par `/api`.
+
+**`documents`** — les pièces justificatives des prestataires. `verified_at` date la
+vérification, `expires_at` porte la fin de validité des attestations qui en ont une (RC Pro,
+URSSAF), `purged_at` marque la suppression du fichier.
+
+**La purge des pièces d'identité supprime le FICHIER, pas la LIGNE.** CNI, Kbis et
+justificatif de domicile partent du stockage 30 jours après la vérification, et au plus tard
+12 mois après le dépôt même sans vérification (CGPS art. 14.4, `api/_conservation.js`). La
+ligne survit avec `purged_at` : elle est la preuve que la vérification a eu lieu, ce
+qu'ALANE doit pouvoir justifier (art. L8222-1 du Code du travail, CGPS art. 10B.8 et 10D.4).
+Supprimer la ligne effacerait la démarche en même temps que la pièce. Si la suppression du
+fichier échoue, `purged_at` n'est **pas** écrit — sinon la pièce serait réputée supprimée
+alors qu'elle est toujours là, et plus rien ne repasserait dessus.
+
+Les attestations RC Pro sont relancées 30 jours avant l'échéance, puis à l'expiration, et
+l'accès aux propositions est suspendu 30 jours après (`missions_enabled = false`), comme
+l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
+terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
 `autre`. **Un seul document par prestataire et par type** (contrainte unique).
 
@@ -968,6 +993,30 @@ contente d'inscrire sur la prestation :
 toujours `completed` — un litige la fait passer en `disputed` et l'exclut d'office. Le verrou
 est atomique (`pending` → `processing` avant l'appel Stripe) et la clé d'idempotence
 `payout-<id>` interdit tout double virement.
+
+#### Retenue (art. 7.4) et sommes dues (art. 8B.3)
+
+Ces deux articles décrivaient des mécanismes que rien n'exécutait. Outillés le 14/08/2026.
+
+**Retenue** — un cinquième état du versement, `held`. Il sort la prestation du traitement
+automatique sans la marquer en échec : un `failed` signifie « Stripe a refusé », pas « ALANE
+a décidé de retenir ». Le motif est pris dans l'énumération limitative de l'article
+(`missions_payout_hold_reason_check`) : une retenue pour un motif non prévu au contrat serait
+une retenue sans fondement. La notification écrite au prestataire — motif et montant — part
+avec la retenue, parce que l'article en fait une condition et non une politesse. La retenue
+se lève d'elle-même à `payout_hold_until` (90 jours au plus), sans qu'un humain ait à y penser.
+
+**Sommes dues** — `creances_prestataires`, avec `compensations_versements` en journal. Le
+calcul vit dans `api/_creances.js` et applique les trois limites de l'article : la moitié de
+chaque versement au maximum, l'arrêt à l'extinction, et l'interdiction de compenser une
+créance non notifiée ou contestée. Le plafond se calcule sur le versement **entier**, une
+seule fois — appliquer « la moitié » créance par créance retiendrait 75 % avec deux créances.
+Les imputations s'inscrivent **après** le virement : décrémenter une créance sur un virement
+qui n'est jamais parti reviendrait à réclamer deux fois la même somme.
+
+L'écran **Versements** du backoffice (`BOVersements`) montre les versements en attente,
+retenus, échoués, et signale ceux dont l'échéance est dépassée de plus de six heures — le
+symptôme d'un cron qui ne tourne plus.
 
 Le montant est **figé à la clôture et jamais recalculé** : la clôture plafonne les heures
 quand le client n'a jamais arbitré un décalage d'horaire, sans réécrire `actual_hours`. Un

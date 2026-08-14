@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT } from "./_dependance.js";
 import { montantsDeCloture } from "./_cloture.js";
+import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
@@ -1041,10 +1042,23 @@ export default async function handler(req, res) {
         console.error(`[verify_doc] document ${req.body.docId} rattaché à ${docTrouve.prestataire_id}, demandé pour ${profileId}`);
         return res.status(403).json({ error: "Ce document appartient à un autre compte prestataire." });
       }
+      // `expires_at` : fin de validité, saisie pour les documents qui en ont
+      // une (attestation RC Pro, URSSAF). Sans elle, rien ne suit l'expiration
+      // et l'article 19.1 des CGPS — renouvellement annuel, suspension après
+      // trente jours — reste une promesse sans effet.
+      const expiresAt = req.body.expiresAt ? String(req.body.expiresAt).slice(0, 10) : null;
+      if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+        return res.status(400).json({ error: "Date de validité invalide (attendu AAAA-MM-JJ)" });
+      }
+
       const patchDocRes = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${req.body.docId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ verified: true }),
+        // `verified_at` date la vérification : c'est de lui que court le délai
+        // de trente jours au terme duquel la pièce d'identité est supprimée
+        // (CGPS art. 14.4).
+        body: JSON.stringify({ verified: true, verified_at: new Date().toISOString(),
+                               ...(expiresAt ? { expires_at: expiresAt } : {}) }),
       });
       // L'écriture n'était pas vérifiée : un refus de PostgREST renvoyait quand même
       // « success: true » et l'écran affichait le document comme validé alors qu'il
@@ -1152,6 +1166,308 @@ export default async function handler(req, res) {
         total: Array.isArray(total) ? total.length : 0,
         byDay,
       });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Versements : retenue (CGPS art. 7.4) et créances (CGPS art. 8B.3)
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // Ces deux articles décrivaient depuis leur rédaction des mécanismes que
+    // rien n'exécutait. Une clause qu'on n'exerce jamais se lit mal en
+    // contentieux — et surtout, sans écran, personne ne voit qu'un versement
+    // est bloqué.
+
+    if (action === "list_versements") {
+      const vRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions`
+        + `?payout_status=in.(pending,processing,held,failed)`
+        + `&select=id,prestataire_id,client_id,metier,sector,date,payout_status,payout_amount,`
+        + `payout_due_at,payout_hold_reason,payout_hold_at,payout_hold_until,payout_compensation,status`
+        + `&order=payout_due_at&limit=300`,
+        { headers }
+      );
+      if (!vRes.ok) {
+        const detail = await vRes.text().catch(() => "");
+        console.error(`[list_versements] lecture impossible (${vRes.status}) : ${detail.slice(0, 200)}`);
+        return res.status(503).json({ error: "Versements illisibles — vérifier que les migrations sont appliquées." });
+      }
+      const versements = await vRes.json().catch(() => []);
+
+      // Créances en cours, tous prestataires confondus.
+      const cRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/creances_prestataires`
+        + `?statut=in.(active,contestee)&select=*&order=created_at.desc&limit=200`,
+        { headers }
+      ).catch(() => null);
+      const creances = cRes?.ok ? await cRes.json().catch(() => []) : [];
+
+      // Noms, en une seule passe : un aller-retour par ligne rendait l'écran
+      // inutilisable dès la centaine de versements.
+      const ids = [...new Set([
+        ...(Array.isArray(versements) ? versements : []).map(v => v.prestataire_id),
+        ...(Array.isArray(creances) ? creances : []).map(c => c.prestataire_id),
+      ].filter(Boolean))];
+      const noms = {};
+      if (ids.length) {
+        const nRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`,
+          { headers }
+        ).catch(() => null);
+        const nRows = nRes?.ok ? await nRes.json().catch(() => []) : [];
+        for (const p of (Array.isArray(nRows) ? nRows : [])) {
+          noms[p.id] = [p.prenom, p.nom].filter(Boolean).join(" ") || null;
+        }
+      }
+
+      // Alerte : un versement échu depuis plus de six heures signale un
+      // traitement qui ne tourne plus. Sans ce compteur, personne ne le voit.
+      const seuil = Date.now() - 6 * 3600000;
+      const enRetard = (Array.isArray(versements) ? versements : []).filter(v =>
+        v.payout_status === "pending" && v.payout_due_at && new Date(v.payout_due_at).getTime() < seuil
+      ).length;
+
+      return res.status(200).json({
+        versements: Array.isArray(versements) ? versements : [],
+        creances: Array.isArray(creances) ? creances : [],
+        noms, enRetard,
+      });
+    }
+
+    if (action === "retenir_versement") {
+      const { mission_id, motif, duree_jours } = body;
+      if (!mission_id || !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      // Motifs limitativement énumérés par l'article 7.4. Une retenue pour un
+      // motif non prévu au contrat serait une retenue sans fondement.
+      const MOTIFS = {
+        reclamation_client:  "une réclamation du client portant sur la prestation",
+        opposition_bancaire: "une opposition bancaire ou une procédure de rétrofacturation",
+        suspicion_fraude:    "des indices sérieux de fraude, de fausse déclaration ou de prestation non exécutée",
+        creance_alane:       "une créance d'ALANE au titre de l'article 8B.3",
+        demande_autorite:    "une demande d'une autorité judiciaire, administrative ou de l'établissement de paiement",
+      };
+      if (!MOTIFS[motif]) {
+        return res.status(400).json({ error: `Motif invalide. Attendu : ${Object.keys(MOTIFS).join(", ")}` });
+      }
+      // Quatre-vingt-dix jours au maximum, comme l'écrit l'article.
+      const jours = Math.min(90, Math.max(1, Number(duree_jours) || 90));
+      const maintenant = new Date();
+      const jusqua = new Date(maintenant.getTime() + jours * 86400000);
+
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,prestataire_id,payout_status,payout_amount,metier,sector,date`,
+        { headers }
+      );
+      const mRows = await mRes.json().catch(() => []);
+      const mission = Array.isArray(mRows) && mRows[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+      if (!["pending", "failed"].includes(mission.payout_status)) {
+        return res.status(400).json({
+          error: mission.payout_status === "transferred"
+            ? "Le versement est déjà parti — une retenue n'a plus d'objet."
+            : `Versement en statut ${mission.payout_status || "inconnu"} — retenue impossible.`,
+        });
+      }
+
+      // Verrou : on ne retient que ce qui est encore en attente à cet instant.
+      const patch = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&payout_status=in.(pending,failed)`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({
+            payout_status: "held", payout_hold_reason: motif,
+            payout_hold_at: maintenant.toISOString(), payout_hold_until: jusqua.toISOString(),
+          }) }
+      );
+      const patched = await patch.json().catch(() => []);
+      if (!patch.ok || !Array.isArray(patched) || patched.length === 0) {
+        console.error(`[retenir_versement] échec sur ${mission_id} (${patch.status})`);
+        return res.status(409).json({ error: "Le versement a changé d'état — rechargez la page." });
+      }
+
+      // « Elle est notifiée au Prestataire par écrit, avec son motif et son
+      // montant, au plus tard le jour où elle prend effet. » C'est une
+      // condition de l'article, pas une politesse : la retenue et sa
+      // notification partent ensemble.
+      const libelle = esc(mission.metier || mission.sector || "Prestation");
+      const montant = Number(mission.payout_amount || 0).toFixed(2);
+      const finLe = jusqua.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+      if (mission.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: mission.prestataire_id, type: "system",
+            title: "Versement suspendu",
+            body: `Le versement de ${montant} € pour « ${libelle} » du ${mission.date || "?"} est suspendu au motif suivant : `
+                + `${MOTIFS[motif]}. La retenue prend fin au plus tard le ${finLe}. `
+                + `Vous pouvez la contester à direction@alane.fr : elle est examinée de façon contradictoire et levée si le motif n'est pas établi.`,
+            read: false }),
+        }).catch(e => console.error("[retenir_versement] notification non créée :", e.message));
+
+        try {
+          const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
+          const uData = await uRes.json();
+          if (uData?.email) {
+            await sendEmail({
+              to: uData.email,
+              subject: `Versement suspendu — prestation du ${mission.date || ""}`,
+              html: emailHtml(
+                `<p>Bonjour,</p>`
+                + `<p>Le versement de <strong>${montant} €</strong> correspondant à votre prestation `
+                + `« ${libelle} » du ${esc(String(mission.date || "?"))} est <strong>suspendu</strong>.</p>`
+                + `<p><strong>Motif :</strong> ${MOTIFS[motif]}.</p>`
+                + `<p>Conformément à l'article 7.4 des CGPS, cette retenue est limitée aux sommes en rapport avec `
+                + `l'événement qui la motive et ne peut excéder quatre-vingt-dix jours. Elle prend fin au plus tard `
+                + `le <strong>${finLe}</strong>, sauf procédure judiciaire ou opposition bancaire en cours.</p>`
+                + `<p>Vous pouvez la contester en écrivant à <strong>direction@alane.fr</strong>. Votre demande sera `
+                + `examinée de façon contradictoire, et la retenue levée si le motif n'est pas établi.</p>`
+              ),
+            });
+          }
+        } catch (e) {
+          // La retenue est prise, mais l'intéressé ne l'a pas apprise par écrit.
+          // C'est la condition posée par l'article : il faut que cela se voie.
+          console.error(`[retenir_versement] e-mail de notification NON envoyé pour ${mission_id} :`, e.message);
+        }
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "retenir_versement", target_id: mission_id, reason: motif }) }).catch(() => {});
+      return res.status(200).json({ success: true, payout_hold_until: jusqua.toISOString() });
+    }
+
+    if (action === "lever_retenue") {
+      const { mission_id } = body;
+      if (!mission_id || !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const patch = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&payout_status=eq.held`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ payout_status: "pending", payout_hold_reason: null,
+                                 payout_hold_at: null, payout_hold_until: null }) }
+      );
+      const rows = await patch.json().catch(() => []);
+      if (!patch.ok || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(409).json({ error: "Aucune retenue en cours sur cette prestation." });
+      }
+      if (rows[0].prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: rows[0].prestataire_id, type: "system",
+            title: "Retenue levée ✅",
+            body: "La retenue sur votre versement a été levée. Le virement est de nouveau programmé et partira au prochain traitement.",
+            read: false }),
+        }).catch(() => {});
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "lever_retenue", target_id: mission_id }) }).catch(() => {});
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === "creer_creance") {
+      const { prestataire_id, montant, motif, mission_id } = body;
+      if (!prestataire_id || !isUuidId(prestataire_id)) return res.status(400).json({ error: "prestataire_id invalide" });
+      if (mission_id && !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      const m = Math.round(Number(montant) * 100) / 100;
+      if (!Number.isFinite(m) || m <= 0) return res.status(400).json({ error: "Montant invalide" });
+      if (!motif || String(motif).trim().length < 10) {
+        // Le motif est repris tel quel dans la notification écrite au
+        // prestataire : « remboursement » tout seul ne lui apprend rien.
+        return res.status(400).json({ error: "Motif requis (10 caractères minimum) — il est communiqué au prestataire." });
+      }
+
+      const maintenant = new Date();
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/creances_prestataires`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          prestataire_id, montant_initial: m, montant_restant: m,
+          motif: String(motif).trim(), mission_id: mission_id || null, statut: "active",
+          // Notifiée dans la foulée : l'article impose l'information préalable
+          // avec le détail du calcul AVANT la première retenue. Une créance
+          // créée sans notification ne serait jamais compensée — _creances.js
+          // l'écarte — et resterait à dormir sans que personne ne le voie.
+          notifiee_at: maintenant.toISOString(),
+          exigible_at: dateExigibilite(maintenant.getTime()),
+        }),
+      });
+      const rows = await ins.json().catch(() => []);
+      if (!ins.ok || !Array.isArray(rows) || rows.length === 0) {
+        const detail = await ins.text?.().catch(() => "") || JSON.stringify(rows);
+        console.error(`[creer_creance] insertion refusée (${ins.status}) : ${String(detail).slice(0, 200)}`);
+        return res.status(503).json({ error: "Créance non enregistrée — vérifier que la migration 2026-08-14_retenue_et_creances.sql est appliquée." });
+      }
+      const creance = rows[0];
+
+      const exigibleLe = new Date(creance.exigible_at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: prestataire_id, type: "system",
+          title: "Somme due à ALANE",
+          body: `Une somme de ${m.toFixed(2)} € est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
+              + `Elle sera récupérée sur vos versements à venir, dans la limite de la moitié de chacun d'eux. `
+              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`,
+          read: false }),
+      }).catch(() => {});
+
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
+        const uData = await uRes.json();
+        if (uData?.email) {
+          await sendEmail({
+            to: uData.email,
+            subject: `Somme due — ${m.toFixed(2)} €`,
+            html: emailHtml(
+              `<p>Bonjour,</p>`
+              + `<p>Une somme de <strong>${m.toFixed(2)} €</strong> est due à ALANE au titre de l'article 8B.3 des CGPS.</p>`
+              + `<p><strong>Motif :</strong> ${esc(String(motif).trim())}</p>`
+              + `<p><strong>Comment elle sera récupérée :</strong> par compensation sur vos rémunérations à venir, `
+              + `<strong>dans la limite de la moitié de chaque versement</strong>, jusqu'à extinction. `
+              + `Chaque retenue vous sera indiquée en face de la prestation concernée.</p>`
+              + `<p>À défaut de rémunération à venir suffisante, la somme deviendra exigible le `
+              + `<strong>${exigibleLe}</strong>.</p>`
+              + `<p>Vous pouvez contester cette créance en écrivant à <strong>direction@alane.fr</strong> dans un délai `
+              + `de quinze jours. La contestation suspend la compensation jusqu'à examen contradictoire.</p>`
+            ),
+          });
+        }
+      } catch (e) {
+        console.error(`[creer_creance] e-mail de notification NON envoyé pour ${creance.id} :`, e.message);
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "creer_creance", target_id: prestataire_id, reason: `${m.toFixed(2)} € — ${String(motif).trim()}` }) }).catch(() => {});
+      return res.status(200).json({ success: true, creance });
+    }
+
+    if (action === "statuer_creance") {
+      // Contester suspend la compensation ; abandonner l'éteint sans la
+      // recouvrer. Les deux se journalisent : ce sont des décisions d'argent.
+      const { creance_id, decision } = body;
+      if (!creance_id || !isUuidId(creance_id)) return res.status(400).json({ error: "creance_id invalide" });
+      const STATUTS = { contestee: "contestee", active: "active", abandonnee: "abandonnee" };
+      if (!STATUTS[decision]) return res.status(400).json({ error: "Décision invalide (contestee, active, abandonnee)" });
+
+      const patch = await fetch(`${SUPABASE_URL}/rest/v1/creances_prestataires?id=eq.${creance_id}&statut=in.(active,contestee)`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ statut: STATUTS[decision], contestee_at: decision === "contestee" ? new Date().toISOString() : null,
+                               updated_at: new Date().toISOString() }),
+      });
+      const rows = await patch.json().catch(() => []);
+      if (!patch.ok || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(409).json({ error: "Créance introuvable ou déjà éteinte." });
+      }
+      const c = rows[0];
+      const messages = {
+        contestee:  "Votre contestation est enregistrée : la retenue sur vos versements est suspendue le temps de l'examen.",
+        active:     "Après examen, la somme due est maintenue. La retenue sur vos versements à venir reprend.",
+        abandonnee: "La somme qui vous était réclamée est abandonnée. Plus aucune retenue ne sera appliquée.",
+      };
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: c.prestataire_id, type: "system",
+          title: decision === "abandonnee" ? "Somme due abandonnée ✅" : "Somme due — mise à jour",
+          body: messages[decision], read: false }),
+      }).catch(() => {});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "statuer_creance", target_id: creance_id, reason: decision }) }).catch(() => {});
+      return res.status(200).json({ success: true });
     }
 
     if (action === "list_missions") {

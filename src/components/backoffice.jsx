@@ -439,12 +439,14 @@ export function BOComptes() {
     setDocsLoading(l => ({ ...l, [profileId]: false }));
   };
 
-  const handleVerifyDoc = async (profileId, docId) => {
+  const handleVerifyDoc = async (profileId, docId, docType) => {
+    const validite = await demanderValidite(docType);
+    if (!validite.ok) return;
     setDocVerifying(docId);
     // L'état n'est mis à jour que si le serveur a réellement validé : l'écran
     // affichait « vérifié » même quand l'appel échouait.
     try {
-      const r = await boFetch({ action:"verify_doc", profileId, docId });
+      const r = await boFetch({ action:"verify_doc", profileId, docId, expiresAt: validite.expiresAt });
       const j = await r.json().catch(() => ({}));
       if (r.ok) setDocs(d => ({ ...d, [profileId]: (d[profileId]||[]).map(doc => doc.id===docId ? { ...doc, verified:true } : doc) }));
       else showToast(j.error || `Erreur ${r.status}`, "error");
@@ -1039,7 +1041,7 @@ export function BOComptes() {
                             <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}
                           {!doc.verified && !doc.isVirtual && (
-                            <button onClick={()=>handleVerifyDoc(p.id, doc.id)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
+                            <button onClick={()=>handleVerifyDoc(p.id, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               {docVerifying===doc.id ? "…" : "✓"}
                             </button>
                           )}
@@ -1267,7 +1269,7 @@ export function BOComptes() {
                                     <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                                   )}
                                   {!doc.verified && !doc.isVirtual && (
-                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
+                                    <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
                                       {docVerifying===doc.id ? "…" : "✓"}
                                     </button>
                                   )}
@@ -1427,6 +1429,244 @@ export function BOSupport() {
       ))}
     </div>
   );
+}
+
+// Écran des versements — CGPS art. 7.4 (retenue) et 8B.3 (compensation).
+//
+// Il n'existait rien : le versement au prestataire était devenu un traitement
+// automatique toutes les deux heures, sans aucune fenêtre pour voir ce qui
+// passe, ce qui bloque, ni ce qui traîne. Un traitement qu'on ne regarde pas
+// est un traitement dont on apprend la panne par le prestataire qui réclame.
+const MOTIFS_RETENUE = [
+  { id:"reclamation_client",  l:"Réclamation du client" },
+  { id:"opposition_bancaire", l:"Opposition bancaire / rétrofacturation" },
+  { id:"suspicion_fraude",    l:"Indices sérieux de fraude" },
+  { id:"creance_alane",       l:"Créance ALANE (art. 8B.3)" },
+  { id:"demande_autorite",    l:"Demande d'une autorité" },
+];
+const LIBELLE_MOTIF = Object.fromEntries(MOTIFS_RETENUE.map(m => [m.id, m.l]));
+
+const ETAT_VERSEMENT = {
+  pending:    { l:"En attente",  c:"#F39C12" },
+  processing: { l:"En cours",    c:"#3498DB" },
+  held:       { l:"Retenu",      c:"#E67E22" },
+  failed:     { l:"Échoué",      c:"#E74C3C" },
+};
+
+export function BOVersements() {
+  const [data, setData] = useState({ versements:[], creances:[], noms:{}, enRetard:0 });
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [filtre, setFiltre] = useState("tous");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await boFetch({ action:"list_versements" });
+      const d = await r.json();
+      if (r.ok) setData({ versements:d.versements||[], creances:d.creances||[], noms:d.noms||{}, enRetard:d.enRetard||0 });
+      // Une liste vide et une lecture impossible se ressemblent à l'écran : on
+      // le dit, sinon l'administrateur conclut qu'il n'y a rien à traiter.
+      else showToast(d.error || `Versements illisibles (${r.status})`, "error");
+    } catch (e) { showToast(`Versements illisibles : ${e.message}`, "error"); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const nom = (id) => data.noms[id] || (id ? `${id.slice(0,8)}…` : "—");
+  const euro = (v) => `${Number(v||0).toFixed(2).replace(".", ",")} €`;
+  const jour = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day:"numeric", month:"short", year:"numeric" }) : "—";
+
+  const retenir = async (m) => {
+    const choix = await showPrompt(
+      `Retenir le versement de ${euro(m.payout_amount)} à ${nom(m.prestataire_id)} ?\n\n`
+      + `Motif (obligatoire, il est notifié au prestataire par e-mail) :\n`
+      + MOTIFS_RETENUE.map((x,i) => `${i+1}. ${x.l}`).join("\n")
+      + `\n\nTapez le numéro :`
+    );
+    if (!choix) return;
+    const motif = MOTIFS_RETENUE[Number(String(choix).trim()) - 1]?.id;
+    if (!motif) return showToast("Motif non reconnu — retenue annulée.", "error");
+    setBusyId(m.id);
+    try {
+      const r = await boFetch({ action:"retenir_versement", mission_id:m.id, motif });
+      const d = await r.json();
+      if (d.success) { showToast("Versement retenu — le prestataire a été notifié.", "success"); load(); }
+      else showToast(d.error || "Retenue impossible", "error");
+    } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
+    setBusyId(null);
+  };
+
+  const lever = async (m) => {
+    if (!await showConfirm(`Lever la retenue sur le versement de ${euro(m.payout_amount)} à ${nom(m.prestataire_id)} ?`)) return;
+    setBusyId(m.id);
+    try {
+      const r = await boFetch({ action:"lever_retenue", mission_id:m.id });
+      const d = await r.json();
+      if (d.success) { showToast("Retenue levée — le virement repartira au prochain traitement.", "success"); load(); }
+      else showToast(d.error || "Levée impossible", "error");
+    } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
+    setBusyId(null);
+  };
+
+  const creerCreance = async (m) => {
+    const montant = await showPrompt(`Somme due par ${nom(m.prestataire_id)}, en euros (art. 8B.3) :`);
+    if (!montant) return;
+    const motif = await showPrompt("Motif — il est communiqué au prestataire par écrit (10 caractères minimum) :");
+    if (!motif) return;
+    setBusyId(m.id);
+    try {
+      const r = await boFetch({ action:"creer_creance", prestataire_id:m.prestataire_id,
+                                montant:Number(String(montant).replace(",", ".")), motif, mission_id:m.id });
+      const d = await r.json();
+      if (d.success) { showToast("Créance enregistrée et notifiée. Elle sera retenue sur les versements à venir, moitié maximum.", "success"); load(); }
+      else showToast(d.error || "Créance non enregistrée", "error");
+    } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
+    setBusyId(null);
+  };
+
+  const statuer = async (c, decision, question) => {
+    if (!await showConfirm(question)) return;
+    setBusyId(c.id);
+    try {
+      const r = await boFetch({ action:"statuer_creance", creance_id:c.id, decision });
+      const d = await r.json();
+      if (d.success) { showToast("Créance mise à jour ✅", "success"); load(); }
+      else showToast(d.error || "Mise à jour impossible", "error");
+    } catch (e) { showToast(e.message || "Erreur réseau", "error"); }
+    setBusyId(null);
+  };
+
+  const listee = data.versements.filter(v => filtre === "tous" || v.payout_status === filtre);
+  const total  = listee.reduce((t,v) => t + Number(v.payout_amount||0), 0);
+
+  if (loading) return <div style={{ color:C.gray, padding:20 }}>Chargement…</div>;
+
+  return (
+    <>
+      <SectionHeader title="Versements aux prestataires" />
+      <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Retenue (CGPS art. 7.4) et sommes dues (art. 8B.3)</div>
+
+      {data.enRetard > 0 && (
+        <Card style={{ borderLeft:`3px solid #E74C3C`, marginBottom:14 }}>
+          <div style={{ color:"#E74C3C", fontWeight:800, fontSize:14 }}>
+            ⚠️ {data.enRetard} versement{data.enRetard>1?"s":""} en retard de plus de 6 h
+          </div>
+          <div style={{ color:C.gray, fontSize:12, marginTop:6, lineHeight:1.6 }}>
+            L'échéance est passée mais le virement n'est pas parti. Le traitement automatique tourne
+            toutes les deux heures : s'il ne rattrape pas, c'est qu'il ne s'exécute plus.
+            Vérifiez les journaux Vercel du cron <code>cron-reset-monthly?action=reminders</code>.
+          </div>
+        </Card>
+      )}
+
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+        {["tous","pending","held","failed","processing"].map(f => (
+          <button key={f} onClick={()=>setFiltre(f)} style={{
+            padding:"6px 12px", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:700,
+            border:`1px solid ${filtre===f?C.violet:"#E5E7EB"}`,
+            background: filtre===f ? `${C.violet}18` : "#fff",
+            color: filtre===f ? C.violet : C.gray,
+          }}>
+            {f === "tous" ? "Tous" : ETAT_VERSEMENT[f]?.l || f}
+            {" "}({f==="tous" ? data.versements.length : data.versements.filter(v=>v.payout_status===f).length})
+          </button>
+        ))}
+      </div>
+
+      <div style={{ color:C.gray, fontSize:12, marginBottom:10 }}>
+        {listee.length} versement{listee.length>1?"s":""} — {euro(total)} au total
+      </div>
+
+      {listee.length === 0 ? (
+        <Card><div style={{ color:C.gray, fontSize:13 }}>Aucun versement dans cet état.</div></Card>
+      ) : listee.map(m => {
+        const etat = ETAT_VERSEMENT[m.payout_status] || { l:m.payout_status, c:C.gray };
+        const echu = m.payout_status === "pending" && m.payout_due_at && new Date(m.payout_due_at) < new Date();
+        return (
+          <Card key={m.id} style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
+              <div style={{ flex:1, minWidth:220 }}>
+                <div style={{ fontWeight:800, fontSize:14 }}>
+                  {nom(m.prestataire_id)} — {euro(m.payout_amount)}
+                  {m.payout_compensation > 0 && (
+                    <span style={{ color:"#E67E22", fontWeight:700, fontSize:12 }}> (dont {euro(m.payout_compensation)} retenus)</span>
+                  )}
+                </div>
+                <div style={{ color:C.gray, fontSize:12, marginTop:3 }}>
+                  {SECTOR_LABELS[m.sector] || m.metier || "Prestation"} du {jour(m.date)}
+                </div>
+                <div style={{ color: echu ? "#E74C3C" : C.gray, fontSize:12, marginTop:3, fontWeight: echu ? 700 : 400 }}>
+                  {m.payout_status === "held"
+                    ? `Retenu pour « ${LIBELLE_MOTIF[m.payout_hold_reason] || m.payout_hold_reason} » — fin au plus tard le ${jour(m.payout_hold_until)}`
+                    : `Échéance ${jour(m.payout_due_at)}${echu ? " — dépassée" : ""}`}
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                <Badge color={etat.c}>{etat.l}</Badge>
+                {m.payout_status === "held"
+                  ? <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>lever(m)} disabled={busyId===m.id}>Lever</Btn>
+                  : (m.payout_status === "pending" || m.payout_status === "failed") &&
+                    <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>retenir(m)} disabled={busyId===m.id}>Retenir</Btn>}
+                <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>creerCreance(m)} disabled={busyId===m.id}>Somme due</Btn>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+
+      <div style={{ marginTop:28 }}><SectionHeader title="Sommes dues par les prestataires" /></div>
+      <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Récupérées sur les versements à venir, moitié maximum (art. 8B.3)</div>
+      {data.creances.length === 0 ? (
+        <Card><div style={{ color:C.gray, fontSize:13 }}>Aucune somme due en cours.</div></Card>
+      ) : data.creances.map(c => (
+        <Card key={c.id} style={{ marginBottom:10 }}>
+          <div style={{ display:"flex", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
+            <div style={{ flex:1, minWidth:220 }}>
+              <div style={{ fontWeight:800, fontSize:14 }}>
+                {nom(c.prestataire_id)} — reste {euro(c.montant_restant)} sur {euro(c.montant_initial)}
+              </div>
+              <div style={{ color:C.gray, fontSize:12, marginTop:3 }}>{c.motif}</div>
+              <div style={{ color:C.gray, fontSize:12, marginTop:3 }}>
+                Notifiée le {jour(c.notifiee_at)} · exigible le {jour(c.exigible_at)}
+                {c.statut === "contestee" && " · contestée, compensation suspendue"}
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <Badge color={c.statut === "contestee" ? "#E67E22" : C.violet}>{c.statut}</Badge>
+              {c.statut === "active"
+                ? <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>statuer(c, "contestee", `Enregistrer une contestation de ${nom(c.prestataire_id)} ? La retenue sera suspendue.`)} disabled={busyId===c.id}>Contestée</Btn>
+                : <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>statuer(c, "active", "Maintenir la somme due après examen ? La retenue reprendra.")} disabled={busyId===c.id}>Maintenir</Btn>}
+              <Btn variant="secondary" style={{ padding:"6px 12px", fontSize:12 }} onClick={()=>statuer(c, "abandonnee", `Abandonner définitivement les ${euro(c.montant_restant)} restants ?`)} disabled={busyId===c.id}>Abandonner</Btn>
+            </div>
+          </div>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+// Documents dont la validité est datée : sans cette date, rien ne suit
+// l'expiration et l'article 19.1 des CGPS — renouvellement annuel de la RC Pro,
+// suspension trente jours après l'échéance — reste une promesse sans effet.
+const DOCS_A_ECHEANCE = ["rc_pro", "urssaf"];
+
+async function demanderValidite(type) {
+  if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };
+  const saisie = await showPrompt(
+    `Date de fin de validité de ce document (AAAA-MM-JJ).\n\n`
+    + `Elle déclenche la relance du prestataire avant l'échéance, puis la suspension `
+    + `de son accès trente jours après (CGPS art. 19.1).\n\n`
+    + `Laissez vide si le document n'en porte pas.`
+  );
+  if (saisie === null) return { ok: false };
+  const v = String(saisie).trim();
+  if (!v) return { ok: true };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    showToast("Date invalide — attendu AAAA-MM-JJ. Vérification annulée.", "error");
+    return { ok: false };
+  }
+  return { ok: true, expiresAt: v };
 }
 
 export function BOLitiges() {
@@ -2581,11 +2821,13 @@ export function BODocuments() {
   useEffect(() => { load(); }, []);
 
   const handleVerify = async (doc) => {
+    const validite = await demanderValidite(doc.type);
+    if (!validite.ok) return;
     setVerifying(doc.id);
     try {
       // Même précaution que dans l'onglet Comptes : l'écran affichait « vérifié »
       // sans regarder si le serveur avait accepté.
-      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id }) });
+      const r = await fetch("/api/bo-action", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionStorage.getItem("bo_token")||""}`}, body:JSON.stringify({ action:"verify_doc", profileId:doc.prestataire_id, docId:doc.id, expiresAt: validite.expiresAt }) });
       const j = await r.json().catch(()=>({}));
       if (r.ok) setDocs(prev => prev.map(d => d.id===doc.id ? {...d, verified:true} : d));
       else showToast(j.error || `Erreur ${r.status}`, "error");
@@ -3113,6 +3355,7 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
             {id:"prestations",   l:"📋 Prestations"},
             {id:"support",    l:"🎧 Support"},
             {id:"litiges",    l:"⚠️ Litiges"},
+            {id:"versements", l:"💸 Versements"},
             {id:"sectors",    l:"🗂️ Secteurs"},
             {id:"users",      l:"👥 Utilisateurs"},
             {id:"finance",    l:"💶 Finance"},
@@ -3153,6 +3396,8 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
 
         {/* ── LITIGES ── */}
         {tab==="litiges" && <BOLitiges />}
+
+        {tab==="versements" && <BOVersements />}
 
         {/* ── TEST ── */}
         {tab==="test" && <BOTest onNavigate={onNavigate} />}
