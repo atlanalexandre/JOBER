@@ -461,6 +461,34 @@ export default async function handler(req, res) {
         }).catch(() => {});
       }
 
+      // Versements encore dus au compte supprimé.
+      //
+      // Depuis que le virement est différé de 48 h après la fin (CGPS art. 17.1),
+      // une prestation validée n'est plus payée dans la foulée. Supprimer un
+      // prestataire fait donc disparaître son profil — donc son compte Stripe —
+      // et la somme reste bloquée sans que personne ne s'en aperçoive.
+      //
+      // On ne bloque pas : supprimer un fraudeur sans le payer est précisément
+      // l'usage attendu de cette action. Mais on le dit, plutôt que de le taire.
+      let versementsDus = 0;
+      try {
+        const vRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${profileId}`
+          + `&payout_status=in.(pending,processing)&status=eq.completed`
+          + `&select=id,payout_amount`,
+          { headers }
+        );
+        const vRows = vRes.ok ? await vRes.json().catch(() => []) : [];
+        if (Array.isArray(vRows) && vRows.length) {
+          versementsDus = vRows.reduce((t, m) => t + Number(m.payout_amount || 0), 0);
+          console.warn(`[delete] ${vRows.length} versement(s) non émis pour ${profileId}, `
+            + `${versementsDus.toFixed(2)} € au total — supprimés avec le compte. `
+            + `Prestations : ${vRows.map(m => m.id).join(", ")}`);
+        }
+      } catch (e) {
+        console.error("[delete] contrôle des versements dus impossible :", e.message);
+      }
+
       // Stripe: rembourser les missions payées assignées + annuler l'abonnement actif
       const STRIPE_SK_DEL = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       if (STRIPE_SK_DEL) {
@@ -569,7 +597,7 @@ export default async function handler(req, res) {
         headers,
       });
       if (!r.ok) return res.status(500).json({ error: "Erreur suppression compte auth" });
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, versementsDus: Math.round(versementsDus * 100) / 100 });
     }
 
     if (action === "suspend") {

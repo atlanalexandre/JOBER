@@ -540,6 +540,12 @@ export function BOComptes() {
       const r = await boFetch({ action, profileId, reason });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) showToast(j.error || `Erreur ${r.status}`, "error");
+      // Un versement encore dû disparaît avec le compte. C'est parfois voulu —
+      // on ne paie pas un fraudeur — mais jamais quelque chose qu'on découvre
+      // trois semaines plus tard dans les journaux.
+      else if (j.versementsDus > 0) {
+        showToast(`Compte supprimé. ⚠️ ${j.versementsDus.toFixed(2).replace(".", ",")} € de versement n'ont pas été émis — vérifiez si la somme est due.`, "error");
+      }
     } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
     setActioning(null);
     load();
