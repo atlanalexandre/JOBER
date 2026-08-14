@@ -3003,6 +3003,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [statsData,setStatsData]=useState({prestations:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [historyMissions,setHistoryMissions]=useState([]);
+  // Sommes dues à ALANE (CGPS art. 8B.3). La notification envoyée au prestataire
+  // lors d'une retenue lui annonce que « le détail figure dans votre espace » :
+  // sans cet écran, la promesse était vide et la retenue restait inexpliquée.
+  const [creances,setCreances]=useState([]);
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   // Limite mensuelle telle que le serveur l'applique réellement. Le front la
   // déduisait d'une constante où le plan gratuit annonce 10 prestations, alors que
@@ -3078,6 +3082,18 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
       setHistoryMissions([...done, ...allM.filter(m => m.status === "cancelled" || m.status === "refused")].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+
+      // Lecture directe : la RLS n'autorise que ses propres créances.
+      supabase.from("creances_prestataires")
+        .select("id,montant_initial,montant_restant,motif,statut,notifiee_at,exigible_at,created_at")
+        .in("statut", ["active","contestee"])
+        .order("created_at", { ascending: false })
+        .then(({ data, error }) => {
+          // Une erreur silencieuse afficherait « aucune somme due » à quelqu'un
+          // à qui l'on retient la moitié de chaque versement (règle 1.2).
+          if (error) { console.error("[presta] créances illisibles :", error.message); return; }
+          setCreances(Array.isArray(data) ? data : []);
+        });
 
       // Streak: consecutive calendar days with ≥1 completed mission, backwards from yesterday
       const missionDays = new Set(done.map(m => m.date?.slice(0,10)).filter(Boolean));
@@ -3530,7 +3546,35 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         {tab==="revenus" && (()=>{
           const getAmt = montantPrestataire;
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
+          const resteDu = creances.reduce((t,c)=>t+Number(c.montant_restant||0),0);
           return <>
+            {creances.length > 0 && (
+              <div style={{ background:"rgba(230,126,34,0.10)", border:"1px solid rgba(230,126,34,0.35)", borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
+                <div style={{ color:"#E67E22", fontWeight:800, fontSize:14, marginBottom:6 }}>
+                  Somme due à ALANE — reste {resteDu.toFixed(2).replace(".",",")} €
+                </div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>
+                  Elle est retenue sur vos versements à venir, <strong>dans la limite de la moitié de chacun</strong>,
+                  jusqu'à extinction (CGPS art. 8B.3). Vous pouvez la contester à direction@alane.fr :
+                  la contestation suspend la retenue le temps de l'examen.
+                </div>
+                {creances.map(c => (
+                  <div key={c.id} style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, marginTop:10 }}>
+                    <div style={{ color:C.text, fontSize:13, fontWeight:700 }}>
+                      {Number(c.montant_restant).toFixed(2).replace(".",",")} € restants
+                      <span style={{ color:C.textMuted, fontWeight:400 }}> sur {Number(c.montant_initial).toFixed(2).replace(".",",")} €</span>
+                      {c.statut === "contestee" && <span style={{ color:"#E67E22", fontSize:11, fontWeight:700 }}> · contestée, retenue suspendue</span>}
+                    </div>
+                    <div style={{ color:C.textSub, fontSize:12, marginTop:3 }}>{c.motif}</div>
+                    {c.exigible_at && (
+                      <div style={{ color:C.textMuted, fontSize:11, marginTop:3 }}>
+                        Exigible le {new Date(c.exigible_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {completedMissions.length===0 ? (
               <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center", marginBottom:16 }}>
                 <div style={{ fontSize:36, marginBottom:10 }}>💶</div>
