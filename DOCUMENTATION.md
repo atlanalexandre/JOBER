@@ -356,7 +356,7 @@ Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichie
 |---|---|---|
 | `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
 | Vérification inline équivalente | `save-document`, `update-profile`, `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js` |
-| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund`, `reset-password`, `forgot-password`, `seed-demo` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
+| Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund`, `reset-password`, `forgot-password` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
 | `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
 
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`

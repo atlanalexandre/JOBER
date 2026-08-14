@@ -271,11 +271,12 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 
 Deux niveaux, volontairement séparés.
 
-**`npm run coherence`** — déterministe, gratuit, bloquant en CI. Il vérifie neuf règles de
+**`npm run coherence`** — déterministe, gratuit, bloquant en CI. Il vérifie dix règles de
 ce fichier, toutes nées de pannes réelles : `catch` vides dans `/api`, variables
 d'environnement non nettoyées, clé service role hors `/api`, appel Supabase dans
 `onAuthStateChange`, casse du bucket `Documents`, conversion de fuseau sur `heure_debut`,
-champ de diagnostic dans une réponse HTTP, script tiers dans le CSP, écran de rôle non classé.
+champ de diagnostic dans une réponse HTTP, script tiers dans le CSP, écran de rôle non
+classé, et jeton décodé sans vérification de signature.
 
 Il ne signale que ce qu'il peut prouver. **Un contrôle qui produit des faux positifs finit
 ignoré, et un garde-fou ignoré ne protège plus rien** : avant d'élargir une règle, vérifier

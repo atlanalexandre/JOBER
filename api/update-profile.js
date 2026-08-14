@@ -1,3 +1,5 @@
+import { verifyUser } from "./_auth.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -15,15 +17,21 @@ export default async function handler(req, res) {
     "Content-Type": "application/json",
   };
 
-  // Décoder le JWT localement — pas d'appel réseau sur le chemin normal
+  // Le jeton est vérifié PAR SUPABASE, jamais décodé sur place.
+  //
+  // Cette fonction se contentait auparavant de décoder la charge utile du JWT en
+  // base64 et de faire confiance au champ `sub` qu'elle y lisait, sans jamais
+  // contrôler la SIGNATURE. Un jeton fabriqué à la main — n'importe quel
+  // `{"sub":"<identifiant d'un autre compte>","exp":<date future>}` encodé en
+  // base64, suivi de caractères quelconques en guise de signature — était donc
+  // accepté. Il suffisait d'un identifiant d'utilisateur pour réécrire le profil
+  // de n'importe qui : nom, téléphone, ville, disponibilités.
+  //
+  // Le coût est d'un appel réseau. C'est le prix de savoir à qui l'on parle.
   let userId;
   if (token) {
-    try {
-      const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
-      if (payload?.sub && payload?.exp * 1000 > Date.now() + 10000) {
-        userId = payload.sub;
-      }
-    } catch { /* continue */ }
+    const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+    if (caller?.id) userId = caller.id;
   }
 
   // Si token expiré/invalide → rafraîchir via Supabase

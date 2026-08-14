@@ -270,6 +270,31 @@ try {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 10. Aucun jeton n'est décodé sans vérification de signature  (CLAUDE.md §3.3)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// api/update-profile.js décodait la charge utile du JWT en base64 et faisait
+// confiance au `sub` qu'il y lisait, sans jamais contrôler la signature. Un
+// jeton fabriqué à la main suffisait à réécrire le profil de n'importe qui.
+//
+// Un JWT ne se lit pas, il se vérifie : `verifyUser` de api/_auth.js, qui le
+// soumet à Supabase. La règle ne cherche que le motif exact du décodage — la
+// deuxième partie du jeton passée à un décodeur base64 — pour ne pas crier sur
+// du code légitime.
+
+for (const f of fichiers("api")) {
+  parLigne(f, (texte, n) => {
+    const decodeCharge = /split\(["'`]\.["'`]\)\s*\[\s*1\s*\]/.test(texte)
+      && /base64|atob/i.test(texte);
+    if (decodeCharge) {
+      violation("§3.3 — jeton décodé sans vérification", f, n,
+        "La charge utile d'un jeton est décodée sur place. Un jeton forgé serait accepté : "
+        + "sa signature n'est pas contrôlée. Passer par verifyUser() de api/_auth.js.");
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 9. Tout écran déclaré est classé  (CLAUDE.md §3.2)
 // ═══════════════════════════════════════════════════════════════════════════
 //

@@ -1,8 +1,7 @@
+import { verifyUser } from "./_auth.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { userId } = req.body || {};
-  if (!userId) return res.status(400).json({ error: "userId requis" });
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
@@ -10,6 +9,17 @@ export default async function handler(req, res) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });
   }
+
+  // Cette fonction lisait un profil avec la clé service role à partir du seul
+  // `userId` reçu dans le corps de la requête, sans aucune authentification.
+  // N'importe qui pouvait donc lire le rôle, le statut et l'abonnement de
+  // n'importe quel compte, et confirmer l'existence d'un identifiant.
+  //
+  // On ne lit plus que SON PROPRE profil, et l'identifiant vient du jeton
+  // vérifié, jamais du corps de la requête.
+  const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+  if (!caller?.id) return res.status(401).json({ error: "Non authentifié" });
+  const userId = caller.id;
 
   const headers = {
     "apikey": SERVICE_ROLE_KEY,
