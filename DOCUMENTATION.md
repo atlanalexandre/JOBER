@@ -979,14 +979,20 @@ les montants montrés au prestataire — revenu du mois, fiche de fin de prestat
 totaux et export comptable. Une prestation d'1 h à 15 €/h s'affichait « 19,90 € gagnés ».
 
 Le calcul lui-même vit dans **`api/_cloture.js`** (`montantsDeCloture`), et nulle part
-ailleurs. Il en existait trois copies divergentes, toutes fausses à leur façon :
+ailleurs. Il en existait quatre copies divergentes, toutes fausses à leur façon :
 `api/missions.js` omettait le nombre de jours, `api/stripe-webhook.js` versait
 `montant_total` frais compris, et l'auto-validation de `api/cron-reset-monthly.js` cumulait
 l'oubli des jours, l'écrasement de `montant_total` par la seule part horaire — effaçant les
 frais encaissés, donc la trace de ce que le client avait payé — et l'absence de plafonnement
 des heures en cas de décalage non arbitré. Surtout, **elle ne programmait aucun virement** :
 la prestation était clôturée, le prestataire recevait un e-mail lui annonçant un paiement
-« sous 3 à 5 jours ouvrés », et rien n'était jamais émis. Corrigé le 14/08/2026.
+« sous 3 à 5 jours ouvrés », et rien n'était jamais émis.
+
+La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : mêmes défauts,
+plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé.
+`release_dispute` remet désormais `payout_status` à `pending` — sans quoi une prestation dont
+le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
+libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
 
 **La facture** (`api/invoice.js`) est celle du prestataire au client : son montant HT est
 donc le même que ce qui lui est versé, `tarif_horaire × heures × jours`.
