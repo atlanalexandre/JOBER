@@ -3044,7 +3044,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       if(!prestaTourDone) setShowTour(true);
       const token = session?.access_token || "";
       const [prof,{data:mData},{data:rData},planJson]=await Promise.all([
-        fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:u.id})}).then(async r=>{
+        fetch("/api/get-profile",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({})}).then(async r=>{
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),

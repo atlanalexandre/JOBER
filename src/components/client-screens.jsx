@@ -5478,7 +5478,17 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   <div style={{ color:C.textSub, fontSize:12 }}>Auto-entrepreneur · {p.role}</div>
                 </div>
               </div>
-              {[["SIRET","XXX XXX XXX XXXXX"],["Activité déclarée","Prestation de services"],["URSSAF","À jour de cotisations ✓"],["RC Pro","Attestation validée ✓"],["Taux horaire net",`${p.tarifNet?p.tarifNet.toFixed(2):"14,00"} €/h`]].map(([l,v])=>(
+              {/* Ces lignes étaient écrites en dur : un faux SIRET « XXX XXX XXX XXXXX »
+                  dans un contrat que les deux parties signent, et deux affirmations au
+                  présent — « URSSAF à jour ✓ », « RC Pro validée ✓ » — qu'aucun contrôle
+                  ne soutenait au moment où le client les lisait. ALANE garantissait donc
+                  au client la situation sociale d'un tiers, ce que l'article 12.1 des
+                  CGPS lui interdit expressément de faire.
+
+                  On n'affirme plus que ce qui est vrai : les pièces sont vérifiées à
+                  l'inscription, et l'attestation RC Pro est désormais suivie jusqu'à son
+                  échéance (l'accès est suspendu 30 jours après expiration, CGPS art. 19.1). */}
+              {[["Statut","Auto-entrepreneur immatriculé"],["Justificatifs","SIRET, URSSAF et RC Pro vérifiés par ALANE"],["Assurance RC Pro","Attestation suivie jusqu'à son échéance"],["SIRET","Porté sur la facture du prestataire"],["Taux horaire net",`${p.tarifNet?p.tarifNet.toFixed(2):"14,00"} €/h`]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{v}</span>
@@ -5744,7 +5754,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
               <div>
                 <div style={{ fontWeight:800, color:C.text, fontSize:15 }}>{p.name}</div>
                 <div style={{ color:C.textSub, fontSize:12 }}>Auto-entrepreneur · {p.role}</div>
-                <div style={{ color:C.textSub, fontSize:11 }}>SIRET : XXX XXX XXX XXXXX</div>
+                <div style={{ color:C.textSub, fontSize:11 }}>SIRET porté sur la facture</div>
               </div>
             </div>
           </div>

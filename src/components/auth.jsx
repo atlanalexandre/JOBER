@@ -1124,10 +1124,15 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       // Lecture du profil via l'API serveur (service role key) pour contourner tout problème RLS côté client
       let profile = null;
       try {
+        // Le jeton est désormais exigé : le serveur ne lit plus un profil sur la
+        // seule foi d'un identifiant reçu dans le corps de la requête.
         const pRes = await fetch("/api/get-profile", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: user.id }),
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${signInData?.session?.access_token || ""}`,
+          },
+          body: JSON.stringify({}),
         });
         if (pRes.ok) {
           profile = await pRes.json();
