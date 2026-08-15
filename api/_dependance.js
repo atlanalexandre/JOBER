@@ -33,6 +33,16 @@
 // Ils sont volontairement placés au niveau où un inspecteur commencerait à
 // poser des questions, pas au niveau où la situation devient indéfendable :
 // l'objet est de déclencher une vérification tôt, pas de constater trop tard.
+// ATTENTION — CE NE SONT PAS DES SEUILS LÉGAUX.
+//
+// Aucun texte ne fixe de niveau au-dessous duquel une relation serait
+// régulière : la qualification dépend des conditions réelles d'exécution,
+// appréciées souverainement par les juridictions. Ces valeurs sont des repères
+// de vigilance interne, choisis pour déclencher un examen — rien de plus.
+//
+// Ne jamais les présenter, dans une interface ou un document, comme une limite
+// à ne pas franchir : ce serait promettre une sécurité qui n'existe pas, et
+// fournir à l'adversaire la preuve qu'ALANE croyait un seuil protecteur.
 export const SEUILS_PAR_DEFAUT = {
   // Part du chiffre d'affaires du prestataire réalisée avec un seul client.
   // C'est l'indice de dépendance économique le plus regardé.

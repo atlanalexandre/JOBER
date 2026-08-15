@@ -5387,7 +5387,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 9 — Propriété intellectuelle",
-      content:`Toute création, production ou livrable réalisé par le Prestataire dans le cadre de la prestation appartient intégralement au Client, sauf accord contraire stipulé par écrit.\n\nLe Prestataire cède au Client l'intégralité des droits patrimoniaux sur les œuvres créées dans le cadre de la prestation, pour toute exploitation, sur tous supports, pour le monde entier et pour toute la durée légale de protection.`
+      content:`La très grande majorité des prestations proposées sur la Plateforme — entretien, service, logistique, accueil — ne donne lieu à la création d'aucune œuvre protégée. Le présent article ne s'applique alors pas, et aucune cession de droits n'intervient.\n\nLorsque la prestation a effectivement pour objet la création d'une œuvre protégée par le droit d'auteur, et seulement dans ce cas, le Prestataire cède au Client les droits patrimoniaux sur cette œuvre. Conformément aux articles L.131-3 et L.131-4 du Code de la propriété intellectuelle, cette cession suppose que la commande précise la nature de l'œuvre attendue, les droits cédés, les supports et la durée d'exploitation, ainsi que la rémunération correspondante — laquelle est distincte du prix des heures de prestation.\n\nÀ défaut de telles précisions dans la description de la prestation, aucun droit n'est cédé et le Prestataire demeure titulaire de ses droits. Le Client conserve en toute hypothèse le droit d'utiliser le résultat de la prestation pour l'usage auquel elle était destinée.`
     },
     {
       title:"Article 10 — Règlement des litiges",
