@@ -83,6 +83,150 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── REMBOURSEMENT DU SOLDE ──────────────────────────────────────
+  //
+  // Le rechargement étant suspendu, le client doit pouvoir récupérer ce qu'il a
+  // déposé. Un solde reçu du public, conservé sans terme et sans possibilité de
+  // retrait, s'analyse mal — au regard du régime de la monnaie électronique
+  // comme du droit des clauses abusives.
+  //
+  // Le remboursement s'impute sur les recharges enregistrées dans
+  // `wallet_topups`, de la plus récente à la plus ancienne, chacune portant le
+  // montant déjà rendu. Le CASHBACK n'est pas remboursable : ce n'est pas de
+  // l'argent reçu du client, c'est un avantage commercial (CGPS art. 5B.4). Le
+  // solde remboursable est donc plafonné à ce qui reste des recharges par carte.
+  if (action === "rembourser_solde") {
+    try {
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers: hdrs });
+      const pd = await pr.json().catch(() => []);
+      const prof = Array.isArray(pd) && pd[0];
+      if (!prof) return res.status(404).json({ error: "Profil introuvable" });
+
+      const solde = Number(prof.prepaid_balance || 0);
+      if (solde <= 0) return res.status(400).json({ error: "Votre portefeuille est vide." });
+
+      const tRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/wallet_topups?user_id=eq.${caller.id}`
+        + `&select=stripe_payment_intent,amount,montant_rembourse&order=created_at.desc`,
+        { headers: hdrs }
+      );
+      if (!tRes.ok) {
+        const detail = await tRes.text().catch(() => "");
+        console.error(`[rembourser_solde] registre illisible (${tRes.status}) : ${detail.slice(0, 200)}`);
+        return res.status(503).json({ error: "Remboursement indisponible pour le moment — réessayez plus tard." });
+      }
+      const recharges = await tRes.json().catch(() => []);
+
+      const remboursableC = (Array.isArray(recharges) ? recharges : []).reduce(
+        (t, r) => t + Math.round((Number(r.amount || 0) - Number(r.montant_rembourse || 0)) * 100), 0
+      );
+      // On ne rend jamais plus que ce qui reste au portefeuille, ni plus que ce
+      // qui a été rechargé par carte : le cashback consommé aurait sinon été
+      // converti en euros remboursables.
+      let resteC = Math.min(Math.round(solde * 100), Math.max(0, remboursableC));
+      if (resteC <= 0) {
+        return res.status(400).json({
+          error: "Votre solde provient du cashback, qui n'est pas remboursable en argent (CGPS art. 5B.4). "
+               + "Il reste utilisable pour régler vos prestations.",
+        });
+      }
+
+      const STRIPE_SK = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      if (!STRIPE_SK) return res.status(500).json({ error: "Stripe non configuré" });
+
+      let rembourseC = 0;
+      const emis = [];
+      for (const r of recharges) {
+        if (resteC <= 0) break;
+        const restantSurCetteRechargeC = Math.round((Number(r.amount || 0) - Number(r.montant_rembourse || 0)) * 100);
+        if (restantSurCetteRechargeC <= 0) continue;
+        const partC = Math.min(resteC, restantSurCetteRechargeC);
+
+        const rf = await fetch("https://api.stripe.com/v1/refunds", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${STRIPE_SK}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+            // Une même recharge ne peut donner lieu qu'à un remboursement par
+            // montant cumulé, quel que soit le nombre de tentatives du client.
+            "Idempotency-Key": `wallet-refund-${r.stripe_payment_intent}-${Number(r.montant_rembourse || 0) + partC / 100}`,
+          },
+          body: new URLSearchParams({
+            payment_intent: r.stripe_payment_intent,
+            amount: String(partC),
+            "metadata[type]": "wallet_refund",
+            "metadata[user_id]": caller.id,
+          }).toString(),
+        }).catch(e => { console.error(`[rembourser_solde] appel Stripe échoué sur ${r.stripe_payment_intent} :`, e.message); return null; });
+
+        const rd = rf ? await rf.json().catch(() => ({})) : {};
+        if (!rf || !rf.ok || !rd.id) {
+          // On s'arrête au premier échec plutôt que de continuer : le solde a
+          // déjà été décrémenté des remboursements réussis, et poursuivre
+          // masquerait l'incident derrière un succès partiel silencieux.
+          console.error(`[rembourser_solde] Stripe a refusé ${r.stripe_payment_intent} :`, rd?.error?.message || rf?.status);
+          break;
+        }
+
+        // La trace AVANT le solde : si l'écriture du solde échoue, on aura
+        // remboursé sans débiter — récupérable. L'inverse ne l'est pas.
+        const maj = await fetch(
+          `${SUPABASE_URL}/rest/v1/wallet_topups?stripe_payment_intent=eq.${encodeURIComponent(r.stripe_payment_intent)}`,
+          { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
+            body: JSON.stringify({ montant_rembourse: Math.round((Number(r.montant_rembourse || 0) * 100 + partC)) / 100 }) }
+        ).catch(() => null);
+        if (!maj || !maj.ok) {
+          console.error(`[rembourser_solde] remboursement ${rd.id} émis mais NON tracé sur ${r.stripe_payment_intent} — `
+            + "à reprendre à la main avant toute nouvelle demande de ce client.");
+          break;
+        }
+
+        rembourseC += partC;
+        resteC -= partC;
+        emis.push(rd.id);
+      }
+
+      if (rembourseC <= 0) {
+        return res.status(502).json({ error: "Le remboursement n'a pas pu être émis. Écrivez à support@alane.fr." });
+      }
+
+      const nouveauSolde = Math.round((solde * 100 - rembourseC)) / 100;
+      const patch = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&prepaid_balance=eq.${prof.prepaid_balance}`,
+        { method: "PATCH", headers: { ...hdrs, "Prefer": "return=representation" },
+          body: JSON.stringify({ prepaid_balance: nouveauSolde }) }
+      );
+      const patched = await patch.json().catch(() => []);
+      if (!Array.isArray(patched) || patched.length === 0) {
+        // Le solde a bougé entre la lecture et l'écriture. L'argent est parti :
+        // il faut que cela se voie, pas que le client soit remboursé deux fois.
+        console.error(`[rembourser_solde] ${(rembourseC/100).toFixed(2)} € remboursés à ${caller.id} `
+          + `(${emis.join(", ")}) mais solde NON décrémenté — concurrence. À régulariser à la main.`);
+        return res.status(409).json({ error: "Votre solde a changé pendant l'opération — contactez support@alane.fr." });
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: caller.id, type: "system",
+          title: "Remboursement de votre portefeuille",
+          body: `${(rembourseC/100).toFixed(2).replace(".", ",")} € vous sont remboursés sur le moyen de paiement d'origine. `
+              + `Comptez 5 à 10 jours ouvrés selon votre banque.`,
+          read: false }),
+      }).catch(() => {});
+
+      console.log(`[rembourser_solde] ${(rembourseC/100).toFixed(2)} € remboursés à ${caller.id} — ${emis.join(", ")}`);
+      return res.status(200).json({
+        success: true,
+        rembourse: Math.round(rembourseC) / 100,
+        prepaid_balance: nouveauSolde,
+        partiel: resteC > 0,
+      });
+    } catch (e) {
+      console.error("[rembourser_solde] erreur :", e.message);
+      return res.status(500).json({ error: "Erreur lors du remboursement" });
+    }
+  }
+
   // ── PAY MISSION FROM WALLET ─────────────────────────────────────
   if (action === "pay_mission") {
     if (!mission_id || !/^[0-9a-f-]{36}$/i.test(mission_id)) {
