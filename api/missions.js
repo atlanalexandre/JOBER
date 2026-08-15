@@ -10,6 +10,41 @@ const VERSION_RETRACTATION = "2026-08-15";
 
 // Même règle pour le mandat de facturation accepté par le prestataire.
 const VERSION_MANDAT_FACTURATION = "2026-08-15";
+
+// Majorité de l'appelant, vérifiée par le SERVEUR.
+//
+// L'article 3 des CGPS réserve l'accès aux personnes majeures. Le contrôle
+// existait, mais dans le navigateur seulement : il suffisait d'ouvrir les outils
+// de développement, ou d'appeler l'API directement, pour le contourner. Un
+// mineur ne peut pas s'obliger seul ; un contrat de prestation qu'il signe est
+// annulable, et le paiement avec.
+//
+// La vérification est faite au moment qui compte — l'engagement financier — et
+// non à l'inscription : c'est là qu'elle a un effet utile.
+//
+// En l'absence de date de naissance, on laisse passer : le champ n'est
+// obligatoire que depuis l'ajout du contrôle, et bloquer les comptes anciens
+// ferait plus de dégâts que le risque qu'on écarte. Le cas est journalisé.
+async function appelantMajeur(userId, supabaseUrl, headers) {
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, { headers });
+    if (!r.ok) return { ok: true, raison: "profil illisible" };
+    const u = await r.json();
+    const dn = u?.user_metadata?.date_naissance;
+    if (!dn) {
+      console.log(`[majorite] date de naissance absente pour ${userId} — contrôle non applicable`);
+      return { ok: true, raison: "date absente" };
+    }
+    const naissance = new Date(dn);
+    if (isNaN(naissance.getTime())) return { ok: true, raison: "date illisible" };
+    const majoriteLe = new Date(naissance);
+    majoriteLe.setFullYear(majoriteLe.getFullYear() + 18);
+    return { ok: Date.now() >= majoriteLe.getTime() };
+  } catch (e) {
+    console.error("[majorite] contrôle impossible :", e.message);
+    return { ok: true, raison: "erreur" };
+  }
+}
 import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
 
@@ -1770,6 +1805,12 @@ export default async function handler(req, res) {
     if (action === "assign_after_payment") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const majeur = await appelantMajeur(caller.id, SUPABASE_URL, headers);
+      if (!majeur.ok) {
+        console.error(`[assign_after_payment] commande refusée : ${caller.id} est mineur`);
+        return res.status(403).json({ error: "L'accès à la Plateforme est réservé aux personnes majeures (CGPS art. 3)." });
+      }
       const { mission_id, prestataire_id, acceptance_deadline, stripe_payment_intent } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id invalide" });
@@ -3219,6 +3260,12 @@ export default async function handler(req, res) {
     if (action === "affecter_tiers") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const majeur = await appelantMajeur(caller.id, SUPABASE_URL, headers);
+      if (!majeur.ok) {
+        console.error(`[affecter_tiers] commande refusée : ${caller.id} est mineur`);
+        return res.status(403).json({ error: "L'accès à la Plateforme est réservé aux personnes majeures (CGPS art. 3)." });
+      }
       const { mission_id, acceptance_deadline, stripe_payment_intent } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 

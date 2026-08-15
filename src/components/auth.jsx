@@ -33,6 +33,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [rcProConfirmed, setRcProConfirmed] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [cgpsAccepted, setCgpsAccepted] = useState(false);
+  // Consentement aux communications commerciales — DISTINCT de l'acceptation des
+  // CGPS, et facultatif. L'article L.34-5 du CPCE subordonne la prospection au
+  // consentement préalable ; un consentement noyé dans l'acceptation d'un
+  // contrat n'en est pas un. La case est donc séparée, et décochée par défaut.
+  const [accepteComms, setAccepteComms] = useState(false);
   const [showCgpsModal, setShowCgpsModal] = useState(false);
   const [acreEnabled, setAcreEnabled] = useState(false);
   const [showAcreInfo, setShowAcreInfo] = useState(false);
@@ -139,7 +144,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (data?.user) {
       const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: data.user.id, role: "prestataire", prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+        id: data.user.id, role: "prestataire", accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
         // `profiles` fait foi pour l'abonnement : il naît gratuit et n'est relevé que
         // par le webhook Stripe, après paiement effectif.
@@ -673,6 +678,15 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
             </span>
           </div>
+          <div onClick={()=>setAccepteComms(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${accepteComms?accentColor:C.grayLight}`, background:accepteComms?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepteComms?accentColor:C.grayLight}`, background:accepteComms?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+              {accepteComms && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
+            </div>
+            <span style={{ color:C.text, fontSize:12, lineHeight:1.6 }}>
+              J'accepte de recevoir les actualités et offres d'ALANE.{" "}
+              <span style={{ color:C.gray }}>Facultatif — vous recevrez de toute façon les messages liés à vos prestations. Résiliable à tout moment.</span>
+            </span>
+          </div>
         </>}
       </div>
 
@@ -758,6 +772,11 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [showPass, setShowPass] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [cgpsAccepted, setCgpsAccepted] = useState(false);
+  // Consentement aux communications commerciales — DISTINCT de l'acceptation des
+  // CGPS, et facultatif. L'article L.34-5 du CPCE subordonne la prospection au
+  // consentement préalable ; un consentement noyé dans l'acceptation d'un
+  // contrat n'en est pas un. La case est donc séparée, et décochée par défaut.
+  const [accepteComms, setAccepteComms] = useState(false);
   const [showCgpsModal, setShowCgpsModal] = useState(false);
 
   const toggleSecteur = id => {
@@ -829,7 +848,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
     }
     if (data?.user) {
       const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: data.user.id, role: "client", prenom: prenom.trim(), nom: nom.trim(), status: "approved",
+        id: data.user.id, role: "client", accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(), status: "approved",
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
       });
@@ -1006,6 +1025,15 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
               <span onClick={e=>{e.stopPropagation();setShowCgpsModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Conditions Générales de Prestation de Services (CGPS)</span>
               {" "}et la{" "}
               <span onClick={e=>{e.stopPropagation();setShowPrivacyModal(true);}} style={{ color:accentColor, textDecoration:"underline", cursor:"pointer" }}>Politique de confidentialité</span>
+            </span>
+          </div>
+          <div onClick={()=>setAccepteComms(v=>!v)} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:r, border:`1.5px solid ${accepteComms?accentColor:C.grayLight}`, background:accepteComms?`${accentColor}10`:"transparent", cursor:"pointer", marginBottom:6 }}>
+            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${accepteComms?accentColor:C.grayLight}`, background:accepteComms?accentColor:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+              {accepteComms && <span style={{ color:"#fff", fontSize:12, fontWeight:900 }}>✓</span>}
+            </div>
+            <span style={{ color:C.text, fontSize:12, lineHeight:1.6 }}>
+              J'accepte de recevoir les actualités et offres d'ALANE.{" "}
+              <span style={{ color:C.gray }}>Facultatif — vous recevrez de toute façon les messages liés à vos prestations. Résiliable à tout moment.</span>
             </span>
           </div>
           <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
