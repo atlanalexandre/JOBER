@@ -3007,6 +3007,30 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   // lors d'une retenue lui annonce que « le détail figure dans votre espace » :
   // sans cet écran, la promesse était vide et la retenue restait inexpliquée.
   const [creances,setCreances]=useState([]);
+  // Mandat de facturation : sans lui, ALANE ne peut pas établir de facture au
+  // nom du prestataire (art. 289 I-2 du CGI). Le document reste alors une simple
+  // attestation, sans numéro — donc inutilisable pour sa comptabilité.
+  const [mandatFacturation,setMandatFacturation]=useState(null); // null = inconnu
+  const [mandatEnCours,setMandatEnCours]=useState(false);
+
+  const accepterMandat = async () => {
+    setMandatEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const jwt = sd?.session?.access_token;
+      if (!jwt) { showToast("Session expirée — reconnectez-vous"); setMandatEnCours(false); return; }
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ action: "accepter_mandat_facturation" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.success) { showToast(d.error || `Erreur ${r.status}`); setMandatEnCours(false); return; }
+      setMandatFacturation(new Date().toISOString());
+      showToast("Mandat accepté — vos factures sont désormais établies à votre nom.");
+    } catch (e) { showToast(e?.message || "Erreur réseau"); }
+    setMandatEnCours(false);
+  };
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   // Limite mensuelle telle que le serveur l'applique réellement. Le front la
   // déduisait d'une constante où le plan gratuit annonce 10 prestations, alors que
@@ -3038,8 +3062,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       // profiles.avatar_url d'abord (hors JWT), repli metadata pour les comptes non migrés
-      supabase.from("profiles").select("avatar_url").eq("id", u.id).single()
-        .then(({ data }) => setDashPhotoUrl(data?.avatar_url || u.user_metadata?.photo_url || null));
+      supabase.from("profiles").select("avatar_url,mandat_facturation_at").eq("id", u.id).single()
+        .then(({ data }) => {
+          setDashPhotoUrl(data?.avatar_url || u.user_metadata?.photo_url || null);
+          setMandatFacturation(data?.mandat_facturation_at || null);
+        });
       const m=u.user_metadata||{};
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
       setProfilPct(Math.round(checks.filter(Boolean).length/checks.length*100));
@@ -3574,6 +3601,29 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           const resteDu = creances.reduce((t,c)=>t+Number(c.montant_restant||0),0);
           return <>
+            {mandatFacturation === null && (
+              <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
+                <div style={{ color:"#F0B429", fontWeight:800, fontSize:14, marginBottom:6 }}>
+                  Vos factures ne sont pas encore établies à votre nom
+                </div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:12 }}>
+                  ALANE peut établir vos factures à votre place, à votre nom et pour votre compte : numérotées,
+                  archivées, utilisables pour votre comptabilité et vos déclarations. La loi exige pour cela votre
+                  accord préalable et écrit (article 289 du Code général des impôts).
+                  <br /><br />
+                  Vous restez l'émetteur de vos factures et pouvez contester chacune d'elles depuis votre historique.
+                  Tant que vous n'avez pas accepté, vous recevez une simple attestation de prestation, sans numéro —
+                  et c'est à vous d'établir vos factures.
+                </div>
+                <button onClick={accepterMandat} disabled={mandatEnCours} style={{
+                  padding:"11px 18px", borderRadius:10, border:"none", background:"#F0B429",
+                  color:"#0A1628", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+                  opacity:mandatEnCours?0.6:1,
+                }}>
+                  {mandatEnCours ? "…" : "J'accepte le mandat de facturation"}
+                </button>
+              </div>
+            )}
             {creances.length > 0 && (
               <div style={{ background:"rgba(230,126,34,0.10)", border:"1px solid rgba(230,126,34,0.35)", borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
                 <div style={{ color:"#E67E22", fontWeight:800, fontSize:14, marginBottom:6 }}>

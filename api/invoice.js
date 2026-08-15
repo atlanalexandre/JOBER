@@ -116,10 +116,16 @@ export default async function handler(req, res) {
   let prestaCompany = "";
   let prestaSiret = "";
   let prestaStatutPro = "auto-entrepreneur";
+  // Mandat de facturation : ALANE ne peut facturer AU NOM du prestataire que
+  // s'il l'a expressément mandatée, par écrit et au préalable (art. 289, I-2 du
+  // CGI). Sans mandat, le document reste une attestation de prestation, sans
+  // numéro séquentiel — tirer un numéro sans mandat entamerait une numérotation
+  // qu'on ne pourrait plus justifier.
+  let mandatAccepte = false;
 
   if (mission.prestataire_id) {
     const [prestaProfileRes, prestaAuthRes] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret`, {
+      fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom,societe_nom,siret,mandat_facturation_at`, {
         headers: { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Accept": "application/json" },
       }),
       fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(mission.prestataire_id)}`, {
@@ -133,6 +139,7 @@ export default async function handler(req, res) {
         prestaName = [p.prenom, p.nom].filter(Boolean).join(" ") || "Prestataire";
         prestaCompany = p.societe_nom || "";
         prestaSiret = p.siret || "";
+        mandatAccepte = Boolean(p.mandat_facturation_at);
       }
     }
     if (prestaAuthRes.ok) {
@@ -153,7 +160,15 @@ export default async function handler(req, res) {
   const hdrsDB = { "apikey": serviceRoleKey, "Authorization": `Bearer ${serviceRoleKey}`, "Content-Type": "application/json", "Prefer": "return=representation" };
   let invoiceNum = mission.invoice_number || null;
 
-  if (!invoiceNum) {
+  // Sans mandat de facturation accepté, aucun numéro n'est tiré : le document
+  // reste une attestation. Le numéro déjà attribué à une prestation antérieure,
+  // lui, est conservé — une numérotation continue ne se rétracte pas.
+  if (!invoiceNum && !mandatAccepte) {
+    console.log(`[invoice] prestation ${mission_id} : mandat de facturation non accepté par `
+      + `${mission.prestataire_id} — attestation émise, sans numéro.`);
+  }
+
+  if (!invoiceNum && mandatAccepte) {
     let numeroTire = null;
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -402,7 +417,7 @@ export default async function handler(req, res) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Facture ${escHtml(invoiceNum)}</title>
+  <title>${invoiceNum ? `Facture ${escHtml(invoiceNum)}` : "Attestation de prestation"}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -627,8 +642,8 @@ export default async function handler(req, res) {
         <div class="logo-sub">Plateforme de services à la demande</div>
       </div>
       <div class="invoice-meta">
-        <div class="invoice-label">Facture</div>
-        <div class="invoice-num">${escHtml(invoiceNum)}</div>
+        <div class="invoice-label">${invoiceNum ? "Facture" : "Attestation de prestation"}</div>
+        <div class="invoice-num">${escHtml(invoiceNum || "sans numéro")}</div>
         <div class="invoice-date">Émise le ${escHtml(issueDate)}</div>
       </div>
     </div>
@@ -719,6 +734,9 @@ export default async function handler(req, res) {
       </div>
       <div class="legal">
         ${escHtml(legalTvaNote)}
+        ${invoiceNum
+          ? "<br/>Facture établie par ALANE au nom et pour le compte du prestataire, en vertu du mandat de facturation qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
+          : "<br/>Ce document est une attestation de prestation. Il ne constitue pas une facture : le prestataire n'a pas accepté le mandat de facturation, et lui seul peut établir la facture correspondante."}
         ALANE — Plateforme de mise en relation de services à la demande. Ce document tient lieu de facture acquittée.
       </div>
     </div>
