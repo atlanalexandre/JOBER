@@ -8,7 +8,7 @@ import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-c
 import { CGPS } from "../constants/cgps.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
-import { StripePaymentScreen, WalletTopupModal } from "./payment.jsx";
+import { StripePaymentScreen } from "./payment.jsx";
 
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
@@ -821,7 +821,41 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
   const [prepaidBalance, setPrepaidBalance] = useState(0);
-  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [remboursementEnCours, setRemboursementEnCours] = useState(false);
+
+  // Remboursement du solde du portefeuille. Le rechargement étant suspendu, le
+  // client doit pouvoir récupérer ce qu'il a déposé — un solde sans retrait
+  // possible s'analyse mal, au regard du régime de la monnaie électronique comme
+  // du droit des clauses abusives.
+  const demanderRemboursement = async () => {
+    const ok = await showConfirm(
+      `Demander le remboursement de ${prepaidBalance.toFixed(2).replace(".", ",")} € ?\n\n`
+      + "Les sommes rechargées par carte sont remboursées sur le moyen de paiement d'origine, "
+      + "sous 5 à 10 jours ouvrés selon votre banque.\n\n"
+      + "Le cashback n'est pas remboursable en argent : il reste utilisable pour vos prestations."
+    );
+    if (!ok) return;
+    setRemboursementEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const jwt = sd?.session?.access_token;
+      if (!jwt) { showToast("Session expirée — reconnectez-vous"); setRemboursementEnCours(false); return; }
+      const r = await fetch("/api/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ action: "rembourser_solde" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.success) { showToast(d.error || `Remboursement impossible (${r.status})`); setRemboursementEnCours(false); return; }
+      setPrepaidBalance(Number(d.prepaid_balance || 0));
+      showToast(d.partiel
+        ? `${Number(d.rembourse).toFixed(2).replace(".", ",")} € remboursés. Le reste provient du cashback et n'est pas remboursable.`
+        : `${Number(d.rembourse).toFixed(2).replace(".", ",")} € remboursés — 5 à 10 jours ouvrés selon votre banque.`);
+    } catch (e) {
+      showToast(e?.message || "Erreur réseau");
+    }
+    setRemboursementEnCours(false);
+  };
   const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
@@ -1244,43 +1278,37 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
               {prepaidBalance > 0 ? "Utilisé automatiquement au paiement" : "Rechargez pour éviter les frais Stripe fixes"}
             </div>
           </div>
-          <button onClick={()=>setShowTopupModal(true)} style={{
-            background:C.violet, border:"none", borderRadius:11, padding:"10px 14px",
-            color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
-            whiteSpace:"nowrap", flexShrink:0,
-          }}>+ Recharger</button>
+          {/* Le rechargement est suspendu (décision du 14/08/2026, sur avis
+              juridique) : le portefeuille reçoit des fonds du public dont la
+              qualification n'est pas assurée. Le bouton est remplacé par la
+              demande de remboursement — un solde qu'on ne peut ni retirer ni
+              récupérer s'analyse mal. Le solde reste utilisable pour payer. */}
+          {prepaidBalance > 0 && (
+            <button onClick={demanderRemboursement} disabled={remboursementEnCours} style={{
+              background:"transparent", border:`1px solid ${C.violet}66`, borderRadius:11, padding:"10px 14px",
+              color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+              whiteSpace:"nowrap", flexShrink:0, opacity:remboursementEnCours?0.6:1,
+            }}>{remboursementEnCours ? "…" : "Me rembourser"}</button>
+          )}
         </div>
-        {(() => {
-          const missionsRef = Math.max(walletMissions, 1);
-          const saving = (missionsRef * 0.25).toFixed(2).replace(".", ",");
-          const label = walletMissions >= 2
-            ? `Avec vos ${walletMissions} prestations ce mois, vous économisez ~${saving} € de frais Stripe via le wallet`
-            : "1 recharge = 1 seul paiement Stripe, peu importe le nombre de prestations financées";
-          return (
-            <div
-              onClick={() => setShowTopupModal(true)}
-              style={{
-                marginTop:8, borderRadius:10, padding:"9px 13px",
-                background:"rgba(16,217,143,0.07)", border:"1px solid rgba(16,217,143,0.18)",
-                display:"flex", alignItems:"center", gap:8, cursor:"pointer",
-              }}
-            >
-              <span style={{ fontSize:14, flexShrink:0 }}>💚</span>
-              <span style={{ fontSize:11, color:"rgba(16,217,143,0.85)", fontWeight:500, lineHeight:1.4 }}>{label}</span>
-              <span style={{ fontSize:11, color:"rgba(16,217,143,0.5)", flexShrink:0, marginLeft:"auto" }}>Recharger →</span>
-            </div>
-          );
-        })()}
+        {/* L'encart qui vantait l'économie de frais Stripe invitait à recharger.
+            Il n'a plus d'objet et devient l'explication de la suspension. */}
+        <div style={{
+          marginTop:8, borderRadius:10, padding:"9px 13px",
+          background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+          display:"flex", alignItems:"flex-start", gap:8,
+        }}>
+          <span style={{ fontSize:14, flexShrink:0 }}>ℹ️</span>
+          <span style={{ fontSize:11, color:C.textSub, lineHeight:1.5 }}>
+            Le rechargement du portefeuille est momentanément suspendu.
+            {prepaidBalance > 0
+              ? " Votre solde reste utilisable pour régler vos prestations, et vous pouvez en demander le remboursement sur le moyen de paiement d'origine. Le cashback, qui est un avantage commercial, n'est pas remboursable en argent."
+              : " Vos prestations se règlent par carte, comme d'habitude."}
+          </span>
+        </div>
       </div>
 
       {/* ── Modal recharge wallet ── */}
-      {showTopupModal && (
-        <WalletTopupModal
-          onClose={() => setShowTopupModal(false)}
-          onSuccess={(amt) => { setPrepaidBalance(b => Math.round((b + amt) * 100) / 100); setShowTopupModal(false); }}
-        />
-      )}
-
       {/* ── Mode urgence ── */}
       <div style={{ padding:"0 22px 24px", position:"relative", zIndex:2 }}>
         <div onClick={()=>setUrgentMode(!urgentMode)} style={{

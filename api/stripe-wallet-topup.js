@@ -1,7 +1,36 @@
 import { verifyUser } from "./_auth.js";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RECHARGEMENT SUSPENDU — décision du 14/08/2026
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le portefeuille prépayé reçoit des fonds du public, sans terme, et sert à
+// payer des tiers. Sa qualification n'est pas assurée : monnaie électronique au
+// sens de l'article L.315-1 du Code monétaire et financier, avoir commercial, ou
+// autre chose. Le conseil juridique place la suspension du rechargement en tête
+// de ses recommandations, avant même l'immatriculation de la société.
+//
+// La suspension est volontairement écrite ICI, en dur, et non dans un réglage du
+// backoffice : rouvrir doit être une décision relue, pas un clic.
+//
+// Ce qui n'est PAS suspendu : payer une prestation avec un solde existant, le
+// cashback, et le paiement par carte. Seul l'ajout d'argent est fermé.
+//
+// POUR ROUVRIR, une fois la qualification tranchée : passer cette constante à
+// `false`, et vérifier au préalable que les CGPS décrivent le portefeuille —
+// conditions de remboursement et délai compris.
+const RECHARGEMENT_SUSPENDU = true;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
+
+  if (RECHARGEMENT_SUSPENDU) {
+    return res.status(503).json({
+      error: "Le rechargement du portefeuille est momentanément suspendu. "
+           + "Votre solde reste utilisable pour régler vos prestations, et vous pouvez "
+           + "en demander le remboursement depuis votre portefeuille.",
+    });
+  }
 
   const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
   const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");

@@ -336,7 +336,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [prepaidBalance, setPrepaidBalance] = useState(0);
   const [useWallet, setUseWallet]           = useState(false);
   const [walletProcessing, setWalletProcessing] = useState(false);
-  const [showTopupModal,   setShowTopupModal]   = useState(false);
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
   const applePayStripeRef = useRef(null);
@@ -689,25 +688,16 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                 Solde : <strong style={{ color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".",",")} €</strong> — il manque <strong style={{ color:C.violet }}>{(total - prepaidBalance).toFixed(2).replace(".",",")} €</strong>
               </div>
             </div>
-            <button
-              onClick={() => setShowTopupModal(true)}
-              style={{ background:C.violet, border:"none", borderRadius:10, padding:"10px 16px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap", flexShrink:0 }}>
-              + Recharger
-            </button>
+            {/* Le rechargement est suspendu (voir api/stripe-wallet-topup.js).
+                Proposer un bouton qui répond 503 serait pire que ne rien
+                proposer : le client cliquerait, verrait une erreur, et
+                conclurait que la plateforme est cassée. */}
+            <span style={{ color:C.textMuted, fontSize:11, textAlign:"right", flexShrink:0, maxWidth:180, lineHeight:1.4 }}>
+              Rechargement suspendu — réglez le complément par carte.
+            </span>
           </div>
         )}
 
-        {showTopupModal && (
-          <WalletTopupModal
-            onClose={() => setShowTopupModal(false)}
-            onSuccess={(amt) => {
-              const newBalance = Math.round((prepaidBalance + amt) * 100) / 100;
-              setPrepaidBalance(newBalance);
-              setShowTopupModal(false);
-              if (newBalance >= total) setUseWallet(true);
-            }}
-          />
-        )}
 
         {/* Méthode de paiement */}
         {!useWallet && (
@@ -806,6 +796,10 @@ const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "";
 // ── WALLET TOP-UP MODAL ───────────────────────────────────────────
 const TOPUP_AMOUNTS = [20, 50, 100, 200];
 
+// Conservé volontairement, sans appelant, le temps de la suspension du
+// rechargement : c'est l'écran à rebrancher une fois la qualification du
+// portefeuille tranchée. Le retirer obligerait à le réécrire.
+// eslint-disable-next-line no-unused-vars
 export function WalletTopupModal({ onClose, onSuccess }) {
   const [selectedAmt,  setSelectedAmt]  = useState(50);
   const [customAmt,    setCustomAmt]    = useState("");

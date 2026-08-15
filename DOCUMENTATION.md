@@ -140,6 +140,11 @@ Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes
 **`visits`** — compteur de visites anonymes. Une ligne est insérée au premier chargement de
 chaque session (`App.jsx:1103`), avec un simple `session_id` et aucune donnée personnelle.
 
+**`wallet_topups`** — le registre des recharges du portefeuille, clé primaire = identifiant
+du paiement Stripe. `montant_rembourse` porte ce qui a déjà été rendu sur chaque recharge :
+sans lui, une seconde demande de remboursement rejouerait les mêmes, Stripe refuserait, mais
+le solde du client aurait été débité deux fois.
+
 **`booking_drafts`** — réservations abandonnées en cours de tunnel. Écrites par
 `booking-draft.js` à l'entrée du tunnel et effacées à la fin ; `cron-abandon.js` les relit
 pour envoyer les relances.
