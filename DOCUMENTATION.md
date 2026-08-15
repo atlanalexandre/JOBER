@@ -1079,6 +1079,14 @@ adresse, encore absents (voir §8, `VITE_ALANE_SIRET`). Les frais y sont déduit
 `montant_total` moins le TTC de la prestation ; un écart aberrant n'affiche rien plutôt qu'un
 chiffre faux, et le journalise.
 
+**Le numéro n'est tiré que si le prestataire a accepté le mandat de facturation**
+(`profiles.mandat_facturation_at`, CGPS art. 6.3, art. 289 I-2 du CGI). Sans mandat, le
+document reste une *attestation de prestation* sans numéro : tirer un numéro sans mandat
+entamerait une numérotation qu'on ne pourrait plus justifier. Un numéro déjà attribué est en
+revanche conservé — une numérotation continue ne se rétracte pas. Le prestataire peut
+contester une facture émise en son nom (`missions.facture_contestee_at`), ce que le mandat
+suppose.
+
 `missions.invoice_number` conserve le numéro **attribué une seule fois**, à la première
 consultation. La facture étant produite à la volée, un numéro était auparavant tiré à chaque
 affichage : la même prestation en changeait à chaque ouverture et le compteur grimpait à

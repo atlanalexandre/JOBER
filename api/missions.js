@@ -7,6 +7,9 @@ import { montantsDeCloture } from "./_cloture.js";
 // client a renoncé, mais pas À QUOI. Toute modification du texte affiché doit
 // s'accompagner d'un incrément ici.
 const VERSION_RETRACTATION = "2026-08-15";
+
+// Même règle pour le mandat de facturation accepté par le prestataire.
+const VERSION_MANDAT_FACTURATION = "2026-08-15";
 import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
 
@@ -5029,6 +5032,71 @@ export default async function handler(req, res) {
 
     // ── Générer un token éphémère signé pour la facture (30 min) ─────────────
     // Évite d'exposer le JWT Supabase en query string (logs Vercel, historique browser, Referer)
+    // ── Mandat de facturation (CGPS art. 6.3, art. 289 I-2 du CGI) ──
+    //
+    // ALANE ne peut établir une facture au nom du prestataire que s'il l'a
+    // expressément mandatée, par écrit et au préalable. Sans mandat, le document
+    // reste une attestation de prestation, sans numéro séquentiel.
+    if (action === "accepter_mandat_facturation") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&role=eq.prestataire`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          // Horodatage serveur : une date fournie par le navigateur ne prouverait rien.
+          mandat_facturation_at: new Date().toISOString(),
+          mandat_facturation_version: VERSION_MANDAT_FACTURATION,
+        }),
+      });
+      const rows = await maj.json().catch(() => []);
+      if (!maj.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[mandat_facturation] acceptation non enregistrée pour ${caller.id} `
+          + `(${maj.status}) — vérifier que la migration 2026-08-15_mandat_de_facturation.sql est appliquée.`);
+        return res.status(503).json({ error: "Acceptation non enregistrée — réessayez dans quelques minutes." });
+      }
+      console.log(`[mandat_facturation] accepté par ${caller.id} (version ${VERSION_MANDAT_FACTURATION})`);
+      return res.status(200).json({ success: true, version: VERSION_MANDAT_FACTURATION });
+    }
+
+    // Contestation d'une facture par le prestataire. Le mandat de facturation
+    // suppose que le mandant puisse refuser ou contester ce qui est émis en son
+    // nom ; sans trace, la faculté n'existe pas.
+    if (action === "contester_facture") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, motif } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (!motif || String(motif).trim().length < 10) {
+        return res.status(400).json({ error: "Merci d'indiquer ce qui est contesté (10 caractères minimum)." });
+      }
+
+      const patch = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({
+            facture_contestee_at: new Date().toISOString(),
+            facture_contestee_motif: String(motif).trim().slice(0, 1000),
+          }) }
+      );
+      const rows = await patch.json().catch(() => []);
+      if (!patch.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[contester_facture] échec sur ${mission_id} pour ${caller.id} (${patch.status})`);
+        return res.status(409).json({ error: "Contestation non enregistrée — cette prestation n'est pas la vôtre, ou la migration n'est pas appliquée." });
+      }
+
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          subject: "Facture contestée par le prestataire",
+          message: `Prestation ${mission_id}\n\n${String(motif).trim()}`,
+          user_id: caller.id, status: "open",
+        }),
+      }).catch(e => console.error("[contester_facture] ticket non créé :", e.message));
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "generate_invoice_token") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
