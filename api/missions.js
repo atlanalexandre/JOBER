@@ -1,6 +1,12 @@
 import { resendBody } from "./_email.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
+
+// Version du texte de rétractation présenté au client avant paiement. Elle est
+// enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
+// client a renoncé, mais pas À QUOI. Toute modification du texte affiché doit
+// s'accompagner d'un incrément ici.
+const VERSION_RETRACTATION = "2026-08-15";
 import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
 import crypto from "crypto";
 
@@ -1859,6 +1865,23 @@ export default async function handler(req, res) {
       if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
       if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
 
+      // Renonciation au droit de rétractation (L.221-25 du Code de la
+      // consommation). Elle n'est enregistrée que si le paiement a lieu : c'est
+      // à cet instant que le client l'a donnée, et une prestation non payée n'a
+      // rien purgé. L'horodatage est celui du serveur — une date fournie par le
+      // navigateur ne prouverait rien.
+      if (stripe_payment_intent && payload.retractation_renoncee === true) {
+        patch.retractation_renonciation_at = new Date().toISOString();
+        patch.retractation_version = VERSION_RETRACTATION;
+      } else if (stripe_payment_intent) {
+        // Le client a payé sans que la mention ait été recueillie. Le droit de
+        // rétractation n'est donc pas purgé sur cette prestation, et le délai
+        // court toujours. Il faut que cela se voie : c'est un chemin de paiement
+        // qui n'affiche pas la mention, pas une fatalité.
+        console.error(`[assign_after_payment] renonciation à la rétractation NON recueillie sur ${mission_id} `
+          + "— le délai de quatorze jours court toujours sur cette prestation.");
+      }
+
       // Filtre sur le statut : ne pas écraser une prestation traitée entre-temps
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
         method: "PATCH",
@@ -3228,6 +3251,18 @@ export default async function handler(req, res) {
       const candidats = await candidatsPourMission({ ...am, id: mission_id }, SUPABASE_URL, headers);
       const patch = { status: "pending_acceptance" };
       if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
+
+      // Renonciation à la rétractation — même règle que dans
+      // `assign_after_payment`. Ce second chemin de paiement l'oubliait, et
+      // c'est exactement la faute que ce projet documente : une règle appliquée
+      // sur un chemin et pas sur l'autre.
+      if (stripe_payment_intent && payload.retractation_renoncee === true) {
+        patch.retractation_renonciation_at = new Date().toISOString();
+        patch.retractation_version = VERSION_RETRACTATION;
+      } else if (stripe_payment_intent) {
+        console.error(`[affecter_tiers] renonciation à la rétractation NON recueillie sur ${mission_id} `
+          + "— le délai de quatorze jours court toujours sur cette prestation.");
+      }
 
       if (!candidats.length) {
         // Personne ne correspond : la prestation part en diffusion plutôt que de

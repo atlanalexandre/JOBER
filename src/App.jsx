@@ -1777,8 +1777,8 @@ export default function App() {
                 method:"POST",
                 headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
                 body: JSON.stringify(chezUnTiers
-                  ? { action:"affecter_tiers", mission_id:missionId, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }
-                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null }),
+                  ? { action:"affecter_tiers", mission_id:missionId, acceptance_deadline:deadline, stripe_payment_intent:intentId||null, retractation_renoncee:true }
+                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null, retractation_renoncee:true }),
               });
               if(!rA.ok){
                 const jA = await rA.json().catch(()=>({}));

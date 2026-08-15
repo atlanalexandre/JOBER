@@ -97,6 +97,13 @@ Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approve
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,
 `completed`, `closed`, `cancelled`, `disputed`, `rejected`, `refused`.
 
+`retractation_renonciation_at` et `retractation_version` portent la preuve que le client a
+demandé l'exécution avant la fin du délai de rétractation et reconnu perdre son droit après
+exécution complète (CGPS art. 8.3). La version est enregistrée avec la date : sans elle, on
+saurait dans deux ans QUAND le client a renoncé, mais pas À QUOI. Elles restent NULL sur les
+prestations antérieures au 15/08/2026 — le droit n'y a pas été purgé, et il faut que cela
+reste visible.
+
 Le versement au prestataire se suit sur `payout_status`
 (`pending` → `processing` → `transferred`, ou `failed`, ou `held` en cas de retenue),
 `payout_amount` (le montant dû, figé à la clôture), `payout_due_at` (l'instant à partir
