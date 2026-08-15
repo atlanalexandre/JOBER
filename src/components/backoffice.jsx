@@ -2046,7 +2046,13 @@ export function BOModerationTab({ d }) {
 
       <div style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>📧 Communication globale</div>
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:13, padding:"14px", marginBottom:14 }}>
-        <textarea value={commMsg} onChange={e=>setCommMsg(e.target.value)} placeholder="Message à envoyer à tous les prestataires actifs…" rows={3}
+        <div style={{ color:C.gray, fontSize:11, lineHeight:1.6, marginBottom:10 }}>
+          Cet envoi relève de la <strong>prospection commerciale</strong> : il ne part qu'aux prestataires
+          ayant expressément consenti à en recevoir (art. L.34-5 du CPCE). Les messages liés à une
+          prestation — confirmation, rappel, validation, versement — ne passent pas par ici et partent
+          à tout le monde.
+        </div>
+        <textarea value={commMsg} onChange={e=>setCommMsg(e.target.value)} placeholder="Message commercial, envoyé aux seuls prestataires ayant donné leur accord…" rows={3}
           style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical", marginBottom:10 }} />
         <button onClick={handleComm} disabled={commSending||!commMsg.trim()}
           style={{ padding:"10px 20px", borderRadius:10, border:"none", background:C.violet, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:commSending||!commMsg.trim()?0.5:1 }}>

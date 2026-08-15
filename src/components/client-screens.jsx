@@ -2682,6 +2682,28 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         {/* ── Avis clients ── */}
         <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
           <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:700 }}>⭐ Avis clients ({reviews.length})</h4>
+          {/* Mentions imposées par l'article L.111-7-2 du Code de la consommation
+              et les articles D.111-10 et D.111-11 : elles doivent figurer à
+              PROXIMITÉ des avis, là où ils se lisent, et non dans les CGPS.
+              Elles disent s'il existe un contrôle, lequel, et ce qui n'est pas
+              fait — ne rien dire d'une vérification qu'on ne pratique pas est
+              aussi trompeur que la promettre. */}
+          <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", marginBottom:12 }}>
+            <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6 }}>
+              <strong style={{ color:C.text }}>Comment ces avis sont contrôlés.</strong> Seul un client
+              ayant réellement commandé et fait exécuter la prestation peut déposer un avis, une seule fois
+              par prestation. Les avis ne sont ni sollicités, ni rémunérés, ni achetés. Ils sont publiés
+              sans délai, dans leur intégralité, et classés du plus récent au plus ancien ; la date affichée
+              est celle du dépôt. Ils sont conservés tant que le profil du prestataire existe.
+              <br /><br />
+              ALANE ne vérifie pas le contenu d'un avis avant sa publication. Un avis peut être retiré
+              après examen s'il est injurieux, diffamatoire, sans rapport avec la prestation ou déposé pour
+              nuire — le prestataire évalué en est informé et dispose d'un droit de réponse (CGPS art. 11).
+              <br /><br />
+              Un doute sur l'authenticité d'un avis ? Écrivez à <strong style={{ color:C.text }}>support@alane.fr</strong> en
+              précisant le profil concerné : chaque signalement est examiné.
+            </div>
+          </div>
           {reviews.length === 0 ? (
             <p style={{ color:C.textSub, fontSize:13, margin:0 }}>Aucun avis pour le moment.</p>
           ) : reviews.map((rv,i)=>(

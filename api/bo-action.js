@@ -876,11 +876,26 @@ export default async function handler(req, res) {
       const message = req.body.message || "";
       if (!message.trim()) return res.status(400).json({ error: "Message requis" });
 
-      // Récupérer tous les prestataires approuvés
+      // Seuls les prestataires ayant CONSENTI aux communications commerciales.
+      //
+      // Cet envoi relève de la prospection, et l'article L.34-5 du Code des
+      // postes et des communications électroniques la subordonne au
+      // consentement préalable de la personne physique. Il partait auparavant à
+      // tous les prestataires approuvés, sans que personne n'ait rien accepté.
+      //
+      // Les messages transactionnels — confirmation, rappel, validation,
+      // versement — ne passent pas par ici : ils relèvent de l'exécution du
+      // contrat et ne sont pas concernés.
       const [profilesRes, authRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&role=eq.prestataire&status=eq.approved&accepte_communications=is.true`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
       ]);
+      if (!profilesRes.ok) {
+        const detail = await profilesRes.text().catch(() => "");
+        console.error(`[send_global_comm] destinataires illisibles (${profilesRes.status}) : ${detail.slice(0, 200)}`
+          + " — vérifier que la migration 2026-08-15_communications_commerciales.sql est appliquée.");
+        return res.status(503).json({ error: "Destinataires illisibles — migration non appliquée ?" });
+      }
       const profiles = await profilesRes.json();
       const authData = await authRes.json();
       const authUsers = authData.users || [];
