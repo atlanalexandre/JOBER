@@ -320,6 +320,48 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
 }
 
 // ── STRIPE PAYMENT SCREEN ─────────────────────────────────────────
+// ── Droit de rétractation (L.221-18 et s. du Code de la consommation) ──
+//
+// Le client commande à distance : il dispose en principe de quatorze jours pour
+// se rétracter. Une exception existe pour certains services fournis à une date
+// déterminée (L.221-28, 12°), mais son énumération est limitative et le conseil
+// juridique demande de NE PAS la présumer applicable aux prestations d'ALANE.
+//
+// Ne rien dire ne supprime pas le droit : cela le PROLONGE jusqu'à douze mois
+// (L.221-20). Un client pourrait alors réclamer le remboursement intégral d'une
+// prestation commandée onze mois plus tôt, et exécutée.
+//
+// On informe donc, et on recueille la demande expresse d'exécution avant la fin
+// du délai ainsi que la reconnaissance de la perte du droit après exécution
+// complète (L.221-25). La case est obligatoire : sans elle, rien n'est purgé.
+//
+// Défini au niveau du module, et non dans le composant : une fonction de rendu
+// recréée à chaque passage produit un nouveau type de composant, et React
+// démonte alors la case à chaque frappe — elle se décochait toute seule.
+function BlocRetractation({ coche, onChange }) {
+  return (
+    <label style={{
+      display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer",
+      background:"rgba(255,255,255,0.04)", border:`1px solid ${coche ? `${C.violet}66` : C.border}`,
+      borderRadius:12, padding:"12px 14px", marginTop:14, marginBottom:4,
+    }}>
+      <input
+        type="checkbox"
+        checked={coche}
+        onChange={e => onChange(e.target.checked)}
+        style={{ marginTop:2, width:18, height:18, flexShrink:0, accentColor:C.violet, cursor:"pointer" }}
+      />
+      <span style={{ fontSize:11, color:C.textSub, lineHeight:1.55 }}>
+        Vous disposez d'un <strong style={{ color:C.text }}>droit de rétractation de 14 jours</strong> à compter
+        de la conclusion du contrat. En cochant cette case, vous <strong style={{ color:C.text }}>demandez
+        expressément</strong> que la prestation commence avant la fin de ce délai, et vous reconnaissez
+        <strong style={{ color:C.text }}> perdre ce droit</strong> une fois la prestation pleinement exécutée.
+        Si vous vous rétractez alors qu'elle a commencé, vous réglez la part déjà réalisée.
+      </span>
+    </label>
+  );
+}
+
 export function StripePaymentScreen({ amount, provider, description, missionId, teamMode, teamProviders, onSuccess, onBack }) {
   const [cardName, setCardName] = useState("");
   const [cardNameError, setCardNameError] = useState(false);
@@ -336,6 +378,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [prepaidBalance, setPrepaidBalance] = useState(0);
   const [useWallet, setUseWallet]           = useState(false);
   const [walletProcessing, setWalletProcessing] = useState(false);
+  // Renonciation au droit de rétractation — voir BlocRetractation, plus bas.
+  const [retractationOk, setRetractationOk] = useState(false);
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
   const applePayStripeRef = useRef(null);
@@ -668,7 +712,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                     ⚠️ {stripeError}
                   </div>
                 )}
-                <Btn full onClick={handlePayFromWallet} disabled={walletProcessing} style={{ marginTop:14, fontSize:16, padding:"18px" }}>
+                <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
+                <Btn full onClick={handlePayFromWallet} disabled={walletProcessing || !retractationOk} style={{ marginTop:14, fontSize:16, padding:"18px" }}>
                   {walletProcessing ? "⏳ Traitement en cours…" : `💰 Payer ${total} € depuis mon wallet`}
                 </Btn>
                 <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>
@@ -768,7 +813,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                 <span key={s} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:8, padding:"4px 10px", fontSize:10, color:C.textSub, fontWeight:600 }}>{s}</span>
               ))}
             </div>
-            <Btn full onClick={handlePay} disabled={processing}
+            <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
+            <Btn full onClick={handlePay} disabled={processing || !retractationOk}
               style={{ fontSize:16, padding:"18px", position:"relative" }}>
               {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
             </Btn>
