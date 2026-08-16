@@ -2590,13 +2590,16 @@ export function BOSettingsTab() {
     }).catch(() => {});
   }, []);
 
-  const save = async (key, value) => {
-    setSaving(p => ({ ...p, [key]: true }));
+  // `bouton` permet à un seul bouton d'enregistrer plusieurs clés : c'est lui
+  // qui porte l'état « … » puis « ✓ Sauvé », pas la clé enregistrée.
+  const save = async (key, value, bouton = key) => {
+    setSaving(p => ({ ...p, [bouton]: true }));
     const r = await boFetch({ action: "save_settings", key, value });
     const j = await r.json();
-    setSaving(p => ({ ...p, [key]: false }));
-    if (j.ok) { setSaved(p => ({ ...p, [key]: true })); setTimeout(() => setSaved(p => ({ ...p, [key]: false })), 2000); }
+    setSaving(p => ({ ...p, [bouton]: false }));
+    if (j.ok) { setSaved(p => ({ ...p, [bouton]: true })); setTimeout(() => setSaved(p => ({ ...p, [bouton]: false })), 2000); }
     else showToast("Erreur : " + (j.error || "inconnue"));
+    return !!j.ok;
   };
 
   const SectionTitle = ({ children }) => (
@@ -2721,9 +2724,25 @@ export function BOSettingsTab() {
           commande, et une première commande pour attirer des prestataires.
         </div>
 
+        {/* Un seul bouton pour les deux réglages.
+            Il y en avait deux, côte à côte, tous les deux libellés
+            « Sauvegarder » : l'un enregistrait les fermetures d'autorité,
+            l'autre les ouvertures forcées, et rien ne disait lequel. Cocher
+            « Ouvrir malgré le seuil » puis cliquer le bouton de gauche
+            enregistrait l'AUTRE réglage — la coche était perdue en silence, et
+            le secteur restait invisible aux clients sans qu'on sache pourquoi.
+
+            Les deux clés sont éditées par la même liste de cases : les séparer
+            à l'enregistrement ne servait rien. */}
         <div style={{ display:"flex", gap:8 }}>
-          <SaveBtn k="disabled_sectors"    onClick={() => save("disabled_sectors", localDs)} />
-          <SaveBtn k="forced_open_sectors" onClick={() => save("forced_open_sectors", localFo)} />
+          <SaveBtn k="secteurs" onClick={async () => {
+            // Le second enregistrement n'a lieu que si le premier a réussi :
+            // une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est
+            // passé alors qu'un seul des deux réglages l'est.
+            if (await save("disabled_sectors", localDs, "secteurs")) {
+              await save("forced_open_sectors", localFo, "secteurs");
+            }
+          }} />
         </div>
         <div style={{ color:C.textMuted, fontSize:10, marginTop:8 }}>
           Les compteurs sont mis en cache 5 minutes côté serveur : un changement peut mettre
