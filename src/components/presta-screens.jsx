@@ -3012,6 +3012,30 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   // attestation, sans numéro — donc inutilisable pour sa comptabilité.
   const [mandatFacturation,setMandatFacturation]=useState(null); // null = inconnu
   const [mandatEnCours,setMandatEnCours]=useState(false);
+  // Mandat d'encaissement — distinct des CGPS et du mandat de facturation. Il
+  // autorise ALANE à encaisser le prix au nom du prestataire ; c'est la pièce
+  // sur laquelle repose la qualification de l'activité.
+  const [mandatEncaissement,setMandatEncaissement]=useState(null);
+  const [encaissementEnCours,setEncaissementEnCours]=useState(false);
+
+  const accepterMandatEncaissement = async () => {
+    setEncaissementEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const jwt = sd?.session?.access_token;
+      if (!jwt) { showToast("Session expirée — reconnectez-vous"); setEncaissementEnCours(false); return; }
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ action: "accepter_mandat_encaissement" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.success) { showToast(d.error || `Erreur ${r.status}`); setEncaissementEnCours(false); return; }
+      setMandatEncaissement(new Date().toISOString());
+      showToast("Mandat d'encaissement accepté.");
+    } catch (e) { showToast(e?.message || "Erreur réseau"); }
+    setEncaissementEnCours(false);
+  };
 
   // Export comptable. Un auto-entrepreneur déclare son chiffre d'affaires chaque
   // trimestre et le récapitule chaque année : il lui fallait jusqu'ici rouvrir
@@ -3114,10 +3138,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       // profiles.avatar_url d'abord (hors JWT), repli metadata pour les comptes non migrés
-      supabase.from("profiles").select("avatar_url,mandat_facturation_at").eq("id", u.id).single()
+      supabase.from("profiles").select("avatar_url,mandat_facturation_at,mandat_encaissement_at").eq("id", u.id).single()
         .then(({ data }) => {
           setDashPhotoUrl(data?.avatar_url || u.user_metadata?.photo_url || null);
           setMandatFacturation(data?.mandat_facturation_at || null);
+          setMandatEncaissement(data?.mandat_encaissement_at || null);
         });
       const m=u.user_metadata||{};
       const checks=[!!m.prenom,!!m.nom,!!m.telephone,!!m.rib,!!(m.secteur||m.metiers_list?.length),!!(m.ae_siret||m.siret),!!m.bio,!!(m.adresse||m.rue),Object.values(m.dispon_jours_creneaux||{}).some(v=>v?.length>0),!!m.langues?.length];
@@ -3693,6 +3718,33 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   Le virement part 48 h après la fin de la prestation — le délai dont le client dispose
                   pour signaler un problème. Il arrive ensuite sur votre compte sous 1 à 2 jours ouvrés.
                 </div>
+              </div>
+            )}
+            {mandatEncaissement === null && (
+              <div style={{ background:"rgba(124,111,224,0.10)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
+                <div style={{ color:C.violet, fontWeight:800, fontSize:14, marginBottom:6 }}>
+                  Mandat d'encaissement — à accepter
+                </div>
+                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:12 }}>
+                  Vous chargez ALANE d'encaisser pour vous le prix de vos prestations auprès du client, en votre
+                  nom et pour votre compte. Les sommes encaissées vous appartiennent : elles ne deviennent à
+                  aucun moment la propriété d'ALANE.
+                  <br /><br />
+                  Elles sont conservées jusqu'à la fermeture du délai de 48 heures dont le client dispose pour
+                  signaler un problème, puis vous sont versées. ALANE ne peut les retenir au-delà que pour l'un
+                  des motifs limitativement énumérés à l'article 7.4 des CGPS, pour 90 jours au maximum, en vous
+                  notifiant le motif et le montant — et vous pouvez contester.
+                  <br /><br />
+                  Vous pouvez révoquer ce mandat à tout moment en clôturant votre compte, sans effet sur les
+                  prestations déjà commandées.
+                </div>
+                <button onClick={accepterMandatEncaissement} disabled={encaissementEnCours} style={{
+                  padding:"11px 18px", borderRadius:10, border:"none", background:C.violet,
+                  color:"#fff", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+                  opacity:encaissementEnCours?0.6:1,
+                }}>
+                  {encaissementEnCours ? "…" : "J'accepte le mandat d'encaissement"}
+                </button>
               </div>
             )}
             {mandatFacturation === null && (

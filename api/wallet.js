@@ -37,51 +37,17 @@ export default async function handler(req, res) {
   // code ne le débitait jamais. Le portefeuille prépayé, lui, est bien débité
   // par pay_mission ci-dessous. Le transfert se fait ici, en service role : le
   // client ne doit pas pouvoir écrire ses propres soldes.
-  if (action === "transfer_cashback") {
-    try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=cashback_balance,prepaid_balance`, { headers: hdrs });
-      const data = await r.json().catch(() => []);
-      const prof = Array.isArray(data) && data[0];
-      if (!prof) return res.status(404).json({ error: "Profil introuvable" });
-
-      const cashback = Number(prof.cashback_balance || 0);
-      if (cashback <= 0) return res.status(400).json({ error: "Aucun cashback à transférer" });
-
-      const newPrepaid = Math.round((Number(prof.prepaid_balance || 0) + cashback) * 100) / 100;
-
-      // Filtre sur le montant courant : si un crédit de cashback arrive entre la
-      // lecture et l'écriture, la mise à jour ne passe pas et rien n'est perdu.
-      const patchRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&cashback_balance=eq.${prof.cashback_balance}`,
-        {
-          method: "PATCH",
-          headers: { ...hdrs, "Prefer": "return=representation" },
-          body: JSON.stringify({ cashback_balance: 0, prepaid_balance: newPrepaid }),
-        }
-      );
-      const patched = await patchRes.json().catch(() => []);
-      if (!Array.isArray(patched) || patched.length === 0) {
-        return res.status(409).json({ error: "Solde modifié entre-temps — réessayez" });
-      }
-
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...hdrs, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          user_id: caller.id,
-          type:    "cashback",
-          title:   "Cashback transféré 💰",
-          body:    `${cashback.toFixed(2).replace(".", ",")} € ont été ajoutés à votre portefeuille. Vous pouvez les utiliser pour régler vos prochaines prestations.`,
-          read:    false,
-        }),
-      }).catch(e => console.error("[transfer_cashback] notification échouée :", e.message));
-
-      return res.status(200).json({ success: true, transfered: cashback, prepaid_balance: newPrepaid });
-    } catch (e) {
-      console.error("[transfer_cashback] erreur :", e.message);
-      return res.status(500).json({ error: "Erreur lors du transfert" });
-    }
-  }
+  // L'action « transfer_cashback » a été retirée le 16/08/2026.
+  //
+  // Elle versait le cashback dans `prepaid_balance`, où il devenait indiscernable
+  // des sommes rechargées par carte. Or leur nature diffère : le cashback est un
+  // avantage commercial accordé par ALANE, les recharges sont de l'argent reçu du
+  // client. Les mélanger rendait impossible de démontrer laquelle était laquelle
+  // — donc de les traiter différemment, ce que le remboursement exige.
+  //
+  // Les deux soldes restent séparés, et le paiement consomme d'abord le cashback
+  // (voir « pay_mission ») : le client dépense l'avantage avant son propre argent,
+  // ce qui est l'ordre le plus favorable pour lui.
 
   // ── REMBOURSEMENT DU SOLDE ──────────────────────────────────────
   //
@@ -271,29 +237,56 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2. Fetch current balance
+    // 2. Les deux soldes, lus séparément
     const profRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`,
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance,cashback_balance`,
       { headers: hdrs }
     );
     const profData = await profRes.json().catch(() => []);
-    const currentBalance = Number(Array.isArray(profData) && profData[0]?.prepaid_balance || 0);
-    if (currentBalance < amount) {
+    const prof0 = (Array.isArray(profData) && profData[0]) || {};
+    const currentBalance = Number(prof0.prepaid_balance || 0);
+    const currentCashback = Number(prof0.cashback_balance || 0);
+    const disponible = Math.round((currentBalance + currentCashback) * 100) / 100;
+    if (disponible < amount) {
       return res.status(400).json({
-        error: `Solde insuffisant (${currentBalance.toFixed(2)} € disponible, ${amount.toFixed(2)} € requis)`,
+        error: `Solde insuffisant (${disponible.toFixed(2)} € disponible, ${amount.toFixed(2)} € requis)`,
       });
     }
 
-    // 3. Deduct from prepaid_balance
-    const newBalance = Math.round((currentBalance - amount) * 100) / 100;
-    const deductRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
-      method:  "PATCH",
-      headers: { ...hdrs, "Prefer": "return=minimal" },
-      body:    JSON.stringify({ prepaid_balance: newBalance }),
-    });
-    if (!deductRes.ok) {
-      console.error("[wallet/pay_mission] balance deduct failed", deductRes.status);
-      return res.status(500).json({ error: "Erreur mise à jour solde" });
+    // 3. Débit : LE CASHBACK D'ABORD, les sommes rechargées ensuite.
+    //
+    // Les deux ne se valent pas. Le cashback est un avantage commercial accordé
+    // par ALANE ; les recharges sont de l'argent reçu du client, qu'il peut se
+    // faire rembourser. Consommer l'avantage en premier est donc l'ordre le plus
+    // favorable au client : il conserve le plus longtemps possible ce qui lui est
+    // restituable.
+    //
+    // Tout est calculé en centimes entiers : additionner deux soldes flottants
+    // puis en soustraire un montant laisse des résidus d'un centime, et un solde
+    // qui ne tombe jamais tout à fait à zéro.
+    const enC = (v) => Math.round(Number(v || 0) * 100);
+    const montantC = enC(amount);
+    const prisSurCashbackC = Math.min(enC(currentCashback), montantC);
+    const prisSurPrepaidC  = montantC - prisSurCashbackC;
+    const newCashback = Math.round(enC(currentCashback) - prisSurCashbackC) / 100;
+    const newBalance  = Math.round(enC(currentBalance) - prisSurPrepaidC) / 100;
+
+    // Filtre sur les deux valeurs lues : un crédit concurrent — cashback d'une
+    // autre prestation, remboursement — fait échouer l'écriture plutôt que de
+    // l'écraser.
+    const deductRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`
+      + `&prepaid_balance=eq.${currentBalance}&cashback_balance=eq.${currentCashback}`,
+      {
+        method:  "PATCH",
+        headers: { ...hdrs, "Prefer": "return=representation" },
+        body:    JSON.stringify({ prepaid_balance: newBalance, cashback_balance: newCashback }),
+      }
+    );
+    const debite = await deductRes.json().catch(() => []);
+    if (!deductRes.ok || !Array.isArray(debite) || debite.length === 0) {
+      console.error("[wallet/pay_mission] débit refusé — solde modifié entre-temps", deductRes.status);
+      return res.status(409).json({ error: "Votre solde a changé pendant l'opération — réessayez." });
     }
 
     // 4. Assign mission (atomic — status filter prevents double-assignment)
@@ -306,12 +299,13 @@ export default async function handler(req, res) {
     const patched = await mPatch.json().catch(() => []);
 
     if (!Array.isArray(patched) || patched.length === 0) {
-      // Mission was already processed — restore balance
+      // La prestation a été traitée entre-temps : on restaure LES DEUX soldes.
+      // N'en restaurer qu'un ferait disparaître le cashback consommé.
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
         method:  "PATCH",
         headers: { ...hdrs, "Prefer": "return=minimal" },
-        body:    JSON.stringify({ prepaid_balance: currentBalance }),
-      }).catch(() => {});
+        body:    JSON.stringify({ prepaid_balance: currentBalance, cashback_balance: currentCashback }),
+      }).catch(e => console.error("[wallet/pay_mission] soldes NON restaurés :", e.message));
       return res.status(400).json({ error: "Prestation déjà traitée ou état invalide" });
     }
 
