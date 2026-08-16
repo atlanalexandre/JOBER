@@ -356,7 +356,9 @@ function BlocRetractation({ coche, onChange }) {
         de la conclusion du contrat. En cochant cette case, vous <strong style={{ color:C.text }}>demandez
         expressément</strong> que la prestation commence avant la fin de ce délai, et vous reconnaissez
         <strong style={{ color:C.text }}> perdre ce droit</strong> une fois la prestation pleinement exécutée.
-        Si vous vous rétractez alors qu'elle a commencé, vous réglez la part déjà réalisée.
+        Si vous vous rétractez, le prix de la prestation vous est remboursé — la part déjà réalisée
+        restant due si elle a commencé. Les frais de service, qui rémunèrent la mise en relation
+        déjà effectuée, restent acquis.
       </span>
     </label>
   );
