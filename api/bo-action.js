@@ -1301,6 +1301,50 @@ export default async function handler(req, res) {
       return res.status(200).json({ annee, lignes, incomplets });
     }
 
+    // ── Sortie du portefeuille : rembourser tous les soldes détenus ──
+    //
+    // Le portefeuille rechargeable est supprimé. « Supprimer » ne peut pas
+    // vouloir dire effacer les soldes : ce serait garder l'argent des clients.
+    // Il faut le leur rendre.
+    //
+    // Cette action liste les soldes restants. Le remboursement lui-même passe
+    // par le chemin déjà éprouvé (`/api/wallet` action `rembourser_solde`), que
+    // le client déclenche depuis son portefeuille — mais il faut d'abord savoir
+    // qui est concerné, et le leur dire.
+    if (action === "soldes_a_rembourser") {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?prepaid_balance=gt.0&select=id,prenom,nom,prepaid_balance&order=prepaid_balance.desc`,
+        { headers }
+      );
+      if (!r.ok) {
+        console.error(`[soldes_a_rembourser] lecture impossible (${r.status})`);
+        return res.status(503).json({ error: "Soldes illisibles" });
+      }
+      const rows = await r.json().catch(() => []);
+      const total = (Array.isArray(rows) ? rows : []).reduce((t, p) => t + Number(p.prepaid_balance || 0), 0);
+
+      // Prévenir chacun : un droit de remboursement dont personne n'a
+      // connaissance n'est pas un droit exercé. On notifie une seule fois par
+      // appel, à l'administrateur d'en décider le moment.
+      if (body.notifier === true) {
+        for (const p of (Array.isArray(rows) ? rows : [])) {
+          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+            method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ user_id: p.id, type: "system",
+              title: "Votre portefeuille va être remboursé",
+              body: `Le portefeuille ALANE est fermé. Votre solde de ${Number(p.prepaid_balance).toFixed(2)} € `
+                  + `vous est intégralement remboursé sur votre moyen de paiement d'origine : `
+                  + `utilisez le bouton « Me rembourser » depuis votre portefeuille. `
+                  + `Vous pouvez aussi l'utiliser pour régler une prestation d'ici là.`,
+              read: false }),
+          }).catch(e => console.error(`[soldes_a_rembourser] notification échouée pour ${p.id} :`, e.message));
+        }
+        console.log(`[soldes_a_rembourser] ${rows.length} client(s) notifié(s), ${total.toFixed(2)} € au total`);
+      }
+
+      return res.status(200).json({ soldes: rows, total: Math.round(total * 100) / 100 });
+    }
+
     if (action === "list_versements") {
       const vRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions`

@@ -29,7 +29,22 @@
 
 // Repli utilisé si `platform_settings.frais_service` est illisible. Les mêmes
 // valeurs que le tunnel de réservation.
-export const FRAIS_PAR_DEFAUT = { single: 4.90, range: 2.90, urgent: 9.90 };
+export const FRAIS_PAR_DEFAUT = {
+  single: 4.90,   // part fixe, prestation ponctuelle
+  range:  2.90,   // part fixe, PAR JOUR, prestation multi-dates
+  urgent: 9.90,   // part fixe, prestation urgente
+  // Part variable, en pourcentage du prix de la prestation.
+  //
+  // Elle couvre les frais du prestataire de services de paiement, qui sont
+  // proportionnels au montant encaissé. Sans elle, une part fixe seule suffit
+  // sur une petite prestation et devient déficitaire au-delà de quelques
+  // centaines d'euros : sur une prestation à 1 000 €, Stripe prélève plus que
+  // la totalité des frais fixes.
+  //
+  // Modifiable depuis platform_settings.frais_service, sans redéploiement,
+  // pour suivre le barème réel constaté sur les relevés.
+  pourcentage: 2,
+};
 
 /**
  * Lit le barème des frais de service, avec repli sur les valeurs par défaut.
@@ -57,6 +72,32 @@ export function nombreDeJours(mission) {
 }
 
 /**
+ * Frais de service dus pour une prestation.
+ *
+ * Une part fixe, qui dépend du type de prestation, plus une part variable
+ * proportionnelle au prix. Le tout forme UNE SEULE ligne « Frais de service » :
+ * le client n'a pas à connaître la répartition, et une ligne « frais bancaires »
+ * séparée n'apporterait rien qu'une question de plus.
+ *
+ * Cette fonction est la SEULE source du calcul. Le tunnel de réservation et le
+ * contrôle serveur l'appellent tous les deux — une grille recopiée des deux
+ * côtés finit toujours par diverger, et c'est alors le client qui paie l'écart.
+ *
+ * @param {"single"|"range"|"urgent"} type
+ * @param {number} prixPrestation  tarif × heures × jours, hors frais
+ * @param {number} nbJours         pour la part fixe des prestations multi-dates
+ * @param {object} frais           barème en vigueur
+ */
+export function calculerFrais(type, prixPrestation, nbJours = 1, frais = FRAIS_PAR_DEFAUT) {
+  const b = { ...FRAIS_PAR_DEFAUT, ...(frais || {}) };
+  const fixe = type === "urgent" ? Number(b.urgent) || 0
+             : type === "range"  ? (Number(b.range) || 0) * Math.max(1, nbJours)
+             : Number(b.single) || 0;
+  const variable = Math.max(0, Number(prixPrestation) || 0) * (Number(b.pourcentage) || 0) / 100;
+  return Math.round((fixe + variable) * 100) / 100;
+}
+
+/**
  * Le montant à encaisser est-il cohérent avec le tarif de la prestation ?
  *
  * @param {{tarif_horaire?:number, hours?:number, date_debut?:string, date_fin?:string}} mission
@@ -76,11 +117,11 @@ export function verifierMontant(mission, total, frais = FRAIS_PAR_DEFAUT) {
     return { ok: true, partHoraire: 0, nbJours, fraisConstates: 0, fraisAdmis: [] };
   }
 
-  const fraisAdmis = [
-    Number(frais.single) || 0,
-    Math.round((Number(frais.range) || 0) * nbJours * 100) / 100,
-    Number(frais.urgent) || 0,
-  ];
+  // Les trois frais légitimes, part variable comprise. On ne devine pas le type
+  // de la prestation : on accepte celui des trois qui correspond.
+  const prixPrestation = partHoraire * nbJours;
+  const fraisAdmis = ["single", "range", "urgent"]
+    .map(t => calculerFrais(t, prixPrestation, nbJours, frais));
   const fraisConstates = Math.round((Number(total) - partHoraire * nbJours) * 100) / 100;
 
   // La comparaison se fait en centimes entiers. En euros flottants, un écart

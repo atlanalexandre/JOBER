@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
+import { calculerFrais } from "../../api/_montant.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
@@ -820,42 +821,6 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [userName, setUserName] = useState("");
   const [walletMissions, setWalletMissions] = useState(0);
   const [walletBalance,  setWalletBalance]  = useState(0);
-  const [prepaidBalance, setPrepaidBalance] = useState(0);
-  const [remboursementEnCours, setRemboursementEnCours] = useState(false);
-
-  // Remboursement du solde du portefeuille. Le rechargement étant suspendu, le
-  // client doit pouvoir récupérer ce qu'il a déposé — un solde sans retrait
-  // possible s'analyse mal, au regard du régime de la monnaie électronique comme
-  // du droit des clauses abusives.
-  const demanderRemboursement = async () => {
-    const ok = await showConfirm(
-      `Demander le remboursement de ${prepaidBalance.toFixed(2).replace(".", ",")} € ?\n\n`
-      + "Les sommes rechargées par carte sont remboursées sur le moyen de paiement d'origine, "
-      + "sous 5 à 10 jours ouvrés selon votre banque.\n\n"
-      + "Le cashback n'est pas remboursable en argent : il reste utilisable pour vos prestations."
-    );
-    if (!ok) return;
-    setRemboursementEnCours(true);
-    try {
-      const { data: sd } = await supabase.auth.getSession();
-      const jwt = sd?.session?.access_token;
-      if (!jwt) { showToast("Session expirée — reconnectez-vous"); setRemboursementEnCours(false); return; }
-      const r = await fetch("/api/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
-        body: JSON.stringify({ action: "rembourser_solde" }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.success) { showToast(d.error || `Remboursement impossible (${r.status})`); setRemboursementEnCours(false); return; }
-      setPrepaidBalance(Number(d.prepaid_balance || 0));
-      showToast(d.partiel
-        ? `${Number(d.rembourse).toFixed(2).replace(".", ",")} € remboursés. Le reste provient du cashback et n'est pas remboursable.`
-        : `${Number(d.rembourse).toFixed(2).replace(".", ",")} € remboursés — 5 à 10 jours ouvrés selon votre banque.`);
-    } catch (e) {
-      showToast(e?.message || "Erreur réseau");
-    }
-    setRemboursementEnCours(false);
-  };
   const [showTour, setShowTour] = useState(false);
   const [liveStats, setLiveStats] = useState({ openMissions: null, dispoNow: null, completedMonth: null });
   const [notifAsked, setNotifAsked] = useState(false);
@@ -891,13 +856,12 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const tourKey = `alane_tour_done_${user.id}`;
       let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
       if (!tourDone) setShowTour(true);
-      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month,prepaid_balance").eq("id", user.id).single()
+      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
           if (p.prenom) setUserName(p.prenom);
           setWalletBalance(p.cashback_balance || 0);
           setWalletMissions(p.missions_completed_month || 0);
-          setPrepaidBalance(Number(p.prepaid_balance || 0));
         });
     });
     return ()=>{ mounted=false; };
@@ -1260,55 +1224,10 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {/* ── Wallet prépayé ── */}
-      <div style={{ padding:"0 22px 18px", position:"relative", zIndex:2 }}>
-        <div style={{
-          borderRadius:16, padding:"16px 18px",
-          background:"rgba(255,255,255,0.03)",
-          border:"1px solid rgba(255,255,255,0.08)",
-          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-        }}>
-          <div>
-            <div style={{ fontSize:10, letterSpacing:1.4, textTransform:"uppercase", color:"rgba(255,255,255,0.45)", fontWeight:600, marginBottom:4 }}>Wallet paiement</div>
-            <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
-              <span style={{ fontSize:24, fontWeight:800, color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".", ",")}</span>
-              <span style={{ fontSize:14, color:"rgba(255,255,255,0.5)" }}>€</span>
-            </div>
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
-              {prepaidBalance > 0 ? "Utilisé automatiquement au paiement" : "Rechargez pour éviter les frais Stripe fixes"}
-            </div>
-          </div>
-          {/* Le rechargement est suspendu (décision du 14/08/2026, sur avis
-              juridique) : le portefeuille reçoit des fonds du public dont la
-              qualification n'est pas assurée. Le bouton est remplacé par la
-              demande de remboursement — un solde qu'on ne peut ni retirer ni
-              récupérer s'analyse mal. Le solde reste utilisable pour payer. */}
-          {prepaidBalance > 0 && (
-            <button onClick={demanderRemboursement} disabled={remboursementEnCours} style={{
-              background:"transparent", border:`1px solid ${C.violet}66`, borderRadius:11, padding:"10px 14px",
-              color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
-              whiteSpace:"nowrap", flexShrink:0, opacity:remboursementEnCours?0.6:1,
-            }}>{remboursementEnCours ? "…" : "Me rembourser"}</button>
-          )}
-        </div>
-        {/* L'encart qui vantait l'économie de frais Stripe invitait à recharger.
-            Il n'a plus d'objet et devient l'explication de la suspension. */}
-        <div style={{
-          marginTop:8, borderRadius:10, padding:"9px 13px",
-          background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-          display:"flex", alignItems:"flex-start", gap:8,
-        }}>
-          <span style={{ fontSize:14, flexShrink:0 }}>ℹ️</span>
-          <span style={{ fontSize:11, color:C.textSub, lineHeight:1.5 }}>
-            Le rechargement du portefeuille est momentanément suspendu.
-            {prepaidBalance > 0
-              ? " Votre solde reste utilisable pour régler vos prestations, et vous pouvez en demander le remboursement sur le moyen de paiement d'origine. Le cashback, qui est un avantage commercial, n'est pas remboursable en argent."
-              : " Vos prestations se règlent par carte, comme d'habitude."}
-          </span>
-        </div>
-      </div>
-
-      {/* ── Modal recharge wallet ── */}
+      {/* Le portefeuille est supprimé (16/08/2026, avis prudentiel). Aucun
+          solde n'existait au moment de la suppression. L'action serveur de
+          remboursement et la liste du backoffice subsistent : si un solde
+          résiduel apparaissait, il pourrait être rendu. */}
       {/* ── Mode urgence ── */}
       <div style={{ padding:"0 22px 24px", position:"relative", zIndex:2 }}>
         <div onClick={()=>setUrgentMode(!urgentMode)} style={{
@@ -2879,13 +2798,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return () => { vivant = false; };
   }, [adresse, ville, p?.ville, p?.zone_km]);
 
-  const fraisMission = isUrgent
-    ? fraisSettings.urgent
-    : (missionType === "range"
-        ? Math.round(fraisSettings.range * nbJours * 100) / 100
-        : fraisSettings.single);
   const totalParJour = (tarifHoraire * hours).toFixed(0);
   const totalHT = tarifHoraire * hours * nbJours;
+  // La formule vit dans api/_montant.js, appelée aussi par le contrôle serveur.
+  // Une grille recopiée des deux côtés finit toujours par diverger, et c'est
+  // alors le client qui paie l'écart — ou ALANE qui ne perçoit rien.
+  const fraisMission = calculerFrais(
+    isUrgent ? "urgent" : missionType === "range" ? "range" : "single",
+    totalHT, nbJours, fraisSettings
+  );
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
   // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
@@ -3160,7 +3081,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {missionType==="range"&&nbJours>1 ? `${fraisSettings.range.toFixed(2)} € × ${nbJours}j = ${fraisMission.toFixed(2)} €` : `${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {`${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
                 )}
@@ -3335,7 +3256,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
@@ -3489,7 +3410,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {missionType==="range"&&nbJours>1 ? `${fraisSettings.range.toFixed(2)} € × ${nbJours}j = ${fraisMission.toFixed(2)} €` : `${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {`${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
                 )}
@@ -3664,7 +3585,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>

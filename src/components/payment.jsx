@@ -377,9 +377,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
   const [applePayAvailable, setApplePayAvailable] = useState(false);
-  const [prepaidBalance, setPrepaidBalance] = useState(0);
-  const [useWallet, setUseWallet]           = useState(false);
-  const [walletProcessing, setWalletProcessing] = useState(false);
   // Renonciation au droit de rétractation — voir BlocRetractation, plus bas.
   const [retractationOk, setRetractationOk] = useState(false);
   const applePayBtnRef    = useRef(null);
@@ -395,19 +392,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     });
   }, []);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: sd }) => {
-      const token = sd?.session?.access_token;
-      if (!token) return;
-      fetch("/api/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "get_balance" }),
-      }).then(r => r.json()).then(({ balance }) => {
-        if (balance > 0) setPrepaidBalance(balance);
-      }).catch(() => {});
-    });
-  }, []);
 
   // ── Sauvegarde du brouillon à l'entrée dans le tunnel de paiement ──────────
   useEffect(() => {
@@ -551,29 +535,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
   if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
-  const handlePayFromWallet = async () => {
-    if (walletProcessing) return;
-    if (!missionId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
-    setWalletProcessing(true);
-    setStripeError(null);
-    try {
-      const { data: { session: wSess } } = await supabase.auth.getSession();
-      const r = await fetch("/api/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${wSess?.access_token}` },
-        body: JSON.stringify({ action: "pay_mission", mission_id: missionId }),
-      });
-      const result = await r.json();
-      if (!r.ok) throw new Error(result.error || "Erreur paiement wallet");
-      clearDraft();
-      setDone(true);
-      onSuccess && onSuccess(`wallet_${missionId}`);
-    } catch (e) {
-      setStripeError(e.message || "Erreur paiement wallet");
-      setWalletProcessing(false);
-    }
-  };
-
   const handlePay = async () => {
     if (processing) return;
     setStripeError(null);
@@ -672,82 +633,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         )}
 
         {/* ── Wallet ALANE ── */}
-        {prepaidBalance >= total && (
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>💰 Wallet ALANE</div>
-              <span style={{ background:"rgba(16,217,143,0.15)", color:"#10D98F", fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:99, border:"1px solid rgba(16,217,143,0.3)" }}>
-                {prepaidBalance.toFixed(2).replace(".", ",")} € disponibles
-              </span>
-            </div>
-            <div
-              onClick={()=>setUseWallet(true)}
-              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useWallet?`${C.violet}18`:"transparent", border:`2px solid ${useWallet?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer", marginBottom:8 }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:20 }}>💰</span>
-                <div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Payer depuis mon wallet</div>
-                  <div style={{ color:"#10D98F", fontSize:11, fontWeight:600 }}>✅ 0 frais Stripe fixes sur cette prestation</div>
-                </div>
-              </div>
-              <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useWallet?C.violet:C.border}`, background:useWallet?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                {useWallet && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-              </div>
-            </div>
-            <div
-              onClick={()=>setUseWallet(false)}
-              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: !useWallet?`${C.violet}18`:"transparent", border:`2px solid ${!useWallet?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:20 }}>💳</span>
-                <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>Payer par carte bancaire</div>
-              </div>
-              <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${!useWallet?C.violet:C.border}`, background:!useWallet?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                {!useWallet && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-              </div>
-            </div>
-            {useWallet && (
-              <>
-                {stripeError && (
-                  <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginTop:12 }}>
-                    ⚠️ {stripeError}
-                  </div>
-                )}
-                <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
-                <Btn full onClick={handlePayFromWallet} disabled={walletProcessing || !retractationOk} style={{ marginTop:14, fontSize:16, padding:"18px" }}>
-                  {walletProcessing ? "⏳ Traitement en cours…" : `💰 Payer ${total} € depuis mon wallet`}
-                </Btn>
-                <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>
-                  Solde après paiement : {Math.max(0, prepaidBalance - total).toFixed(2).replace(".", ",")} €
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Wallet insuffisant — bannière de recharge rapide */}
-        {prepaidBalance > 0 && prepaidBalance < total && (
-          <div style={{ background:"rgba(107,86,255,0.10)", border:"1px solid rgba(107,86,255,0.35)", borderRadius:14, padding:"14px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>💰 Wallet insuffisant</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>
-                Solde : <strong style={{ color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".",",")} €</strong> — il manque <strong style={{ color:C.violet }}>{(total - prepaidBalance).toFixed(2).replace(".",",")} €</strong>
-              </div>
-            </div>
-            {/* Le rechargement est suspendu (voir api/stripe-wallet-topup.js).
-                Proposer un bouton qui répond 503 serait pire que ne rien
-                proposer : le client cliquerait, verrait une erreur, et
-                conclurait que la plateforme est cassée. */}
-            <span style={{ color:C.textMuted, fontSize:11, textAlign:"right", flexShrink:0, maxWidth:180, lineHeight:1.4 }}>
-              Rechargement suspendu — réglez le complément par carte.
-            </span>
-          </div>
-        )}
-
-
+        {/* Le portefeuille est supprimé (16/08/2026) : le choix « payer depuis
+            mon wallet » disparaît avec lui. Le paiement se fait par carte. */}
         {/* Méthode de paiement */}
-        {!useWallet && (
+        {(
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>💳 Carte bancaire</div>
           <div>
@@ -807,8 +696,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         </div>
         )}
 
-        {/* Sécurité + bouton paiement carte — masqués si wallet sélectionné */}
-        {!useWallet && (
+        {/* Sécurité + bouton paiement carte */}
+        {(
           <>
             <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:16 }}>
               {["🔒 SSL 256-bit","🛡️ 3D Secure","✓ PCI DSS"].map(s=>(
@@ -841,247 +730,6 @@ const ALANE_SIRET   = import.meta.env.VITE_ALANE_SIRET   || "";
 const ALANE_ADRESSE = import.meta.env.VITE_ALANE_ADRESSE || "";
 const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "";
 
-// ── WALLET TOP-UP MODAL ───────────────────────────────────────────
-const TOPUP_AMOUNTS = [20, 50, 100, 200];
-
-// Conservé volontairement, sans appelant, le temps de la suspension du
-// rechargement : c'est l'écran à rebrancher une fois la qualification du
-// portefeuille tranchée. Le retirer obligerait à le réécrire.
-// eslint-disable-next-line no-unused-vars
-export function WalletTopupModal({ onClose, onSuccess }) {
-  const [selectedAmt,  setSelectedAmt]  = useState(50);
-  const [customAmt,    setCustomAmt]    = useState("");
-  const [useCustom,    setUseCustom]    = useState(false);
-  const [cardName,     setCardName]     = useState("");
-  const [cardNameErr,  setCardNameErr]  = useState(false);
-  const [processing,   setProcessing]   = useState(false);
-  const [done,         setDone]         = useState(false);
-  const [error,        setError]        = useState(null);
-  const [savedCard,    setSavedCard]    = useState(null); // { pmId, brand, last4 }
-  const [useSavedCard, setUseSavedCard] = useState(false);
-  const stripeRef  = useRef(null);
-  const cardElRef  = useRef(null);
-  const mountRef   = useRef(null);
-
-  const amount = useCustom
-    ? (parseFloat(customAmt.replace(",", ".")) || 0)
-    : selectedAmt;
-
-  // Savings message: one Stripe fixed fee (0,25€) per top-up vs per mission
-  // For N missions from one top-up: savings = (N-1) × 0,25€
-  const savingsHint = amount >= 50
-    ? `Avec ${amount} €, couvrez plusieurs prestations et ne payez les 0,25 € de frais fixes Stripe qu'une seule fois — au lieu d'une fois par prestation.`
-    : "Chaque recharge = un seul paiement Stripe, quelle que soit la quantité de prestations financées.";
-
-  // Load saved card from user_metadata on mount
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const m = data?.user?.user_metadata || {};
-      if (m.stripe_pm_id) {
-        setSavedCard({ pmId: m.stripe_pm_id, brand: m.card_brand || "card", last4: m.card_last4 || "••••" });
-        setUseSavedCard(true);
-      }
-    });
-  }, []);
-
-  // Mount Stripe card element only when using a new card
-  useEffect(() => {
-    if (useSavedCard) {
-      if (cardElRef.current) { cardElRef.current.destroy(); cardElRef.current = null; }
-      return;
-    }
-    let destroyed = false;
-    (async () => {
-      const { loadStripe } = await import("@stripe/stripe-js");
-      const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-      if (!pk || destroyed) return;
-      const stripe = await loadStripe(pk);
-      if (!stripe || destroyed) return;
-      stripeRef.current = stripe;
-      if (!mountRef.current || cardElRef.current || destroyed) return;
-      const elements = stripe.elements();
-      const cardEl = elements.create("card", {
-        hidePostalCode: true,
-        style: {
-          base:    { color:"#e2e8f0", fontFamily:"inherit", fontSize:"15px", "::placeholder":{ color:"#64748b" } },
-          invalid: { color:"#f87171" },
-        },
-      });
-      cardElRef.current = cardEl;
-      if (mountRef.current && !destroyed) cardEl.mount(mountRef.current);
-    })();
-    return () => {
-      destroyed = true;
-      if (cardElRef.current) { cardElRef.current.destroy(); cardElRef.current = null; }
-    };
-  }, [useSavedCard]);
-
-  const handlePay = async () => {
-    if (processing || done) return;
-    if (!useSavedCard && !cardName.trim()) { setCardNameErr(true); return; }
-    if (!amount || amount < 10 || amount > 1000) { setError("Montant invalide (10 € – 1 000 €)"); return; }
-    if (!useSavedCard && (!stripeRef.current || !cardElRef.current)) { setError("Stripe non initialisé — rechargez la page."); return; }
-    setProcessing(true);
-    setError(null);
-    try {
-      // Ensure Stripe is loaded when using saved card (no card element was mounted)
-      if (useSavedCard && !stripeRef.current) {
-        const { loadStripe } = await import("@stripe/stripe-js");
-        const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-        stripeRef.current = await loadStripe(pk);
-      }
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const r = await fetch("/api/stripe-wallet-topup", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body:    JSON.stringify({ amount }),
-      });
-      const { clientSecret, error: intentErr } = await r.json();
-      if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
-      const paymentMethodParam = useSavedCard && savedCard
-        ? { payment_method: savedCard.pmId }
-        : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
-      const { error: stripeErr, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, paymentMethodParam);
-      if (stripeErr) throw new Error(stripeErr.message);
-      if (paymentIntent?.status === "succeeded") {
-        setDone(true);
-        onSuccess && onSuccess(amount);
-      }
-    } catch (e) {
-      setError(e.message || "Erreur paiement");
-      setProcessing(false);
-    }
-  };
-
-  return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#0A1628", borderRadius:"24px 24px 0 0", padding:"24px 20px 40px", width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <h3 style={{ color:"#fff", fontSize:18, fontWeight:800, margin:0 }}>💰 Recharger mon wallet</h3>
-          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, padding:"6px 12px", color:"rgba(255,255,255,0.6)", cursor:"pointer", fontSize:16, fontFamily:"inherit" }}>×</button>
-        </div>
-
-        {done ? (
-          <div style={{ textAlign:"center", padding:"32px 16px" }}>
-            <div style={{ fontSize:52, marginBottom:16 }}>✅</div>
-            <h4 style={{ color:"#10D98F", fontWeight:800, fontSize:20, margin:"0 0 10px" }}>Wallet rechargé !</h4>
-            <p style={{ color:"rgba(255,255,255,0.7)", fontSize:14, lineHeight:1.6, margin:"0 0 24px" }}>
-              <strong style={{ color:"#fff" }}>{amount} €</strong> ont été ajoutés à votre wallet ALANE.<br/>
-              Vous pouvez maintenant payer vos prochaines prestations sans frais supplémentaires.
-            </p>
-            <button onClick={onClose} style={{ background:C.violet, border:"none", borderRadius:12, padding:"14px 28px", color:"#fff", fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>Fermer</button>
-          </div>
-        ) : (
-          <>
-            {/* Montant */}
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:1 }}>Montant de la recharge</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:10 }}>
-                {TOPUP_AMOUNTS.map(a => (
-                  <button key={a} onClick={()=>{ setSelectedAmt(a); setUseCustom(false); }}
-                    style={{ background: !useCustom && selectedAmt===a ? C.violet : "rgba(255,255,255,0.07)", border:`2px solid ${!useCustom && selectedAmt===a ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:10, padding:"12px 4px", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
-                    {a} €
-                  </button>
-                ))}
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <button onClick={()=>setUseCustom(v=>!v)}
-                  style={{ background: useCustom ? C.violet : "rgba(255,255,255,0.07)", border:`2px solid ${useCustom ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:10, padding:"11px 14px", color:"#fff", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-                  Autre montant
-                </button>
-                {useCustom && (
-                  <div style={{ flex:1, position:"relative" }}>
-                    <input
-                      value={customAmt}
-                      onChange={e=>setCustomAmt(e.target.value)}
-                      placeholder="ex. 75"
-                      type="number" min="10" max="1000"
-                      style={{ width:"100%", padding:"11px 32px 11px 12px", borderRadius:10, border:`1px solid rgba(255,255,255,0.2)`, background:"#162547", color:"#fff", fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
-                    />
-                    <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"rgba(255,255,255,0.4)", fontSize:13 }}>€</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Savings info */}
-            <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:12, color:"rgba(255,255,255,0.75)", lineHeight:1.6 }}>
-              <span style={{ color:"#10D98F", fontWeight:700 }}>💡 Économisez sur les frais Stripe</span><br/>
-              {savingsHint}
-            </div>
-
-            {/* Carte */}
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:1 }}>Paiement par carte</div>
-
-              {/* Saved card selector */}
-              {savedCard && (
-                <div style={{ marginBottom:12 }}>
-                  <div onClick={()=>setUseSavedCard(true)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useSavedCard ? "rgba(107,86,255,0.12)" : "rgba(255,255,255,0.04)", border:`2px solid ${useSavedCard ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:11, padding:"12px 14px", cursor:"pointer", marginBottom:8 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <span style={{ fontSize:20 }}>💳</span>
-                      <div>
-                        <div style={{ fontWeight:700, color:"#fff", fontSize:13, textTransform:"capitalize" }}>{savedCard.brand} ••••{savedCard.last4}</div>
-                        <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>Carte enregistrée</div>
-                      </div>
-                    </div>
-                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useSavedCard ? C.violet : "rgba(255,255,255,0.25)"}`, background:useSavedCard ? C.violet : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      {useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-                    </div>
-                  </div>
-                  <div onClick={()=>setUseSavedCard(false)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: !useSavedCard ? "rgba(107,86,255,0.12)" : "rgba(255,255,255,0.04)", border:`2px solid ${!useSavedCard ? C.violet : "rgba(255,255,255,0.12)"}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <span style={{ fontSize:20 }}>➕</span>
-                      <div style={{ fontWeight:600, color:"#fff", fontSize:13 }}>Utiliser une autre carte</div>
-                    </div>
-                    <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${!useSavedCard ? C.violet : "rgba(255,255,255,0.25)"}`, background:!useSavedCard ? C.violet : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      {!useSavedCard && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {(!savedCard || !useSavedCard) && (
-                <>
-                  <div style={{ marginBottom:10 }}>
-                    <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:5, color: cardNameErr ? "#f87171" : "rgba(255,255,255,0.5)" }}>
-                      Titulaire <span style={{ color:"#f87171" }}>*</span>
-                    </label>
-                    <input
-                      value={cardName}
-                      onChange={e=>{ setCardName(e.target.value); if(e.target.value.trim()) setCardNameErr(false); }}
-                      placeholder="Jean Dupont"
-                      style={{ width:"100%", padding:"12px 14px", borderRadius:11, border:`1px solid ${cardNameErr?"#f87171":"rgba(255,255,255,0.15)"}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"#162547", color:"#fff" }}
-                    />
-                    {cardNameErr && <div style={{ color:"#f87171", fontSize:11, marginTop:4 }}>Champ obligatoire</div>}
-                  </div>
-                  <div style={{ borderRadius:11, border:"1px solid rgba(255,255,255,0.15)", background:"#162547", overflow:"hidden" }}>
-                    <div ref={mountRef} style={{ padding:"14px", minHeight:50 }} />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {error && (
-              <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginBottom:14 }}>
-                ⚠️ {error}
-              </div>
-            )}
-
-            <button onClick={handlePay} disabled={processing}
-              style={{ width:"100%", background: processing ? "rgba(255,255,255,0.1)" : C.violet, border:"none", borderRadius:12, padding:"16px", color:"#fff", fontWeight:800, fontSize:16, cursor: processing ? "default" : "pointer", fontFamily:"inherit" }}>
-              {processing ? "⏳ Traitement en cours…" : `Recharger ${useCustom ? (parseFloat(customAmt)||0) : selectedAmt} €`}
-            </button>
-            <p style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:8 }}>🔒 Paiement sécurisé · SSL 256-bit · PCI DSS</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── FACTURE / INVOICE ─────────────────────────────────────────────
 export function InvoiceScreen({ prestation, onBack }) {
   const [clientInfo,  setClientInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
   const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
