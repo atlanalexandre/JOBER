@@ -1316,7 +1316,13 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                 <div style={{ fontSize:22, marginBottom:4, position:"relative" }}>{isOpen ? s.icon : "🔒"}</div>
                 <div style={{ fontSize:9.5, fontWeight:600, color: isOpen ? C.text : C.textMuted, letterSpacing:0.3, textTransform:"uppercase", lineHeight:1.2, position:"relative" }}>{s.label}</div>
                 <div style={{ fontSize:9, color:C.textMuted, marginTop:2, position:"relative" }}>
-                  {isOpen ? `${providers.filter(p=>p.sector===s.id).length} pros` : ss ? `${ss.count}/${ss.min} presta` : "Bientôt"}
+                  {/* Un secteur fermé n'affiche aucun chiffre. `ss.min` n'a
+                      d'ailleurs jamais existé — l'API renvoie `seuil` — et la
+                      tuile affichait donc « 3/undefined presta ». Mais le vrai
+                      problème était d'afficher l'effectif : `messageSecteurFerme`
+                      s'interdit délibérément de le dire au client, pour ne pas
+                      lui donner la mesure exacte de la faiblesse du réseau. */}
+                  {isOpen ? `${providers.filter(p=>p.sector===s.id).length} pros` : "Bientôt"}
                 </div>
               </div>
             );

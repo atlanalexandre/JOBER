@@ -1008,6 +1008,40 @@ compris. L'écran de paiement enchaînait donc : récapitulatif, formulaire de r
 récapitulatif, paiement. Les deux copies de l'étape 2 étaient identiques ; celles de
 l'étape 3 avaient déjà divergé. Supprimé.
 
+### Un secteur fermé ne montre plus rien
+
+**Corrigé le 16/08/2026.** Le contrôle du secteur existait sur le paiement, pas sur la
+vitrine. Un secteur fermé faisait quand même apparaître ses prestataires dans « Top
+prestataires », dans le catalogue et dans la recherche : le client en choisissait un,
+remplissait tout le formulaire, et se faisait refuser au moment de payer.
+
+C'est exactement le défaut déjà corrigé pour `missions_enabled` — une règle appliquée à
+l'affectation mais pas à l'affichage.
+
+Le filtrage vit dans **`/api/prestataires`**, source unique du catalogue client (dix écrans
+l'utilisent via `useProviders`). L'effectif y est compté sur la population déjà chargée —
+exactement celle que compte `etatSecteursAvecCache` : prestataires approuvés, accès aux
+prestations activé, secteur lu dans `user_metadata`. Aucun second recensement des comptes, et
+surtout aucune seconde version de la règle.
+
+**Deux garde-fous, parce que masquer est dangereux.** `lireReglagesSecteurs` renvoie désormais
+`lu`, qui distingue « réglages lus » de « réglages retombés sur leurs valeurs par défaut » :
+sans cette distinction, une panne de lecture d'une seconde appliquerait le seuil par défaut,
+fermerait tous les secteurs et **viderait la vitrine**. Réglages illisibles → aucun filtrage.
+De même, un secteur inconnu du module n'est jamais masqué. Le filtrage est un affinage, pas
+une sécurité : le refus de réservation reste assuré par `/api/stripe-intent`.
+
+**La tuile d'un secteur fermé affichait `3/undefined presta`.** `ss.min` n'a jamais existé —
+l'API renvoie `seuil`. Mais le vrai problème n'était pas la faute de frappe : afficher
+l'effectif contredit `messageSecteurFerme`, qui s'interdit délibérément de le dire au client
+pour ne pas lui donner la mesure exacte de la faiblesse du réseau. La tuile affiche
+« Bientôt », sans chiffre.
+
+**Conséquence pratique au démarrage** : le seuil d'ouverture automatique est à 20 prestataires.
+Tant qu'un secteur est sous ce seuil, il faut l'inscrire dans `forced_open_sectors` depuis le
+backoffice pour que ses prestataires soient visibles — sans quoi le catalogue reste vide, ce
+qui est désormais le comportement correct et non plus une incohérence.
+
 ### Une colonne inexistante annulait tout le PATCH
 
 **Découvert le 16/08/2026**, en écrivant une requête de nettoyage : la base a refusé la
