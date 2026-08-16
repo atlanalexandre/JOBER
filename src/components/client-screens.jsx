@@ -7,6 +7,7 @@ import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prix
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
+import { CGU } from "../constants/cgu.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
@@ -2855,7 +2856,7 @@ Tarif horaire : ${tarifHoraire.toFixed(2)} €/h
 
 En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la prestation telle que définie ci-dessus.
 
-Le paiement sera libéré au prestataire après validation mutuelle de la prestation.
+Le paiement sera versé au prestataire 48 heures après la fin de la prestation, délai pendant lequel un problème peut être signalé.
 
 Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           onSign={(ts) => {
@@ -3630,7 +3631,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           )}
 
           <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}25`, borderRadius:r, padding:"11px 14px", marginBottom:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
-            🔒 Paiement sécurisé — libéré uniquement après validation mutuelle de la prestation
+            🔒 Paiement sécurisé — versé au prestataire 48 h après la fin de la prestation
           </div>
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
@@ -3799,7 +3800,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
                 ? <>Votre prestation a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
-                : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera libéré après validation mutuelle.</>
+                : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera versé au prestataire 48 h après la fin de la prestation.</>
               }
             </p>
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"18px", marginBottom:18, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", textAlign:"left" }}>
@@ -5285,7 +5286,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     { icon:"📝", title:"Inscrivez-vous", desc:"Créez votre profil auto-entrepreneur en quelques minutes. Renseignez vos métiers, vos documents et vos disponibilités.", color:C.accent },
     { icon:"✅", title:"Faites valider votre compte", desc:"Notre équipe vérifie votre dossier sous 24-48h. Une fois validé, vous commencez à recevoir des propositions de prestations.", color:C.accentGold },
     { icon:"📋", title:"Acceptez des prestations", desc:"Recevez des propositions correspondant à votre profil. Acceptez celles qui vous conviennent, refusez les autres.", color:C.violet },
-    { icon:"💶", title:"Encaissez", desc:"Après validation mutuelle de la prestation, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
+    { icon:"💶", title:"Encaissez", desc:"48 heures après la fin de la prestation, votre paiement net est viré directement sur votre compte bancaire.", color:C.success },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;
@@ -5784,7 +5785,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe jusqu'à validation mutuelle de la prestation.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe et versés au prestataire 48 h après la fin de la prestation.
               </div>
             </div>
           </div>
@@ -5879,7 +5880,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
             {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe et seront libérés vers {p.name} (<strong>{prestaNet} €</strong>) après validation mutuelle de la prestation.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe. La part revenant à {p.name} (<strong>{prestaNet} €</strong>) lui sera versée 48 heures après la fin de la prestation, délai pendant lequel vous pouvez signaler un problème.
             </div>
           </div>
         )}
@@ -5890,47 +5891,37 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
 export function LegalScreen({ type, onBack }) {
   const content = {
-    cgu: {
-      title:"Conditions Générales d’Utilisation",
-      icon:"📋",
-      sections:[
-        { title:"1. Objet", text:"Les présentes CGU régissent l’utilisation de la plateforme ALANE, service de mise en relation entre clients et prestataires de services. En utilisant ALANE, vous acceptez sans réserve les présentes conditions." },
-        { title:"2. Inscription", text:"L’inscription est gratuite. Vous devez fournir des informations exactes et à jour. Les prestataires doivent être auto-entrepreneurs en règle avec l’URSSAF et fournir les documents requis." },
-        { title:"3. Responsabilités", text:"ALANE agit en qualité d’intermédiaire. La responsabilité de l’exécution de la prestation incombe au prestataire. ALANE ne peut être tenu responsable des dommages résultant d’une mauvaise exécution." },
-        { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont bloqués lors de la réservation et libérés après validation mutuelle. Des frais de service fixes (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) s’ajoutent au montant de la prestation et couvrent les coûts de traitement et de la plateforme." },
-        { title:"5. Annulations", text:"En cas d’annulation, les frais de service engagés (Prestation ponctuelle : 4,90 € ; Multi-jours : 2,90 €/j ; Urgente : 9,90 €) restent dus. Aucune retenue n’est appliquée sur le montant de la prestation." },
-        { title:"6. Litiges", text:"En cas de litige, les parties s’engagent à contacter la médiation ALANE en premier recours. À défaut de résolution amiable, les tribunaux de Paris seront compétents." },
-        { title:"7. Données personnelles", text:"Vos données sont traitées conformément à notre Politique de confidentialité et au RGPD. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données." },
-      ]
-    },
+    cgu: CGU,
     privacy: {
       title:"Politique de confidentialité",
       icon:"🔒",
+      maj:"16 août 2026",
       sections:[
-        { title:"1. Responsable du traitement", text:"ALANE SAS, dont le siège social est en France. Contact : direction@alane.fr — Pour toute question relative à vos données personnelles, contactez notre délégué à la protection des données à cette adresse." },
+        { title:"1. Responsable du traitement", text:"ALANE, éditeur de la plateforme — voir les mentions légales pour la dénomination sociale et le siège. Contact : rgpd@alane.fr — Pour toute question relative à vos données personnelles, écrivez à cette adresse." },
         { title:"2. Données collectées", text:"Nous collectons : données d’identité (prénom, nom), coordonnées (email, téléphone), données professionnelles (secteur, métier, tarifs, IBAN pour les prestataires), données de connexion (logs, dates), données de paiement (traitées exclusivement par Stripe — nous ne stockons jamais vos coordonnées bancaires complètes), avis et évaluations, historique des prestations." },
         { title:"3. Finalités et bases légales", text:"Vos données sont traitées pour : (a) l’exécution du contrat de mise en relation — base légale : exécution du contrat (art. 6.1.b RGPD) ; (b) la gestion des paiements et de la facturation — base légale : exécution du contrat ; (c) la lutte contre la fraude et la sécurité — base légale : intérêt légitime (art. 6.1.f RGPD) ; (d) les communications transactionnelles (confirmation de prestation, paiement) — base légale : exécution du contrat ; (e) l’amélioration du service et les statistiques anonymisées — base légale : intérêt légitime." },
-        { title:"4. Durée de conservation", text:"Comptes actifs : données conservées pendant toute la durée de la relation contractuelle. Comptes supprimés : données effacées sous 30 jours, à l’exception des données comptables obligatoires conservées 10 ans (art. L123-22 Code de commerce). Logs de connexion : 12 mois. Données de paiement : conservées par Stripe selon leurs propres politiques." },
+        { title:"4. Durée de conservation", text:"Ces durées sont celles de l’article 14.4 des CGPS.\n\nDonnées d’identité et de compte : 3 ans après la dernière connexion active. Documents d’identité (pièce d’identité, justificatif d’immatriculation, justificatif de domicile) : le fichier est supprimé dans les 30 jours suivant la vérification du compte, et au plus tard 12 mois après son dépôt, qu’il ait été vérifié ou non — seule la trace de la vérification (sa date et sa nature) est conservée, sans la pièce. Logs de connexion : 12 mois. Données de facturation et comptables : 10 ans (art. L123-22 Code de commerce). Données de paiement : conservées par Stripe selon ses propres politiques.\n\nSuppression du compte : la suppression est immédiate — le compte d’authentification et les fichiers déposés sont effacés, et les prestations passées anonymisées. Seules les pièces comptables obligatoires sont conservées, pour la durée légale ci-dessus. Une empreinte technique non réversible est conservée aux seules fins d’empêcher la recréation d’un compte fermé pour fraude." },
         { title:"5. Destinataires des données", text:"Vos données peuvent être partagées avec : Supabase Inc. (USA) — hébergement base de données, couvert par les Clauses Contractuelles Types CE ; Stripe Inc. (USA) — traitement des paiements, certifié PCI-DSS, couvert par les CCT ; Resend Inc. (USA) — envoi d’emails transactionnels, couvert par les CCT. Aucune vente de données à des tiers à des fins commerciales." },
         { title:"6. Transferts hors Union Européenne", text:"Certains sous-traitants sont établis aux États-Unis (Supabase, Stripe, Resend). Ces transferts sont encadrés par les Clauses Contractuelles Types approuvées par la Commission Européenne, offrant un niveau de protection adéquat à vos données." },
-        { title:"7. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : droit d’accès à vos données (art. 15), droit de rectification (art. 16), droit à l’effacement (art. 17) — exercez-le via Paramètres → Supprimer mon compte, droit à la limitation du traitement (art. 18), droit à la portabilité (art. 20), droit d’opposition (art. 21). Pour exercer ces droits : direction@alane.fr. Réponse sous 30 jours. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr)." },
+        { title:"7. Vos droits", text:"Conformément au RGPD, vous disposez des droits suivants : droit d’accès à vos données (art. 15), droit de rectification (art. 16), droit à l’effacement (art. 17) — exercez-le via Paramètres → Supprimer mon compte, droit à la limitation du traitement (art. 18), droit à la portabilité (art. 20), droit d’opposition (art. 21). Pour exercer ces droits : rgpd@alane.fr. Réponse sous 30 jours. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr)." },
         { title:"8. Cookies et traceurs", text:"ALANE utilise uniquement des cookies strictement nécessaires au fonctionnement du service : cookie de session Supabase (authentification, durée de session) et préférences locales (thème, notifications). Ces cookies ne nécessitent pas votre consentement car ils sont indispensables à la fourniture du service demandé (art. 82 loi Informatique et Libertés). Aucun cookie publicitaire ou de tracking tiers n’est utilisé." },
         { title:"9. Sécurité", text:"Vos données sont protégées par : chiffrement TLS en transit, chiffrement au repos (Supabase), authentification par token signé HMAC pour l’administration, séparation stricte des clés API (clé service uniquement côté serveur). Les mots de passe ne sont jamais stockés en clair (gestion déléguée à Supabase Auth)." },
-        { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en bas de cette page. Dernière mise à jour : janvier 2026." },
+        { title:"10. Modifications", text:"Cette politique peut être mise à jour. En cas de modification substantielle, vous serez notifié par email. La date de dernière mise à jour est indiquée en tête de cette page." },
       ]
     },
     cgps: CGPS,
     contrat_prestation: {
       title:"Contrat de Prestation de Services",
       icon:"📄",
+      maj:"16 août 2026",
       sections:[
         { title:"Préambule", text:"Le présent contrat est conclu entre ALANE (la plateforme), le prestataire auto-entrepreneur et le client. Il régit les conditions d'exécution de la prestation définie lors de la réservation." },
         { title:"Article 1 — Objet du contrat", text:"Le présent contrat a pour objet la réalisation par le prestataire d'une prestation de services à la personne ou aux entreprises, dans le secteur et pour le métier définis au moment de la réservation sur la plateforme ALANE." },
         { title:"Article 2 — Statut du prestataire", text:"Le prestataire intervient en qualité d'auto-entrepreneur indépendant, immatriculé au RCS ou au répertoire des métiers. Il n'existe aucun lien de subordination entre le prestataire et le client ni entre le prestataire et ALANE. La relation est régie par les dispositions applicables aux auto-entrepreneurs (art. L8221-6 du Code du travail)." },
         { title:"Article 3 — Description de la prestation", text:"La prestation comprend : le métier et secteur sélectionnés lors de la réservation, la date et l'heure de début confirmées, la durée exprimée en heures, l'adresse d'intervention, le tarif horaire HT tel qu'affiché. Ces éléments sont consignés dans le récapitulatif de réservation accessible dans l'historique." },
-        { title:"Article 4 — Tarifs et paiement", text:"Le montant total TTC est calculé sur la base du tarif horaire × durée + frais de service ALANE. Le paiement est sécurisé via Stripe. Les fonds sont bloqués à la confirmation et libérés au prestataire après validation mutuelle de la fin de prestation. ALANE ne détient jamais les fonds directement." },
+        { title:"Article 4 — Tarifs et paiement", text:"Le montant total TTC est calculé sur la base du tarif horaire × durée + frais de service ALANE (part fixe + 2 % du prix de la prestation, à la charge du client). Le paiement est sécurisé via Stripe. Les fonds sont détenus par Stripe à la confirmation, puis reversés au prestataire à l'expiration du délai de réclamation de 48 heures courant depuis la fin de la prestation, sauf réclamation ou retenue en cours. ALANE ne détient jamais les fonds directement et ne perçoit aucune commission sur le tarif du prestataire." },
         { title:"Article 5 — Obligations du prestataire", text:"Le prestataire s'engage à : assurer sa présence sur le lieu et durant le créneau convenus, qui font partie de l'objet même du service vendu ; atteindre le résultat convenu à la commande, selon les règles de l'art de son secteur ; respecter les règles d'hygiène, de sécurité et de confidentialité applicables sur le site, lesquelles s'imposent à tout intervenant extérieur ; disposer des assurances professionnelles requises.\n\nLe prestataire choisit seul ses méthodes, ses moyens et l'organisation de son travail, y compris le rythme de son exécution et ses temps de pause. Le client définit le résultat attendu et les contraintes propres au site, non la manière de les exécuter.\n\nLe prestataire peut, sous sa seule responsabilité, se faire remplacer par un autre professionnel indépendant disposant des qualifications requises. Le remplacement n'est effectif qu'avec l'accord du remplaçant, libre de refuser, et l'accord préalable du client ; à défaut, le prestataire initial reste titulaire. Le remplaçant exécute alors la prestation en son nom propre, la facture et en perçoit le prix, le prestataire initial demeurant responsable de la bonne exécution devant le client. En dehors de cette faculté, il ne sous-traite pas la prestation." },
-        { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, valider la prestation dans les 24 heures suivant son terme, payer le montant convenu via la plateforme. Le client n'exerce sur le prestataire aucun pouvoir de direction, de contrôle ni de sanction : il ne l'intègre pas à une équipe placée sous son autorité hiérarchique, ne le soumet à aucun dispositif interne de suivi du temps de travail et ne lui applique aucune mesure disciplinaire. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité. Si la prestation est exécutée chez un tiers, le client le déclare et reste seul à organiser le travail." },
+        { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, signaler toute réclamation dans les 48 heures suivant le terme de la prestation, payer le montant convenu via la plateforme. Le client n'exerce sur le prestataire aucun pouvoir de direction, de contrôle ni de sanction : il ne l'intègre pas à une équipe placée sous son autorité hiérarchique, ne le soumet à aucun dispositif interne de suivi du temps de travail et ne lui applique aucune mesure disciplinaire. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité. Si la prestation est exécutée chez un tiers, le client le déclare et reste seul à organiser le travail." },
         { title:"Article 7 — Annulation", text:"Annulation par le client : les frais de service restent dus dans tous les cas, car ils couvrent des coûts déjà engagés. Le montant de la prestation (tarif horaire × durée) est remboursé intégralement, que l'annulation intervienne plus ou moins de 24h avant le début. Après le début de la prestation, les heures entamées sont dues au prestataire, arrondies à l'heure entière supérieure et plafonnées à la durée commandée ; le solde éventuel est remboursé. Annulation par le prestataire : le client en est informé immédiatement via la plateforme, une proposition de remplacement lui est faite, et il est intégralement remboursé — frais de service compris — si aucun remplaçant n'intervient." },
         { title:"Article 8 — Responsabilité", text:"ALANE agit en qualité d'intermédiaire de mise en relation et ne peut être tenu responsable de la mauvaise exécution de la prestation, des dommages causés durant la prestation ou de tout litige entre client et prestataire. La responsabilité professionnelle du prestataire est engagée dans le cadre de son activité indépendante." },
         { title:"Article 9 — Litiges", text:"En cas de contestation sur la qualité de la prestation, le client dispose de 48 heures après la fin pour le signaler via la plateforme. ALANE examinera le litige sous 72 heures sur la base des éléments fournis (échanges chat, contrat signé, description de la prestation). Au-delà de 48h sans signalement, la prestation est réputée validée et les fonds libérés définitivement." },
@@ -5941,6 +5932,7 @@ export function LegalScreen({ type, onBack }) {
     mentions_legales: {
       title:"Mentions légales",
       icon:"⚖️",
+      maj:"16 août 2026",
       sections:[
         { title:"Éditeur du site", text:"Raison sociale : [À REMPLIR — ex. ALANE SAS]\nForme juridique : [À REMPLIR — ex. SAS]\nCapital social : [À REMPLIR — ex. 1 000 €]\nSIRET : [À REMPLIR]\nSiège social : [À REMPLIR — ex. 75001 Paris, France]\nEmail : direction@alane.fr\nDirecteur de la publication : [À REMPLIR]" },
         { title:"Hébergeur", text:"Vercel Inc.\n340 Pine Street, Suite 200\nSan Francisco, CA 94104, États-Unis\nhttps://vercel.com\n\nBase de données : Supabase Inc.\n970 Toa Payoh N, Singapour\nhttps://supabase.com" },
@@ -5959,7 +5951,7 @@ export function LegalScreen({ type, onBack }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:28, marginBottom:8 }}>{doc.icon}</div>
         <h2 style={{ color:C.white, fontSize:19, fontWeight:800, margin:0, lineHeight:1.3 }}>{doc.title}</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : juin 2026</p>
+        {doc.maj && <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : {doc.maj}</p>}
       </div>
       <div style={{ padding:"20px 18px" }}>
         {doc.sections.map((s,i)=>(
@@ -9015,7 +9007,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const clientSteps = [
     { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
     { icon:"📋", title:"Publiez votre prestation", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
-    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent ne sera libéré qu'après validation mutuelle de la prestation. Zéro risque.", color:C.success },
+    { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent n'est versé au prestataire que 48 h après la fin de la prestation : vous avez ce délai pour signaler un problème.", color:C.success },
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la prestation terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
