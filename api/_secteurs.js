@@ -58,13 +58,16 @@ export const SEUIL_PAR_DEFAUT = 20;
  * ne doit pas empêcher un client de commander.
  */
 export async function lireReglagesSecteurs(supabaseUrl, headers) {
+  let erreur = false;
   const lire = async (cle, defaut) => {
     try {
       const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.${cle}&select=value`, { headers });
+      if (!r.ok) { erreur = true; console.error(`[secteurs] lecture de ${cle} refusée (${r.status})`); return defaut; }
       const d = await r.json();
       const v = Array.isArray(d) && d[0]?.value;
       return v === undefined || v === null ? defaut : v;
     } catch (e) {
+      erreur = true;
       console.error(`[secteurs] lecture de ${cle} impossible :`, e.message);
       return defaut;
     }
@@ -81,6 +84,12 @@ export async function lireReglagesSecteurs(supabaseUrl, headers) {
     seuil: Number.isFinite(seuil) && seuil >= 0 ? seuil : SEUIL_PAR_DEFAUT,
     fermes: Array.isArray(fermes) ? fermes : [],
     forces: Array.isArray(forces) ? forces : [],
+    // `lu` distingue « réglages lus » de « réglages retombés sur leurs valeurs
+    // par défaut ». La différence est vitale pour le catalogue : à défaut
+    // d'information, le seuil de 20 fermerait TOUS les secteurs, et une panne
+    // de lecture d'une seconde viderait la vitrine de la plateforme. Un
+    // appelant qui masque du contenu doit pouvoir s'abstenir dans ce cas.
+    lu: !erreur,
   };
 }
 

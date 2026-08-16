@@ -1,3 +1,5 @@
+import { lireReglagesSecteurs, etatDesSecteurs } from "./_secteurs.js";
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
@@ -133,7 +135,54 @@ export default async function handler(req, res) {
       };
     });
 
-    return res.status(200).json({ prestataires: enriched });
+    // Un secteur fermé ne doit rien montrer au client.
+    //
+    // Le contrôle existait sur le paiement, pas sur la vitrine : un secteur
+    // fermé faisait quand même apparaître ses prestataires dans « Top
+    // prestataires », dans le catalogue et dans la recherche. Le client
+    // choisissait quelqu'un, remplissait le formulaire, et se faisait refuser
+    // au moment de payer. C'est le même défaut que `missions_enabled` corrigé
+    // plus haut : une règle appliquée à l'affectation mais pas à l'affichage.
+    //
+    // L'effectif est compté ici, sur la population déjà chargée — exactement
+    // celle que compte `etatSecteursAvecCache` : prestataires approuvés, accès
+    // aux prestations activé, secteur lu dans user_metadata. Aucun second
+    // recensement des comptes, et surtout aucune seconde version de la règle.
+    try {
+      const reglages = await lireReglagesSecteurs(SUPABASE_URL, headers);
+
+      // Réglages illisibles : on n'enlève rien. À défaut d'information, le
+      // seuil par défaut fermerait TOUS les secteurs, et une panne d'une
+      // seconde viderait la vitrine de la plateforme.
+      if (!reglages.lu) {
+        console.error("[prestataires] réglages des secteurs illisibles — catalogue affiché sans filtrage.");
+        return res.status(200).json({ prestataires: enriched });
+      }
+
+      const effectifs = {};
+      for (const p of enriched) {
+        if (p.secteur) effectifs[p.secteur] = (effectifs[p.secteur] || 0) + 1;
+      }
+      const etats = etatDesSecteurs(effectifs, reglages);
+
+      // Un secteur inconnu du module n'est pas masqué : la liste des secteurs
+      // connus vit dans le code, et filtrer sur cette base viderait le
+      // catalogue le jour où un secteur est ajouté sans mise à jour du module.
+      const visibles = enriched.filter(p => !p.secteur || etats[p.secteur]?.open !== false);
+
+      const masques = enriched.length - visibles.length;
+      if (masques > 0) {
+        const fermes = Object.entries(etats).filter(([, e]) => !e.open).map(([id]) => id);
+        console.log(`[prestataires] ${masques} prestataire(s) masqué(s) — secteur(s) fermé(s) : ${fermes.join(", ")}`);
+      }
+      return res.status(200).json({ prestataires: visibles });
+    } catch (e) {
+      // Le filtrage est un affinage, pas une sécurité : le refus de réservation
+      // reste assuré par /api/stripe-intent. Mieux vaut un catalogue trop large
+      // qu'une vitrine vide sur une défaillance.
+      console.error("[prestataires] filtrage par secteur impossible :", e.message);
+      return res.status(200).json({ prestataires: enriched });
+    }
   } catch (e) {
     console.error("prestataires error:", e);
     return res.status(500).json({ error: "Erreur serveur" });
