@@ -603,14 +603,35 @@ export default async function handler(req, res) {
 
     if (action === "suspend") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
-      const reason = req.body.reason || "";
+      // Le motif est OBLIGATOIRE depuis la réécriture de l'article 16.2 : la
+      // suspension conservatoire doit être « notifiée par écrit et motivée au
+      // plus tard au moment où elle prend effet » (règlement P2B, art. 4). Il
+      // était facultatif, et le courriel partait alors sans aucune explication —
+      // le destinataire ne pouvait donc ni comprendre, ni contester utilement.
+      const reason = (req.body.reason || "").trim();
+      if (reason.length < 10) {
+        return res.status(400).json({
+          error: "Un motif d'au moins 10 caractères est requis : il est communiqué à l'intéressé, "
+               + "qui doit pouvoir le contester (CGPS art. 16.2).",
+        });
+      }
       const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const userData = await userRes.json();
       const userEmail = userData.email;
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"suspended" }) });
       if (userEmail) {
-        const reasonBlock = reason ? `<p><strong>Raison :</strong> ${esc(reason)}</p>` : "";
-        await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été suspendu", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été temporairement suspendu par notre équipe d'administration.</p>${reasonBlock}<p>Pour plus d'informations, contactez notre support depuis l'application.</p>`) });
+        await sendEmail({
+          to: userEmail,
+          subject: "Votre compte ALANE a été suspendu",
+          html: emailHtml(
+            `<p>Bonjour,</p>`
+            + `<p>Votre compte <strong>ALANE</strong> est suspendu à titre conservatoire, le temps de la vérification des faits.</p>`
+            + `<p><strong>Motif :</strong> ${esc(reason)}</p>`
+            + `<p>Conformément à l'article 16.2 des conditions, vous disposez de <strong>quinze jours</strong> pour `
+            + `présenter vos observations à <strong>support@alane.fr</strong>. La suspension est levée sans délai `
+            + `si le motif n'est pas établi.</p>`
+          ),
+        });
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"suspend", target_id:profileId, target_email:userEmail||null, reason:reason||null }) }).catch(()=>{});
       return res.status(200).json({ success: true });
