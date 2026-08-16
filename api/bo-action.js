@@ -104,12 +104,26 @@ export default async function handler(req, res) {
   //
   // L'échec d'écriture n'interrompt jamais l'action — un journal indisponible
   // ne doit pas empêcher de valider un document — mais il est signalé.
-  const journaliser = (act, champs = {}) =>
-    fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
-      method: "POST",
-      headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ action: act, ...champs }),
-    }).catch(e => console.error(`[bo_logs] ${act} non journalisé :`, e.message));
+  // Le `.catch()` seul n'attrapait QUE les erreurs réseau. Un refus de
+  // PostgREST — colonne inconnue, contrainte violée — résout normalement, et
+  // l'échec passait donc inaperçu : `bo_logs.details` n'existait pas, et
+  // aucune action du backoffice qui en transportait un n'a jamais été
+  // journalisée. Les plus sensibles sont précisément celles-là.
+  const journaliser = async (act, champs = {}) => {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: act, ...champs }),
+      });
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        console.error(`[bo_logs] ${act} NON journalisé (${r.status}) : ${detail.slice(0, 200)}`);
+      }
+    } catch (e) {
+      console.error(`[bo_logs] ${act} non journalisé :`, e.message);
+    }
+  };
 
   try {
     if (action === "list") {
