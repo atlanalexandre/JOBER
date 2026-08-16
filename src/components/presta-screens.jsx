@@ -3013,6 +3013,58 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [mandatFacturation,setMandatFacturation]=useState(null); // null = inconnu
   const [mandatEnCours,setMandatEnCours]=useState(false);
 
+  // Export comptable. Un auto-entrepreneur déclare son chiffre d'affaires chaque
+  // trimestre et le récapitule chaque année : il lui fallait jusqu'ici rouvrir
+  // ses prestations une par une. L'article 242 bis du CGI imposera de toute façon
+  // un récapitulatif annuel — autant produire un fichier qui serve aux deux.
+  //
+  // Les montants sont ceux RÉELLEMENT versés (`payout_amount` quand il existe),
+  // jamais un recalcul : c'est sur ce chiffre que se déclare le revenu, et un
+  // écart d'un euro entre l'export et la banque coûte une heure de vérification
+  // à quelqu'un qui n'est pas comptable.
+  const exporterComptabilite = () => {
+    const annee = new Date().getFullYear();
+    const lignes = completedMissions
+      .filter(m => (m.date || "").startsWith(String(annee)))
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    if (!lignes.length) { showToast(`Aucune prestation terminée en ${annee}.`); return; }
+
+    const champ = (v) => {
+      const t = String(v ?? "");
+      return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const etats = { pending:"en attente", processing:"en cours", transferred:"versé", held:"retenu", failed:"bloqué" };
+    const entete = ["Date","Prestation","Ville","Heures","Tarif horaire","Montant net","Retenue","Versement","N° de facture"];
+    const corps = lignes.map(m => [
+      m.date || "",
+      m.titre || m.metier || SECTORS.find(x => x.id === m.sector)?.label || "Prestation",
+      m.ville || "",
+      String(m.actual_hours ?? m.hours ?? ""),
+      String(m.tarif_horaire ?? ""),
+      Number(m.payout_amount ?? montantPrestataire(m)).toFixed(2),
+      Number(m.payout_compensation || 0).toFixed(2),
+      etats[m.payout_status] || "",
+      m.invoice_number || "",
+    ].map(champ).join(";"));
+
+    const total = lignes.reduce((t, m) => t + Number(m.payout_amount ?? montantPrestataire(m)), 0);
+    corps.push(["", "TOTAL " + annee, "", "", "", total.toFixed(2), "", "", ""].map(champ).join(";"));
+
+    // Point-virgule et BOM : sans eux, Excel en français ouvre tout dans une
+    // seule colonne et massacre les accents.
+    const csv = "\uFEFF" + [entete.map(champ).join(";"), ...corps].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `alane-prestations-${annee}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`${lignes.length} prestation${lignes.length>1?"s":""} exportée${lignes.length>1?"s":""}.`);
+  };
+
   const accepterMandat = async () => {
     setMandatEnCours(true);
     try {
@@ -3600,7 +3652,49 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           const getAmt = montantPrestataire;
           const total=completedMissions.reduce((s,m)=>s+getAmt(m),0);
           const resteDu = creances.reduce((t,c)=>t+Number(c.montant_restant||0),0);
+
+          // Ce qui ARRIVE, et non ce qui est déjà arrivé. L'onglet ne montrait que
+          // les revenus passés : le prestataire devait ouvrir ses prestations une
+          // par une pour savoir ce qu'on lui doit et quand. C'est pourtant la
+          // première question qu'un indépendant se pose.
+          const enAttente = completedMissions.filter(m => m.payout_status === "pending" || m.payout_status === "processing");
+          const retenus   = completedMissions.filter(m => m.payout_status === "held");
+          const echoues   = completedMissions.filter(m => m.payout_status === "failed");
+          const sommeDe   = (liste) => liste.reduce((t,m) => t + Number(m.payout_amount ?? getAmt(m)), 0);
+          const prochaine = enAttente
+            .map(m => m.payout_due_at).filter(Boolean).sort()[0] || null;
+
           return <>
+            {(enAttente.length > 0 || retenus.length > 0 || echoues.length > 0) && (
+              <div style={{ background:"rgba(124,111,224,0.10)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
+                <div style={{ color:C.violet, fontWeight:800, fontSize:13, marginBottom:10 }}>Vos versements à venir</div>
+                {enAttente.length > 0 && (
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                    <span style={{ color:C.textSub, fontSize:12 }}>
+                      {enAttente.length} prestation{enAttente.length>1?"s":""} en attente de versement
+                      {prochaine && <span style={{ color:C.textMuted }}> · prochain le {new Date(prochaine).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}</span>}
+                    </span>
+                    <span style={{ color:C.text, fontWeight:800, fontSize:15 }}>{sommeDe(enAttente).toFixed(2).replace(".",",")} €</span>
+                  </div>
+                )}
+                {retenus.length > 0 && (
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                    <span style={{ color:"#E67E22", fontSize:12 }}>{retenus.length} versement{retenus.length>1?"s":""} retenu{retenus.length>1?"s":""} — motif indiqué par e-mail</span>
+                    <span style={{ color:"#E67E22", fontWeight:800, fontSize:15 }}>{sommeDe(retenus).toFixed(2).replace(".",",")} €</span>
+                  </div>
+                )}
+                {echoues.length > 0 && (
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+                    <span style={{ color:"#F25E5E", fontSize:12 }}>{echoues.length} versement{echoues.length>1?"s":""} bloqué{echoues.length>1?"s":""} — écrivez à support@alane.fr</span>
+                    <span style={{ color:"#F25E5E", fontWeight:800, fontSize:15 }}>{sommeDe(echoues).toFixed(2).replace(".",",")} €</span>
+                  </div>
+                )}
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:10, lineHeight:1.5 }}>
+                  Le virement part 48 h après la fin de la prestation — le délai dont le client dispose
+                  pour signaler un problème. Il arrive ensuite sur votre compte sous 1 à 2 jours ouvrés.
+                </div>
+              </div>
+            )}
             {mandatFacturation === null && (
               <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:16, padding:"16px 18px", marginBottom:14 }}>
                 <div style={{ color:"#F0B429", fontWeight:800, fontSize:14, marginBottom:6 }}>
@@ -3658,6 +3752,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 <div style={{ color:C.textMuted, fontSize:12, lineHeight:1.6 }}>Vos revenus apparaîtront ici une fois vos premières prestations complétées.</div>
               </div>
             ) : <>
+              <button onClick={exporterComptabilite} style={{
+                width:"100%", marginBottom:12, padding:"12px", borderRadius:12,
+                border:`1px solid ${C.violet}55`, background:`${C.violet}12`, color:C.violet,
+                fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+              }}>
+                📊 Exporter mes prestations {new Date().getFullYear()} (CSV)
+              </button>
               <div style={{ background:`linear-gradient(135deg,${C.success}22,${C.success}10)`, border:`1px solid ${C.success}44`, borderRadius:16, padding:"16px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
                   <div style={{ color:C.textSub, fontSize:11, marginBottom:2 }}>Total gagné</div>

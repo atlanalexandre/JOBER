@@ -812,22 +812,30 @@ ${(() => {
       let validationSent = 0;
       try {
         const pastRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lt.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
+          // `date=lte` et non `lt` : une prestation terminée AUJOURD'HUI était
+          // exclue jusqu'au lendemain. Le prestataire qui finit à 14 h n'était
+          // donc relancé que le jour suivant, alors que son paiement dépend de
+          // sa confirmation et que l'auto-validation tombe à 24 h. Le filtre en
+          // JavaScript ci-dessous vérifie de toute façon que la prestation est
+          // réellement terminée.
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${todayStr}&select=id,client_id,prestataire_id,metier,sector,date,hours,actual_hours,ville,heure_debut,validation_prestataire,validation_client,last_validation_reminder_at`,
           { headers }
         );
         const pastMissionsRaw = await pastRes.json();
         const now = Date.now();
-        const TWELVE_HOURS_MS = 2 * 60 * 60 * 1000; // relance toutes les 2h
+        // Deux heures entre deux relances. Le nom disait douze : la valeur était
+        // juste, le nom mentait, et c'est le nom qu'on relit.
+        const DELAI_ENTRE_RELANCES_MS = 2 * 60 * 60 * 1000;
         const pastMissions = Array.isArray(pastMissionsRaw) ? pastMissionsRaw.filter(m => {
           if (!m.heure_debut) return true;
           // Conversion heure française → UTC : elle manquait, la relance de
           // validation partait avec une à deux heures de retard.
           const endMs = finPrestationMs({ ...m, started_at: null });
           if (endMs === null || endMs >= now) return false;
-          // N-05: skip missions that already got a reminder less than 12h ago
+          // Ne pas renvoyer une relance déjà partie il y a moins de deux heures
           if (m.last_validation_reminder_at) {
             const lastReminderMs = new Date(m.last_validation_reminder_at).getTime();
-            if (!isNaN(lastReminderMs) && now - lastReminderMs < TWELVE_HOURS_MS) return false;
+            if (!isNaN(lastReminderMs) && now - lastReminderMs < DELAI_ENTRE_RELANCES_MS) return false;
           }
           return true;
         }) : [];
