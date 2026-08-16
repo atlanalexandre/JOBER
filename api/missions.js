@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
@@ -2633,6 +2633,43 @@ export default async function handler(req, res) {
       }
       const prestataire_id = caller.id;
 
+      // La position n'est enregistrée que dans la fenêtre de la prestation.
+      //
+      // Rien ne la bornait : un prestataire qui activait le partage la veille
+      // diffusait sa position en direct pendant des heures — donc, la plupart
+      // du temps, son domicile. La fenêtre d'une heure qui existait plus bas ne
+      // gouvernait que la notification « en route », pas le partage lui-même.
+      //
+      // Le contrôle est ici, au moment de l'écriture : ne rien stocker vaut
+      // mieux que stocker puis filtrer à la lecture, car ce qui n'est pas
+      // enregistré ne peut pas fuir.
+      const posMissionRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`
+        + `&select=id,client_id,prestataire_id,status,date,heure_debut,hours,actual_hours,started_at,metier,ville&limit=1`,
+        { headers }
+      );
+      const posMission = (await posMissionRes.json().catch(() => []))[0];
+      if (!posMission) return res.status(404).json({ error: "Prestation introuvable" });
+      if (posMission.prestataire_id !== prestataire_id) {
+        return res.status(403).json({ error: "Non autorisé" });
+      }
+      if (!["assigned", "pending_acceptance"].includes(posMission.status)) {
+        return res.status(409).json({ error: "Cette prestation n'est plus en cours." });
+      }
+      const fenetrePos = fenetrePartagePosition(posMission);
+      if (!fenetrePos.ouverte) {
+        const quand = fenetrePos.debut
+          ? new Date(fenetrePos.debut).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" })
+          : null;
+        return res.status(403).json({
+          error: fenetrePos.raison === "trop_tot"
+            ? `Le partage de position s'ouvre une heure avant le début de la prestation${quand ? `, soit le ${quand}` : ""}. Votre position n'est pas enregistrée avant.`
+            : fenetrePos.raison === "trop_tard"
+              ? "La prestation est terminée : le partage de position est clos."
+              : "L'horaire de cette prestation est incomplet, le partage de position est indisponible.",
+        });
+      }
+
       // Check if this is the first position update (to send "en route" push)
       const existingRes = await fetch(
         `${SUPABASE_URL}/rest/v1/tracking_positions?mission_id=eq.${mission_id}&prestataire_id=eq.${prestataire_id}&select=id&limit=1`,
@@ -2690,6 +2727,20 @@ export default async function handler(req, res) {
       const authMissionData = await authMissionRes.json().catch(() => []);
       if (!Array.isArray(authMissionData) || authMissionData.length === 0) {
         return res.status(403).json({ error: "Non autorisé" });
+      }
+
+      // Même fenêtre qu'à l'écriture. Le contrôle est répété ici parce qu'une
+      // position enregistrée légitimement pendant la prestation ne doit pas
+      // rester consultable indéfiniment ensuite : la finalité s'éteint avec la
+      // prestation, et le dernier point est souvent le lieu d'intervention.
+      const posLect = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`
+        + `&select=date,heure_debut,hours,actual_hours,started_at&limit=1`,
+        { headers }
+      );
+      const mLect = (await posLect.json().catch(() => []))[0];
+      if (!mLect || !fenetrePartagePosition(mLect).ouverte) {
+        return res.status(200).json(null);
       }
 
       const r = await fetch(

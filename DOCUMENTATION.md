@@ -1049,6 +1049,38 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### La position du prestataire n'est partageable que dans la fenêtre de la prestation
+
+**Corrigé le 16/08/2026.** Le partage de position n'était borné par rien. Le bouton étant
+visible dès l'affectation, un prestataire qui l'activait la veille — ou simplement en avance —
+diffusait sa position en direct pendant des heures. C'est-à-dire, la plupart du temps, **son
+domicile**.
+
+Une fenêtre d'une heure existait déjà dans le code, mais elle ne gouvernait **que la
+notification** « prestataire en route ». Ni le partage lui-même, ni la lecture par le client
+n'étaient bornés.
+
+Le rapport avec la prestation est ce qui rend ce traitement légitime : hors de ce rapport, il
+n'y a plus de finalité, donc plus de base légale.
+
+`fenetrePartagePosition()` (`api/_temps.js`) ouvre la fenêtre **une heure avant le début** — le
+temps du trajet — et la ferme **une heure après la fin**, pour couvrir un dépassement
+d'horaire. Elle suit le pointage réel quand la prestation a démarré en retard. Horaire
+illisible : la fenêtre est **fermée** — à défaut de savoir si l'on est dans le rapport de la
+prestation, on ne diffuse pas la position de quelqu'un.
+
+Le contrôle est posé **trois fois**, et c'est voulu :
+
+| Où | Ce que ça empêche |
+|---|---|
+| `update_position` | Enregistrer une position hors fenêtre. Ce qui n'est pas stocké ne peut pas fuir |
+| `get_position` | Consulter une position légitimement enregistrée, mais après coup — le dernier point est souvent le lieu d'intervention |
+| Traitement quotidien | Conserver les positions au-delà de 24 h. `tracking_positions` n'était purgée par rien : à l'échelle de quelques milliers de prestations, la table dessinait les déplacements des prestataires sur des mois |
+
+Côté prestataire, le bouton **attend la réponse du serveur** avant d'annoncer « position
+transmise ». Il l'affichait sans regarder le résultat, ce qui ferait croire au prestataire que
+le client la voit alors qu'elle vient d'être refusée.
+
 ### Le cache figeait la décision, pas seulement le décompte
 
 **Constaté en production le 16/08/2026, quelques minutes après la correction précédente.** Un

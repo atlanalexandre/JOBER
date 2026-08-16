@@ -2052,15 +2052,32 @@ export function PMissionsTab({ onNavigate }) {
     // ponctuels. Un second clic renvoie la position plutôt que de couper quelque
     // chose qui ne tourne pas.
     if (!navigator.geolocation) { showToast("Géolocalisation non supportée par votre navigateur."); return; }
+    // Le serveur refuse la position hors de la fenêtre de la prestation : elle
+    // s'ouvre une heure avant le début. On attend donc sa réponse pour dire au
+    // prestataire ce qui s'est réellement passé — un « position transmise »
+    // affiché sans regarder le résultat lui faisait croire que le client la
+    // voyait, alors qu'elle n'était pas enregistrée.
     const sendPos = async (lat, lng) => {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
       if (!token) return;
-      fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
-      }).catch(() => {});
+      try {
+        const r = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (j?.success) {
+          showToast("Position transmise au client.", "success");
+          setSharingLocation(s => ({ ...s, [missionId]: true }));
+        } else {
+          showToast(j?.error || "La position n'a pas pu être transmise.");
+        }
+      } catch (e) {
+        console.error("[position] envoi échoué :", e.message);
+        showToast("Erreur réseau — la position n'a pas été transmise.");
+      }
     };
     // UN SEUL RELEVÉ, à la demande — plus de suivi continu.
     //
@@ -2075,11 +2092,10 @@ export function PMissionsTab({ onNavigate }) {
     // Le client garde ce qui lui sert : savoir que son prestataire est en route,
     // et où il en est au moment où il le demande.
     navigator.geolocation.getCurrentPosition(
-      p => { sendPos(p.coords.latitude, p.coords.longitude); showToast("Position transmise au client."); },
+      p => { sendPos(p.coords.latitude, p.coords.longitude); },
       () => showToast("Position indisponible — vérifiez les autorisations de votre navigateur."),
       { enableHighAccuracy: true, timeout: 10000 }
     );
-    setSharingLocation(s => ({ ...s, [missionId]: true }));
   };
 
   const loadPending = async () => {
