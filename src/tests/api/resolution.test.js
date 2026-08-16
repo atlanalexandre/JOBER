@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   DELAI_OPPOSITION_MS, RESOLUTIONS, libelleResolution,
-  echeanceOppositionMs, accordRepute, executerResolution,
+  echeanceOppositionMs, accordRepute, executerResolution, montantRemboursable,
 } from "../../../api/_resolution.js";
 
 const H = 3600000;
@@ -70,6 +70,37 @@ describe("résolutions formulables", () => {
   });
 });
 
+// Décision du 16/08/2026 : les frais de service restent acquis, comme en
+// matière d'annulation. Le remboursement portait auparavant sur l'intégralité
+// du PaymentIntent — une troisième règle, différente des deux autres.
+describe("part remboursable d'un litige", () => {
+  // 8 h à 14 €/h = 112 € de prestation, 118,10 € payés → 6,10 € de frais.
+  const m = { montant_total: 118.10, tarif_horaire: 14, hours: 8, actual_hours: 8 };
+
+  it("rembourse le prix de la prestation, pas les frais de service", () => {
+    const { centimes, fraisRetenus } = montantRemboursable(m);
+    expect(centimes).toBe(11200);
+    expect(fraisRetenus).toBeCloseTo(6.10, 2);
+  });
+
+  it("tient compte du nombre de jours d'une prestation multi-jours", () => {
+    // 3 jours × 8 h × 14 € = 336 € de prestation, 345 € payés → 9 € de frais.
+    const { centimes } = montantRemboursable({
+      montant_total: 345, tarif_horaire: 14, hours: 8, actual_hours: 8,
+      date_debut: "2026-08-10", date_fin: "2026-08-12",
+    });
+    expect(centimes).toBe(33600);
+  });
+
+  // À défaut de savoir ce qui est dû, on ne retient rien au consommateur :
+  // `null` fait rembourser la totalité côté appelant.
+  it("ne retient rien quand les frais ne sont pas établissables", () => {
+    expect(montantRemboursable({ montant_total: 0 }).centimes).toBeNull();
+    expect(montantRemboursable({ montant_total: 112, tarif_horaire: 14, hours: 8 }).centimes).toBeNull();
+    expect(montantRemboursable({}).centimes).toBeNull();
+  });
+});
+
 describe("exécution d'une résolution", () => {
   const SB = "https://exemple.supabase.co";
   const headers = { apikey: "x" };
@@ -121,6 +152,25 @@ describe("exécution d'une résolution", () => {
     expect(appels[0].url).toContain("api.stripe.com/v1/refunds");
     expect(appels[1].url).toContain("/missions?id=eq.m2");
     expect(JSON.parse(appels[1].opts.body).status).toBe("closed");
+  });
+
+  it("le remboursement envoyé à Stripe est plafonné au prix de la prestation", async () => {
+    await executerResolution({
+      mission: {
+        id: "m6", stripe_payment_intent: "pi_5",
+        montant_total: 118.10, tarif_horaire: 14, hours: 8, actual_hours: 8,
+      },
+      resolution: "rembourser_client", supabaseUrl: SB, headers, stripeKey: "sk_test",
+    });
+    expect(appels[0].opts.body).toContain("amount=11200");
+  });
+
+  it("sans montant établissable, rembourse la totalité plutôt que de retenir à l'aveugle", async () => {
+    await executerResolution({
+      mission: { id: "m7", stripe_payment_intent: "pi_6" },
+      resolution: "rembourser_client", supabaseUrl: SB, headers, stripeKey: "sk_test",
+    });
+    expect(appels[0].opts.body).not.toContain("amount=");
   });
 
   // Le traitement automatique repasse toutes les deux heures. Sans clé

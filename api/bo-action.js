@@ -962,7 +962,10 @@ export default async function handler(req, res) {
       // qui fait courir le délai — sans elle, le silence ne vaudrait rien.
       const quoi  = libelleResolution(resolution);
       const limite = new Date(echeance).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
-      const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
+      const detailFrais = resolution === "rembourser_client"
+        ? " Le remboursement porterait sur le prix de la prestation, les frais de service restant acquis à ALANE (article 17.1 des CGPS)."
+        : "";
+      const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.${detailFrais}\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
@@ -999,7 +1002,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1014,11 +1017,16 @@ export default async function handler(req, res) {
 
       const quoi = libelleResolution(resolution);
       const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
+      // Cf. cron : l'écart entre le montant payé et le montant remboursé doit
+      // être annoncé, pas découvert sur le relevé bancaire.
+      const precision = resolution === "rembourser_client"
+        ? "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
+        : "";
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.\n\nRéférence : ${just}`, read: false }),
+          body: JSON.stringify({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`, read: false }),
         }).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 

@@ -582,6 +582,11 @@ export function BlocPropositionResolution({ mission, onOppose }) {
     <div style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", marginTop:12, fontSize:13, color:C.textSub, lineHeight:1.65 }}>
       <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:6 }}>📩 Proposition de résolution</div>
       <div>Après examen du litige, ALANE propose <strong style={{ color:C.text }}>{quoi}</strong>.</div>
+      {mission.resolution_proposee === "rembourser_client" && (
+        <div style={{ marginTop:6, color:C.textMuted }}>
+          Le remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS).
+        </div>
+      )}
       {mission.resolution_motif && (
         <div style={{ marginTop:6, color:C.textMuted }}>Motif : {mission.resolution_motif}</div>
       )}
