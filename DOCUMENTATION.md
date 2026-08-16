@@ -1010,13 +1010,6 @@ l'étape 3 avaient déjà divergé. Supprimé.
 
 ### Un secteur fermé ne montre plus rien
 
-**Le réglage avait deux boutons « Sauvegarder » identiques**, côte à côte : l'un enregistrait
-`disabled_sectors`, l'autre `forced_open_sectors`, et rien ne disait lequel. Cocher « Ouvrir
-malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre réglage — la coche
-était perdue en silence, et le secteur restait invisible aux clients sans qu'on sache
-pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
-premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
-
 **Corrigé le 16/08/2026.** Le contrôle du secteur existait sur le paiement, pas sur la
 vitrine. Un secteur fermé faisait quand même apparaître ses prestataires dans « Top
 prestataires », dans le catalogue et dans la recherche : le client en choisissait un,
@@ -1048,6 +1041,13 @@ pour ne pas lui donner la mesure exacte de la faiblesse du réseau. La tuile aff
 Tant qu'un secteur est sous ce seuil, il faut l'inscrire dans `forced_open_sectors` depuis le
 backoffice pour que ses prestataires soient visibles — sans quoi le catalogue reste vide, ce
 qui est désormais le comportement correct et non plus une incohérence.
+
+**Le réglage avait deux boutons « Sauvegarder » identiques**, côte à côte : l'un enregistrait
+`disabled_sectors`, l'autre `forced_open_sectors`, et rien ne disait lequel. Cocher « Ouvrir
+malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre réglage — la coche
+était perdue en silence, et le secteur restait invisible aux clients sans qu'on sache
+pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
+premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
 ### Une colonne inexistante annulait tout le PATCH
 
