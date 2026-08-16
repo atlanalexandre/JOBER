@@ -1468,7 +1468,8 @@ const ETAT_VERSEMENT = {
 };
 
 export function BOVersements() {
-  const [data, setData] = useState({ versements:[], creances:[], noms:{}, enRetard:0 });
+  const [data, setData] = useState({ versements:[], creances:[], sansVersement:[], noms:{}, enRetard:0 });
+  const [programme, setProgramme] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [filtre, setFiltre] = useState("tous");
@@ -1517,7 +1518,7 @@ export function BOVersements() {
     try {
       const r = await boFetch({ action:"list_versements" });
       const d = await r.json();
-      if (r.ok) setData({ versements:d.versements||[], creances:d.creances||[], noms:d.noms||{}, enRetard:d.enRetard||0 });
+      if (r.ok) setData({ versements:d.versements||[], creances:d.creances||[], sansVersement:d.sansVersement||[], noms:d.noms||{}, enRetard:d.enRetard||0 });
       // Une liste vide et une lecture impossible se ressemblent à l'écran : on
       // le dit, sinon l'administrateur conclut qu'il n'y a rien à traiter.
       else showToast(d.error || `Versements illisibles (${r.status})`, "error");
@@ -1609,6 +1610,45 @@ export function BOVersements() {
         {dac7EnCours ? "…" : `📑 Export fiscal DAC7 ${new Date().getFullYear() - 1} (CSV)`}
       </button>
       <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Retenue (CGPS art. 7.4) et sommes dues (art. 8B.3)</div>
+
+      {/* Prestations clôturées sans versement programmé.
+          Elles n'apparaissaient nulle part : la liste des versements filtre sur
+          `payout_status`, et celui de ces prestations est NULL. Le prestataire
+          attendait donc un virement que rien n'émettrait. */}
+      {data.sansVersement.length > 0 && (
+        <Card style={{ borderLeft:"3px solid #E74C3C", marginBottom:14 }}>
+          <div style={{ color:"#E74C3C", fontWeight:800, fontSize:14 }}>
+            ⚠️ {data.sansVersement.length} prestation{data.sansVersement.length>1?"s":""} clôturée{data.sansVersement.length>1?"s":""} sans versement programmé
+          </div>
+          <div style={{ color:C.gray, fontSize:12, marginTop:6, lineHeight:1.6 }}>
+            Le prestataire attend un virement que rien n'émettra. Le montant affiché est calculé
+            par la même fonction que la clôture — il n'est pas recalculé ici.
+          </div>
+          {data.sansVersement.map(m => (
+            <div key={m.id} style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginTop:10, paddingTop:10, borderTop:"1px solid #E5E7EB" }}>
+              <div style={{ flex:1, minWidth:180 }}>
+                <div style={{ fontWeight:700, fontSize:13 }}>{nom(m.prestataire_id)} — {euro(m.montant_du)}</div>
+                <div style={{ color:C.gray, fontSize:11 }}>
+                  {m.metier || "Prestation"} · {m.date} · échéance {m.echeance ? new Date(m.echeance).toLocaleDateString("fr-FR") : "—"}
+                </div>
+              </div>
+              <button disabled={programme === m.id} onClick={async () => {
+                if (!await showConfirm(`Programmer le versement de ${euro(m.montant_du)} à ${nom(m.prestataire_id)} ?`)) return;
+                setProgramme(m.id);
+                try {
+                  const r = await boFetch({ action:"programmer_versement", mission_id:m.id });
+                  const j = await r.json();
+                  if (j.success) { showToast("Versement programmé 💶", "success"); load(); }
+                  else showToast(j.error || "Échec de la programmation");
+                } catch { showToast("Erreur réseau"); }
+                setProgramme(null);
+              }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                {programme === m.id ? "…" : "💶 Programmer"}
+              </button>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {data.enRetard > 0 && (
         <Card style={{ borderLeft:`3px solid #E74C3C`, marginBottom:14 }}>
