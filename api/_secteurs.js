@@ -58,26 +58,34 @@ export const SEUIL_PAR_DEFAUT = 20;
  * ne doit pas empêcher un client de commander.
  */
 export async function lireReglagesSecteurs(supabaseUrl, headers) {
+  // Une seule requête pour les trois clés. Ces réglages sont relus à chaque
+  // appel — voir `etatSecteursAvecCache` — autant qu'ils ne coûtent qu'un
+  // aller-retour au lieu de trois.
   let erreur = false;
-  const lire = async (cle, defaut) => {
-    try {
-      const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.${cle}&select=value`, { headers });
-      if (!r.ok) { erreur = true; console.error(`[secteurs] lecture de ${cle} refusée (${r.status})`); return defaut; }
-      const d = await r.json();
-      const v = Array.isArray(d) && d[0]?.value;
-      return v === undefined || v === null ? defaut : v;
-    } catch (e) {
+  const valeurs = {};
+  try {
+    const r = await fetch(
+      `${supabaseUrl}/rest/v1/platform_settings`
+      + `?key=in.(sector_min_prestataires,disabled_sectors,forced_open_sectors)&select=key,value`,
+      { headers }
+    );
+    if (!r.ok) {
       erreur = true;
-      console.error(`[secteurs] lecture de ${cle} impossible :`, e.message);
-      return defaut;
+      console.error(`[secteurs] lecture des réglages refusée (${r.status})`);
+    } else {
+      const d = await r.json();
+      for (const l of (Array.isArray(d) ? d : [])) {
+        if (l?.key != null && l.value !== undefined && l.value !== null) valeurs[l.key] = l.value;
+      }
     }
-  };
+  } catch (e) {
+    erreur = true;
+    console.error("[secteurs] lecture des réglages impossible :", e.message);
+  }
 
-  const [seuilBrut, fermes, forces] = await Promise.all([
-    lire("sector_min_prestataires", SEUIL_PAR_DEFAUT),
-    lire("disabled_sectors", []),
-    lire("forced_open_sectors", []),
-  ]);
+  const seuilBrut = valeurs.sector_min_prestataires ?? SEUIL_PAR_DEFAUT;
+  const fermes    = valeurs.disabled_sectors       ?? [];
+  const forces    = valeurs.forced_open_sectors    ?? [];
 
   const seuil = Number(seuilBrut);
   return {
@@ -139,7 +147,7 @@ export function messageSecteurFerme(_secteur) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// État d'ouverture, avec cache de cinq minutes
+// État d'ouverture — réglages relus à chaque appel, décompte mis en cache
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Ce calcul vivait dans `api/missions.js`. Il en a été sorti le 16/08/2026,
@@ -152,13 +160,32 @@ export function messageSecteurFerme(_secteur) {
 // AVANT que le moindre euro ne bouge. Elle est ici pour être appelée des deux
 // endroits, sans être recopiée.
 //
-// Le décompte impose d'énumérer les comptes : c'est coûteux, d'où le cache.
+// Le décompte impose d'énumérer les comptes : c'est coûteux, d'où le cache —
+// mais lui seul. Voir le commentaire de la fonction.
 
 export async function etatSecteursAvecCache(supabaseUrl, headers) {
-  const cache = globalThis.__alaneSectorCache;
-  if (cache && Date.now() - cache.ts < 300_000) return cache.data;
-
+  // Les RÉGLAGES sont relus à chaque appel. Seul le DÉCOMPTE est mis en cache.
+  //
+  // La version précédente mettait en cache la décision complète, réglages
+  // compris. Deux fonctions serverless distinctes — /api/stripe-intent et
+  // /api/missions — ont chacune leur propre mémoire : après un changement dans
+  // le backoffice, l'une pouvait avoir un cache frais et l'autre un cache
+  // vieux de quatre minutes, et les deux répondaient donc le contraire l'une de
+  // l'autre.
+  //
+  // Constaté le 16/08/2026, et c'est le pire scénario possible : le paiement
+  // accepté par le contrôle d'avant encaissement, puis l'affectation refusée
+  // juste après. Exactement ce que le contrôle avant paiement devait empêcher.
+  //
+  // Un réglage change par une décision humaine et doit prendre effet tout de
+  // suite ; l'effectif, lui, bouge au rythme des inscriptions. Ce sont deux
+  // temporalités différentes, et une seule justifie un cache.
   const reglages = await lireReglagesSecteurs(supabaseUrl, headers);
+
+  const cache = globalThis.__alaneSectorCounts;
+  if (cache && Date.now() - cache.ts < 300_000) {
+    return etatDesSecteurs(cache.counts, reglages);
+  }
 
   const pr = await fetch(
     `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id`,
@@ -186,9 +213,8 @@ export async function etatSecteursAvecCache(supabaseUrl, headers) {
     if (sector) counts[sector] = (counts[sector] || 0) + 1;
   }
 
-  const data = etatDesSecteurs(counts, reglages);
-  globalThis.__alaneSectorCache = { ts: Date.now(), data };
-  return data;
+  globalThis.__alaneSectorCounts = { ts: Date.now(), counts };
+  return etatDesSecteurs(counts, reglages);
 }
 
 // Le secteur est-il réservable ? Un secteur inconnu n'est pas bloqué : la liste

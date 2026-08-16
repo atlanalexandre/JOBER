@@ -2745,8 +2745,9 @@ export function BOSettingsTab() {
           }} />
         </div>
         <div style={{ color:C.textMuted, fontSize:10, marginTop:8 }}>
-          Les compteurs sont mis en cache 5 minutes côté serveur : un changement peut mettre
-          quelques minutes à se refléter côté client.
+          Une ouverture ou une fermeture prend effet immédiatement côté serveur. Seul le
+          nombre de prestataires affiché est mis en cache 5 minutes, ainsi que l&apos;affichage
+          côté client pendant une minute.
         </div>
       </div>
 

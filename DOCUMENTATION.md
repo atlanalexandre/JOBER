@@ -1049,6 +1049,32 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Le cache figeait la décision, pas seulement le décompte
+
+**Constaté en production le 16/08/2026, quelques minutes après la correction précédente.** Un
+secteur venait d'être ouvert de force depuis le backoffice. Le client a réservé, **payé**, et
+s'est fait refuser l'affectation — c'est-à-dire exactement le scénario que le contrôle avant
+encaissement venait d'être écrit pour empêcher.
+
+La cause : `etatSecteursAvecCache` mettait en cache **la décision complète**, réglages
+compris, pendant cinq minutes. Or `/api/stripe-intent` et `/api/missions` sont deux fonctions
+serverless **distinctes, chacune avec sa propre mémoire**. Après le changement, l'une avait un
+cache frais — secteur ouvert, paiement accepté — et l'autre un cache vieux de quatre minutes —
+secteur fermé, affectation refusée.
+
+Deux contrôles portant sur la même règle, répondant le contraire l'un de l'autre, à quelques
+secondes d'intervalle. Le client était débité puis remboursé pour rien, et le filet de
+sécurité a joué son rôle — ce qui prouve son utilité, mais ne rend pas le défaut acceptable.
+
+**Un réglage change par une décision humaine et doit prendre effet tout de suite ; l'effectif,
+lui, bouge au rythme des inscriptions.** Ce sont deux temporalités différentes, et une seule
+justifie un cache. Les réglages sont désormais relus à chaque appel — en une seule requête sur
+les trois clés — et seul le recensement des comptes, qui est la partie coûteuse, reste en
+cache cinq minutes.
+
+Deux tests le verrouillent : les réglages sont relus même quand le décompte est en cache, et
+le recensement n'est pas refait tant que le cache est valide.
+
 ### Une colonne inexistante annulait tout le PATCH
 
 **Découvert le 16/08/2026**, en écrivant une requête de nettoyage : la base a refusé la
