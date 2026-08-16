@@ -1049,6 +1049,38 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### `npm run colonnes` — l'outil qui aurait trouvé le défaut plus tôt
+
+`missions.cancellation_reason` a été découverte par hasard, en écrivant une requête de
+nettoyage. PostgREST refuse l'**intégralité** d'une requête qui mentionne une colonne
+inconnue, et l'échec est invisible quand le résultat n'est pas vérifié — le client était
+remboursé au prorata pendant que la prestation restait ouverte au montant plein.
+
+`scripts/verifier-colonnes.mjs` relève toutes les colonnes écrites vers PostgREST depuis
+`api/` — 16 tables, 130 colonnes — et imprime une requête SQL à passer sur la base. Elle ne
+renvoie que les colonnes **absentes**. Attendu : zéro ligne.
+
+À passer **après toute migration** et avant toute mise en production.
+
+Ce n'est **pas** un contrôle de CI et il n'est pas branché sur `npm run coherence` : la
+réponse est dans la base, pas dans le code. L'analyse est statique et se lit comme une liste
+de candidats.
+
+Le script a demandé quatre passes pour ne plus produire de faux positifs — chacune est
+documentée dans le fichier. Il remontait successivement les clés imbriquées dans un JSON de
+colonne (`tiers_declaration: { lieu }`), les mots français des commentaires ponctués de
+deux-points (`personne`, `disciplinaire`), les accolades des gabarits `${…}` qui faisaient
+déborder l'analyse sur le code suivant (`webhook`, `e` — la variable d'un `catch`), et enfin
+`error` lorsqu'un corps passé par variable envoyait la recherche d'accolade dans une réponse
+HTTP voisine. **Un contrôle qui crie sur du code légitime finit ignoré**, et un garde-fou
+ignoré ne protège plus rien : le mettre au point valait mieux que le livrer bruyant.
+
+**Trouvé en chemin** : `profiles.docs_verified` était écrit à la validation d'un document, et
+lu nulle part — ni dans `/api`, ni dans `src/`, ni ici. L'échec était explicitement ignoré
+« si la colonne n'existe pas encore ». Une écriture que personne ne lit ne prouve rien et ne
+protège rien ; l'information exacte vit déjà dans `documents.verified` et
+`documents.verified_at`. Supprimée.
+
 ### La position du prestataire n'est partageable que dans la fenêtre de la prestation
 
 **Corrigé le 16/08/2026.** Le partage de position n'était borné par rien. Le bouton étant

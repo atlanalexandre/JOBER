@@ -1268,12 +1268,13 @@ export default async function handler(req, res) {
         console.error(`[verify_doc] échec de l'écriture pour ${req.body.docId} : ${patchDocRes.status} ${detail}`);
         return res.status(500).json({ error: `La validation n'a pas pu être enregistrée (${patchDocRes.status}).` });
       }
-      // Marquer le profil comme ayant au moins un document vérifié
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ docs_verified: true }),
-      }).catch(() => {}); // Ignoré si la colonne n'existe pas encore (migration non appliquée)
+      // `profiles.docs_verified` était écrit ici, et lu NULLE PART — ni dans
+      // /api, ni dans src/, ni dans la documentation. Le commentaire d'origine
+      // assumait que la colonne pouvait ne pas exister et ignorait l'échec.
+      //
+      // Une écriture que personne ne lit ne prouve rien et ne protège rien :
+      // elle donne seulement l'impression qu'un état est suivi. L'information
+      // existe déjà, exacte, dans `documents.verified` et `documents.verified_at`.
       // Qui a validé cette pièce, et quand : la question sera posée en contrôle.
       journaliser("verify_doc", { target_id: profileId, details: { doc_id: String(req.body.docId) } });
       return res.status(200).json({ success: true });
