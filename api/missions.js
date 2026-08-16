@@ -11,6 +11,9 @@ const VERSION_RETRACTATION = "2026-08-15";
 // Même règle pour le mandat de facturation accepté par le prestataire.
 const VERSION_MANDAT_FACTURATION = "2026-08-15";
 
+// Version du mandat d'encaissement, accepté séparément des CGPS.
+const VERSION_MANDAT_ENCAISSEMENT = "2026-08-16";
+
 // Majorité de l'appelant, vérifiée par le SERVEUR.
 //
 // L'article 3 des CGPS réserve l'accès aux personnes majeures. Le contrôle
@@ -5084,6 +5087,30 @@ export default async function handler(req, res) {
     // ALANE ne peut établir une facture au nom du prestataire que s'il l'a
     // expressément mandatée, par écrit et au préalable. Sans mandat, le document
     // reste une attestation de prestation, sans numéro séquentiel.
+    // Mandat d'encaissement — accepté séparément des CGPS, où il n'était qu'un
+    // article parmi vingt-cinq. C'est la pièce sur laquelle repose la
+    // qualification de l'activité d'ALANE : elle doit être signée, pas subie.
+    if (action === "accepter_mandat_encaissement") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+
+      const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&role=eq.prestataire`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          mandat_encaissement_at: new Date().toISOString(),
+          mandat_encaissement_version: VERSION_MANDAT_ENCAISSEMENT,
+        }),
+      });
+      const rows = await maj.json().catch(() => []);
+      if (!maj.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[mandat_encaissement] acceptation non enregistrée pour ${caller.id} (${maj.status}) `
+          + "— vérifier que la migration 2026-08-16_mandat_encaissement.sql est appliquée.");
+        return res.status(503).json({ error: "Acceptation non enregistrée — réessayez dans quelques minutes." });
+      }
+      console.log(`[mandat_encaissement] accepté par ${caller.id} (version ${VERSION_MANDAT_ENCAISSEMENT})`);
+      return res.status(200).json({ success: true, version: VERSION_MANDAT_ENCAISSEMENT });
+    }
+
     if (action === "accepter_mandat_facturation") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });

@@ -1458,6 +1458,45 @@ export function BOVersements() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [filtre, setFiltre] = useState("tous");
+  const [dac7EnCours, setDac7EnCours] = useState(false);
+
+  // Export DAC7 de l'année écoulée. La déclaration porte sur l'année N-1 et se
+  // dépose en janvier : c'est donc l'année précédente qu'on exporte par défaut.
+  const exporterDac7 = async () => {
+    const annee = new Date().getFullYear() - 1;
+    setDac7EnCours(true);
+    try {
+      const r = await boFetch({ action:"export_dac7", annee });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(d.error || `Erreur ${r.status}`, "error"); setDac7EnCours(false); return; }
+      if (!d.lignes?.length) { showToast(`Aucun versement en ${annee}.`); setDac7EnCours(false); return; }
+
+      const champ = (v) => {
+        const t = String(v ?? "");
+        return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      };
+      const cols = ["prestataire_id","nom","raison_sociale","email","adresse","siret","nif",
+                    "residence_fiscale","iban","nombre_operations","montant_brut","retenues","donnees_manquantes"];
+      const csv = "\uFEFF" + [
+        cols.join(";"),
+        ...d.lignes.map(l => cols.map(c => champ(l[c])).join(";")),
+      ].join("\r\n");
+
+      const url = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8;" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `alane-dac7-${annee}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Le nombre de dossiers incomplets est l'information utile : c'est lui qui
+      // dit s'il reste du travail avant de pouvoir déclarer.
+      showToast(d.incomplets > 0
+        ? `${d.lignes.length} prestataire(s) exporté(s) — ⚠️ ${d.incomplets} dossier(s) incomplet(s), colonne « donnees_manquantes ».`
+        : `${d.lignes.length} prestataire(s) exporté(s), tous les dossiers sont complets.`,
+        d.incomplets > 0 ? "error" : "success");
+    } catch (e) { showToast(e?.message || "Erreur réseau", "error"); }
+    setDac7EnCours(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -1545,6 +1584,16 @@ export function BOVersements() {
   return (
     <>
       <SectionHeader title="Versements aux prestataires" />
+      {/* Export DAC7 — il ne déclare rien, il prépare la déclaration et rend
+          visible ce qui manque. Une déclaration incomplète se répare ; une
+          déclaration qu'on découvre incomplète le 31 janvier, non. */}
+      <button onClick={exporterDac7} disabled={dac7EnCours} style={{
+        width:"100%", marginBottom:12, padding:"11px", borderRadius:10,
+        border:`1px solid ${C.violet}55`, background:`${C.violet}12`, color:C.violet,
+        fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:dac7EnCours?0.6:1,
+      }}>
+        {dac7EnCours ? "…" : `📑 Export fiscal DAC7 ${new Date().getFullYear() - 1} (CSV)`}
+      </button>
       <div style={{ color:C.gray, fontSize:12, marginTop:-8, marginBottom:14 }}>Retenue (CGPS art. 7.4) et sommes dues (art. 8B.3)</div>
 
       {data.enRetard > 0 && (

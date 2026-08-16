@@ -1213,6 +1213,94 @@ export default async function handler(req, res) {
     // contentieux — et surtout, sans écran, personne ne voit qu'un versement
     // est bloqué.
 
+    // ── Export DAC7 (art. 1649 ter A et suivants du CGI) ──
+    //
+    // L'opérateur de plateforme déclare chaque année l'identité de ses
+    // prestataires et les contreparties qui leur ont été versées. Rien ne le
+    // permettait : ni collecte du NIF, ni décompte des opérations, ni export.
+    //
+    // Cet export ne DÉCLARE rien — il produit le fichier de travail à partir
+    // duquel la déclaration se prépare, et surtout il rend visible ce qui
+    // manque. Une déclaration incomplète se répare ; une déclaration qu'on
+    // découvre incomplète le 31 janvier, non.
+    if (action === "export_dac7") {
+      const annee = Number(body.annee) || new Date().getFullYear();
+      if (annee < 2020 || annee > 2100) return res.status(400).json({ error: "Année invalide" });
+      const debut = `${annee}-01-01`;
+      const fin   = `${annee + 1}-01-01`;
+
+      const [pRes, mRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire`
+          + `&select=id,prenom,nom,societe_nom,siret,nif,residence_fiscale,adresse,code_postal,ville,rib`, { headers }),
+        // Seules les prestations RÉELLEMENT VERSÉES entrent dans la déclaration :
+        // ce qui est en attente ou retenu n'a pas été perçu par le prestataire.
+        fetch(`${SUPABASE_URL}/rest/v1/missions?payout_status=eq.transferred`
+          + `&date=gte.${debut}&date=lt.${fin}`
+          + `&select=id,prestataire_id,date,payout_amount,payout_compensation`, { headers }),
+      ]);
+      if (!pRes.ok || !mRes.ok) {
+        console.error(`[export_dac7] lecture impossible (profils ${pRes.status}, prestations ${mRes.status}) `
+          + "— vérifier que la migration 2026-08-16_conformite_dac7.sql est appliquée.");
+        return res.status(503).json({ error: "Export indisponible — migration non appliquée ?" });
+      }
+      const profils = await pRes.json().catch(() => []);
+      const missions = await mRes.json().catch(() => []);
+
+      const parPresta = new Map();
+      for (const m of (Array.isArray(missions) ? missions : [])) {
+        if (!m.prestataire_id) continue;
+        const cur = parPresta.get(m.prestataire_id) || { operations: 0, brut: 0, retenu: 0 };
+        cur.operations += 1;
+        cur.brut   += Number(m.payout_amount || 0);
+        cur.retenu += Number(m.payout_compensation || 0);
+        parPresta.set(m.prestataire_id, cur);
+      }
+
+      // Les adresses e-mail vivent dans auth, pas dans profiles.
+      const emails = {};
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+        const uData = await uRes.json();
+        for (const u of (uData.users || [])) emails[u.id] = u.email || "";
+      } catch (e) {
+        console.error("[export_dac7] adresses e-mail illisibles :", e.message);
+      }
+
+      const lignes = (Array.isArray(profils) ? profils : [])
+        .filter(p => parPresta.has(p.id))
+        .map(p => {
+          const t = parPresta.get(p.id);
+          // Ce qui manque est nommé, pas laissé vide : c'est la colonne qu'on
+          // trie pour savoir qui relancer.
+          const manquant = [
+            !p.nif && "NIF",
+            !p.residence_fiscale && "résidence fiscale",
+            !p.siret && "SIRET",
+            !(p.adresse && p.code_postal && p.ville) && "adresse",
+          ].filter(Boolean).join(" + ");
+          return {
+            prestataire_id: p.id,
+            nom: [p.prenom, p.nom].filter(Boolean).join(" "),
+            raison_sociale: p.societe_nom || "",
+            email: emails[p.id] || "",
+            adresse: [p.adresse, p.code_postal, p.ville].filter(Boolean).join(", "),
+            siret: p.siret || "",
+            nif: p.nif || "",
+            residence_fiscale: p.residence_fiscale || "",
+            iban: p.rib || "",
+            nombre_operations: t.operations,
+            montant_brut: Math.round(t.brut * 100) / 100,
+            retenues: Math.round(t.retenu * 100) / 100,
+            donnees_manquantes: manquant,
+          };
+        })
+        .sort((a, b) => b.montant_brut - a.montant_brut);
+
+      const incomplets = lignes.filter(l => l.donnees_manquantes).length;
+      console.log(`[export_dac7] ${annee} : ${lignes.length} prestataire(s), ${incomplets} dossier(s) incomplet(s)`);
+      return res.status(200).json({ annee, lignes, incomplets });
+    }
+
     if (action === "list_versements") {
       const vRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions`
