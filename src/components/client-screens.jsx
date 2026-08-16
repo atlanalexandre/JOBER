@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
+import { calculerFrais } from "../../api/_montant.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
@@ -2797,13 +2798,15 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return () => { vivant = false; };
   }, [adresse, ville, p?.ville, p?.zone_km]);
 
-  const fraisMission = isUrgent
-    ? fraisSettings.urgent
-    : (missionType === "range"
-        ? Math.round(fraisSettings.range * nbJours * 100) / 100
-        : fraisSettings.single);
   const totalParJour = (tarifHoraire * hours).toFixed(0);
   const totalHT = tarifHoraire * hours * nbJours;
+  // La formule vit dans api/_montant.js, appelée aussi par le contrôle serveur.
+  // Une grille recopiée des deux côtés finit toujours par diverger, et c'est
+  // alors le client qui paie l'écart — ou ALANE qui ne perçoit rien.
+  const fraisMission = calculerFrais(
+    isUrgent ? "urgent" : missionType === "range" ? "range" : "single",
+    totalHT, nbJours, fraisSettings
+  );
   const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
 
   // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
@@ -3078,7 +3081,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {missionType==="range"&&nbJours>1 ? `${fraisSettings.range.toFixed(2)} € × ${nbJours}j = ${fraisMission.toFixed(2)} €` : `${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {`${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
                 )}
@@ -3253,7 +3256,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
@@ -3407,7 +3410,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {missionType==="range"&&nbJours>1 ? `${fraisSettings.range.toFixed(2)} € × ${nbJours}j = ${fraisMission.toFixed(2)} €` : `${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {`${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
                 )}
@@ -3582,7 +3585,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service{missionType==="range"&&nbJours>1 ? <span style={{ color:C.textMuted, fontSize:11 }}> ({fraisSettings.range.toFixed(2)} € × {nbJours}j)</span> : ""}</span>
+              <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
               <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>

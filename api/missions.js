@@ -2,6 +2,7 @@ import { resendBody } from "./_email.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
+import { calculerFrais, lireFraisService } from "./_montant.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -2654,13 +2655,21 @@ export default async function handler(req, res) {
         : 1;
       const partHoraire = Number(mission.tarif_horaire || 0) * Number(mission.hours || 0) * nbJours;
       const fraisDeduits = Math.round((missionAmount - partHoraire) * 100) / 100;
-      // Garde-fou calibré sur la grille réelle (plans.js FRAIS_MER : 4,90 simple,
-      // 2,90 par jour en récurrent, 9,90 en urgence) plutôt que sur un pourcentage
-      // du total : en urgence, 9,90 € sur 24,90 € représentent 40 % du total et un
-      // plafond proportionnel les aurait rejetés à tort. Si la déduction sort de
-      // cette grille — données incomplètes, montant repris du PaymentIntent — on
-      // retombe sur le forfait plutôt que de retenir un montant fantaisiste.
-      const fraisPlausiblesMax = Math.max(9.90, 2.90 * nbJours) + 0.01;
+      // Garde-fou calibré sur la grille réelle, calculée par api/_montant.js —
+      // et non sur un pourcentage du total : en urgence, les frais peuvent
+      // représenter 40 % d'une petite prestation, et un plafond proportionnel
+      // les rejetterait à tort.
+      //
+      // Le plafond suit désormais la part variable. Codé en dur, il valait
+      // max(9,90 ; 2,90 × jours) : sur une prestation à 1 000 €, dont les frais
+      // légitimes atteignent 24,90 €, il les aurait rejetés et ALANE n'aurait
+      // retenu que le forfait — soit vingt euros perdus à chaque annulation.
+      const bareme = await lireFraisService(SUPABASE_URL, headers);
+      const fraisPlausiblesMax = Math.max(
+        calculerFrais("urgent", partHoraire, nbJours, bareme),
+        calculerFrais("range",  partHoraire, nbJours, bareme),
+        calculerFrais("single", partHoraire, nbJours, bareme),
+      ) + 0.01;
       const fraisRetenus = (fraisDeduits > 0 && fraisDeduits <= fraisPlausiblesMax && fraisDeduits < missionAmount)
         ? fraisDeduits
         : Math.min(FRAIS_DEFAUT, missionAmount);
