@@ -29,7 +29,36 @@
 // raison. Ce module exécute une cause déjà constatée ; il ne l'apprécie pas.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { montantsDeCloture } from "./_cloture.js";
+
 export const DELAI_OPPOSITION_MS = 48 * 3600000;
+
+// Part remboursable au Client lorsqu'un litige se dénoue par un remboursement.
+//
+// Les frais de service restent acquis à ALANE — décision du 16/08/2026, alignée
+// sur la règle déjà posée pour les annulations : ils rémunèrent la mise en
+// relation et le traitement du paiement, qui ont bien eu lieu, et couvrent des
+// coûts déjà engagés auprès de l'établissement de paiement.
+//
+// Le remboursement portait auparavant sur l'INTÉGRALITÉ du PaymentIntent, ce
+// qui était une troisième règle, différente des deux autres, dans un projet où
+// c'est exactement ce qui finit par diverger.
+//
+// Retourne { centimes, fraisRetenus } — ou { centimes: null } lorsque le
+// montant ne peut pas être établi. Dans ce cas l'appelant rembourse la totalité
+// : à défaut de savoir ce qui est dû, on ne retient rien au consommateur.
+export function montantRemboursable(m) {
+  const total = Number(m?.montant_total || 0);
+  if (!(total > 0)) return { centimes: null, fraisRetenus: 0 };
+
+  const { fraisService } = montantsDeCloture(m);
+  if (!(fraisService > 0)) return { centimes: null, fraisRetenus: 0 };
+
+  const aRembourser = Math.round((total - fraisService) * 100) / 100;
+  if (!(aRembourser > 0)) return { centimes: null, fraisRetenus: 0 };
+
+  return { centimes: Math.round(aRembourser * 100), fraisRetenus: fraisService };
+}
 
 // Les deux seules propositions formulables. Toute autre valeur est refusée
 // côté base par `missions_resolution_proposee_check` : la contrainte et cette
@@ -102,6 +131,20 @@ export async function executerResolution({
       return { ok: false, detail: "Stripe non configuré — remboursement impossible." };
     }
     try {
+      // Les frais de service restent acquis : on ne rembourse que la part
+      // prestation. Sans montant établissable, on rembourse tout — mieux vaut
+      // rendre trop que retenir une somme qu'on ne sait pas justifier.
+      const { centimes, fraisRetenus } = montantRemboursable(mission);
+      if (centimes === null) {
+        console.error(`[resolution] frais de service non établissables pour ${mission.id}`
+          + " — remboursement intégral par défaut.");
+      } else {
+        console.log(`[resolution] remboursement de ${(centimes / 100).toFixed(2)} €`
+          + ` pour ${mission.id} — ${fraisRetenus.toFixed(2)} € de frais de service retenus.`);
+      }
+      const corpsRemboursement = { payment_intent: mission.stripe_payment_intent };
+      if (centimes !== null) corpsRemboursement.amount = String(centimes);
+
       const rf = await fetch("https://api.stripe.com/v1/refunds", {
         method: "POST",
         headers: {
@@ -112,7 +155,7 @@ export async function executerResolution({
           // avant l'écriture en base rembourserait deux fois.
           "Idempotency-Key": `resolution-${mission.id}`,
         },
-        body: new URLSearchParams({ payment_intent: mission.stripe_payment_intent }).toString(),
+        body: new URLSearchParams(corpsRemboursement).toString(),
       });
       const data = await rf.json();
       if (!data?.id) {

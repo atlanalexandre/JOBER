@@ -1020,10 +1020,18 @@ Les actions du dénouement ne vivent plus qu'à **un seul endroit**, l'écran «
 backoffice. Le gestionnaire de prestations les proposait aussi, en double, avec des libellés
 et un comportement déjà divergents.
 
-**Ce qui reste ouvert** : le remboursement d'un litige porte sur l'intégralité du
-`payment_intent`, frais de service compris. C'est le comportement d'origine, conservé
-volontairement — la règle « les frais de service restent dus » a été posée pour les
-*annulations*, et le cas du litige n'a jamais été tranché. C'est une décision produit.
+**Tranché le 16/08/2026 — le remboursement d'un litige ne porte pas sur les frais de
+service.** Il portait auparavant sur l'intégralité du `payment_intent`, ce qui faisait une
+troisième règle, différente de celle des annulations et de celle des CGPS. `montantRemboursable()`
+(`api/_resolution.js`) déduit les frais de `montant_total` via `montantsDeCloture` — les frais
+ne sont donc jamais recalculés depuis la grille tarifaire, qui a déjà divergé par le passé.
+
+Quand les frais ne sont pas établissables — `montant_total` absent, tarif ou durée manquants —
+la fonction renvoie `null` et l'appelant rembourse la **totalité**. À défaut de savoir ce qui
+est dû, on ne retient rien au consommateur.
+
+Le montant retenu est annoncé dans la proposition et dans la notification de clôture. Le taire
+ferait découvrir l'écart sur le relevé bancaire, ce qui rouvre le litige qu'on vient de fermer.
 
 ### Se faire remplacer
 

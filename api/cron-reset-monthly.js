@@ -338,6 +338,8 @@ export default async function handler(req, res) {
             + `&resolution_proposee=not.is.null`
             + `&resolution_echeance_at=lte.${encodeURIComponent(maintenant)}`
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
+            + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
+            + `delay_status,arrival_delay_minutes,`
             + `resolution_proposee,resolution_echeance_at,resolution_opposition_at`
             + `&limit=100`,
             { headers }
@@ -392,12 +394,18 @@ export default async function handler(req, res) {
 
               console.log(`[resolution] accord tacite exécuté (${m.resolution_proposee}) — prestation ${m.id}`);
               const quoi = libelleResolution(m.resolution_proposee);
+              // Le remboursement porte sur le prix de la prestation, pas sur
+              // les frais de service (CGPS art. 17.1). Le taire ferait découvrir
+              // l'écart sur le relevé bancaire, ce qui rouvre le litige.
+              const precision = m.resolution_proposee === "rembourser_client"
+                ? "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
+                : "";
               for (const uid of [m.client_id, m.prestataire_id]) {
                 if (!uid) continue;
                 await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
                   method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
                   body: JSON.stringify({ user_id: uid, type: "system", title: "Litige clôturé ✅",
-                    body: `Le délai d'opposition est écoulé sans opposition : la proposition de ${quoi} est réputée acceptée par les deux parties et a été exécutée.\n\nCette exécution ne préjuge d'aucun droit : chacune des parties conserve l'intégralité de ses recours contre l'autre.`,
+                    body: `Le délai d'opposition est écoulé sans opposition : la proposition de ${quoi} est réputée acceptée par les deux parties et a été exécutée.${precision}\n\nCette exécution ne préjuge d'aucun droit : chacune des parties conserve l'intégralité de ses recours contre l'autre.`,
                     read: false }),
                 }).catch(e => console.error(`[resolution] notification non envoyée ${m.id} :`, e.message));
               }
