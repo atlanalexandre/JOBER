@@ -1008,6 +1008,37 @@ compris. L'écran de paiement enchaînait donc : récapitulatif, formulaire de r
 récapitulatif, paiement. Les deux copies de l'étape 2 étaient identiques ; celles de
 l'étape 3 avaient déjà divergé. Supprimé.
 
+### Une colonne inexistante annulait tout le PATCH
+
+**Découvert le 16/08/2026**, en écrivant une requête de nettoyage : la base a refusé la
+colonne `cancellation_reason`, que `api/missions.js` écrivait depuis longtemps.
+
+PostgREST répond 400 (code `42703`) sur une colonne inconnue et **n'applique rien de la
+requête** — pas seulement la colonne fautive. Le résultat du PATCH n'était pas vérifié :
+l'échec était donc totalement invisible.
+
+Ce que ça cassait, dans `cancel_in_progress` (interruption d'une prestation déjà commencée) :
+
+1. le client était remboursé au prorata chez Stripe — **cette partie réussissait** ;
+2. l'écriture en base — `status = 'cancelled'`, montant recalculé au prorata, motif —
+   échouait entièrement.
+
+La prestation restait donc `assigned`, **avec son montant d'origine**. Elle se clôturait
+normalement à son terme par l'auto-validation, et le versement au prestataire se calculait
+sur le montant complet : ALANE payait au prestataire une somme dont elle venait de rendre une
+partie au client.
+
+Deux corrections : la colonne est créée (`2026-08-16_motif_annulation.sql`), et le résultat du
+PATCH est vérifié. En cas d'échec, le remboursement étant déjà parti, l'action répond 500 avec
+un message qui le dit — « vous avez été remboursé, mais la prestation n'a pas pu être
+clôturée » — et journalise le montant en erreur. Mentir serait pire que l'échec lui-même.
+
+**Ce qui reste à surveiller** : 35 appels PATCH/POST vers `missions` ignorent encore leur
+résultat. Aucune règle de `npm run coherence` ne les couvre — un contrôle qui crierait sur les
+35 finirait ignoré, et beaucoup sont des notifications où l'échec est délibérément toléré. Le
+critère utile serait « écriture d'argent ou de statut dont le résultat est jeté », et il reste
+à écrire.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

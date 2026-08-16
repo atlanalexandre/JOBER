@@ -3117,16 +3117,36 @@ export default async function handler(req, res) {
         }
       }
 
-      // Mettre à jour la mission
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Mettre à jour la mission.
+      //
+      // Le résultat n'était pas vérifié, et le PATCH échouait : il écrivait
+      // `cancellation_reason`, colonne qui n'existait pas. PostgREST répond 400
+      // et n'applique RIEN — pas seulement la colonne fautive. Le client était
+      // donc remboursé au prorata chez Stripe pendant que la prestation restait
+      // `assigned` avec son montant d'origine : elle se clôturait normalement à
+      // son terme, et le prestataire était payé sur le montant complet.
+      //
+      // Le remboursement est déjà parti à ce stade. On ne peut pas revenir en
+      // arrière, mais on doit le dire — franchement, et dans les journaux.
+      const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({
           status: "cancelled",
           montant_total: proratedAmount,
           cancellation_reason: `Interrompue en cours — prorata ${billedHours}h sur ${totalHours}h prévues`,
         }),
       });
+      const lignesAnnul = await majAnnul.json().catch(() => []);
+      if (!majAnnul.ok || !Array.isArray(lignesAnnul) || lignesAnnul.length === 0) {
+        console.error(`[cancel_in_progress] clôture NON enregistrée pour ${mission_id} (${majAnnul.status}) : `
+          + `${JSON.stringify(lignesAnnul).slice(0, 300)} — le client a été remboursé de `
+          + `${Number(refundAmount || 0).toFixed(2)} € mais la prestation reste ouverte. À reprendre à la main.`);
+        return res.status(500).json({
+          error: "Vous avez été remboursé, mais la prestation n'a pas pu être clôturée. "
+               + "Écrivez à direction@alane.fr en indiquant la date : nous la fermons manuellement.",
+        });
+      }
 
       // Récupérer infos prestataire (email + téléphone)
       let prestaEmail = null;
