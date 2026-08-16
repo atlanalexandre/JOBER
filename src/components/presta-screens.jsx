@@ -3813,9 +3813,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   Somme due à ALANE — reste {resteDu.toFixed(2).replace(".",",")} €
                 </div>
                 <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>
-                  Elle est retenue sur vos versements à venir, <strong>dans la limite de la moitié de chacun</strong>,
-                  jusqu'à extinction (CGPS art. 8B.3). Vous pouvez la contester à direction@alane.fr :
-                  la contestation suspend la retenue le temps de l'examen.
+                  Aucune retenue n'est opérée sur vos versements sans votre accord écrit : cette somme
+                  se règle d'accord entre nous (CGPS art. 8B.3). Vous pouvez la contester à
+                  direction@alane.fr sous quinze jours ; la demande est examinée de façon contradictoire.
                 </div>
                 {creances.map(c => (
                   <div key={c.id} style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, marginTop:10 }}>
