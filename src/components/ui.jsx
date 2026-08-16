@@ -545,3 +545,71 @@ export function fetchPrestaCount() {
     .catch(() => { _prestaCountPending = null; return null; });
   return _prestaCountPending;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Proposition de résolution d'un litige (CGPS art. 17.1)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ALANE propose, elle ne décide pas. La proposition n'engage les parties que
+// si aucune des deux ne s'y oppose dans les 48 heures — et ce délai ne veut
+// rien dire si personne ne voit passer la proposition ni ne dispose du moyen
+// de s'y opposer.
+//
+// Ce bloc est donc la contrepartie visible de l'article : c'est lui qui fait
+// du silence un accord. Il est partagé entre le client et le prestataire
+// parce que les deux ont exactement le même droit, et qu'un bloc recopié
+// finit par diverger — c'est déjà arrivé quatre fois sur les CGPS.
+export function BlocPropositionResolution({ mission, onOppose }) {
+  const [envoi, setEnvoi] = useState(false);
+  if (!mission?.resolution_proposee) return null;
+
+  const quoi = mission.resolution_proposee === "rembourser_client"
+    ? "de vous rembourser / de rembourser le client"
+    : "de verser la rémunération au prestataire";
+  const opposee = !!mission.resolution_opposition_at;
+  const echeance = mission.resolution_echeance_at ? new Date(mission.resolution_echeance_at) : null;
+  const expire = echeance ? Date.now() >= echeance.getTime() : false;
+
+  const opposer = async () => {
+    if (!await showConfirm(
+      "Vous opposer à cette proposition ?\n\nLes fonds resteront bloqués. ALANE ne pourra plus les débloquer sans un accord entre vous et l'autre partie, une décision de justice, ou une procédure de l'établissement de paiement."
+    )) return;
+    setEnvoi(true);
+    try { await onOppose(); } finally { setEnvoi(false); }
+  };
+
+  return (
+    <div style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", marginTop:12, fontSize:13, color:C.textSub, lineHeight:1.65 }}>
+      <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:6 }}>📩 Proposition de résolution</div>
+      <div>Après examen du litige, ALANE propose <strong style={{ color:C.text }}>{quoi}</strong>.</div>
+      {mission.resolution_motif && (
+        <div style={{ marginTop:6, color:C.textMuted }}>Motif : {mission.resolution_motif}</div>
+      )}
+
+      {opposee ? (
+        <div style={{ marginTop:10, color:C.danger, fontWeight:700 }}>
+          ⛔ Une opposition a été enregistrée : les fonds restent bloqués. Le différend se poursuit entre les parties — médiation ou juridiction compétente (article 17 des CGPS).
+        </div>
+      ) : expire ? (
+        <div style={{ marginTop:10, color:C.textMuted }}>
+          Le délai d'opposition est écoulé : la proposition est réputée acceptée et son exécution est en cours.
+        </div>
+      ) : (
+        <>
+          <div style={{ marginTop:10 }}>
+            Cette proposition ne tranche pas le litige et ne vous est pas imposée. Sans opposition de votre part
+            {echeance ? <> avant le <strong style={{ color:C.text }}>{echeance.toLocaleString("fr-FR", { dateStyle:"long", timeStyle:"short" })}</strong></> : null},
+            elle sera considérée comme acceptée par les deux parties et exécutée.
+          </div>
+          <button onClick={opposer} disabled={envoi}
+            style={{ marginTop:12, width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.danger}`, background:"transparent", color:C.danger, fontWeight:700, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.5:1 }}>
+            {envoi ? "Enregistrement…" : "Je m'oppose à cette proposition"}
+          </button>
+          <div style={{ marginTop:6, fontSize:11, color:C.textMuted, textAlign:"center" }}>
+            Aucune justification n'est demandée. Vos droits restent entiers.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -112,6 +112,15 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
 Voir « Le versement au prestataire » au §6.
 
+`resolution_proposee` (`verser_prestataire` | `rembourser_client`, sous contrainte `CHECK`),
+`resolution_motif`, `resolution_notifiee_at`, `resolution_echeance_at`,
+`resolution_opposition_par` / `resolution_opposition_at` et `resolution_executee_cause`
+portent le dénouement d'un litige : la proposition formulée par ALANE, le délai de 48 h
+pendant lequel chacune des deux parties peut s'y opposer, et la cause qui a finalement fait
+bouger les fonds — accord tacite, décision de justice, ou procédure de l'établissement de
+paiement. C'est la seule chose qu'on aura à produire si l'on demande un jour au titre de quoi
+l'argent a bougé. Voir « Dénouer un litige » au §6.
+
 **`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
 leur reste à recouvrer, leur notification et leur date d'exigibilité.
 **`compensations_versements`** — le journal des retenues opérées sur chaque versement. Les
@@ -954,6 +963,68 @@ validait de bonne foi en fin de service puis constatait un défaut l'après-midi
 plus rien à bloquer, l'annulation du Transfer échouant dès que Stripe a viré les fonds sur le
 compte bancaire du prestataire. Voir « Le versement au prestataire » ci-dessous.
 
+### Dénouer un litige — proposition, opposition, accord
+
+**Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,
+`release_dispute` et `refund_dispute` remboursaient ou validaient dans la seconde, sans que
+le client ni le prestataire aient été consultés, et sans qu'aucun des deux puisse s'y opposer.
+Un remboursement Stripe partait immédiatement.
+
+Le texte disait déjà autre chose — une « proposition sans caractère contraignant » — puis se
+contredisait quelques lignes plus loin en autorisant ALANE à « donner instruction de verser,
+de rembourser ou de maintenir les fonds indisponibles ». C'est un pouvoir de décision sur des
+fonds qui ne lui appartiennent pas, et c'est précisément ce qu'un examen prudentiel regarde
+en premier.
+
+**L'article 17.1 ne connaît plus que trois causes de déblocage :**
+
+| Cause | Qui la constate | Où c'est outillé |
+|---|---|---|
+| Accord des parties | La proposition notifiée, sans opposition dans les 48 h | `proposer_resolution` puis le traitement automatique |
+| Procédures de l'établissement de paiement | Stripe (rétrofacturation, opposition, fraude) | `executer_decision` avec `cause: "psp"` |
+| Décision de justice ou d'une autorité | Le juge | `executer_decision` avec `cause: "justice"` |
+
+Le parcours normal, celui de l'accord :
+
+1. **`proposer_resolution`** (backoffice) enregistre la proposition, son motif obligatoire,
+   la date de notification et l'échéance à +48 h. **Aucun euro ne bouge.** Le client et le
+   prestataire reçoivent le *même* texte : la proposition, son motif, la date limite et le
+   moyen de s'y opposer. C'est cette notification qui fait courir le délai.
+2. **`opposer_resolution`** (`api/missions.js`, client ou prestataire) enregistre une
+   opposition. Elle n'a pas à être motivée, et **l'opposition d'une seule des deux parties
+   suffit** à faire obstacle au déblocage. L'écriture est atomique
+   (`resolution_opposition_at=is.null` en filtre) : deux oppositions simultanées ne se
+   marchent pas dessus.
+3. **À l'échéance, sans opposition**, le traitement des versements exécute la proposition —
+   `verser_prestataire` remet `payout_status` à `pending`, `rembourser_client` rembourse via
+   Stripe puis clôt. Le verrou d'exécution porte sur `resolution_executee_cause`, non sur
+   `status` : inventer un statut intermédiaire aurait supposé de toucher à la contrainte de
+   `missions.status`, et un statut inconnu du reste du code aurait fait disparaître la
+   prestation de tous les écrans.
+
+En cas d'opposition, **rien ne se débloque**. Les fonds restent chez Stripe et le différend
+se poursuit entre les parties, par la médiation ou par les voies judiciaires.
+
+**Le bouton d'opposition est la contrepartie indispensable du délai.** Sans moyen visible de
+s'y opposer, l'absence d'opposition ne vaudrait pas accord et la « proposition » resterait
+une décision d'ALANE sous un autre nom. Il vit dans `BlocPropositionResolution`
+(`src/components/ui.jsx`), partagé entre le client et le prestataire : les deux ont
+exactement le même droit, et un bloc recopié finit par diverger — c'est déjà arrivé quatre
+fois sur les CGPS.
+
+Corrigé au passage : `disputed` était absent de la liste des prestations du prestataire. Une
+prestation contestée disparaissait de son écran — il ne voyait ni le litige, ni la
+proposition qu'il avait 48 h pour contester. Un droit qu'on ne voit pas ne s'exerce pas.
+
+Les actions du dénouement ne vivent plus qu'à **un seul endroit**, l'écran « Litiges » du
+backoffice. Le gestionnaire de prestations les proposait aussi, en double, avec des libellés
+et un comportement déjà divergents.
+
+**Ce qui reste ouvert** : le remboursement d'un litige porte sur l'intégralité du
+`payment_intent`, frais de service compris. C'est le comportement d'origine, conservé
+volontairement — la règle « les frais de service restent dus » a été posée pour les
+*annulations*, et le cas du litige n'a jamais été tranché. C'est une décision produit.
+
 ### Se faire remplacer
 
 Un prestataire empêché a deux issues : annuler, ou **se faire remplacer** par un confrère
@@ -1069,7 +1140,7 @@ la prestation était clôturée, le prestataire recevait un e-mail lui annonçan
 
 La quatrième copie était `force_complete_mission` dans `api/bo-action.js` : mêmes défauts,
 plus un cashback calculé sur le total frais compris, et là encore aucun virement programmé.
-`release_dispute` remet désormais `payout_status` à `pending` — sans quoi une prestation dont
+L'exécution d'une résolution remet `payout_status` à `pending` — sans quoi une prestation dont
 le virement avait échoué avant le litige restait `failed`, le backoffice annonçant « fonds
 libérés » au prestataire sans que rien ne reparte. Corrigé le 14/08/2026.
 

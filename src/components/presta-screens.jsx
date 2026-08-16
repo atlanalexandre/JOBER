@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution } from "./ui.jsx";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
@@ -3095,6 +3095,31 @@ export function PrestaClientsTab() {
 }
 
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
+  // Opposition à une proposition de résolution (CGPS art. 17.1). Même geste
+  // que côté client, même endpoint : c'est le serveur qui vérifie que
+  // l'appelant est bien partie au litige.
+  const opposerResolution = async (missionId) => {
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const res = await fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd?.session?.access_token}` },
+        body: JSON.stringify({ action:"opposer_resolution", mission_id: missionId }),
+      });
+      const j = await res.json();
+      if (j.success) {
+        const at = new Date().toISOString();
+        setHistoryMissions(ms => ms.map(m => m.id === missionId ? { ...m, resolution_opposition_at: at } : m));
+        showToast("Opposition enregistrée — les fonds restent bloqués.", "success");
+      } else {
+        showToast(j.error || "Votre opposition n'a pas pu être enregistrée.");
+      }
+    } catch (e) {
+      console.error("[opposer_resolution] échec :", e.message);
+      showToast("Erreur réseau — votre opposition n'a pas été enregistrée, réessayez.");
+    }
+  };
+
   const [tab,setTab]=useState("prestations");
   const [_userRib,setUserRib]=useState(null);
   const [ribMissionError,_setRibMissionError]=useState(false);
@@ -3262,7 +3287,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_echeance_at,resolution_opposition_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled","disputed"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
@@ -3291,7 +3316,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
-      setHistoryMissions([...done, ...allM.filter(m => m.status === "cancelled" || m.status === "refused")].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      // `disputed` était absent de cette liste : un prestataire dont la
+      // prestation était contestée ne la voyait plus nulle part — ni le litige,
+      // ni la proposition de résolution qu'il a 48 h pour contester (CGPS 17.1).
+      // Un droit qu'on ne voit pas ne s'exerce pas.
+      setHistoryMissions([...done, ...allM.filter(m => ["cancelled","refused","disputed"].includes(m.status))].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
 
       // Lecture directe : la RLS n'autorise que ses propres créances.
       supabase.from("creances_prestataires")
@@ -3684,8 +3713,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ))}
         </>}
         {tab==="historique" && (()=>{
-          const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée" };
-          const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted };
+          const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée", disputed:"Litige en cours" };
+          const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted, disputed:"#F2A65E" };
           const getAmtH = montantPrestataire;
           return historyMissions.length === 0 ? (
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center" }}>
@@ -3716,6 +3745,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       <span style={{ background:`${statusColor}20`, border:`1px solid ${statusColor}44`, borderRadius:20, padding:"2px 8px", color:statusColor, fontSize:10, fontWeight:700 }}>{statusLabel}</span>
                     </div>
                   </div>
+                  {/* Proposition de résolution — le prestataire a exactement le
+                      même droit d'opposition que le client (CGPS art. 17.1). */}
+                  <BlocPropositionResolution mission={m} onOppose={() => opposerResolution(m.id)} />
+
                   {m.status === "completed" && (() => {
                     // Le versement n'est plus immédiat : il part à la fermeture du
                     // délai de 48 h dont le client dispose pour signaler un problème

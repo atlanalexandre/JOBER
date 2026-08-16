@@ -8,7 +8,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CA
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
@@ -5924,7 +5924,7 @@ export function LegalScreen({ type, onBack }) {
         { title:"Article 6 — Obligations du client", text:"Le client s'engage à : fournir les conditions d'exécution nécessaires, traiter le prestataire avec respect, signaler toute réclamation dans les 48 heures suivant le terme de la prestation, payer le montant convenu via la plateforme. Le client n'exerce sur le prestataire aucun pouvoir de direction, de contrôle ni de sanction : il ne l'intègre pas à une équipe placée sous son autorité hiérarchique, ne le soumet à aucun dispositif interne de suivi du temps de travail et ne lui applique aucune mesure disciplinaire. Toute demande de paiement en dehors de la plateforme est interdite et libère ALANE de toute responsabilité. Si la prestation est exécutée chez un tiers, le client le déclare et reste seul à organiser le travail." },
         { title:"Article 7 — Annulation", text:"Annulation par le client : les frais de service restent dus dans tous les cas, car ils couvrent des coûts déjà engagés. Le montant de la prestation (tarif horaire × durée) est remboursé intégralement, que l'annulation intervienne plus ou moins de 24h avant le début. Après le début de la prestation, les heures entamées sont dues au prestataire, arrondies à l'heure entière supérieure et plafonnées à la durée commandée ; le solde éventuel est remboursé. Annulation par le prestataire : le client en est informé immédiatement via la plateforme, une proposition de remplacement lui est faite, et il est intégralement remboursé — frais de service compris — si aucun remplaçant n'intervient." },
         { title:"Article 8 — Responsabilité", text:"ALANE agit en qualité d'intermédiaire de mise en relation et ne peut être tenu responsable de la mauvaise exécution de la prestation, des dommages causés durant la prestation ou de tout litige entre client et prestataire. La responsabilité professionnelle du prestataire est engagée dans le cadre de son activité indépendante." },
-        { title:"Article 9 — Litiges", text:"En cas de contestation sur la qualité de la prestation, le client dispose de 48 heures après la fin pour le signaler via la plateforme. ALANE examinera le litige sous 72 heures sur la base des éléments fournis (échanges chat, contrat signé, description de la prestation). Au-delà de 48h sans signalement, la prestation est réputée validée et les fonds libérés définitivement." },
+        { title:"Article 9 — Litiges", text:"En cas de contestation sur la qualité de la prestation, le client dispose de 48 heures après la fin pour le signaler via la plateforme. Le signalement bloque le versement. ALANE recueille les observations des deux parties et formule sous 72 heures ouvrées une proposition de résolution, qui ne tranche pas le litige : elle est notifiée au client et au prestataire, qui disposent chacun de 48 heures pour s'y opposer d'un simple clic. Sans opposition, la proposition est réputée acceptée par les deux et exécutée ; en cas d'opposition, les fonds restent bloqués et le différend se poursuit entre les parties. Au-delà de 48h sans signalement, le versement au prestataire est déclenché ; ce délai n'éteint aucun droit et chacun conserve ses recours." },
         { title:"Article 10 — Données personnelles", text:"Les données des parties sont traitées conformément au RGPD. Elles sont utilisées exclusivement dans le cadre de l'exécution du présent contrat. Voir la Politique de confidentialité pour le détail complet des traitements effectués par ALANE." },
         { title:"Article 11 — Signature électronique", text:"La confirmation de la réservation via la plateforme ALANE vaut signature électronique du présent contrat par les deux parties. Cette signature a la même valeur juridique qu'une signature manuscrite conformément au Règlement eIDAS et à l'article 1366 du Code civil français." },
       ]
@@ -6186,6 +6186,34 @@ export function RemplacementsAValider({ onValide }) {
 }
 
 export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
+  // Opposition à une proposition de résolution (CGPS art. 17.1). Passe par
+  // `/api` : écrite depuis le navigateur, elle permettrait à une partie de
+  // s'opposer au nom de l'autre.
+  const opposerResolution = async (missionId) => {
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const res = await fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd?.session?.access_token}` },
+        body: JSON.stringify({ action:"opposer_resolution", mission_id: missionId }),
+      });
+      const j = await res.json();
+      if (j.success) {
+        const at = new Date().toISOString();
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, resolution_opposition_at: at } : m));
+        setSelected(sel => sel && sel.id === missionId ? { ...sel, resolution_opposition_at: at } : sel);
+        showToast("Opposition enregistrée — les fonds restent bloqués.", "success");
+      } else {
+        showToast(j.error || "Votre opposition n'a pas pu être enregistrée.");
+      }
+    } catch (e) {
+      // Sans ce message, le bouton retombe sans rien dire et l'utilisateur
+      // croit s'être opposé alors que le délai continue de courir.
+      console.error("[opposer_resolution] échec :", e.message);
+      showToast("Erreur réseau — votre opposition n'a pas été enregistrée, réessayez.");
+    }
+  };
+
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
   const [prestations, setMissions]   = useState([]);
@@ -6697,6 +6725,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           {selected.description && <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.7)", lineHeight:1.5 }}>📝 {selected.description}</div>}
         </div>
         <div style={{ padding:"18px" }}>
+          {/* Proposition de résolution — c'est ce bloc qui donne son sens au
+              délai de 48 h de l'article 17.1 : sans moyen de s'y opposer,
+              l'absence d'opposition ne vaudrait pas accord. */}
+          <BlocPropositionResolution mission={selected} onOppose={() => opposerResolution(selected.id)} />
+
           {/* Carte prestataire assigné */}
           {(["assigned","pending_acceptance","completed","closed"].includes(selected.status)) && selected.prestataire_id && prestaDetails && (() => {
             const fullProvider = providers.find(p => p.id === selected.prestataire_id);

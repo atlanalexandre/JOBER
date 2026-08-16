@@ -1750,34 +1750,52 @@ export function BOLitiges() {
 
   useEffect(() => { load(); }, []);
 
-  const handleRefund = async (m) => {
-    if (!await showConfirm(`Rembourser ${m.montant_total || 0} € au client pour la prestation "${m.titre || m.metier}" ?`)) return;
+  // ALANE propose, elle ne décide pas (CGPS art. 17.1).
+  //
+  // Ces deux boutons remboursaient ou validaient dans la seconde. Ils ne font
+  // plus que formuler une proposition, notifiée aux deux parties, exécutée par
+  // le traitement automatique 48 heures plus tard si personne ne s'y oppose.
+  // Aucun euro ne bouge ici.
+  const proposer = async (m, resolution) => {
+    const quoi = resolution === "rembourser_client"
+      ? `rembourser ${m.montant_total || 0} € au client`
+      : "verser la rémunération au prestataire";
+    const motif = await showPrompt(
+      `Proposer de ${quoi} pour "${m.titre || m.metier}" ?\n\nLe motif est communiqué au client ET au prestataire. Chacun pourra s'y opposer pendant 48 h ; sans opposition, la proposition sera exécutée.`,
+      "Motif de la proposition (10 caractères minimum)…"
+    );
+    if (motif === null) return;
     setProcessingId(m.id);
     try {
-      const r = await boFetch({ action: "refund_dispute", mission_id: m.id });
+      const r = await boFetch({ action: "proposer_resolution", mission_id: m.id, resolution, motif });
       const d = await r.json();
       if (d.success) {
-        showToast("Remboursement effectué ✅", "success");
+        showToast("Proposition notifiée aux deux parties 📩", "success");
         load();
       } else {
-        showToast(d.error || "Erreur lors du remboursement");
+        showToast(d.error || "La proposition n'a pas pu être enregistrée");
       }
     } catch { showToast("Erreur réseau"); }
     setProcessingId(null);
   };
 
-  const handleReject = async (m) => {
-    if (!await showConfirm(`Rejeter le litige pour "${m.titre || m.metier}" ? Le client ne sera pas remboursé.`)) return;
+  // Les deux autres causes de déblocage de l'article 17.1 : une décision de
+  // justice, ou une procédure de l'établissement de paiement. Là, ALANE ne
+  // propose pas — elle constate et transmet. D'où la justification obligatoire.
+  const executer = async (m, resolution, cause) => {
+    const quoi = resolution === "rembourser_client" ? "le remboursement du client" : "le versement au prestataire";
+    const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
+    const justification = await showPrompt(
+      `Exécuter ${quoi} en application ${origine} ?\n\nCette action débloque les fonds sans l'accord des parties. Elle n'est légitime que si la décision existe réellement.`,
+      "Référence de la décision ou du dossier…"
+    );
+    if (justification === null) return;
     setProcessingId(m.id);
     try {
-      const r = await boFetch({ action: "resolve_dispute", mission_id: m.id, resolution: "rejected" });
+      const r = await boFetch({ action: "executer_decision", mission_id: m.id, resolution, cause, justification });
       const d = await r.json();
-      if (d.success) {
-        showToast("Litige rejeté ✅", "success");
-        load();
-      } else {
-        showToast(d.error || "Erreur lors du rejet");
-      }
+      if (d.success) { showToast("Instruction transmise ⚖️", "success"); load(); }
+      else showToast(d.error || "L'exécution a échoué");
     } catch { showToast("Erreur réseau"); }
     setProcessingId(null);
   };
@@ -1804,16 +1822,52 @@ export function BOLitiges() {
             </div>
           </div>
           {m.dispute_reason && <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:10 }}>"{m.dispute_reason}"</div>}
-          <div style={{ display:"flex", gap:8 }}>
-            <button disabled={processingId === m.id} onClick={() => handleRefund(m)}
-              style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
-              {processingId === m.id ? "…" : "💰 Rembourser"}
-            </button>
-            <button disabled={processingId === m.id} onClick={() => handleReject(m)}
-              style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
-              {processingId === m.id ? "…" : "✕ Rejeter le litige"}
-            </button>
-          </div>
+
+          {/* Où en est la proposition. Sans cet état, on en formulerait une
+              deuxième par-dessus, ou on croirait qu'il ne s'est rien passé. */}
+          {m.resolution_proposee && (
+            <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:8, padding:"10px 12px", fontSize:12, color:"rgba(255,255,255,0.7)", marginBottom:10, lineHeight:1.6 }}>
+              📩 Proposition en cours : <strong>{m.resolution_proposee === "rembourser_client" ? "rembourser le client" : "verser au prestataire"}</strong>
+              {m.resolution_motif && <div style={{ color:"rgba(255,255,255,0.5)", marginTop:3 }}>Motif : {m.resolution_motif}</div>}
+              {m.resolution_opposition_at
+                ? <div style={{ color:"#F25E5E", marginTop:5, fontWeight:700 }}>⛔ Opposition enregistrée — les fonds restent bloqués. Seul un accord, une décision de justice ou une procédure de l'établissement de paiement peut les débloquer.</div>
+                : <div style={{ color:"rgba(255,255,255,0.5)", marginTop:5 }}>Sans opposition, exécutée le {m.resolution_echeance_at ? new Date(m.resolution_echeance_at).toLocaleString("fr-FR") : "—"}.</div>}
+            </div>
+          )}
+
+          {!m.resolution_proposee && (
+            <>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:6, lineHeight:1.5 }}>
+                ALANE propose, elle ne décide pas : la proposition est notifiée aux deux parties, qui ont 48 h pour s'y opposer.
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button disabled={processingId === m.id} onClick={() => proposer(m, "rembourser_client")}
+                  style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+                  {processingId === m.id ? "…" : "📩 Proposer le remboursement"}
+                </button>
+                <button disabled={processingId === m.id} onClick={() => proposer(m, "verser_prestataire")}
+                  style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
+                  {processingId === m.id ? "…" : "📩 Proposer le versement"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Les deux autres causes de l'article 17.1. Volontairement discrètes :
+              elles débloquent sans accord, et ne servent qu'adossées à une
+              décision réelle. */}
+          {m.resolution_opposition_at && (
+            <div style={{ display:"flex", gap:8, marginTop:8, flexWrap:"wrap" }}>
+              <button disabled={processingId === m.id} onClick={() => executer(m, "rembourser_client", "justice")}
+                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.55)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                ⚖️ Rembourser sur décision
+              </button>
+              <button disabled={processingId === m.id} onClick={() => executer(m, "verser_prestataire", "justice")}
+                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.55)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                ⚖️ Verser sur décision
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -3026,22 +3080,6 @@ export function BOMissions() {
     setValidating(null);
   };
 
-  const handleRelease = async (missionId) => {
-    if (!await showConfirm("Libérer les fonds au prestataire ? Le litige sera clos.")) return;
-    setDisputing(missionId + "_release");
-    try {
-      const res = await boFetch({ action:"release_dispute", mission_id: missionId });
-      const data = await res.json();
-      if (data.success) {
-        setResult(r => ({ ...r, [missionId]: "✅ Fonds libérés — prestation validée" }));
-        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"completed" } : m));
-      } else {
-        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
-      }
-    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
-    setDisputing(null);
-  };
-
   const handleCancel = async (missionId, withRefund) => {
     const reason = await showPrompt("Motif d'annulation (optionnel) :","Motif..."); if (reason === null) return;
     setDisputing(missionId + "_cancel");
@@ -3074,22 +3112,6 @@ export function BOMissions() {
       if (data.success) { setResult(r=>({...r,[missionId]:"✅ Prestation mise à jour"})); setMissions(ms=>ms.map(m=>m.id===missionId?{...m,...editMissionVals}:m)); setEditingMission(null); setEditMissionVals({}); }
       else setResult(r=>({...r,[missionId]:`❌ ${data.error}`}));
     } catch { setResult(r=>({...r,[missionId]:"❌ Erreur réseau"})); }
-    setDisputing(null);
-  };
-
-  const handleRefund = async (missionId) => {
-    if (!await showConfirm("Rembourser le client ? Cette action est irréversible.")) return;
-    setDisputing(missionId + "_refund");
-    try {
-      const res = await boFetch({ action:"refund_dispute", mission_id: missionId });
-      const data = await res.json();
-      if (data.success) {
-        setResult(r => ({ ...r, [missionId]: "💰 Remboursement initié" }));
-        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, status:"closed" } : m));
-      } else {
-        setResult(r => ({ ...r, [missionId]: `❌ ${data.error}` }));
-      }
-    } catch { setResult(r => ({ ...r, [missionId]: "❌ Erreur réseau" })); }
     setDisputing(null);
   };
 
@@ -3181,14 +3203,13 @@ export function BOMissions() {
                 </button>
               </div>
             )}
+            {/* Les litiges se traitent depuis l'écran « Litiges », et nulle part
+                ailleurs. Ces deux boutons débloquaient les fonds ici en un clic,
+                sans proposition ni délai d'opposition — et en double du même
+                geste ailleurs, deux chemins qui n'ont pas tardé à diverger. */}
             {m.status === "disputed" && !result[m.id] && (
-              <div style={{ display:"flex", gap:6, marginTop:8 }}>
-                <button onClick={()=>handleRelease(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:`${C.success}20`, color:C.success, fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
-                  {disputing===m.id+"_release" ? "…" : "✅ Libérer les fonds"}
-                </button>
-                <button onClick={()=>handleRefund(m.id)} disabled={!!disputing} style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"rgba(242,94,94,0.15)", color:"#F25E5E", fontWeight:700, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
-                  {disputing===m.id+"_refund" ? "…" : "💰 Rembourser le client"}
-                </button>
+              <div style={{ marginTop:8, padding:"8px 10px", borderRadius:8, background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.25)", color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.6 }}>
+                ⚠️ Prestation en litige — le dénouement passe par l'écran <strong>Litiges</strong> : ALANE y formule une proposition, notifiée aux deux parties, qui disposent de 48 h pour s'y opposer.
               </div>
             )}
             {/* ── Actions admin : Annuler / Réassigner / Modifier ── */}
