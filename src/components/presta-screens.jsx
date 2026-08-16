@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm } from "./ui.jsx";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
@@ -425,7 +425,7 @@ export function DocUploadCard({ doc, value, onChange, required }) {
 export function PrestaOnboarding({ onComplete, onBack }) {
   const [step,setStep]=useState(1);
   const TOTAL=8;
-  const [infos,setInfos]=useState({prenom:"",nom:"",email:"",tel:"",password:"",dateNaissance:"",lieuNaissance:"",nationalite:"France"});
+  const [infos,setInfos]=useState({prenom:"",nom:"",email:"",tel:"",password:"",dateNaissance:"",lieuNaissance:"",nationalite:"France",nif:"",residenceFiscale:"France"});
   const [adresse,setAdresse]=useState({rue:"",ville:"",cp:"",pays:"France",rayon:"20"});
   const [ae,setAe]=useState({siret:"",siren:"",activite:"",dateCreation:"",codeAPE:"",regime:"micro-entreprise"});
   const [siretStatus,setSiretStatus]=useState(null); // null | "loading" | "ok" | "error"
@@ -480,7 +480,10 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
   const [cguAccepted,setCguAccepted]=useState(false);
-  const docsOk=DOCS_REQUIS.filter(d=>d.required).every(d=>docs[d.id]);
+  // La liste dépend de la nationalité : le titre de séjour n'est exigé que des
+  // ressortissants hors UE.
+  const docsAttendus=docsRequisPour(infos.nationalite);
+  const docsOk=docsAttendus.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=8;
 
@@ -521,8 +524,27 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           dispon_jours_creneaux: dispos,
           plan_abonnement: abonnement !== "free" ? abonnement : (existingMeta.plan_abonnement || "free"),
           dossier_soumis: true,
+          // Nationalité et numéro fiscal : la première détermine si un titre de
+          // séjour est exigé, le second est une donnée déclarable au titre de
+          // DAC7. Elles n'étaient conservées nulle part.
+          nationalite: infos.nationalite,
+          nif: infos.nif || null,
         },
       });
+      // `profiles` porte les données fiscales : c'est la table que lit l'export
+      // DAC7. Les écrire dans les seules métadonnées les rendrait invisibles au
+      // moment où il faut déclarer.
+      const { data: uNow } = await supabase.auth.getUser();
+      if (uNow?.user?.id) {
+        const { error: fiscalErr } = await supabase.from("profiles").update({
+          nif: infos.nif || null,
+          nif_collecte_at: infos.nif ? new Date().toISOString() : null,
+          residence_fiscale: infos.residenceFiscale === "France" ? "FR" : null,
+        }).eq("id", uNow.user.id);
+        // Journalisé, non bloquant : le dossier est déjà envoyé, et l'export
+        // signale de toute façon les données manquantes.
+        if (fiscalErr) console.error("[onboarding] données fiscales non enregistrées :", fiscalErr.message);
+      }
     } catch(e){
       setSubmitError("Une erreur est survenue lors de l'envoi. Réessayez.");
       setSubmitting(false);
@@ -532,7 +554,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
     onComplete();
   };
   const stepValid=()=>{
-    if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password;
+    if(step===1)return infos.prenom&&infos.nom&&infos.email&&infos.tel&&infos.password&&infos.nif;
     if(step===2)return adresse.rue&&adresse.ville&&adresse.cp;
     if(step===3)return ae.siret&&ae.siren&&ae.activite;
     if(step===4)return true;
@@ -556,6 +578,18 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           <Input label="Date de naissance" type="date" placeholder="AAAA-MM-JJ" value={infos.dateNaissance} onChange={e=>setInfos({...infos,dateNaissance:e.target.value})} />
           <Input label="Lieu de naissance" placeholder="Paris" value={infos.lieuNaissance} onChange={e=>setInfos({...infos,lieuNaissance:e.target.value})} />
           <Select label="Nationalité" options={["France","Autre UE","Hors UE"]} value={infos.nationalite} onChange={e=>setInfos({...infos,nationalite:e.target.value})} />
+          {/* Numéro fiscal — exigé de l'opérateur de plateforme par la directive
+              DAC7 (art. 1649 ter A du CGI), qui lui impose de déclarer chaque
+              année l'identité de ses prestataires et les sommes versées. Il est
+              distinct du SIRET, et rien ne le collectait. */}
+          <Input label="Numéro fiscal (NIF)" placeholder="13 chiffres" icon="🧾"
+            value={infos.nif} onChange={e=>setInfos({...infos,nif:e.target.value.replace(/\s/g,"")})}
+            hint="Figure sur votre avis d'imposition. Obligatoire : ALANE doit déclarer chaque année vos revenus à l'administration fiscale." />
+          {/* La résidence fiscale ne se déduit pas de la nationalité : un
+              Français peut résider fiscalement ailleurs, et l'inverse. On la
+              demande plutôt que de l'inventer. */}
+          <Select label="Pays de résidence fiscale" options={["France","Autre pays"]}
+            value={infos.residenceFiscale} onChange={e=>setInfos({...infos,residenceFiscale:e.target.value})} />
           <div style={{ background:`${C.violet}10`, border:`1px solid ${C.violet}33`, borderRadius:12, padding:"12px 14px", marginBottom:16 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:8 }}>📸 Photo de profil</div>
             <div style={{ display:"flex", gap:10 }}>
@@ -649,7 +683,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             </div>
           </div>
           <p style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:10 }}>Documents obligatoires</p>
-          {DOCS_REQUIS.filter(d=>d.required).map(doc=>(
+          {docsAttendus.filter(d=>d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
               // getSession() rafraîchit le token expiré ; getUser() renvoyait un user
@@ -668,7 +702,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             }} required />
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>Documents optionnels</p>
-          {DOCS_REQUIS.filter(d=>!d.required).map(doc=>(
+          {docsAttendus.filter(d=>!d.required).map(doc=>(
             <DocUploadCard key={doc.id} doc={doc} value={docs[doc.id]} onChange={async(file)=>{
               if(!file) return;
               const { data:_sd } = await supabase.auth.getSession();
@@ -931,7 +965,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             {title:"👤 Identité",items:[`${infos.prenom} ${infos.nom}`,infos.email,infos.tel]},
             {title:"📍 Adresse",items:[`${adresse.rue}, ${adresse.cp} ${adresse.ville}`,`Zone : ${adresse.rayon} km`]},
             {title:"🏢 Auto-entrepreneur",items:[`SIRET : ${ae.siret||"—"}`,`Activité : ${ae.activite||"—"}`]},
-            {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${DOCS_REQUIS.length} chargés`]},
+            {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${docsAttendus.length} chargés`]},
             {title:"💼 Métiers & taux nets",items:metiers.map(m=>m.tarifNet?`${m.metier} — ${formatE(m.tarifNet)} net`:m.metier)},
             {title:"📅 Disponibilités",items:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j} : ${(dispos[j]||[]).map(p=>p.split(" ")[0]).join(", ")}`)},
             ...[{title:"💎 Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}],
@@ -3254,7 +3288,10 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       } catch { /* file d'attente illisible → on repart de la liste serveur ci-dessous */ }
 
       setUploadedDocIds(uploaded);
-      const required = DOCS_REQUIS.filter(d=>d.required).map(d=>d.id);
+      // Même règle que dans l'inscription : le titre de séjour n'est réclamé
+      // qu'aux ressortissants hors UE. Le lire depuis user_metadata évite un
+      // aller-retour et suit la déclaration faite à l'inscription.
+      const required = docsRequisPour(u?.user_metadata?.nationalite).filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     })();
     supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
