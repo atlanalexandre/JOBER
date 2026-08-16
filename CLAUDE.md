@@ -264,6 +264,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | CGPS | Source unique : `src/constants/cgps.js`. Ne jamais recopier un extrait dans un écran — quatre copies divergentes, dont deux fausses sur l'argent, étaient présentées à l'inscription. Après modification : `npm run cgps` |
 | CI eslint | Doit rester à 0 erreur |
 | Contrôle de cohérence | `npm run coherence` vérifie automatiquement les règles ci-dessus. Il bloque la CI. Avant d'ajouter une exception, se demander si ce n'est pas le code qui a tort |
+| Colonne inexistante | PostgREST refuse **toute** la requête, pas seulement la colonne fautive — et en silence si le résultat n'est pas vérifié. `npm run colonnes` produit la requête qui confronte le code à la base : à passer après chaque migration |
 
 ---
 
