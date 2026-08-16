@@ -1554,6 +1554,7 @@ export default async function handler(req, res) {
         ...(Array.isArray(creances) ? creances : []).map(c => c.prestataire_id),
       ].filter(Boolean))];
       const noms = {};
+      const idsOrphelins = new Set();
       if (ids.length) {
         const nRes = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`,
@@ -1572,11 +1573,105 @@ export default async function handler(req, res) {
         v.payout_status === "pending" && v.payout_due_at && new Date(v.payout_due_at).getTime() < seuil
       ).length;
 
+      // Prestations clôturées dont AUCUN versement n'a été programmé.
+      //
+      // Elles n'apparaissaient nulle part : le filtre ci-dessus porte sur
+      // `payout_status`, et ces prestations-là l'ont à NULL. Le prestataire
+      // attend donc un virement que rien n'émettra, et personne ne le voit.
+      //
+      // C'est ce qu'a produit l'absence de `payout_amount` et `payout_due_at`
+      // en base, du 12 au 16/08/2026 : la mise en attente du versement échouait
+      // et la prestation restait clôturée sans échéance.
+      const orphRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions`
+        + `?status=eq.completed&payout_status=is.null`
+        + `&select=id,prestataire_id,metier,sector,date,montant_total,tarif_horaire,hours,actual_hours`
+        + `,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,heure_debut`
+        + `&order=date&limit=100`,
+        { headers }
+      ).catch(() => null);
+      const sansVersement = orphRes?.ok ? await orphRes.json().catch(() => []) : [];
+      for (const m of (Array.isArray(sansVersement) ? sansVersement : [])) {
+        // Le montant est calculé par la source unique, jamais réinventé ici.
+        m.montant_du = montantsDeCloture(m).partPrestataire;
+        m.echeance   = new Date(echeanceVersementMs(m)).toISOString();
+        if (m.prestataire_id && !noms[m.prestataire_id]) idsOrphelins.add(m.prestataire_id);
+      }
+      if (idsOrphelins.size) {
+        const nRes2 = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${[...idsOrphelins].join(",")})&select=id,prenom,nom`,
+          { headers }
+        ).catch(() => null);
+        for (const p of (nRes2?.ok ? await nRes2.json().catch(() => []) : [])) {
+          noms[p.id] = [p.prenom, p.nom].filter(Boolean).join(" ") || null;
+        }
+      }
+
       return res.status(200).json({
         versements: Array.isArray(versements) ? versements : [],
         creances: Array.isArray(creances) ? creances : [],
+        sansVersement: Array.isArray(sansVersement) ? sansVersement : [],
         noms, enRetard,
       });
+    }
+
+    // Programmer le versement d'une prestation clôturée qui n'en a pas.
+    //
+    // Le montant vient de `montantsDeCloture`, l'échéance de
+    // `echeanceVersementMs` : les deux mêmes fonctions que la clôture normale.
+    // Le refaire ici en produirait une seconde version, qui divergerait — c'est
+    // exactement le défaut que ce projet passe son temps à éliminer, et c'est
+    // aussi pourquoi ces reprises ne se font pas par un UPDATE en base.
+    if (action === "programmer_versement") {
+      const { mission_id } = body;
+      if (!mission_id || !isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`
+        + `&select=id,status,payout_status,prestataire_id,montant_total,tarif_horaire,hours,actual_hours`
+        + `,date,date_debut,date_fin,heure_debut,started_at,delay_status,arrival_delay_minutes&limit=1`,
+        { headers }
+      );
+      const m = (await mRes.json().catch(() => []))[0];
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (m.status !== "completed") {
+        return res.status(400).json({ error: `Statut ${m.status} — seule une prestation clôturée peut être mise en versement.` });
+      }
+      if (m.payout_status) {
+        return res.status(409).json({ error: `Un versement est déjà enregistré (${m.payout_status}).` });
+      }
+      if (!m.prestataire_id) return res.status(400).json({ error: "Aucun prestataire sur cette prestation." });
+
+      const { partPrestataire } = montantsDeCloture(m);
+      if (!(partPrestataire > 0)) {
+        return res.status(400).json({ error: "Montant dû nul ou incalculable — à examiner à la main." });
+      }
+      const echeance = new Date(echeanceVersementMs(m)).toISOString();
+
+      // Filtre sur `payout_status=is.null` : deux clics ne programment pas deux
+      // versements.
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&payout_status=is.null`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ payout_status: "pending", payout_amount: partPrestataire, payout_due_at: echeance }) }
+      );
+      const lignes = await up.json().catch(() => []);
+      if (!up.ok || !Array.isArray(lignes) || lignes.length === 0) {
+        console.error(`[programmer_versement] échec pour ${mission_id} (${up.status}) : ${JSON.stringify(lignes).slice(0, 200)}`);
+        return res.status(500).json({ error: "Le versement n'a pas pu être programmé." });
+      }
+
+      if (m.prestataire_id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: m.prestataire_id, type: "system", title: "Versement programmé 💶",
+            body: `Le versement de votre prestation du ${m.date || ""} a été programmé : ${partPrestataire.toFixed(2).replace(".", ",")} €. Il part à l'expiration du délai de réclamation.`,
+            read: false }),
+        }).catch(e => console.error("[programmer_versement] notification non envoyée :", e.message));
+      }
+
+      journaliser("programmer_versement", { target_id: mission_id, details: { montant: partPrestataire, echeance } });
+      return res.status(200).json({ success: true, montant: partPrestataire, echeance });
     }
 
     if (action === "retenir_versement") {

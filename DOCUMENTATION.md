@@ -1051,6 +1051,17 @@ premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que to
 
 ### Ce que `npm run colonnes` a trouvé du premier coup
 
+**Une prestation clôturée sans versement n'apparaissait nulle part.** L'écran « Versements »
+filtre sur `payout_status`, or celui de ces prestations vaut `NULL` : le prestataire attendait
+un virement que rien n'émettrait, et personne ne pouvait le voir. L'écran les remonte
+désormais en tête, avec le montant dû et un bouton « Programmer ».
+
+L'action `programmer_versement` calcule ce montant par `montantsDeCloture` et l'échéance par
+`echeanceVersementMs` — **les deux mêmes fonctions que la clôture normale**. C'est aussi la
+raison pour laquelle ces reprises ne se font pas par un `UPDATE` en base : le refaire en SQL
+en produirait une seconde version, qui divergerait. L'écriture est filtrée sur
+`payout_status=is.null`, deux clics ne programment donc pas deux versements.
+
 **Six colonnes manquantes**, relevées le 16/08/2026. Deux d'entre elles bloquaient le
 versement aux prestataires depuis le 12/08.
 
