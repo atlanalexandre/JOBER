@@ -472,7 +472,7 @@ export default async function handler(req, res) {
   // passage suivant minuit, pour ne pas relancer douze fois le même prestataire.
   {
     const heureUTC = new Date().getUTCHours();
-    let purges = 0, rcRelances = 0, rcSuspendus = 0;
+    let purges = 0, rcRelances = 0, rcSuspendus = 0, resiliations = 0;
     if (heureUTC < 2) {
       // ── Purge des pièces d'identité (art. 14.4) ──
       try {
@@ -531,6 +531,66 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         console.error("[conservation] purge interrompue :", e.message);
+      }
+
+      // ── Résiliations arrivées à échéance (CGPS art. 16.2, P2B) ──
+      //
+      // Un préavis qu'on ne suit pas d'effet n'est pas un préavis : le compte
+      // resterait ouvert indéfiniment, et la décision notifiée à l'intéressé ne
+      // serait jamais appliquée. Le contraire est aussi vrai — c'est pourquoi
+      // la date est vérifiée ici, et non au moment de la programmation.
+      try {
+        const maintenantIso = new Date().toISOString();
+        const rRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?resiliation_prevue_at=lte.${encodeURIComponent(maintenantIso)}`
+          + `&select=id,resiliation_prevue_at,resiliation_motif&limit=100`,
+          { headers }
+        );
+        if (!rRes.ok) {
+          if (rRes.status !== 400) console.error(`[resiliation] lecture impossible (${rRes.status})`);
+        } else {
+          const aResilier = await rRes.json().catch(() => []);
+          for (const p of (Array.isArray(aResilier) ? aResilier : [])) {
+            // Une prestation en cours bloque la résiliation : le client attend
+            // quelqu'un, et le prestataire attend son versement. On repousse
+            // plutôt que de laisser les deux sans interlocuteur.
+            const enCours = await fetch(
+              `${SUPABASE_URL}/rest/v1/missions?or=(client_id.eq.${p.id},prestataire_id.eq.${p.id})`
+              + `&status=in.(open,pending_acceptance,assigned)&select=id&limit=1`,
+              { headers }
+            ).catch(() => null);
+            const rows = enCours?.ok ? await enCours.json().catch(() => []) : [];
+            if (Array.isArray(rows) && rows.length > 0) {
+              console.log(`[resiliation] ${p.id} reportée : prestation en cours`);
+              continue;
+            }
+
+            // Idem pour un versement encore dû : supprimer le compte le ferait
+            // disparaître avec l'argent.
+            const du = await fetch(
+              `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${p.id}`
+              + `&payout_status=in.(pending,processing,held)&status=eq.completed&select=id&limit=1`,
+              { headers }
+            ).catch(() => null);
+            const duRows = du?.ok ? await du.json().catch(() => []) : [];
+            if (Array.isArray(duRows) && duRows.length > 0) {
+              console.log(`[resiliation] ${p.id} reportée : versement encore dû`);
+              continue;
+            }
+
+            const sup = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { method: "DELETE", headers })
+              .catch(e => { console.error(`[resiliation] suppression impossible ${p.id} :`, e.message); return null; });
+            if (!sup || !sup.ok) {
+              console.error(`[resiliation] compte ${p.id} NON supprimé (${sup?.status}) — sera repris demain`);
+              continue;
+            }
+            resiliations++;
+            console.log(`[resiliation] compte ${p.id} résilié à l'échéance du préavis`);
+          }
+          if (resiliations) console.log(`[resiliation] ${resiliations} compte(s) résilié(s)`);
+        }
+      } catch (e) {
+        console.error("[resiliation] traitement interrompu :", e.message);
       }
 
       // ── Attestations RC Pro (art. 19.1) ──

@@ -1118,10 +1118,24 @@ export function BOComptes() {
                 {actioning===p.id+"reject" ? "…" : "❌ Refuser"}
               </button>
             </>}
-            {p.status==="approved" && (
+            {p.status==="approved" && (<>
               <button onClick={async()=>{ const reason=await showPrompt("Motif de la suspension — OBLIGATOIRE, il est communiqué à l'intéressé qui doit pouvoir le contester (CGPS art. 16.2) :","Motif..."); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"suspend"?"…":"🔒 Suspendre"}
               </button>
+              <button onClick={async()=>{
+                // Résiliation à trente jours : le préavis du règlement P2B. Pour
+                // écarter quelqu'un tout de suite, c'est la suspension qui sert.
+                const motif=await showPrompt("Motif de la résiliation — OBLIGATOIRE, notifié à l'intéressé qui peut le contester. Le compte reste actif pendant 30 jours (CGPS art. 16.2) :","Motif...");
+                if(motif===null) return;
+                setActioning(p.id+"resil");
+                const r=await boFetch({ action:"programmer_resiliation", profileId:p.id, reason:motif||"" });
+                const j=await r.json().catch(()=>({}));
+                if(r.ok) showToast(`Résiliation programmée au ${new Date(j.effet).toLocaleDateString("fr-FR")} — l'intéressé est notifié.`, "success");
+                else showToast(j.error || `Erreur ${r.status}`, "error");
+                setActioning(null);
+              }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(230,126,34,0.3)", background:"rgba(230,126,34,0.08)", color:"#E67E22", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+                ⏳ Résilier à 30j
+              </button></>
             )}
             {p.role==="prestataire" && p.trial_exhausted && (
               <button onClick={async()=>{ if(!await showConfirm(`Réinitialiser le quota prestations de ${p.prenom||p.email} ? (trial_exhausted → false, compteur → 0)`)) return; setActioning(p.id+"reset_trial"); await boFetch({ action:"reset_trial", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,trial_exhausted:false,missions_completed_month:0}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(16,217,143,0.35)", background:"rgba(16,217,143,0.08)", color:"#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>

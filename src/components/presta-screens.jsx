@@ -994,15 +994,81 @@ export function PrestaOnboarding({ onComplete, onBack }) {
 
 export function PrestaProfilTab({ onNavigate }) {
   const [meta, setMeta] = useState(null);
+  // Données fiscales — voir le bloc plus bas. Elles vivent dans `profiles`, pas
+  // dans les métadonnées : c'est la table que lit l'export DAC7.
+  const [fiscal, setFiscal] = useState(null);
+  const [nifSaisi, setNifSaisi] = useState("");
+  const [residenceSaisie, setResidenceSaisie] = useState("France");
+  const [fiscalEnCours, setFiscalEnCours] = useState(false);
+
   useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>{ if(data?.user) setMeta(data.user.user_metadata||{}); });
+    supabase.auth.getUser().then(({data})=>{
+      if(!data?.user) return;
+      setMeta(data.user.user_metadata||{});
+      supabase.from("profiles").select("nif,residence_fiscale").eq("id", data.user.id).single()
+        .then(({ data: f, error }) => {
+          // Sans trace, un dossier fiscal incomplet resterait invisible au
+          // prestataire comme à nous, jusqu'au jour de la déclaration.
+          if (error) { console.error("[profil] données fiscales illisibles :", error.message); return; }
+          setFiscal(f || {});
+          if (f?.nif) setNifSaisi(f.nif);
+          if (f?.residence_fiscale) setResidenceSaisie(f.residence_fiscale === "FR" ? "France" : "Autre pays");
+        });
+    });
   },[]);
+
+  const enregistrerFiscal = async () => {
+    const nif = nifSaisi.replace(/\s/g, "");
+    if (!nif) { showToast("Renseignez votre numéro fiscal."); return; }
+    setFiscalEnCours(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const { error } = await supabase.from("profiles").update({
+        nif,
+        nif_collecte_at: new Date().toISOString(),
+        residence_fiscale: residenceSaisie === "France" ? "FR" : null,
+      }).eq("id", u?.user?.id);
+      if (error) { showToast(error.message || "Enregistrement impossible."); setFiscalEnCours(false); return; }
+      setFiscal({ nif, residence_fiscale: residenceSaisie === "France" ? "FR" : null });
+      showToast("Informations fiscales enregistrées.");
+    } catch (e) { showToast(e?.message || "Erreur réseau"); }
+    setFiscalEnCours(false);
+  };
 
   const secteurInfo = meta?.secteur ? SECTORS.find(s=>s.id===meta.secteur) : null;
   const color = secteurInfo?.color || C.accentGold;
 
   return (
     <div>
+      {/* Informations fiscales — obligatoires depuis le 16/08/2026 au titre de la
+          directive DAC7, qui impose à la plateforme de déclarer chaque année
+          l'identité de ses prestataires et les sommes versées.
+          Le champ n'existait qu'à l'inscription : les comptes créés avant
+          restaient incomplets, et rien ne leur permettait de se mettre à jour. */}
+      {fiscal && !fiscal.nif && (
+        <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:r, padding:"16px", marginBottom:12 }}>
+          <div style={{ color:"#F0B429", fontWeight:800, fontSize:14, marginBottom:6 }}>
+            Votre numéro fiscal est manquant
+          </div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:12 }}>
+            ALANE doit déclarer chaque année à l'administration fiscale les sommes qui vous ont été
+            versées, et votre numéro fiscal en fait partie. Il figure sur votre avis d'imposition,
+            et compte treize chiffres. Il est distinct de votre SIRET.
+          </div>
+          <Input label="Numéro fiscal (NIF)" placeholder="13 chiffres" icon="🧾"
+            value={nifSaisi} onChange={e=>setNifSaisi(e.target.value.replace(/\s/g,""))} />
+          <Select label="Pays de résidence fiscale" options={["France","Autre pays"]}
+            value={residenceSaisie} onChange={e=>setResidenceSaisie(e.target.value)} />
+          <button onClick={enregistrerFiscal} disabled={fiscalEnCours} style={{
+            marginTop:10, padding:"11px 18px", borderRadius:10, border:"none", background:"#F0B429",
+            color:"#0A1628", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit",
+            opacity:fiscalEnCours?0.6:1,
+          }}>
+            {fiscalEnCours ? "…" : "Enregistrer"}
+          </button>
+        </div>
+      )}
+
       {/* Carte profil métier */}
       {meta && (meta.secteur || meta.metier || meta.tarif_net) && (
         <div style={{ background:"#0D1B3E", borderRadius:r, padding:"16px", marginBottom:12, border:`1px solid ${color}33` }}>
@@ -1941,7 +2007,6 @@ export function PMissionsTab({ onNavigate }) {
     try { localStorage.setItem("alane_partage_position", JSON.stringify(sharingLocation)); }
     catch { /* stockage indisponible : le partage reste actif pour la session */ }
   }, [sharingLocation]);
-  const trackingRefsMap = useRef({});
   const [checkingInId, setCheckingInId] = useState(null);
   const [arrivedAtMap, setArrivedAtMap] = useState({});
   const [checkInGeoError, setCheckInGeoError] = useState({});
@@ -1983,14 +2048,9 @@ export function PMissionsTab({ onNavigate }) {
   useEffect(() => { chargerRemplacements(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const toggleTracking = async (missionId) => {
-    if (sharingLocation[missionId]) {
-      const refs = trackingRefsMap.current[missionId] || {};
-      if (refs.watchId != null) navigator.geolocation.clearWatch(refs.watchId);
-      if (refs.intervalId != null) clearInterval(refs.intervalId);
-      delete trackingRefsMap.current[missionId];
-      setSharingLocation(s => ({ ...s, [missionId]: false }));
-      return;
-    }
+    // Plus rien à arrêter : il n'y a plus de suivi en cours, seulement des envois
+    // ponctuels. Un second clic renvoie la position plutôt que de couper quelque
+    // chose qui ne tourne pas.
     if (!navigator.geolocation) { showToast("Géolocalisation non supportée par votre navigateur."); return; }
     const sendPos = async (lat, lng) => {
       const { data: sd } = await supabase.auth.getSession();
@@ -2002,12 +2062,24 @@ export function PMissionsTab({ onNavigate }) {
         body: JSON.stringify({ action: "update_position", mission_id: missionId, lat, lng }),
       }).catch(() => {});
     };
-    let last = null;
-    const watchId = navigator.geolocation.watchPosition(p => { last = p.coords; }, null, { enableHighAccuracy: true });
-    const intervalId = setInterval(() => { if (last) sendPos(last.latitude, last.longitude); }, 15000);
-    trackingRefsMap.current[missionId] = { watchId, intervalId };
+    // UN SEUL RELEVÉ, à la demande — plus de suivi continu.
+    //
+    // La position était transmise toutes les quinze secondes pendant toute la
+    // prestation. Le conseil prudentiel recommande de la réduire au strict
+    // nécessaire : un tel suivi ressemble à un contrôle des horaires, et
+    // l'article 10C.3 des CGPS affirme précisément le contraire — les
+    // déclarations ne constituent « ni un décompte du temps de travail, ni un
+    // dispositif de contrôle des horaires ». Une clause qui dit l'inverse de ce
+    // que fait le produit ne protège personne.
+    //
+    // Le client garde ce qui lui sert : savoir que son prestataire est en route,
+    // et où il en est au moment où il le demande.
+    navigator.geolocation.getCurrentPosition(
+      p => { sendPos(p.coords.latitude, p.coords.longitude); showToast("Position transmise au client."); },
+      () => showToast("Position indisponible — vérifiez les autorisations de votre navigateur."),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
     setSharingLocation(s => ({ ...s, [missionId]: true }));
-    navigator.geolocation.getCurrentPosition(p => sendPos(p.coords.latitude, p.coords.longitude), () => {});
   };
 
   const loadPending = async () => {
@@ -2716,7 +2788,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   )}
                   <button onClick={() => toggleTracking(m.id)}
                     style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    {sharingLocation[m.id] ? "⏹ Arrêter de partager mon trajet" : "📍 Partager mon trajet au client"}
+                    {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
                   </button>
                   {/* Se faire remplacer plutôt qu'annuler : la prestation reste
                       honorée, le client garde son créneau, et le droit prévu par
