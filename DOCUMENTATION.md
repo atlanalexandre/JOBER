@@ -1049,6 +1049,41 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Ce que `npm run colonnes` a trouvé du premier coup
+
+**Six colonnes manquantes**, relevées le 16/08/2026. Deux d'entre elles bloquaient le
+versement aux prestataires depuis le 12/08.
+
+| Colonne | Ce qu'elle cassait |
+|---|---|
+| `missions.payout_amount` | À la validation par le client, la mise en attente du versement échoue : **aucun virement n'est jamais programmé** |
+| `missions.payout_due_at` | Idem. À l'auto-validation, pire : ces colonnes sont écrites dans le **même PATCH** que `status = 'completed'`, donc la prestation n'est même pas clôturée — elle reste `assigned` indéfiniment |
+| `missions.cashback_credited` | Le garde-fou d'idempotence du cashback, dans ce même PATCH. Il tombait avec lui |
+| `missions.last_validation_reminder_at` | L'horodatage qui empêche de relancer le même client toutes les deux heures. La relance repartait à chaque passage |
+| `missions.broadcast_sent_at` | La remise à zéro de la diffusion quand une prestation repart en recherche |
+| `bo_logs.details` | **Aucune action du backoffice transportant un détail n'a jamais été journalisée** |
+
+`payout_amount` et `payout_due_at` étaient déclarées dans
+`2026-08-12_versement_differe_48h.sql` : ce fichier n'a donc pas été appliqué en entier —
+`payout_status` existe, ces deux-là non. Une migration partiellement passée est indiscernable
+d'une migration passée, tant que rien ne la vérifie.
+
+**Depuis le 12/08, aucune prestation n'a été auto-validée et aucune rémunération n'a été
+programmée.** Le code journalisait pourtant l'échec en erreur, avec le nom du fichier à
+appliquer — personne ne lisait les journaux. C'est la limite d'un signalement qui n'a pas de
+destinataire.
+
+`bo_logs.details` illustre l'autre moitié du problème : `journaliser()` n'attrapait que les
+erreurs **réseau**. Un refus de PostgREST résout normalement, et passait donc inaperçu. Les
+actions qui transportent un `details` sont précisément les plus sensibles — la justification
+d'une exécution de litige sans accord des parties, le motif d'une suspension. Le résultat est
+désormais vérifié.
+
+Réparé par `2026-08-16_colonnes_manquantes.sql`. Ce que la migration ne répare **pas** : les
+prestations traitées pendant la panne. Le fichier contient les deux requêtes qui les listent —
+elles se reprennent depuis le backoffice, pas par un `UPDATE`, le montant dû dépendant d'un
+plafonnement des heures que seul `montantsDeCloture` sait appliquer.
+
 ### `npm run colonnes` — l'outil qui aurait trouvé le défaut plus tôt
 
 `missions.cancellation_reason` a été découverte par hasard, en écrivant une requête de
