@@ -1,0 +1,69 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Motif d'annulation d'une prestation
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- `api/missions.js` écrivait `cancellation_reason` sur une colonne qui n'a
+-- jamais existé. PostgREST répond alors 400 (code 42703) et **n'applique RIEN
+-- de la requête** — pas seulement la colonne fautive.
+--
+-- Le résultat du PATCH n'était pas vérifié. L'échec était donc invisible.
+--
+-- CE QUE ÇA CASSAIT
+--
+-- L'action `cancel_in_progress` — interruption d'une prestation déjà commencée
+-- — fait deux choses dans cet ordre :
+--
+--   1. elle rembourse le client au prorata chez Stripe ;
+--   2. elle écrit en base `status = 'cancelled'`, le montant recalculé au
+--      prorata, et le motif.
+--
+-- La première réussissait, la seconde échouait en silence. La prestation
+-- restait donc `assigned`, avec son montant d'ORIGINE. Conséquences en chaîne :
+--
+--   • le client était remboursé d'une partie du prix, mais la prestation
+--     continuait de vivre comme si de rien n'était ;
+--   • l'auto-validation la clôturait normalement à son terme ;
+--   • le versement au prestataire se calculait sur le montant complet, jamais
+--     sur le prorata — ALANE payait donc au prestataire une somme dont elle
+--     venait de rendre une partie au client.
+--
+-- Découvert le 16/08/2026 en écrivant une requête de nettoyage : la base a
+-- refusé la colonne, ce que le code, lui, ne signalait jamais.
+--
+-- Le motif est conservé parce qu'une annulation qu'on ne sait plus expliquer ne
+-- se défend pas — ni devant le client, ni devant le prestataire qui a perdu la
+-- prestation.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.missions
+  ADD COLUMN IF NOT EXISTS cancellation_reason text;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    SELECT column_name FROM information_schema.columns
+--    WHERE table_name = 'missions' AND column_name = 'cancellation_reason';
+--    -- attendu : 1 ligne
+--
+-- Les prestations restées `assigned` alors qu'elles ont été remboursées — le
+-- symptôme du défaut ci-dessus. À reprendre une par une avec le tableau de bord
+-- Stripe, il n'y a pas de règle automatique qui puisse les rattraper :
+--
+--    SELECT id, date, status, montant_total, stripe_payment_intent
+--    FROM missions
+--    WHERE status = 'assigned' AND stripe_payment_intent IS NOT NULL
+--    ORDER BY date DESC;
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    ALTER TABLE public.missions DROP COLUMN IF EXISTS cancellation_reason;
+--
+-- Attention : le code écrit cette colonne, et PostgREST refuserait de nouveau
+-- l'intégralité des PATCH concernés. Ne la retirer qu'en retirant le code.
+-- ═══════════════════════════════════════════════════════════════════════════
