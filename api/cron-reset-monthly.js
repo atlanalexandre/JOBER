@@ -1,6 +1,7 @@
 import { resendBody } from "./_email.js";
 import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
+import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
@@ -321,6 +322,91 @@ export default async function handler(req, res) {
         } catch (e) {
           console.error("[versements] levée des retenues interrompue :", e.message);
         }
+        // ── Propositions de résolution acceptées tacitement (CGPS art. 17.1) ──
+        //
+        // ALANE propose, elle ne décide pas. Passé 48 heures sans opposition
+        // de l'une ou l'autre partie, l'accord est réputé formé et
+        // l'instruction correspondante est transmise à Stripe.
+        //
+        // Une opposition — d'une seule des deux parties suffit — laisse les
+        // fonds où ils sont. Rien ne se débloque alors sans un accord, une
+        // décision de justice, ou une procédure de l'établissement de paiement.
+        try {
+          const echues = await fetch(
+            `${SUPABASE_URL}/rest/v1/missions`
+            + `?status=eq.disputed&resolution_opposition_at=is.null`
+            + `&resolution_proposee=not.is.null`
+            + `&resolution_echeance_at=lte.${encodeURIComponent(maintenant)}`
+            + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at`
+            + `&limit=100`,
+            { headers }
+          );
+          if (!echues.ok) {
+            // Colonne inconnue → migration non appliquée. Il faut que ça se voie :
+            // sans elle, les litiges restent bloqués indéfiniment.
+            const detail = await echues.text().catch(() => "");
+            console.error(`[resolution] lecture impossible (${echues.status}) : ${detail.slice(0, 200)}`
+              + " — vérifier que la migration 2026-08-16_proposition_de_resolution.sql est appliquée.");
+          } else {
+            const lots = await echues.json().catch(() => []);
+            for (const m of (Array.isArray(lots) ? lots : [])) {
+              // Relecture par la fonction partagée : le filtre PostgREST et la
+              // règle métier doivent dire la même chose, et c'est la règle qui
+              // fait foi.
+              if (!accordRepute(m)) continue;
+
+              // Verrou atomique — on marque la cause AVANT d'appeler Stripe.
+              // Deux exécutions concurrentes du traitement ne peuvent pas
+              // rembourser deux fois.
+              //
+              // Le verrou porte sur `resolution_executee_cause` et non sur
+              // `status` : inventer un statut intermédiaire supposerait de
+              // toucher à la contrainte de `missions.status`, et un statut
+              // inconnu du reste du code ferait disparaître la prestation de
+              // tous les écrans.
+              const verrou = await fetch(
+                `${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&resolution_executee_cause=is.null`,
+                { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+                  body: JSON.stringify({ resolution_executee_cause: "accord_tacite" }) }
+              );
+              const pris = await verrou.json().catch(() => []);
+              if (!Array.isArray(pris) || pris.length === 0) continue;
+
+              const out = await executerResolution({
+                mission: m, resolution: m.resolution_proposee,
+                supabaseUrl: SUPABASE_URL, headers,
+                stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
+                cause: "accord_tacite",
+              });
+              if (!out.ok) {
+                // Relâcher le verrou : la prestation sera reprise au prochain
+                // passage plutôt que de rester coincée.
+                console.error(`[resolution] exécution impossible — prestation ${m.id} : ${out.detail}`);
+                await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                  method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ resolution_executee_cause: null }),
+                }).catch(e => console.error(`[resolution] verrou non relâché ${m.id} :`, e.message));
+                continue;
+              }
+
+              console.log(`[resolution] accord tacite exécuté (${m.resolution_proposee}) — prestation ${m.id}`);
+              const quoi = libelleResolution(m.resolution_proposee);
+              for (const uid of [m.client_id, m.prestataire_id]) {
+                if (!uid) continue;
+                await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                  method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                  body: JSON.stringify({ user_id: uid, type: "system", title: "Litige clôturé ✅",
+                    body: `Le délai d'opposition est écoulé sans opposition : la proposition de ${quoi} est réputée acceptée par les deux parties et a été exécutée.\n\nCette exécution ne préjuge d'aucun droit : chacune des parties conserve l'intégralité de ses recours contre l'autre.`,
+                    read: false }),
+                }).catch(e => console.error(`[resolution] notification non envoyée ${m.id} :`, e.message));
+              }
+            }
+          }
+        } catch (e) {
+          console.error("[resolution] traitement interrompu :", e.message);
+        }
+
         // `status=eq.completed` est le verrou : un litige fait passer la
         // prestation en `disputed` et l'exclut d'office. Une retenue au titre de
         // l'article 7.4 des CGPS suivra le même chemin quand elle sera outillée.

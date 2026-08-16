@@ -4,6 +4,7 @@ import { couplesADependance, SEUILS_PAR_DEFAUT } from "./_dependance.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
+import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -879,7 +880,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_disputes") {
-      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,stripe_payment_intent&order=created_at.desc`, { headers });
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,stripe_payment_intent,resolution_proposee,resolution_motif,resolution_echeance_at,resolution_opposition_at,resolution_opposition_par&order=created_at.desc`, { headers });
       const missions = await missionsRes.json();
       if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
 
@@ -905,64 +906,124 @@ export default async function handler(req, res) {
       return res.status(200).json(enriched);
     }
 
-    if (action === "resolve_dispute") {
-      const { mission_id, resolution } = body;
+    // ── proposer_resolution : ALANE propose, elle ne décide pas ────────
+    //
+    // L'ancien `resolve_dispute` remboursait ou validait dans la seconde,
+    // depuis le backoffice, sans que le client ni le prestataire aient été
+    // consultés. L'article 17.1 ne le permet plus : ALANE formule une
+    // proposition, la notifie aux deux parties, et attend. L'accord se forme
+    // par l'absence d'opposition dans les 48 heures ; l'exécution revient
+    // alors au traitement automatique.
+    //
+    // Rien ne bouge ici du côté de l'argent. C'est le point de tout ce bloc.
+    if (action === "proposer_resolution") {
+      const { mission_id, resolution, motif } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      if (!["refunded", "rejected"].includes(resolution)) return res.status(400).json({ error: "resolution invalide (refunded|rejected)" });
+      if (!RESOLUTIONS.includes(resolution)) {
+        return res.status(400).json({ error: `resolution invalide (${RESOLUTIONS.join("|")})` });
+      }
+      // Le motif est notifié aux parties : sans lui, l'opposition se décide à
+      // l'aveugle et la proposition n'est pas contradictoire.
+      const motifPropre = String(motif || "").trim();
+      if (motifPropre.length < 10) {
+        return res.status(400).json({ error: "Motif requis (10 caractères minimum) — il est communiqué aux deux parties." });
+      }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,stripe_payment_intent,montant_total`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,montant_total,resolution_proposee`, { headers });
+      const rows = await mr.json();
+      const m = Array.isArray(rows) && rows[0];
+      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
+      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
+      if (m.resolution_proposee) {
+        return res.status(409).json({ error: "Une proposition court déjà sur cette prestation." });
+      }
+
+      const maintenant = Date.now();
+      const echeance   = echeanceOppositionMs(maintenant);
+      const up = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          resolution_proposee:    resolution,
+          resolution_motif:       motifPropre,
+          resolution_notifiee_at: new Date(maintenant).toISOString(),
+          resolution_echeance_at: new Date(echeance).toISOString(),
+        }),
+      });
+      if (!up.ok) {
+        const detail = await up.text().catch(() => "");
+        console.error(`[proposer_resolution] enregistrement refusé (${up.status}) : ${detail.slice(0, 200)}`);
+        return res.status(500).json({ error: "La proposition n'a pas pu être enregistrée." });
+      }
+
+      // Les deux parties reçoivent le MÊME texte : la proposition, son motif,
+      // la date limite et le moyen de s'y opposer. C'est cette notification
+      // qui fait courir le délai — sans elle, le silence ne vaudrait rien.
+      const quoi  = libelleResolution(resolution);
+      const limite = new Date(echeance).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
+      const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
+      for (const uid of [m.client_id, m.prestataire_id]) {
+        if (!uid) continue;
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: uid, type: "system", title: "Proposition de résolution 📩", body: corps, read: false }),
+        }).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
+      }
+
+      journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre } });
+      return res.status(200).json({ success: true, echeance: new Date(echeance).toISOString() });
+    }
+
+    // ── executer_decision : les deux autres causes de l'article 17.1 ───
+    //
+    // Une décision de justice, ou une procédure du prestataire de services de
+    // paiement (rétrofacturation, fraude), dénouent le litige sans passer par
+    // l'accord des parties. ALANE ne fait alors que constater et transmettre.
+    //
+    // La justification est obligatoire et journalisée : c'est la seule chose
+    // qu'on pourra produire si l'on demande un jour au titre de quoi les fonds
+    // ont bougé sans accord.
+    if (action === "executer_decision") {
+      const { mission_id, resolution, cause, justification } = body;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (!RESOLUTIONS.includes(resolution)) {
+        return res.status(400).json({ error: `resolution invalide (${RESOLUTIONS.join("|")})` });
+      }
+      if (!["justice", "psp"].includes(cause)) {
+        return res.status(400).json({ error: "cause invalide (justice|psp)" });
+      }
+      const just = String(justification || "").trim();
+      if (just.length < 10) {
+        return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
+      }
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
 
-      // Pour resolution="refunded" : déclencher le remboursement Stripe réel avant de fermer
-      if (resolution === "refunded" && m.stripe_payment_intent) {
-        const STRIPE_SK = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-        if (!STRIPE_SK) return res.status(500).json({ error: "Stripe non configuré — remboursement impossible" });
-        try {
-          const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${STRIPE_SK}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": `refund-dispute-${mission_id}`,
-            },
-            body: new URLSearchParams({ payment_intent: m.stripe_payment_intent, reason: "fraudulent" }).toString(),
-          });
-          const rfData = await rfRes.json();
-          if (!rfData?.id) {
-            console.error("[resolve_dispute] Stripe refund failed:", JSON.stringify(rfData));
-            return res.status(500).json({ error: `Remboursement Stripe échoué : ${rfData?.error?.message || "erreur inconnue"}` });
-          }
-          console.log(`[resolve_dispute] Stripe refund OK: ${rfData.id} pour prestation ${mission_id}`);
-        } catch (e) {
-          console.error("[resolve_dispute] Stripe refund exception:", e.message);
-          return res.status(500).json({ error: "Erreur lors du remboursement Stripe — prestation non fermée" });
-        }
-      }
-
-      // "refunded" → closed, "rejected" → completed (prestation validée malgré le litige)
-      const newStatus = resolution === "refunded" ? "closed" : "completed";
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: newStatus }),
+      const out = await executerResolution({
+        mission: m, resolution, supabaseUrl: SUPABASE_URL, headers,
+        stripeKey: (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""),
+        cause,
       });
+      if (!out.ok) return res.status(500).json({ error: out.detail });
 
-      if (resolution === "rejected") {
-        // Litige rejeté — notifier le client et le prestataire
-        if (m.client_id) {
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige clôturé ℹ️", body:"Après examen de votre dossier, le litige a été clôturé en faveur du prestataire. La prestation a été validée.", read:false }) }).catch(()=>{});
-        }
-        if (m.prestataire_id) {
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Litige résolu en votre faveur ✅", body:"Le litige a été examiné et clôturé en votre faveur. La prestation est validée.", read:false }) }).catch(()=>{});
-        }
+      const quoi = libelleResolution(resolution);
+      const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
+      for (const uid of [m.client_id, m.prestataire_id]) {
+        if (!uid) continue;
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.\n\nRéférence : ${just}`, read: false }),
+        }).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"resolve_dispute", target_id:mission_id, details:{ resolution } }) }).catch(()=>{});
-      return res.status(200).json({ success: true });
+      journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
+      return res.status(200).json({ success: true, statut: out.statut });
     }
 
     if (action === "close_ticket") {
@@ -1831,74 +1892,6 @@ export default async function handler(req, res) {
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"force_complete_mission", target_id:mission_id }) }).catch(()=>{});
       return res.status(200).json({ success:true, montantTotal: totalClient, partPrestataire, cashback });
-    }
-
-    if (action === "release_dispute") {
-      const { mission_id } = body;
-      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
-      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector`, { headers });
-      const missions = await mr.json();
-      const m = Array.isArray(missions) && missions[0];
-      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
-      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
-
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        // Le versement repasse en attente : le cron le reprendra au prochain
-        // passage. Sans cette remise à zéro, une prestation dont le virement avait
-        // échoué avant le litige resterait `failed` et ne serait jamais payée.
-        body: JSON.stringify({ status: "completed", payout_status: "pending" }),
-      });
-
-      // Notification client
-      if (m.client_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Litige résolu ✅", body:"ALANE a examiné votre dossier et a validé la prestation. Merci pour votre retour.", read:false }) }).catch(()=>{});
-      }
-      // Notification prestataire
-      if (m.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"system", title:"Fonds libérés ✅", body:"Suite à l'examen du litige, votre prestation a été validée et les fonds libérés.", read:false }) }).catch(()=>{});
-      }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"release_dispute", target_id:mission_id }) }).catch(()=>{});
-      return res.status(200).json({ success: true });
-    }
-
-    if (action === "refund_dispute") {
-      const { mission_id } = body;
-      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
-      if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,stripe_payment_intent`, { headers });
-      const missions = await mr.json();
-      const m = Array.isArray(missions) && missions[0];
-      if (!m) return res.status(404).json({ error: "Prestation introuvable" });
-      if (m.status !== "disputed") return res.status(400).json({ error: "La prestation n'est pas en litige" });
-
-      // Remboursement Stripe si un PaymentIntent existe
-      if (m.stripe_payment_intent) {
-        const stripeRes = await fetch(`https://api.stripe.com/v1/refunds`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${(process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "")}`, "Content-Type": "application/x-www-form-urlencoded" },
-          body: `payment_intent=${m.stripe_payment_intent}`,
-        });
-        if (!stripeRes.ok) {
-          const stripeErr = await stripeRes.json().catch(() => ({}));
-          return res.status(500).json({ error: stripeErr?.error?.message || "Erreur Stripe lors du remboursement" });
-        }
-      }
-
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "closed" }),
-      });
-
-      // Notification client
-      if (m.client_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Remboursement en cours 💰", body:"Votre litige a été accepté. Le remboursement sera crédité sous 5 à 10 jours ouvrés.", read:false }) }).catch(()=>{});
-      }
-      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"refund_dispute", target_id:mission_id }) }).catch(()=>{});
-      return res.status(200).json({ success: true });
     }
 
     if (action === "manual_refund") {

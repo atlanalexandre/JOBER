@@ -1580,6 +1580,85 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, montantTotal: partPrestataire, totalClient, cashbackEarned, newBalance });
     }
 
+    // ── opposer_resolution : le droit d'opposition de l'article 17.1 ──
+    //
+    // ALANE propose, elle ne décide pas. La proposition n'engage les parties
+    // que si aucune des deux ne s'y oppose dans les 48 heures. Sans ce
+    // bouton, l'absence d'opposition ne voudrait rien dire et la « proposition »
+    // serait une décision déguisée.
+    //
+    // L'opposition d'une SEULE partie suffit : elle n'a pas à être motivée,
+    // et elle laisse les fonds bloqués là où ils sont, chez Stripe.
+    if (action === "opposer_resolution") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
+      if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,resolution_proposee,resolution_echeance_at,resolution_opposition_at`, { headers });
+      const rows = await mr.json();
+      const mission = Array.isArray(rows) && rows[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+
+      // Seules les deux parties au litige peuvent s'opposer.
+      if (mission.client_id !== caller.id && mission.prestataire_id !== caller.id) {
+        return res.status(403).json({ error: "Non autorisé" });
+      }
+      if (!mission.resolution_proposee) {
+        return res.status(400).json({ error: "Aucune proposition en cours sur cette prestation." });
+      }
+      if (mission.resolution_opposition_at) {
+        return res.status(409).json({ error: "Une opposition a déjà été enregistrée." });
+      }
+      const echeance = Date.parse(mission.resolution_echeance_at || "");
+      if (Number.isNaN(echeance) || Date.now() >= echeance) {
+        return res.status(409).json({ error: "Le délai d'opposition est expiré." });
+      }
+
+      // Le filtre `resolution_opposition_at=is.null` rend l'écriture atomique :
+      // deux oppositions simultanées ne se marchent pas dessus, et la première
+      // enregistrée est celle qui compte.
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_opposition_at=is.null`,
+        {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({
+            resolution_opposition_par: caller.id,
+            resolution_opposition_at:  new Date().toISOString(),
+          }),
+        }
+      );
+      const majRows = await up.json().catch(() => []);
+      if (!up.ok) {
+        const detail = JSON.stringify(majRows).slice(0, 200);
+        console.error(`[opposer_resolution] enregistrement refusé (${up.status}) : ${detail}`);
+        return res.status(500).json({ error: "Votre opposition n'a pas pu être enregistrée. Réessayez, ou écrivez à direction@alane.fr." });
+      }
+      if (!Array.isArray(majRows) || majRows.length === 0) {
+        return res.status(409).json({ error: "Une opposition a déjà été enregistrée." });
+      }
+
+      // L'autre partie et le support sont informés : les fonds restent
+      // bloqués, et le différend se poursuit entre les parties.
+      const autre = mission.client_id === caller.id ? mission.prestataire_id : mission.client_id;
+      const quoi  = mission.resolution_proposee === "rembourser_client"
+        ? "le remboursement du client" : "le versement de la rémunération au prestataire";
+      if (autre) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: autre, type: "system", title: "Opposition à la proposition ⛔",
+            body: `L'autre partie s'est opposée à la proposition de résolution portant sur « ${mission.titre || mission.metier || "la prestation"} » (${quoi}).\n\nLes fonds restent bloqués : ALANE ne peut plus les débloquer sans un accord entre vous, une décision de justice, ou une procédure de l'établissement de paiement. Vous pouvez poursuivre par la médiation ou par les voies judiciaires (article 17 des CGPS).`,
+            read: false,
+          }),
+        }).catch(e => console.error("[opposer_resolution] notification non envoyée :", e.message));
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "dispute") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
