@@ -3,6 +3,7 @@ import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { repartirCompensation } from "./_creances.js";
 import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
+import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 
 function verifyBoToken(token, secret) {
@@ -679,6 +680,123 @@ export default async function handler(req, res) {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Récapitulatif annuel des revenus — article 242 bis, II du CGI
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // L'opérateur de plateforme adresse EN JANVIER, à chaque utilisateur, le
+  // montant brut qu'il a perçu l'année précédente. Rien ne le faisait.
+  //
+  // Le traitement passe toutes les deux heures : sans garde, le même courriel
+  // partirait des centaines de fois en janvier. `recapitulatif_annuel_at` porte
+  // la date du dernier envoi, et `recapitulatifDejaEnvoye` la compare à l'année
+  // récapitulée.
+  {
+    const anneeRecap = anneeARecapituler();
+    const RESEND_API_KEY_GLOBAL = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+    // RESEND_FROM porte des espaces SIGNIFICATIFS — « ALANE <no-reply@… > » — et
+    // ne doit donc pas être nettoyé (règle CLAUDE.md 1.4, exception explicite).
+    const RESEND_FROM_GLOBAL = process.env.RESEND_FROM || "onboarding@resend.dev";
+    let recapEnvoyes = 0;
+    if (anneeRecap && RESEND_API_KEY_GLOBAL) {
+      try {
+        const debut = `${anneeRecap}-01-01`;
+        const fin   = `${anneeRecap + 1}-01-01`;
+
+        const prRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire`
+          + `&select=id,prenom,recapitulatif_annuel_at&limit=1000`,
+          { headers }
+        );
+        if (!prRes.ok) {
+          const detail = await prRes.text().catch(() => "");
+          console.error(`[recapitulatif] profils illisibles (${prRes.status}) : ${detail.slice(0, 200)}`
+            + " — vérifier que la migration 2026-08-16_conformite_dac7.sql est appliquée.");
+        } else {
+          const profils = (await prRes.json().catch(() => []))
+            .filter(p => !recapitulatifDejaEnvoye(p.recapitulatif_annuel_at, anneeRecap));
+
+          for (const p of profils) {
+            try {
+              const mRes = await fetch(
+                `${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${p.id}`
+                + `&date=gte.${debut}&date=lt.${fin}`
+                + `&select=payout_status,payout_amount,payout_compensation`,
+                { headers }
+              );
+              if (!mRes.ok) continue;
+              const recap = recapitulatifAnnuel(await mRes.json().catch(() => []));
+
+              // Aucune prestation versée : pas de récapitulatif. Envoyer « vous
+              // avez perçu 0 € » à quelqu'un qui n'a jamais travaillé avec ALANE
+              // n'informe personne et ressemble à une erreur.
+              if (recap.operations === 0) continue;
+
+              const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
+              const uData = await uRes.json().catch(() => ({}));
+              if (!uData?.email) continue;
+
+              const eur = (v) => v.toFixed(2).replace(".", ",");
+              const envoi = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${RESEND_API_KEY_GLOBAL}`, "Content-Type": "application/json" },
+                body: resendBody({
+                  from: RESEND_FROM_GLOBAL,
+                  to: uData.email,
+                  subject: `Récapitulatif ${anneeRecap} de vos revenus ALANE`,
+                  html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px">
+                    <h2 style="color:#A29BFE;margin:0 0 12px">Récapitulatif ${anneeRecap}</h2>
+                    <p>Bonjour ${esc(p.prenom || "")},</p>
+                    <p>Conformément à l'article 242 bis du Code général des impôts, voici le récapitulatif
+                    des sommes perçues via ALANE en ${anneeRecap}. Il vous est adressé pour vos déclarations,
+                    et une copie en est transmise à l'administration fiscale.</p>
+                    <table style="width:100%;border-collapse:collapse;margin:20px 0">
+                      <tr><td style="padding:8px 0;color:rgba(255,255,255,0.6)">Prestations réglées</td>
+                          <td style="text-align:right;font-weight:700">${recap.operations}</td></tr>
+                      <tr><td style="padding:8px 0;color:rgba(255,255,255,0.6)">Montant brut perçu</td>
+                          <td style="text-align:right;font-weight:800;color:#A29BFE;font-size:18px">${eur(recap.brut)} €</td></tr>
+                      ${recap.retenues > 0 ? `<tr><td style="padding:8px 0;color:rgba(255,255,255,0.6)">dont retenues (CGPS art. 8B.3)</td>
+                          <td style="text-align:right;font-weight:700">${eur(recap.retenues)} €</td></tr>
+                      <tr><td style="padding:8px 0;color:rgba(255,255,255,0.6)">Versé sur votre compte</td>
+                          <td style="text-align:right;font-weight:700">${eur(recap.verse)} €</td></tr>` : ""}
+                    </table>
+                    <p style="font-size:13px;color:rgba(255,255,255,0.7);line-height:1.7">
+                      <strong style="color:#fff">${esc(INFORMATION_FISCALE.titre)}</strong><br/>
+                      ${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}
+                    </p>
+                    <p style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:20px">
+                      C'est le montant BRUT qui est déclaré : il n'est pas net de vos cotisations,
+                      que vous restez seul à devoir régler.
+                    </p>
+                    <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+                  </div>`,
+                }),
+              }).catch(e => { console.error(`[recapitulatif] envoi échoué pour ${p.id} :`, e.message); return null; });
+
+              // La date n'est écrite QUE si l'envoi a réussi : la marquer d'office
+              // ferait croire à une obligation remplie qui ne l'est pas, et le
+              // prestataire n'aurait jamais son récapitulatif.
+              if (!envoi || !envoi.ok) {
+                console.error(`[recapitulatif] non envoyé à ${p.id} (${envoi?.status}) — sera repris au prochain passage`);
+                continue;
+              }
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${p.id}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ recapitulatif_annuel_at: new Date().toISOString() }),
+              }).catch(e => console.error(`[recapitulatif] date non enregistrée pour ${p.id} :`, e.message));
+              recapEnvoyes++;
+            } catch (e) {
+              console.error(`[recapitulatif] échec sur ${p.id} :`, e.message);
+            }
+          }
+          if (recapEnvoyes) console.log(`[recapitulatif] ${recapEnvoyes} récapitulatif(s) ${anneeRecap} envoyé(s)`);
+        }
+      } catch (e) {
+        console.error("[recapitulatif] traitement interrompu :", e.message);
+      }
+    }
+  }
+
   // ── Mode rappels quotidiens ─────────────────────────────────────
   if (req.query?.action === "reminders") {
     const RESEND_API_KEY    = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
@@ -1034,7 +1152,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><div style="margin-top:18px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.06)"><div style="font-weight:700;font-size:12px;margin-bottom:5px">${esc(INFORMATION_FISCALE.titre)}</div><div style="font-size:11px;line-height:1.7;color:rgba(255,255,255,0.75)">${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}</div></div><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
                 // Email client — confirmation auto-validation

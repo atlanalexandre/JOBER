@@ -1,6 +1,7 @@
 import { resendBody } from "./_email.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
+import { INFORMATION_FISCALE } from "./_fiscal.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -1459,6 +1460,15 @@ export default async function handler(req, res) {
                     <p>Bonjour ${esc(prestaName)},</p>
                     <p>Le client a validé votre prestation <strong>${esc(mission.metier || mission.sector || "")}</strong>.</p>
                     <p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersement).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p>
+                    <!-- Information fiscale et sociale délivrée À CHAQUE TRANSACTION,
+                         comme l'impose l'article 242 bis, I du CGI. Une clause acceptée
+                         une fois à l'inscription ne remplit pas cette obligation : le
+                         texte veut une information au moment où la somme est perçue. -->
+                    <div style="margin-top:20px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.06)">
+                      <div style="font-weight:700;font-size:13px;margin-bottom:6px">${esc(INFORMATION_FISCALE.titre)}</div>
+                      <div style="font-size:12px;line-height:1.7;color:rgba(255,255,255,0.75)">${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}</div>
+                      <div style="font-size:12px;margin-top:8px">${INFORMATION_FISCALE.liens.map(l => `<a href="${l.url}" style="color:#7C6FE0;text-decoration:none;">${esc(l.libelle)}</a>`).join(" · ")}</div>
+                    </div>
                     <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                   </div>`,
                 }),
