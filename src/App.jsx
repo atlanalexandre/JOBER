@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabase.js";
 import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
+import { CGU } from "./constants/cgu.js";
 import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
@@ -309,17 +310,12 @@ function RoleScreen({ onSelect, onBack, notice }) {
         <div onClick={()=>setShowCGU(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"24px 22px 40px", width:"100%", maxWidth:540, maxHeight:"80vh", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 Conditions Générales</div>
+              <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>📋 {CGU.title}</div>
               <button onClick={()=>setShowCGU(false)} style={{ background:"transparent", border:"none", color:C.textSub, fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
             </div>
-            {[
-              { title:"1. Objet", text:"ALANE est une plateforme de mise en relation entre clients professionnels et prestataires qualifiés. L'utilisation de la plateforme implique l'acceptation des présentes conditions." },
-              { title:"2. Inscription", text:"L'accès aux services nécessite la création d'un compte. Les informations fournies doivent être exactes et à jour. ALANE se réserve le droit de refuser ou suspendre tout compte." },
-              { title:"3. Prestations", text:"Les prestations sont conclues directement entre clients et prestataires via la plateforme. ALANE agit en tant qu'intermédiaire et n'est pas partie au contrat de prestation." },
-              { title:"4. Paiements", text:"Les paiements sont sécurisés via Stripe. Les fonds sont retenus jusqu'à validation mutuelle de la prestation. Toute contestation doit être soumise sous 48h en contactant le support." },
-              { title:"5. Responsabilité", text:"ALANE ne peut être tenu responsable des dommages résultant de l'inexécution ou de la mauvaise exécution des prestations. Chaque prestataire est couvert par sa propre RC Professionnelle." },
-              { title:"6. Données personnelles", text:"Les données sont traitées conformément au RGPD. Vous disposez d'un droit d'accès, de rectification et de suppression. Contact : direction@alane.fr" },
-            ].map((s,i)=>(
+            {/* Texte intégral depuis la source unique : la fenêtre d'acceptation doit
+                montrer le document qui engage, pas un résumé qui en diverge. */}
+            {CGU.sections.map((s,i)=>(
               <div key={i} style={{ marginBottom:14 }}>
                 <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:4 }}>{s.title}</div>
                 <div style={{ color:C.textSub, fontSize:12, lineHeight:1.7 }}>{s.text}</div>
