@@ -1,5 +1,6 @@
 import { verifyUser } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
+import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -214,7 +215,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -222,6 +223,20 @@ export default async function handler(req, res) {
   if (!["open", "pending_acceptance"].includes(mission.status)) {
     return res.status(400).json({ error: "Un paiement ne peut être créé que pour une prestation ouverte ou en attente d'attribution" });
   }
+  // Le secteur doit être ouvert AVANT que le moindre euro ne bouge.
+  //
+  // Il ne l'était vérifié qu'après, dans `assign_after_payment`. Un client
+  // réservait dans un secteur fermé, était débité, puis recevait « ce secteur
+  // n'est pas encore ouvert à la réservation » : l'argent parti, la prestation
+  // sans prestataire, et personne de prévenu côté prestataire. Constaté en
+  // production le 16/08/2026.
+  //
+  // Refuser ici ne coûte rien au client : il n'a pas encore payé.
+  if (!await secteurOuvert(mission.sector, SUPABASE_URL_PI, hdrsPI)) {
+    console.error(`[stripe-intent] paiement refusé — secteur ${mission.sector} fermé (prestation ${intentMissionId})`);
+    return res.status(400).json({ error: messageSecteurFerme(mission.sector) });
+  }
+
   const computed = mission.montant_total
     ? Number(mission.montant_total)
     : Number(mission.tarif_horaire || 0) * Number(mission.hours || 0);

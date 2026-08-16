@@ -963,6 +963,51 @@ validait de bonne foi en fin de service puis constatait un défaut l'après-midi
 plus rien à bloquer, l'annulation du Transfer échouant dès que Stripe a viré les fonds sur le
 compte bancaire du prestataire. Voir « Le versement au prestataire » ci-dessous.
 
+### Réserver : ce qui est vérifié, et quand
+
+**Corrigé le 16/08/2026, après un incident en production.** L'ordre des opérations était :
+
+1. le navigateur insère la prestation (`status: "pending_acceptance"`, `prestataire_id: null`) ;
+2. `/api/stripe-intent` crée le paiement — il vérifiait le montant, pas le secteur ;
+3. Stripe encaisse ;
+4. `assign_after_payment` affecte le prestataire — **et c'est seulement là** que le secteur,
+   l'activation du prestataire, son tarif et son rayon d'intervention étaient contrôlés.
+
+Un refus à l'étape 4 laissait donc le client débité, la prestation sans prestataire et sans
+`acceptance_deadline` — donc invisible de tous les traitements automatiques, rien ne la
+reprenait jamais — et le prestataire jamais sollicité. Le message affiché disait « votre
+paiement a bien été enregistré », ce qui était exact et sans recours.
+
+**Deux corrections, à deux niveaux.**
+
+*La cause* : le secteur est désormais vérifié dans `/api/stripe-intent`, **avant** que le
+moindre euro ne bouge. Refuser là ne coûte rien au client. La règle et son cache ont pour
+cela été sortis de `api/missions.js` vers `api/_secteurs.js`, seul moyen que les deux chemins
+lisent la même chose plutôt que d'en recopier une troisième version.
+
+*Le filet* : les quatre autres refus de `assign_after_payment` — prestataire indisponible,
+prestataire non activé, tarif incohérent, adresse hors zone — et les deux de
+`affecter_tiers` **remboursent intégralement et annulent la prestation**
+(`rembourserRefusApresPaiement`). Le remboursement porte sur la totalité, frais de service
+compris : le client n'a commis aucune faute, c'est la Plateforme qui refuse — même règle que
+l'annulation par le prestataire (CGPS art. 8).
+
+Le message rendu au client dit ce qui s'est réellement passé, et **ne promet jamais un
+remboursement qui n'a pas eu lieu** : si Stripe refuse, il invite à écrire au support et
+l'incident est journalisé en erreur. Le message générique du front (« votre paiement a bien
+été enregistré ») n'est plus ajouté lorsque le serveur a déjà parlé de l'argent — il
+affirmait au client qu'il était débité alors qu'il venait d'être remboursé.
+
+Le refus est idempotent : la clé `refus-<mission_id>` empêche qu'un client qui réessaie
+déclenche un second remboursement du même paiement.
+
+**Le tunnel de réservation affichait deux fois le récapitulatif.** `BookingScreen` contenait
+les étapes 2 et 3 **en double**, et le premier exemplaire de l'étape 3 embarquait sous le
+récapitulatif une copie entière du formulaire de l'étape 1, second bouton « Continuer »
+compris. L'écran de paiement enchaînait donc : récapitulatif, formulaire de réservation,
+récapitulatif, paiement. Les deux copies de l'étape 2 étaient identiques ; celles de
+l'étape 3 avaient déjà divergé. Supprimé.
+
 ### Dénouer un litige — proposition, opposition, accord
 
 **Réécrit le 16/08/2026.** Jusque-là, le backoffice tranchait seul : `resolve_dispute`,

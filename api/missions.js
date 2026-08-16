@@ -50,7 +50,7 @@ async function appelantMajeur(userId, supabaseUrl, headers) {
     return { ok: true, raison: "erreur" };
   }
 }
-import { lireReglagesSecteurs, etatDesSecteurs, messageSecteurFerme } from "./_secteurs.js";
+import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache } from "./_secteurs.js";
 import crypto from "crypto";
 
 // Web Push sender — RFC 8291 / RFC 8292 — no npm, Node.js 18+ native crypto
@@ -317,65 +317,83 @@ async function verifyUser(req, supabaseUrl, serviceRoleKey) {
 // Secteurs fermés aux clients, réglés depuis le backoffice (`disabled_sectors`).
 // Renvoie toujours un tableau : en cas d'échec de lecture on ne ferme rien, mais
 // on journalise — fermer par défaut bloquerait toute la plateforme sur une panne.
-// État d'ouverture de tous les secteurs, avec cache de cinq minutes.
+// Refus d'une réservation APRÈS encaissement.
 //
-// Le décompte des prestataires impose d'énumérer les comptes : c'est coûteux, et
-// trois chemins en ont besoin — l'accueil client, le refus de réservation après
-// paiement, et l'affectation chez un tiers. Un seul calcul les sert tous.
+// Cinq contrôles de `assign_after_payment` s'exécutent une fois le paiement
+// passé : secteur fermé, prestataire indisponible ou non activé, tarif
+// incohérent, adresse hors zone. Chacun renvoyait une erreur et s'arrêtait là.
+// Le client était débité, la prestation restait sans prestataire, personne
+// n'était prévenu, et rien ne rattrapait la situation — la prestation n'ayant
+// pas d'échéance d'acceptation, aucun traitement automatique ne la reprenait.
 //
-// La règle elle-même vit dans _secteurs.js : seuil réglable, fermeture d'autorité
-// et ouverture forcée. Elle ne doit exister qu'à un seul endroit, sinon un
-// secteur sera ouvert ici et fermé là.
-async function etatSecteursAvecCache(supabaseUrl, headers) {
-  const cache = globalThis.__alaneSectorCache;
-  if (cache && Date.now() - cache.ts < 300_000) return cache.data;
+// Constaté en production le 16/08/2026 sur le cas « secteur fermé ». La cause
+// première est corrigée en amont (le secteur est désormais vérifié avant
+// l'encaissement, dans /api/stripe-intent), mais les quatre autres refus
+// existent toujours : il faut qu'aucun d'eux ne puisse garder l'argent.
+//
+// Le remboursement est INTÉGRAL, frais de service compris : le client n'a
+// commis aucune faute, c'est la Plateforme qui refuse. C'est la règle déjà
+// posée pour l'annulation par le prestataire (CGPS art. 8).
+async function rembourserRefusApresPaiement(missionId, intentId, motif, supabaseUrl, headers) {
+  if (!intentId) return { rembourse: false };
 
-  const reglages = await lireReglagesSecteurs(supabaseUrl, headers);
-
-  const pr = await fetch(
-    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id`,
-    { headers }
-  );
-  const profileData = await pr.json().catch(() => []);
-  const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
-
-  // Pagination : au-delà de 1000 comptes, une seule page en oublierait.
-  let allUsers = [];
-  let page = 1;
-  while (true) {
-    const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
-    const ud = await ur.json().catch(() => ({}));
-    const batch = ud.users || [];
-    allUsers = allUsers.concat(batch);
-    if (batch.length < 1000) break;
-    page++;
+  const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!stripeKey) {
+    console.error(`[refus] STRIPE_SECRET_KEY absente — prestation ${missionId} : `
+      + `client débité sans remboursement possible (${motif}). À reprendre à la main.`);
+    return { rembourse: false };
   }
 
-  const counts = {};
-  for (const u of allUsers) {
-    if (!approvedIds.has(u.id)) continue;
-    const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
-    if (sector) counts[sector] = (counts[sector] || 0) + 1;
+  try {
+    const rf = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${stripeKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        // Un client qui réessaie relance le même refus : sans clé d'idempotence,
+        // le second appel rembourserait un paiement déjà remboursé.
+        "Idempotency-Key": `refus-${missionId}`,
+      },
+      body: new URLSearchParams({ payment_intent: intentId }).toString(),
+    });
+    const data = await rf.json().catch(() => ({}));
+    if (!data?.id) {
+      console.error(`[refus] remboursement Stripe refusé pour ${missionId} (${motif}) :`
+        + ` ${JSON.stringify(data).slice(0, 300)} — client débité, à reprendre à la main.`);
+      return { rembourse: false };
+    }
+    console.log(`[refus] prestation ${missionId} remboursée (${motif}) — ${data.id}`);
+  } catch (e) {
+    console.error(`[refus] remboursement impossible pour ${missionId} (${motif}) :`, e.message,
+      "— client débité, à reprendre à la main.");
+    return { rembourse: false };
   }
 
-  const data = etatDesSecteurs(counts, reglages);
-  globalThis.__alaneSectorCache = { ts: Date.now(), data };
-  return data;
+  // La prestation est close : la laisser en `pending_acceptance` sans
+  // prestataire ni échéance la rendrait invisible de tous les traitements, et
+  // elle resterait éternellement « en attente » sur l'écran du client.
+  try {
+    const up = await fetch(`${supabaseUrl}/rest/v1/missions?id=eq.${missionId}&status=in.(open,pending_acceptance)`, {
+      method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ status: "cancelled", cancellation_reason: `Réservation refusée : ${motif}` }),
+    });
+    if (!up.ok) {
+      const detail = await up.text().catch(() => "");
+      console.error(`[refus] clôture non enregistrée pour ${missionId} (${up.status}) : ${detail.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.error(`[refus] clôture impossible pour ${missionId} :`, e.message);
+  }
+
+  return { rembourse: true };
 }
 
-// Le secteur est-il réservable ? Un secteur inconnu n'est pas bloqué : la liste
-// des secteurs connus est côté code, et refuser sur cette base casserait toute
-// réservation le jour où un secteur est ajouté sans mise à jour du module.
-async function secteurOuvert(secteur, supabaseUrl, headers) {
-  if (!secteur) return true;
-  try {
-    const etats = await etatSecteursAvecCache(supabaseUrl, headers);
-    const e = etats[secteur];
-    return e ? e.open : true;
-  } catch (e) {
-    console.error("[secteurs] état indisponible, réservation autorisée :", e.message);
-    return true;
-  }
+// Phrase ajoutée au message rendu au client, selon que le remboursement a pu
+// être fait ou non. Ne jamais annoncer un remboursement qui n'a pas eu lieu.
+function suffixeRemboursement({ rembourse }) {
+  return rembourse
+    ? " Vous n'avez pas été débité : le paiement a été intégralement remboursé (sous 5 à 10 jours ouvrés selon votre banque)."
+    : " Votre paiement n'a pas pu être remboursé automatiquement — écrivez à direction@alane.fr, le montant vous sera restitué.";
 }
 
 // Limite mensuelle de prestations d'un prestataire, offre de lancement comprise.
@@ -1924,7 +1942,8 @@ export default async function handler(req, res) {
       const secteurMission = ((await mSecRes.json().catch(() => []))[0] || {}).sector;
       if (secteurMission) {
         if (!await secteurOuvert(secteurMission, SUPABASE_URL, headers)) {
-          return res.status(400).json({ error: messageSecteurFerme(secteurMission) });
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "secteur fermé", SUPABASE_URL, headers);
+          return res.status(400).json({ error: messageSecteurFerme(secteurMission) + suffixeRemboursement(r) });
         }
       }
 
@@ -1934,10 +1953,14 @@ export default async function handler(req, res) {
       // compte non activé restait réservable par un client.
       const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataire_id}&role=eq.prestataire&status=eq.approved&select=id,missions_enabled`, { headers });
       const pData = await pRes.json().catch(() => []);
-      if (!Array.isArray(pData) || !pData[0]) return res.status(400).json({ error: "Prestataire indisponible" });
+      if (!Array.isArray(pData) || !pData[0]) {
+        const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "prestataire indisponible", SUPABASE_URL, headers);
+        return res.status(400).json({ error: "Prestataire indisponible." + suffixeRemboursement(r) });
+      }
       if (pData[0].missions_enabled !== true) {
         console.error(`[assign_after_payment] prestataire ${prestataire_id} non activé (missions_enabled != true)`);
-        return res.status(400).json({ error: "Ce prestataire n'a pas encore accès aux prestations (documents en cours de vérification). Choisissez un autre prestataire." });
+        const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "prestataire non activé", SUPABASE_URL, headers);
+        return res.status(400).json({ error: "Ce prestataire n'a pas encore accès aux prestations (documents en cours de vérification). Choisissez un autre prestataire." + suffixeRemboursement(r) });
       }
 
       // Tarif réellement annoncé par le prestataire. Second volet du contrôle du
@@ -1955,9 +1978,11 @@ export default async function handler(req, res) {
           const tarifReel = Number(((await urT.json().catch(() => ({}))).user_metadata || {}).tarif_net || 0);
           if (tarifReel > 0 && tarifPaye < tarifReel - 0.01) {
             console.error(`[assign_after_payment] tarif payé ${tarifPaye} €/h inférieur au tarif du prestataire ${prestataire_id} (${tarifReel} €/h)`);
+            const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "tarif incohérent", SUPABASE_URL, headers);
             return res.status(400).json({
               error: `Le tarif de ce prestataire est de ${tarifReel.toFixed(2).replace(".", ",")} €/h, `
-                   + `supérieur au montant réglé. Recommencez la réservation depuis sa fiche.`,
+                   + `supérieur au montant réglé. Recommencez la réservation depuis sa fiche.`
+                   + suffixeRemboursement(r),
             });
           }
         }
@@ -1986,8 +2011,10 @@ export default async function handler(req, res) {
             const dist = haversineKm(cP.lat, cP.lon, cM.lat, cM.lon);
             if (dist > rayonKm) {
               console.error(`[assign_after_payment] hors zone : ${Math.round(dist)} km > ${rayonKm} km (presta ${prestataire_id})`);
+              const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "hors zone d'intervention", SUPABASE_URL, headers);
               return res.status(400).json({
-                error: `Ce prestataire n'intervient que dans un rayon de ${rayonKm} km autour de ${metaP.ville || "sa zone"}. L'adresse de la prestation est à environ ${Math.round(dist)} km. Choisissez un prestataire plus proche.`,
+                error: `Ce prestataire n'intervient que dans un rayon de ${rayonKm} km autour de ${metaP.ville || "sa zone"}. L'adresse de la prestation est à environ ${Math.round(dist)} km. Choisissez un prestataire plus proche.`
+                     + suffixeRemboursement(r),
               });
             }
           }
@@ -3382,7 +3409,8 @@ export default async function handler(req, res) {
       }
 
       if (!await secteurOuvert(am.sector, SUPABASE_URL, headers)) {
-        return res.status(400).json({ error: messageSecteurFerme(am.sector) });
+        const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "secteur fermé", SUPABASE_URL, headers);
+        return res.status(400).json({ error: messageSecteurFerme(am.sector) + suffixeRemboursement(r) });
       }
 
       // Le contrat-cadre est un préalable, pas une formalité : il porte les garanties
@@ -3392,7 +3420,8 @@ export default async function handler(req, res) {
         const ccRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=contrat_cadre_pro`, { headers });
         const cc = (await ccRes.json().catch(() => []))[0];
         if (!cc || !cc.contrat_cadre_pro || !cc.contrat_cadre_pro.accepte_le) {
-          return res.status(403).json({ error: "Le contrat-cadre Client Professionnel doit être accepté avant toute intervention au bénéfice d'un tiers." });
+          const r = await rembourserRefusApresPaiement(mission_id, stripe_payment_intent, "contrat-cadre non accepté", SUPABASE_URL, headers);
+          return res.status(403).json({ error: "Le contrat-cadre Client Professionnel doit être accepté avant toute intervention au bénéfice d'un tiers." + suffixeRemboursement(r) });
         }
       } catch (e) {
         console.error("[affecter_tiers] contrat-cadre illisible :", e.message);
