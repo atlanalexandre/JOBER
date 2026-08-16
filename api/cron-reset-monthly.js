@@ -568,6 +568,37 @@ export default async function handler(req, res) {
     const heureUTC = new Date().getUTCHours();
     let purges = 0, rcRelances = 0, rcSuspendus = 0, resiliations = 0;
     if (heureUTC < 2) {
+      // ── Purge des positions GPS ──
+      //
+      // `tracking_positions` n'était purgée par rien. Chaque prestation y
+      // laissait un point, conservé indéfiniment : à l'échelle de quelques
+      // milliers de prestations, cela dessine les déplacements des prestataires
+      // sur des mois, alors que la finalité — permettre au client de suivre
+      // l'arrivée — s'éteint avec la prestation.
+      //
+      // Le partage lui-même est borné à la fenêtre de la prestation
+      // (`fenetrePartagePosition`), qui se ferme une heure après la fin. Vingt-
+      // quatre heures laissent donc une marge confortable, y compris pour une
+      // prestation qui aurait débordé.
+      try {
+        const limite = new Date(Date.now() - 24 * 3600000).toISOString();
+        const pRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/tracking_positions?updated_at=lt.${encodeURIComponent(limite)}`,
+          { method: "DELETE", headers: { ...headers, "Prefer": "return=representation" } }
+        );
+        if (!pRes.ok) {
+          const detail = await pRes.text().catch(() => "");
+          console.error(`[positions] purge impossible (${pRes.status}) : ${detail.slice(0, 200)}`);
+        } else {
+          const supprimees = await pRes.json().catch(() => []);
+          if (Array.isArray(supprimees) && supprimees.length > 0) {
+            console.log(`[positions] ${supprimees.length} position(s) GPS purgée(s)`);
+          }
+        }
+      } catch (e) {
+        console.error("[positions] purge interrompue :", e.message);
+      }
+
       // ── Purge des pièces d'identité (art. 14.4) ──
       try {
         const dRes = await fetch(

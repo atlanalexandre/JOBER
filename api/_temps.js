@@ -124,3 +124,50 @@ export function retardMinutes(date, heureDebut, nowMs = Date.now()) {
   const debutMs = debutPrestationMs(date, heureDebut);
   return debutMs === null ? null : Math.floor((nowMs - debutMs) / 60000);
 }
+
+/**
+ * Fenêtre pendant laquelle la position du prestataire peut être partagée.
+ *
+ * POURQUOI ELLE EXISTE
+ *
+ * Le partage de position n'était borné par rien. Un prestataire qui l'activait
+ * la veille — ou simplement en avance, le bouton étant visible dès l'affectation
+ * — exposait au client sa position en direct pendant des heures. C'est-à-dire,
+ * la plupart du temps, son domicile.
+ *
+ * Une fenêtre d'une heure existait déjà dans le code, mais elle ne gouvernait
+ * que la notification « prestataire en route ». Le partage lui-même, et la
+ * lecture par le client, n'étaient bornés ni l'un ni l'autre.
+ *
+ * Le rapport avec la prestation est ce qui rend ce traitement légitime : hors
+ * de ce rapport, il n'y a plus de finalité, donc plus de base légale. La
+ * fenêtre commence une heure avant le début — le temps du trajet — et se ferme
+ * une heure après la fin, pour couvrir un dépassement d'horaire.
+ */
+export const AVANCE_POSITION_MS = 60 * 60 * 1000;
+export const GRACE_POSITION_MS  = 60 * 60 * 1000;
+
+/**
+ * @param {object} m      la prestation (date, heure_debut, hours, actual_hours, started_at)
+ * @param {number} nowMs
+ * @returns {{ouverte:boolean, debut:number|null, fin:number|null, raison:string|null}}
+ *
+ * `raison` vaut "trop_tot", "trop_tard" ou "horaire_inconnu" — de quoi dire au
+ * prestataire pourquoi le partage est indisponible plutôt que de le laisser
+ * appuyer sur un bouton qui ne fait rien.
+ *
+ * Horaire illisible : la fenêtre est FERMÉE. À défaut de savoir si l'on est
+ * dans le rapport de la prestation, on ne diffuse pas la position de quelqu'un.
+ */
+export function fenetrePartagePosition(m, nowMs = Date.now()) {
+  const debutMs = debutPrestationMs(m?.date, m?.heure_debut);
+  const finMs   = finPrestationMs(m);
+  if (debutMs === null || finMs === null) {
+    return { ouverte: false, debut: null, fin: null, raison: "horaire_inconnu" };
+  }
+  const debut = debutMs - AVANCE_POSITION_MS;
+  const fin   = finMs + GRACE_POSITION_MS;
+  if (nowMs < debut) return { ouverte: false, debut, fin, raison: "trop_tot" };
+  if (nowMs > fin)   return { ouverte: false, debut, fin, raison: "trop_tard" };
+  return { ouverte: true, debut, fin, raison: null };
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -126,5 +126,64 @@ describe("retardMinutes", () => {
   });
   it("rend null quand l'horaire est inconnu", () => {
     expect(retardMinutes(null, "14:00")).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fenêtre de partage de la position du prestataire
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le partage n'était borné par rien. Un prestataire qui l'activait la veille —
+// le bouton étant visible dès l'affectation — diffusait sa position en direct
+// pendant des heures, c'est-à-dire, la plupart du temps, son domicile.
+//
+// Une fenêtre d'une heure existait déjà dans le code, mais elle ne gouvernait
+// que la notification « prestataire en route » : ni le partage, ni la lecture
+// par le client n'étaient bornés.
+
+describe("fenêtre de partage de position", () => {
+  // 17 août 2026, 10:00 heure française = 08:00 UTC (été).
+  const M = { date: "2026-08-17", heure_debut: "10:00", hours: 2 };
+  const T = (iso) => new Date(iso).getTime();
+
+  it("est fermée la veille", () => {
+    const f = fenetrePartagePosition(M, T("2026-08-16T20:00:00Z"));
+    expect(f.ouverte).toBe(false);
+    expect(f.raison).toBe("trop_tot");
+  });
+
+  it("est fermée deux heures avant le début", () => {
+    expect(fenetrePartagePosition(M, T("2026-08-17T06:00:00Z")).ouverte).toBe(false);
+  });
+
+  it("s'ouvre une heure avant le début", () => {
+    // 08:00 UTC moins une heure = 07:00 UTC.
+    expect(fenetrePartagePosition(M, T("2026-08-17T07:00:00Z")).ouverte).toBe(true);
+    expect(fenetrePartagePosition(M, T("2026-08-17T06:59:00Z")).ouverte).toBe(false);
+  });
+
+  it("reste ouverte pendant la prestation", () => {
+    expect(fenetrePartagePosition(M, T("2026-08-17T09:00:00Z")).ouverte).toBe(true);
+  });
+
+  it("se ferme une heure après la fin", () => {
+    // Fin prévue 10:00 UTC (08:00 + 2 h), grâce jusqu'à 11:00 UTC.
+    expect(fenetrePartagePosition(M, T("2026-08-17T10:59:00Z")).ouverte).toBe(true);
+    expect(fenetrePartagePosition(M, T("2026-08-17T11:01:00Z")).ouverte).toBe(false);
+    expect(fenetrePartagePosition(M, T("2026-08-17T11:01:00Z")).raison).toBe("trop_tard");
+  });
+
+  it("suit le pointage réel quand la prestation a démarré en retard", () => {
+    // Démarrée à 11:00 UTC : la fenêtre court jusqu'à 13:00 + 1 h de grâce.
+    const enRetard = { ...M, started_at: "2026-08-17T11:00:00Z" };
+    expect(fenetrePartagePosition(enRetard, T("2026-08-17T13:30:00Z")).ouverte).toBe(true);
+  });
+
+  // À défaut de savoir si l'on est dans le rapport de la prestation, on ne
+  // diffuse pas la position de quelqu'un. Le doute profite au prestataire.
+  it("est fermée quand l'horaire est illisible", () => {
+    expect(fenetrePartagePosition({ hours: 2 }).ouverte).toBe(false);
+    expect(fenetrePartagePosition({ hours: 2 }).raison).toBe("horaire_inconnu");
+    expect(fenetrePartagePosition(null).ouverte).toBe(false);
   });
 });
