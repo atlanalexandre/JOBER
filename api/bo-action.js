@@ -637,6 +637,100 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // ── Résiliation avec préavis (CGPS art. 16.2, règlement P2B art. 4) ──
+    //
+    // Le règlement impose TRENTE JOURS de préavis avant de résilier le compte
+    // d'un utilisateur professionnel. Le backoffice ne savait que supprimer
+    // immédiatement : la clause promettait un délai que l'outil ne tenait pas.
+    //
+    // Le compte continue de fonctionner pendant le préavis — un préavis n'est
+    // pas une suspension. Pour écarter quelqu'un tout de suite, c'est la
+    // suspension conservatoire qui s'applique, et elle existe déjà.
+    if (action === "programmer_resiliation") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const motif = (req.body.reason || "").trim();
+      if (motif.length < 10) {
+        return res.status(400).json({
+          error: "Un motif d'au moins 10 caractères est requis : il est notifié à l'intéressé, "
+               + "qui doit pouvoir le contester (CGPS art. 16.2).",
+        });
+      }
+      // Trente jours au minimum. L'administrateur peut allonger, jamais réduire :
+      // c'est un plancher réglementaire, pas un réglage de confort.
+      const jours = Math.max(30, Number(req.body.jours) || 30);
+      const effet = new Date(Date.now() + jours * 86400000);
+
+      const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          resiliation_prevue_at: effet.toISOString(),
+          resiliation_motif: motif,
+          resiliation_notifiee_at: new Date().toISOString(),
+        }),
+      });
+      const rows = await maj.json().catch(() => []);
+      if (!maj.ok || !Array.isArray(rows) || rows.length === 0) {
+        console.error(`[programmer_resiliation] échec pour ${profileId} (${maj.status}) — vérifier `
+          + "que la migration 2026-08-16_preavis_resiliation.sql est appliquée.");
+        return res.status(503).json({ error: "Résiliation non programmée — migration non appliquée ?" });
+      }
+
+      const effetLe = effet.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+      const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+      const uData = await uRes.json().catch(() => ({}));
+      if (uData?.email) {
+        await sendEmail({
+          to: uData.email,
+          subject: `Résiliation de votre compte ALANE au ${effetLe}`,
+          html: emailHtml(
+            `<p>Bonjour,</p>`
+            + `<p>Nous vous informons que votre compte <strong>ALANE</strong> sera résilié le `
+            + `<strong>${esc(effetLe)}</strong>, soit dans ${jours} jours.</p>`
+            + `<p><strong>Motif :</strong> ${esc(motif)}</p>`
+            + `<p>Votre compte fonctionne normalement jusqu'à cette date : vous pouvez honorer vos `
+            + `prestations en cours et percevoir les versements correspondants.</p>`
+            + `<p>Vous pouvez contester cette décision en écrivant à <strong>support@alane.fr</strong>. `
+            + `Votre demande sera examinée de façon contradictoire, et la résiliation annulée si le `
+            + `motif n'est pas établi.</p>`
+          ),
+        }).catch(e => console.error(`[programmer_resiliation] e-mail NON envoyé à ${profileId} :`, e.message));
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: profileId, type: "system",
+          title: "Résiliation de votre compte",
+          body: `Votre compte sera résilié le ${effetLe}. Motif : ${motif}. `
+              + `Vous pouvez contester à support@alane.fr — la décision est réexaminée de façon contradictoire.`,
+          read: false }),
+      }).catch(() => {});
+
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "programmer_resiliation", target_id: profileId, target_email: uData?.email || null, reason: motif }) }).catch(() => {});
+      return res.status(200).json({ success: true, effet: effet.toISOString() });
+    }
+
+    if (action === "annuler_resiliation") {
+      if (!profileId) return res.status(400).json({ error: "profileId requis" });
+      const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&resiliation_prevue_at=not.is.null`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ resiliation_prevue_at: null, resiliation_motif: null, resiliation_notifiee_at: null }),
+      });
+      const rows = await maj.json().catch(() => []);
+      if (!maj.ok || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(409).json({ error: "Aucune résiliation programmée sur ce compte." });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id: profileId, type: "system",
+          title: "Résiliation annulée ✅",
+          body: "Après examen, la résiliation de votre compte est annulée. Votre accès reste inchangé.",
+          read: false }),
+      }).catch(() => {});
+      await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ action: "annuler_resiliation", target_id: profileId }) }).catch(() => {});
+      return res.status(200).json({ success: true });
+    }
+
     if (action === "unsuspend") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });

@@ -131,6 +131,13 @@ Supprimer la ligne effacerait la démarche en même temps que la pièce. Si la s
 fichier échoue, `purged_at` n'est **pas** écrit — sinon la pièce serait réputée supprimée
 alors qu'elle est toujours là, et plus rien ne repasserait dessus.
 
+**La résiliation d'un compte professionnel passe par un préavis de 30 jours** (CGPS art. 16.2,
+règlement P2B). `resiliation_prevue_at` porte la date d'effet, `resiliation_motif` ce qui a été
+notifié — une décision qu'on ne sait plus justifier ne se défend pas. Le compte fonctionne
+normalement pendant le préavis : un préavis n'est pas une suspension. Le traitement quotidien
+exécute à l'échéance, mais **reporte** si une prestation est en cours ou si un versement reste
+dû — supprimer le compte le ferait disparaître avec l'argent.
+
 Les attestations RC Pro sont relancées 30 jours avant l'échéance, puis à l'expiration, et
 l'accès aux propositions est suspendu 30 jours après (`missions_enabled = false`), comme
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
