@@ -127,3 +127,75 @@ export function messageSecteurFerme(_secteur) {
   return "Ce secteur n'est pas encore ouvert à la réservation dans votre zone. "
        + "Nous vous préviendrons dès qu'il le sera.";
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// État d'ouverture, avec cache de cinq minutes
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Ce calcul vivait dans `api/missions.js`. Il en a été sorti le 16/08/2026,
+// après un incident : le secteur n'était vérifié qu'APRÈS l'encaissement, dans
+// `assign_after_payment`. Un client réservait, était débité, puis recevait
+// « ce secteur n'est pas encore ouvert à la réservation » — l'argent parti, la
+// prestation sans prestataire, et personne de prévenu côté prestataire.
+//
+// La règle doit donc être lisible depuis `/api/stripe-intent`, c'est-à-dire
+// AVANT que le moindre euro ne bouge. Elle est ici pour être appelée des deux
+// endroits, sans être recopiée.
+//
+// Le décompte impose d'énumérer les comptes : c'est coûteux, d'où le cache.
+
+export async function etatSecteursAvecCache(supabaseUrl, headers) {
+  const cache = globalThis.__alaneSectorCache;
+  if (cache && Date.now() - cache.ts < 300_000) return cache.data;
+
+  const reglages = await lireReglagesSecteurs(supabaseUrl, headers);
+
+  const pr = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id`,
+    { headers }
+  );
+  const profileData = await pr.json().catch(() => []);
+  const approvedIds = new Set((Array.isArray(profileData) ? profileData : []).map(p => p.id));
+
+  // Pagination : au-delà de 1000 comptes, une seule page en oublierait.
+  let allUsers = [];
+  let page = 1;
+  while (true) {
+    const ur = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+    const ud = await ur.json().catch(() => ({}));
+    const batch = ud.users || [];
+    allUsers = allUsers.concat(batch);
+    if (batch.length < 1000) break;
+    page++;
+  }
+
+  const counts = {};
+  for (const u of allUsers) {
+    if (!approvedIds.has(u.id)) continue;
+    const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
+    if (sector) counts[sector] = (counts[sector] || 0) + 1;
+  }
+
+  const data = etatDesSecteurs(counts, reglages);
+  globalThis.__alaneSectorCache = { ts: Date.now(), data };
+  return data;
+}
+
+// Le secteur est-il réservable ? Un secteur inconnu n'est pas bloqué : la liste
+// des secteurs connus est côté code, et refuser sur cette base casserait toute
+// réservation le jour où un secteur est ajouté sans mise à jour du module.
+//
+// Une panne de lecture autorise également la réservation : une base
+// indisponible ne doit pas empêcher un client de commander.
+export async function secteurOuvert(secteur, supabaseUrl, headers) {
+  if (!secteur) return true;
+  try {
+    const etats = await etatSecteursAvecCache(supabaseUrl, headers);
+    const e = etats[secteur];
+    return e ? e.open : true;
+  } catch (e) {
+    console.error("[secteurs] état indisponible, réservation autorisée :", e.message);
+    return true;
+  }
+}

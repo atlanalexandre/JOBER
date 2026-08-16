@@ -1826,8 +1826,15 @@ export default function App() {
           // bloqué sur l'écran de règlement, qui n'a plus de retour une fois en
           // état « Paiement sécurisé ». On l'emmène sur ses prestations avec un
           // message explicite, la prestation existe déjà en base.
-          setBookingError((e.message || "Une erreur est survenue.")
-            + " Votre paiement a bien été enregistré — retrouvez la prestation dans « Mes prestations ». Contactez le support si elle n'y figure pas.");
+          // Le serveur dit désormais lui-même ce qu'il est advenu de l'argent
+          // (remboursé, ou à reprendre à la main). Ajouter « votre paiement a
+          // bien été enregistré » par-dessus contredisait ce message : le client
+          // lisait qu'il était débité alors qu'il venait d'être remboursé.
+          const msg = e.message || "Une erreur est survenue.";
+          const parleDeLArgent = /rembours|débit/i.test(msg);
+          setBookingError(msg + (parleDeLArgent
+            ? " Retrouvez le détail dans « Mes prestations »."
+            : " Votre paiement a bien été enregistré — retrouvez la prestation dans « Mes prestations ». Contactez le support si elle n'y figure pas."));
           setScreen("mission_history");
         }
       }} onBack={()=>setScreen("booking")} />}
