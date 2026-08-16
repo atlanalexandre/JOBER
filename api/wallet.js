@@ -194,6 +194,13 @@ export default async function handler(req, res) {
   }
 
   // ── PAY MISSION FROM WALLET ─────────────────────────────────────
+  // « pay_mission » n'est plus appelée depuis l'application : le portefeuille est
+  // supprimé et le tunnel ne propose plus que la carte. Elle est conservée le
+  // temps de vérifier qu'aucun solde résiduel n'existe, et sera retirée ensuite.
+  //
+  // Elle ne peut de toute façon plus rien débiter d'inattendu : le solde
+  // rechargé est à zéro partout, et le cashback qu'elle consomme d'abord est un
+  // avantage commercial, non des fonds reçus du client.
   if (action === "pay_mission") {
     if (!mission_id || !/^[0-9a-f-]{36}$/i.test(mission_id)) {
       return res.status(400).json({ error: "mission_id invalide" });

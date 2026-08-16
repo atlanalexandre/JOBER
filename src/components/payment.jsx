@@ -377,9 +377,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
   const [applePayAvailable, setApplePayAvailable] = useState(false);
-  const [prepaidBalance, setPrepaidBalance] = useState(0);
-  const [useWallet, setUseWallet]           = useState(false);
-  const [walletProcessing, setWalletProcessing] = useState(false);
   // Renonciation au droit de rétractation — voir BlocRetractation, plus bas.
   const [retractationOk, setRetractationOk] = useState(false);
   const applePayBtnRef    = useRef(null);
@@ -395,19 +392,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
     });
   }, []);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: sd }) => {
-      const token = sd?.session?.access_token;
-      if (!token) return;
-      fetch("/api/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ action: "get_balance" }),
-      }).then(r => r.json()).then(({ balance }) => {
-        if (balance > 0) setPrepaidBalance(balance);
-      }).catch(() => {});
-    });
-  }, []);
 
   // ── Sauvegarde du brouillon à l'entrée dans le tunnel de paiement ──────────
   useEffect(() => {
@@ -551,29 +535,6 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
   if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
-  const handlePayFromWallet = async () => {
-    if (walletProcessing) return;
-    if (!missionId) { setStripeError("Identifiant de prestation manquant. Veuillez fermer et rouvrir le paiement."); return; }
-    setWalletProcessing(true);
-    setStripeError(null);
-    try {
-      const { data: { session: wSess } } = await supabase.auth.getSession();
-      const r = await fetch("/api/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${wSess?.access_token}` },
-        body: JSON.stringify({ action: "pay_mission", mission_id: missionId }),
-      });
-      const result = await r.json();
-      if (!r.ok) throw new Error(result.error || "Erreur paiement wallet");
-      clearDraft();
-      setDone(true);
-      onSuccess && onSuccess(`wallet_${missionId}`);
-    } catch (e) {
-      setStripeError(e.message || "Erreur paiement wallet");
-      setWalletProcessing(false);
-    }
-  };
-
   const handlePay = async () => {
     if (processing) return;
     setStripeError(null);
@@ -672,81 +633,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         )}
 
         {/* ── Wallet ALANE ── */}
-        {prepaidBalance >= total && (
-          <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:14 }}>💰 Wallet ALANE</div>
-              <span style={{ background:"rgba(16,217,143,0.15)", color:"#10D98F", fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:99, border:"1px solid rgba(16,217,143,0.3)" }}>
-                {prepaidBalance.toFixed(2).replace(".", ",")} € disponibles
-              </span>
-            </div>
-            <div
-              onClick={()=>setUseWallet(true)}
-              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: useWallet?`${C.violet}18`:"transparent", border:`2px solid ${useWallet?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer", marginBottom:8 }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:20 }}>💰</span>
-                <div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Payer depuis mon wallet</div>
-                  <div style={{ color:"#10D98F", fontSize:11, fontWeight:600 }}>✅ 0 frais Stripe fixes sur cette prestation</div>
-                </div>
-              </div>
-              <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useWallet?C.violet:C.border}`, background:useWallet?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                {useWallet && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-              </div>
-            </div>
-            <div
-              onClick={()=>setUseWallet(false)}
-              style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: !useWallet?`${C.violet}18`:"transparent", border:`2px solid ${!useWallet?C.violet:C.border}`, borderRadius:11, padding:"12px 14px", cursor:"pointer" }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:20 }}>💳</span>
-                <div style={{ fontWeight:600, color:C.text, fontSize:13 }}>Payer par carte bancaire</div>
-              </div>
-              <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${!useWallet?C.violet:C.border}`, background:!useWallet?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                {!useWallet && <div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }} />}
-              </div>
-            </div>
-            {useWallet && (
-              <>
-                {stripeError && (
-                  <div style={{ background:"#ff4d4d15", border:"1px solid #ff4d4d40", borderRadius:10, padding:"10px 12px", color:"#f87171", fontSize:13, marginTop:12 }}>
-                    ⚠️ {stripeError}
-                  </div>
-                )}
-                <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
-                <Btn full onClick={handlePayFromWallet} disabled={walletProcessing || !retractationOk} style={{ marginTop:14, fontSize:16, padding:"18px" }}>
-                  {walletProcessing ? "⏳ Traitement en cours…" : `💰 Payer ${total} € depuis mon wallet`}
-                </Btn>
-                <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>
-                  Solde après paiement : {Math.max(0, prepaidBalance - total).toFixed(2).replace(".", ",")} €
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Wallet insuffisant — bannière de recharge rapide */}
-        {prepaidBalance > 0 && prepaidBalance < total && (
-          <div style={{ background:"rgba(107,86,255,0.10)", border:"1px solid rgba(107,86,255,0.35)", borderRadius:14, padding:"14px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>💰 Wallet insuffisant</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>
-                Solde : <strong style={{ color:"#fff" }}>{prepaidBalance.toFixed(2).replace(".",",")} €</strong> — il manque <strong style={{ color:C.violet }}>{(total - prepaidBalance).toFixed(2).replace(".",",")} €</strong>
-              </div>
-            </div>
-            {/* Le portefeuille rechargeable est supprimé (16/08/2026). Les
-                soldes constitués restent utilisables et remboursables, mais
-                plus aucun rechargement n'est possible. */}
-            <span style={{ color:C.textMuted, fontSize:11, textAlign:"right", flexShrink:0, maxWidth:180, lineHeight:1.4 }}>
-              Rechargement suspendu — réglez le complément par carte.
-            </span>
-          </div>
-        )}
-
-
+        {/* Le portefeuille est supprimé (16/08/2026) : le choix « payer depuis
+            mon wallet » disparaît avec lui. Le paiement se fait par carte. */}
         {/* Méthode de paiement */}
-        {!useWallet && (
+        {(
         <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
           <div style={{ fontWeight:800, color:C.text, fontSize:14, marginBottom:12 }}>💳 Carte bancaire</div>
           <div>
@@ -806,8 +696,8 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         </div>
         )}
 
-        {/* Sécurité + bouton paiement carte — masqués si wallet sélectionné */}
-        {!useWallet && (
+        {/* Sécurité + bouton paiement carte */}
+        {(
           <>
             <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:16 }}>
               {["🔒 SSL 256-bit","🛡️ 3D Secure","✓ PCI DSS"].map(s=>(
