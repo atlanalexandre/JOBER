@@ -2481,6 +2481,57 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
+    // ── Envoi d'un message ────────────────────────────────────────────
+    //
+    // L'insertion se faisait DEPUIS LE NAVIGATEUR, et c'est lui qui choisissait
+    // `conversation_key` et `sender_tag`. Or ces deux valeurs sont la seule
+    // chose qui rattache un message à une conversation et à son auteur : la
+    // messagerie n'a pas de modèle de participants, les règles de sécurité
+    // elles-mêmes lisent la chaîne de caractères.
+    //
+    // Le serveur les dérive désormais de la prestation partagée, comme
+    // `chat_notify` vérifiait déjà le droit d'écrire. Le navigateur n'envoie
+    // plus que le destinataire et le texte.
+    //
+    // Ce n'est pas la refonte du modèle de conversation — elle reste à faire —
+    // mais elle retire au client la main sur ce qui l'identifie.
+    if (action === "envoyer_message") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { recipient_id, content } = payload;
+      if (!recipient_id || !isUuid(recipient_id)) return res.status(400).json({ error: "Destinataire invalide" });
+      if (recipient_id === caller.id) return res.status(400).json({ error: "Destinataire invalide" });
+      const texte = String(content || "").trim();
+      if (!texte) return res.status(400).json({ error: "Message vide" });
+      if (texte.length > 4000) return res.status(400).json({ error: "Message trop long (4000 caractères maximum)." });
+
+      // Même contrôle que `chat_notify` : il faut une prestation en commun.
+      const partagee = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?or=(and(client_id.eq.${caller.id},prestataire_id.eq.${recipient_id}),and(client_id.eq.${recipient_id},prestataire_id.eq.${caller.id}))&status=in.(open,pending_acceptance,assigned)&select=client_id,prestataire_id&limit=1`,
+        { headers }
+      );
+      const lignesPartage = await partagee.json().catch(() => []);
+      const lien = Array.isArray(lignesPartage) && lignesPartage[0];
+      if (!lien) return res.status(403).json({ error: "Aucune prestation en cours avec ce contact." });
+
+      // La clé et le tag viennent de la prestation, jamais de l'appelant.
+      const cle = `prov${lien.prestataire_id}-user${lien.client_id}`;
+      const tag = caller.id === lien.client_id ? "client" : "prestataire";
+
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ conversation_key: cle, sender_id: caller.id, sender_tag: tag, content: texte }),
+      }).catch(e => { console.error("[message] insertion impossible :", e.message); return null; });
+      const lignesMsg = ins ? await ins.json().catch(() => []) : null;
+      if (!ins || !ins.ok || !Array.isArray(lignesMsg) || lignesMsg.length === 0) {
+        console.error(`[message] refus d'insertion (${ins?.status}) : ${JSON.stringify(lignesMsg).slice(0, 200)}`);
+        return res.status(500).json({ error: "Votre message n'a pas pu être envoyé. Réessayez." });
+      }
+
+      return res.status(200).json({ success: true, message: lignesMsg[0] });
+    }
+
     if (action === "chat_notify") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });

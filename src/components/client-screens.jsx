@@ -4305,14 +4305,26 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
     const optimistic = { id:`opt-${Date.now()}`, sender_tag:senderTag, sender_id:userId, conversation_key:key, content, created_at:new Date().toISOString() };
     setMsgs(m => [...m, optimistic]);
     try {
-      // L'échec était avalé par un `catch (_) {}` : le message restait affiché comme
-      // envoyé alors qu'il n'existait pas en base. Le client croyait avoir prévenu son
-      // prestataire — sur une prestation en cours, c'est le pire moment pour mentir à
-      // l'utilisateur (règle 1.2).
-      const { error:sendErr } = await supabase.from("messages").insert({ conversation_key:key, sender_id:userId, sender_tag:senderTag, content });
-      if (sendErr) throw new Error(sendErr.message || "erreur inconnue");
-      // Notifier le destinataire (in-app + SMS)
+      // L'insertion passe par le serveur.
+      //
+      // Elle se faisait ici, depuis le navigateur, qui choisissait lui-même
+      // `conversation_key` et `sender_tag` — les deux seules choses qui
+      // rattachent un message à une conversation et à son auteur. Le serveur
+      // les dérive maintenant de la prestation partagée.
+      //
+      // L'échec n'est toujours pas avalé : le message optimiste est retiré et
+      // le texte rendu à l'utilisateur. Sur une prestation en cours, laisser
+      // croire qu'un message est parti est le pire des mensonges.
       const recipientId = chatClientId ? chatClientId : p.id;
+      const { data: sdEnvoi } = await supabase.auth.getSession();
+      const envoi = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sdEnvoi?.session?.access_token || ""}` },
+        body: JSON.stringify({ action: "envoyer_message", recipient_id: recipientId, content }),
+      });
+      const rEnvoi = await envoi.json().catch(() => ({}));
+      if (!envoi.ok || !rEnvoi.success) throw new Error(rEnvoi.error || "erreur inconnue");
+      // Notifier le destinataire (in-app + SMS)
       const { data: meData } = await supabase.auth.getUser();
       const meMeta = meData?.user?.user_metadata || {};
       const senderDisplayName = `${meMeta.prenom || ""} ${meMeta.nom || ""}`.trim() || (senderTag === "client" ? "Un client" : "Un prestataire");
