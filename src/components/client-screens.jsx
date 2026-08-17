@@ -2542,7 +2542,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
       supabase.from("favorites").select("id").eq("user_id",uid).eq("provider_id",provider.id).single()
         .then(({data:fd})=>setFav(!!fd));
     });
-    supabase.from("ratings").select("rating,comment,created_at,reviewer_id").eq("reviewee_provider_id",provider.id).order("created_at",{ascending:false}).limit(10)
+    supabase.from("ratings").select("rating,comment,created_at").eq("reviewee_provider_id",provider.id).order("created_at",{ascending:false}).limit(10)
       .then(({data:rd})=>{ if(rd) setReviews(rd); });
   },[provider?.id]);
   const toggleFav=async()=>{
@@ -6077,8 +6077,20 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const data2 = await res.json();
     setMissions(Array.isArray(data2) ? data2 : []);
     setLoading(false);
-    const { data: rData } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", user.id);
-    if (Array.isArray(rData)) setRatedMissions(new Set(rData.map(r=>r.mission_id).filter(Boolean)));
+    // Passe par le serveur : filtrer sur `reviewer_id` obligeait à laisser
+    // cette colonne lisible par tous, sur une table en lecture publique.
+    try {
+      const rAvis = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: "mes_avis" }),
+      });
+      const jAvis = await rAvis.json();
+      if (Array.isArray(jAvis.mission_ids)) setRatedMissions(new Set(jAvis.mission_ids));
+      else console.error("[avis] liste illisible :", jAvis?.error);
+    } catch (e) {
+      console.error("[avis] relecture impossible :", e.message);
+    }
   };
 
   useEffect(() => { chargerPrestations(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);

@@ -1049,6 +1049,39 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Les avis étaient lisibles en entier, sans compte
+
+**Premier résultat du diagnostic RLS, le 17/08/2026.** Deux règles sur `ratings`, toutes deux
+`USING (true)`, toutes deux pour le rôle `public` :
+
+```
+ratings | ratings are readable by all | SELECT | {public} | true
+ratings | ratings_read                | SELECT | {public} | true
+```
+
+`public` en PostgreSQL ne veut pas dire « visible de tous » mais **tous les rôles**, `anon`
+compris — la clé embarquée dans le navigateur, lisible dans le code de la page.
+
+La table entière était donc interrogeable sans compte : `reviewer_id`, `mission_id`,
+`reviewee_provider_id`, `reviewee_name`, `comment`. Les trois premiers réunis dressent **la
+carte de qui a travaillé avec qui, et quand**. Ce sont des données personnelles.
+
+Rien dans l'application n'en avait besoin : l'écran de profil n'affiche que la note, la date et
+le commentaire. `reviewer_id` était sélectionné par le front **sans jamais être utilisé**.
+
+**La correction ne ferme pas la lecture publique** — les avis doivent être visibles d'un
+visiteur non connecté, c'est leur raison d'être. Elle la ramène aux colonnes affichées, par des
+droits de colonne : la RLS décide quelles **lignes** sont lisibles, les `GRANT` décident quelles
+**colonnes**.
+
+Une seule lecture avait réellement besoin de `reviewer_id` — « quelles prestations ai-je déjà
+notées ? ». Elle filtrait dessus, et **filtrer sur une colonne exige de pouvoir la lire** :
+c'est ce seul besoin qui maintenait la colonne ouverte à tous. Elle est passée par `/api`
+(`mes_avis`), où le serveur filtre pour l'appelant sans rien exposer.
+
+Et les deux règles n'en font plus qu'une. Deux policies identiques, c'est une que personne ne
+relit.
+
 ### `npm run rls` — la seule zone qu'un audit du dépôt ne couvre pas
 
 Les règles de sécurité vivent dans la base, pas dans le code. Aucun contrôle du dépôt ne peut
