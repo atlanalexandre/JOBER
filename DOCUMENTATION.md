@@ -1049,6 +1049,41 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Le navigateur pouvait fixer le montant de son propre virement
+
+**Le résultat le plus grave du diagnostic RLS, le 17/08/2026.** Trois règles de mise à jour
+sans aucune restriction de colonne :
+
+```
+missions  | missions_update | UPDATE | {public}        | USING (client_id = uid OR prestataire_id = uid)
+profiles  | profiles_update | UPDATE | {authenticated} | USING (uid = id)
+documents | docs_update     | UPDATE | {authenticated} | USING (uid = prestataire_id)
+```
+
+Elles décident correctement **quelles lignes** chacun peut modifier : les siennes. Elles ne
+disent rien de **quelles colonnes** — et c'est là que tout se joue, parce qu'une ligne « à
+soi » contient aussi ce qu'on se doit à soi-même.
+
+| Table | Ce qu'on pouvait s'écrire |
+|---|---|
+| `missions` | `payout_amount = 9999`, `payout_status = 'pending'`, `payout_due_at = hier`. Le traitement des versements lit exactement ces colonnes et vire le montant : **chemin direct vers un virement choisi**. Côté client, `montant_total` et `hours` — donc le prix et ce qui reste de frais après clôture |
+| `profiles` | `plan_abonnement = 'elite'` (illimité, sans payer), `missions_enabled = true` (accès sans vérification), `status = 'approved'`, `cashback_balance = 500` |
+| `documents` | `verified = true` sur ses propres pièces : le badge « vérifié » sans qu'aucune pièce ait été regardée — l'obligation de vigilance qui tombe |
+
+**La correction ne touche pas aux règles** : les lignes restent les bonnes. Elle retire
+l'écriture sur les colonnes qui ne regardent que le serveur.
+
+La méthode est volontairement **inverse d'une liste blanche** : on autorise toutes les colonnes
+de la table sauf celles nommées. Une liste blanche écrite à la main aurait cassé la première
+écriture légitime oubliée — et il y en a beaucoup, réparties dans l'inscription, l'édition de
+profil, le dépôt de documents. L'inventaire vient d'`information_schema`, donc de la base
+elle-même, jamais d'une liste recopiée qui divergerait.
+
+**Le motif de la journée, une quatrième fois.** `messages_ecriture`, les deux `ratings_insert`,
+et maintenant ces trois-là : à chaque fois, un contrôle serveur soigneusement écrit, et une
+règle de base qui laissait le navigateur l'ignorer. **Un contrôle serveur ne protège rien tant
+que la base accepte l'écriture directe.**
+
 ### Les avis pouvaient être déposés sans passer par les contrôles
 
 **Troisième résultat du diagnostic RLS, le 17/08/2026.** `ratings` portait **deux** policies
