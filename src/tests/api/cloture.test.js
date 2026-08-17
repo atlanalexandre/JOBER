@@ -79,3 +79,46 @@ describe("montantsDeCloture", () => {
     expect(r.partPrestataire).toBe(78.81);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Prestations récurrentes : le nombre de jours ne se devine pas
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le paiement d'une candidature acceptée calculait `tarif × heures`, sans les
+// JOURS ni les FRAIS DE SERVICE — une troisième version du montant, distincte de
+// celle du tunnel de réservation et de celle de la clôture.
+//
+// Sur cinq jours à 8 h et 15 €/h, il encaissait 120 € au lieu de 600 €. La
+// clôture, elle, compte bien les cinq jours : ALANE versait 600 € pour 120 €
+// encaissés. Et comme les frais se déduisent de ce qui reste du montant payé,
+// ils tombaient à zéro par-dessus le marché.
+
+describe("montant d'une prestation récurrente", () => {
+  const recurrente = {
+    tarif_horaire: 15, hours: 8,
+    date_debut: "2026-09-01", date_fin: "2026-09-05",
+  };
+
+  it("compte cinq jours, pas un seul", () => {
+    expect(nombreDeJours(recurrente)).toBe(5);
+  });
+
+  it("la part du prestataire porte sur tous les jours", () => {
+    const c = montantsDeCloture({ ...recurrente, actual_hours: 8, montant_total: 600 });
+    expect(c.partPrestataire).toBe(600);
+  });
+
+  // La perte que l'ancien calcul produisait, chiffrée.
+  it("un encaissement calculé sur un seul jour fait tout perdre", () => {
+    const c = montantsDeCloture({ ...recurrente, actual_hours: 8, montant_total: 120 });
+    expect(c.partPrestataire).toBe(600);
+    expect(c.fraisService).toBe(0);          // les frais s'évaporent aussi
+    expect(c.partPrestataire - 120).toBe(480);
+  });
+
+  it("avec le bon encaissement, les frais réapparaissent", () => {
+    const c = montantsDeCloture({ ...recurrente, actual_hours: 8, montant_total: 626.50 });
+    expect(c.partPrestataire).toBe(600);
+    expect(c.fraisService).toBeCloseTo(26.50, 2);
+  });
+});
