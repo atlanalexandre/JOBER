@@ -18,7 +18,8 @@ Le client réserve et paie en ligne. Le prestataire réalise. Les deux valident.
 conservé jusqu'à la validation, puis versé au prestataire.
 
 ALANE ne prend **aucune commission sur le tarif horaire** : elle se rémunère uniquement sur des
-frais de service fixes payés par le client. Le prestataire touche l'intégralité de son tarif.
+frais de service payés par le client, en plus du tarif. Le prestataire touche l'intégralité de
+son tarif.
 
 ---
 
@@ -161,16 +162,29 @@ service compris**.
 
 **Tarif horaire du prestataire × heures × jours + frais de service.**
 
-Les frais de service sont fixes, jamais un pourcentage :
+Les frais de service se composent d'une **part fixe** et d'une **part variable de 2 %** du prix
+de la prestation :
 
-| Situation | Frais |
-|---|---|
-| Créneau précis | 4,90 € |
-| Fourchette horaire souple | 2,90 € |
-| Prestation urgente | 9,90 € |
+| Type de prestation | Part fixe | Part variable |
+|---|---|---|
+| Créneau précis | 4,90 € | 2 % |
+| Prestation récurrente (plusieurs jours) | 2,90 € **par jour** | 2 % |
+| Prestation urgente | 9,90 € | 2 % |
 
-Une prestation urgente supporte en plus une majoration de 30 % du tarif horaire, qui va au
-prestataire.
+*Exemple : 8 heures à 14 €/h = 112 € de prestation. Frais = 4,90 € + 2,24 €, soit 7,14 €.
+Le client paie 119,14 €, le prestataire touche 112 €.*
+
+**Pourquoi une part variable** — elle couvre les frais du prestataire de services de paiement
+(Stripe), qui sont proportionnels au montant encaissé. Une part fixe seule suffit sur une
+petite prestation et devient déficitaire au-delà de quelques centaines d'euros : sur une
+prestation à 1 000 €, Stripe prélève à lui seul plus que la totalité des frais fixes.
+
+Le client voit **une seule ligne « Frais de service »** : il n'a pas à connaître la
+répartition, et une ligne « frais bancaires » séparée n'apporterait qu'une question de plus.
+Les deux parts sont réglables depuis le back-office, sans intervention technique.
+
+Une prestation urgente supporte en plus une majoration de 30 % du tarif horaire, qui va
+intégralement au prestataire.
 
 ### Ce que touche le prestataire
 
@@ -181,9 +195,10 @@ plafond de micro-entreprise, sur un argent qu'il n'a jamais reçu.
 
 ### Ce que gagne ALANE
 
-**Les frais de service, et rien d'autre**, plus les abonnements prestataires. C'est simple à
-expliquer à un prestataire, et c'est ce qui rend le modèle défendable : ALANE ne prélève rien
-sur le travail.
+**Les frais de service, et rien d'autre**, plus les abonnements prestataires. Sur ces frais,
+la part variable de 2 % est presque entièrement absorbée par Stripe : la marge réelle est donc
+proche de la part fixe. C'est simple à expliquer à un prestataire, et c'est ce qui rend le
+modèle défendable : ALANE ne prélève rien sur le travail.
 
 ### Cashback client
 
