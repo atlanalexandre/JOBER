@@ -44,7 +44,8 @@ son tarif.
 - **Réservation d'équipe** — plusieurs prestataires sur un même créneau.
 - **Prestations récurrentes** — plusieurs jours en une seule commande, facturés et payés pour
   l'ensemble des jours.
-- **Prestation urgente** — créneau très court, tarif majoré de 30 %.
+- **Prestation urgente** — départ sous 45 minutes minimum, avec une majoration du tarif horaire
+  qui va au prestataire (voir §5).
 - **Contrat de prestation signé** à chaque commande, électroniquement, par les deux parties.
 - **Récapitulatif avant paiement** : tarif horaire, nombre d'heures, frais de service, total.
 - **Relance automatique** si le client abandonne son panier en cours de tunnel.
@@ -52,9 +53,14 @@ son tarif.
 ### Payer
 
 - **Carte bancaire** via Stripe, avec possibilité d'enregistrer la carte.
-- **Portefeuille prépayé** — le client recharge, puis chaque prestation est débitée du solde.
+- **Apple Pay**, quand le téléphone le propose.
 - **Cashback** crédité à chaque prestation terminée, sur un barème progressif (voir §5).
 - **Facture** disponible pour chaque prestation, numérotée et archivée.
+
+*Le portefeuille prépayé a été **fermé le 16 août 2026** sur avis prudentiel : conserver des
+sommes reçues du public sans agrément relève d'un régime réglementé qu'ALANE n'a pas. Le
+rechargement n'existe plus, et les soldes constitués restent remboursables à tout moment
+(CGPS art. 5B.3). Aucun solde n'existait à la fermeture.*
 
 ### Suivre la prestation
 
@@ -65,7 +71,7 @@ son tarif.
   prestation, une position n'est plus un trajet, c'est un domicile.
 - **Code de confirmation à 4 chiffres** — le client et le prestataire calculent le même code
   sans avoir à communiquer, pour confirmer l'arrivée sur place.
-- **Notifications** dans l'application, par e-mail, par SMS et en notification push (téléphone).
+- **Notifications** dans l'application, par e-mail et en notification push (téléphone).
 - **Messagerie** entre le client et le prestataire de la prestation.
 - **Alerte de retard** — si le prestataire arrive avec plus de 15 minutes de retard, le client
   est prévenu avec les chiffres et choisit : décaler la fin, ou réduire les heures facturées.
@@ -139,7 +145,7 @@ son tarif.
 |---|---|
 | 1. Commande | Le client choisit ou publie, remplit le formulaire, signe le contrat |
 | 2. Contrôles | Secteur ouvert, prestataire actif, tarif cohérent, adresse dans le rayon — **avant tout paiement** |
-| 3. Paiement | Carte ou portefeuille. L'argent est encaissé et conservé |
+| 3. Paiement | Carte bancaire ou Apple Pay. L'argent est encaissé et conservé |
 | 4. Sollicitation | Le prestataire reçoit la proposition et a un délai pour répondre |
 | 5. Attribution | S'il accepte, la prestation lui est attribuée. S'il refuse ou ne répond pas, on passe au suivant |
 | 6. Veille | Notifications, rappels, géolocalisation ouverte 1 h avant |
@@ -183,8 +189,8 @@ Le client voit **une seule ligne « Frais de service »** : il n'a pas à conna�
 répartition, et une ligne « frais bancaires » séparée n'apporterait qu'une question de plus.
 Les deux parts sont réglables depuis le back-office, sans intervention technique.
 
-Une prestation urgente supporte en plus une majoration de 30 % du tarif horaire, qui va
-intégralement au prestataire.
+Une prestation urgente supporte en plus une **majoration de 2 € HT par heure**, qui va
+intégralement au prestataire. Ce montant est réglable depuis le back-office.
 
 ### Ce que touche le prestataire
 
@@ -202,22 +208,30 @@ modèle défendable : ALANE ne prélève rien sur le travail.
 
 ### Cashback client
 
-Progressif, selon le nombre de prestations déjà réalisées :
+Progressif, selon le nombre de prestations validées **dans le mois en cours** — le compteur est
+remis à zéro chaque mois :
 
-| Palier | Prestations | Cashback |
+| Palier | Prestations dans le mois | Cashback |
 |---|---|---|
 | 🥉 Standard | 0 à 2 | 0,5 % |
 | 🥈 Silver | 3 à 5 | 0,75 % |
 | 🥇 Gold | 6 à 9 | 1 % |
 | 💎 Platinum | 10 et + | 1,5 % |
 
+⚠️ **Le cashback est crédité et affiché, mais il n'est aujourd'hui dépensable nulle part.**
+Le seul moyen de l'utiliser était le paiement par portefeuille, supprimé le 16 août 2026. Le
+solde est conservé et n'est pas perdu, mais il faut lui rouvrir un chemin — voir §10.
+
 ### Abonnements prestataires
 
-| Plan | Prix | Prestations/mois | Inclus |
+| Plan | Prix | Prestations/mois | Ce qui change réellement |
 |---|---|---|---|
-| Gratuit | 0 € | 2 | Profil visible |
-| Premium | 29,99 € | 10 | Badge ✓ Certifié, accès aux prestations urgentes |
+| Gratuit | 0 € | 2 | Profil visible par les clients |
+| Premium | 29,99 € | 10 | Badge ✓ Certifié |
 | Elite | 79,99 € | illimité | Badge 👑 Elite, première position dans les résultats |
+
+Ce que l'abonnement change aujourd'hui : le **quota mensuel**, le **badge** et le **classement**
+dans les résultats. Rien d'autre.
 
 **Offre de lancement en cours** : 10 prestations/mois offertes aux 100 premiers prestataires
 inscrits.
@@ -291,6 +305,7 @@ actions sensibles.
 | **Prestations** | Suivre, forcer une clôture, exporter |
 | **Litiges** | Formuler une proposition de résolution, exécuter, rembourser |
 | **Versements** | Voir les virements en attente, retenus, échoués — et les échéances dépassées |
+| **Utilisateurs** | Vue d'ensemble des comptes, recherche, fiches détaillées |
 | **Modération** | Signaux de dépendance économique et de mise à disposition, avec traçabilité |
 | **Avis** | Modération des notes et commentaires |
 | **Support** | Tickets clients et prestataires |
@@ -308,8 +323,10 @@ clé est effectivement lue par le code.
 
 ## 9. Notifications
 
-Quatre canaux, selon l'importance : **dans l'application**, **e-mail**, **SMS**, et
-**notification push** sur le téléphone.
+Trois canaux, selon l'importance : **dans l'application**, **e-mail**, et **notification push**
+sur le téléphone. Un quatrième, le **SMS**, n'est branché que sur un cas précis : la diffusion
+d'une nouvelle prestation aux prestataires du secteur, et seulement si la clé Brevo est
+configurée.
 
 Les moments qui déclenchent une notification : nouvelle proposition, acceptation, refus,
 rappel avant la prestation, arrivée du prestataire, retard, demande d'heures supplémentaires,
@@ -330,6 +347,8 @@ Pour que la liste précédente garde sa valeur, voici ce qui reste ouvert.
 | **Test Stripe de bout en bout** | Le seul point sérieux. La chaîne complète — paiement, prestation, validation, versement — n'a pas encore été jouée en conditions réelles avec les vraies clés en mode test |
 | **Immatriculation de la société** | Bloque le SIRET sur les factures, les mentions légales, le médiateur de la consommation et l'assurance ALANE |
 | **Architecture Stripe Connect** | Les fonds transitent aujourd'hui par ALANE avant d'être reversés. La cible est un encaissement direct pour le compte du prestataire, ce qui écarte toute question de statut d'établissement de paiement. Recommandé par le conseil juridique, à faire avant la mise en production commerciale |
+| **Cashback dépensable** | Le cashback est calculé, crédité et affiché, mais il n'existe plus de chemin pour le dépenser depuis la fermeture du portefeuille. Le solde n'est pas perdu ; il faut décider par quoi on le remplace — une réduction appliquée au paiement par carte est le plus simple |
+| **Prestations urgentes et abonnement** | L'écran d'abonnement présente l'accès aux prestations urgentes comme un avantage Premium et Elite. Dans les faits, l'urgence est ouverte à tous les plans. À trancher : brancher la restriction, ou retirer la mention |
 | **Messagerie** | Fonctionne, mais son modèle interne est fragile et doit être repris avant une montée en charge |
 | **Application mobile native** | Non prévue à ce stade — le site fonctionne sur mobile et les notifications push sont déjà en place |
 
@@ -338,10 +357,10 @@ Pour que la liste précédente garde sa valeur, voici ce qui reste ouvert.
 ## En résumé pour un lecteur pressé
 
 Ce qui est **fait et fonctionnel** : les deux parcours complets (client et prestataire), le
-paiement, le portefeuille, le cashback, les abonnements, la facturation légale, la
-géolocalisation encadrée, le pointage, les heures supplémentaires payantes, le remplacement,
-les litiges avec délai d'opposition, les versements différés et automatisés, le back-office
-complet, et l'arsenal de conformité anti-requalification.
+paiement par carte, les abonnements, la facturation légale, la géolocalisation encadrée, le
+pointage, les heures supplémentaires payantes, le remplacement, les litiges avec délai
+d'opposition, les versements différés et automatisés, le back-office complet, et l'arsenal de
+conformité anti-requalification.
 
 Ce qui **manque avant d'ouvrir commercialement** : la société immatriculée, un test de
-paiement de bout en bout, et la bascule Stripe Connect.
+paiement de bout en bout, la bascule Stripe Connect, et un moyen de dépenser le cashback.

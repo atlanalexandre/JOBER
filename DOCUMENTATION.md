@@ -67,8 +67,12 @@ historique : **on ne le refond pas sans demande explicite**.
 
 ### Client
 Cherche un prestataire dans le catalogue ou publie une demande, réserve, paie, suit la
-prestation en direct (géolocalisation), valide, note. Dispose d'un portefeuille prépayé et
-d'un cashback progressif.
+prestation en direct (géolocalisation), valide, note. Cumule un cashback progressif.
+
+Le **portefeuille prépayé est fermé depuis le 16/08/2026** (avis prudentiel, CGPS art. 5B.3) :
+plus de rechargement, plus de paiement depuis le solde. Les soldes constitués restent
+remboursables — aucun n'existait à la fermeture. Conséquence à traiter : **le cashback n'a
+plus de chemin de dépense**, le paiement par portefeuille étant le seul qui le consommait.
 
 ### Prestataire
 Dépose ses documents, attend la validation par l'administration, reçoit des propositions,
@@ -372,7 +376,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
-| `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. **Appelé par les deux chemins de paiement**, carte et portefeuille. Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
+| `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js` et par `wallet.js` (ce second chemin n'est plus emprunté depuis la fermeture du portefeuille). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 
 ### Comment l'appelant est vérifié
@@ -1981,7 +1985,15 @@ recalcule si la durée réelle diffère de la durée prévue, en conservant les 
 Ne jamais y écrire la part du prestataire : la facture, le cashback et les remboursements en
 dépendent.
 
-Le client peut aussi alimenter un **portefeuille prépayé**, débité à chaque prestation.
+Le **portefeuille prépayé est fermé depuis le 16/08/2026**. `pay_mission` et
+`rembourser_solde` subsistent dans `api/wallet.js` le temps de vérifier qu'aucun solde résiduel
+n'existe ; le tunnel ne propose plus que la carte et Apple Pay.
+
+**Le cashback est crédité mais n'est plus dépensable** : `pay_mission` le consommait en
+premier, et plus rien ne l'appelle. L'article 5B.1 des CGPS promet pourtant un crédit
+« utilisable pour le paiement total ou partiel de futures Prestations ». Promesse sans
+implémentation — à rouvrir par une réduction appliquée au paiement par carte, ou à retirer
+du texte.
 
 ---
 
