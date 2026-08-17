@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
@@ -3345,6 +3345,22 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
       if (m.arrived_at) return res.status(200).json({ arrived_at: m.arrived_at });
 
+      // Le serveur n'imposait AUCUNE borne : on pouvait déclarer son arrivée
+      // trois jours avant la prestation. Seul l'écran limitait, et il limitait
+      // autrement — à partir de l'heure de début, ce qui empêchait un
+      // prestataire ponctuel de pointer en arrivant.
+      const fenetreArrivee = fenetrePointage(debutPrestationMs(m.date, m.heure_debut));
+      if (!fenetreArrivee.arrivee) {
+        const ouverture = fenetreArrivee.ouvreArrivee
+          ? new Date(fenetreArrivee.ouvreArrivee).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" })
+          : null;
+        return res.status(400).json({
+          error: Date.now() < (fenetreArrivee.ouvreArrivee || 0)
+            ? `Trop tôt : la confirmation de présence s'ouvre 15 minutes avant le début${ouverture ? `, soit le ${ouverture}` : ""}.`
+            : "La fenêtre de pointage est expirée. Écrivez à direction@alane.fr pour faire constater votre intervention.",
+        });
+      }
+
       const arrivedAt = new Date().toISOString();
 
       // Calcul du retard
@@ -4963,18 +4979,20 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ error: "Prestation introuvable ou non assignée" });
       if (m.started_at) return res.status(200).json({ started_at: m.started_at }); // already started
 
-      // Only allow start within [H-5min … H+2h] — rejects stale auto-start calls
-      if (m.date && m.heure_debut) {
-        try {
-          const missionStartUTC2 = new Date(debutPrestationMs(m.date, m.heure_debut));
-          const now = Date.now();
-          if (now < missionStartUTC2.getTime() - 5 * 60 * 1000) {
-            return res.status(400).json({ error: "Trop tôt pour démarrer la prestation (disponible 5 minutes avant l'heure prévue)" });
-          }
-          if (now > missionStartUTC2.getTime() + 2 * 60 * 60 * 1000) {
-            return res.status(400).json({ error: "Fenêtre de démarrage expirée" });
-          }
-        } catch(e) { /* date parse failed — allow */ }
+      // Même règle que l'arrivée, et que l'écran : le démarrage s'ouvre à
+      // l'heure prévue et se ferme deux heures plus tard. Il tolérait cinq
+      // minutes d'avance là où le bouton apparaissait une heure avant — le
+      // prestataire voyait donc un bouton refusé pendant cinquante-cinq minutes.
+      const fenetreDemarrage = fenetrePointage(debutPrestationMs(m.date, m.heure_debut));
+      if (!fenetreDemarrage.demarrage) {
+        const ouverture = fenetreDemarrage.ouvreDemarrage
+          ? new Date(fenetreDemarrage.ouvreDemarrage).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" })
+          : null;
+        return res.status(400).json({
+          error: Date.now() < (fenetreDemarrage.ouvreDemarrage || 0)
+            ? `Le démarrage s'ouvre à l'heure prévue${ouverture ? `, soit le ${ouverture}` : ""}.`
+            : "Fenêtre de démarrage expirée.",
+        });
       }
       // Require prestataire to have checked in first
       if (!m.arrived_at) {

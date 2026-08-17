@@ -4,6 +4,7 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution } from "./ui.jsx";
+import { fenetrePointage } from "../../api/_temps.js";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
@@ -2637,11 +2638,14 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       </div>
                     </div>
                     {(() => {
-                      const hd = (m.heure_debut || "").slice(0, 5); // normalize "HH:MM:SS" → "HH:MM"
-                      const missionStartDt = (() => { try { return m.date && hd.length === 5 ? new Date(`${m.date}T${hd}:00`) : null; } catch { return null; } })();
-                      const msUntilUnlock = missionStartDt ? (missionStartDt.getTime() - 5*60*1000) - Date.now() : 0;
-                      const tooEarly = msUntilUnlock > 0;
-                      const unlockTime = missionStartDt ? new Date(missionStartDt.getTime() - 5*60*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : null;
+                      // Cinquième copie de la règle, avec une cinquième borne :
+                      // cinq minutes d'avance, là où l'autre bouton s'ouvrait une
+                      // heure avant. Tout passe désormais par `fenetrePointage`.
+                      const fd = fenetrePointage(debutLocalMs(m));
+                      const tooEarly = !fd.demarrage && !fd.horaireInconnu;
+                      const unlockTime = fd.ouvreDemarrage
+                        ? new Date(fd.ouvreDemarrage).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })
+                        : null;
                       return (
                         <>
                           {tooEarly && (
@@ -2658,7 +2662,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                             if (d.started_at) setStartedAtMap(prev => ({ ...prev, [m.id]: d.started_at }));
                             setStartingMission(null);
                           }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"none", background:tooEarly?"rgba(255,255,255,0.07)":startingMission===m.id?"rgba(16,217,143,0.4)":"linear-gradient(135deg,#10D98F,#0aad72)", color:tooEarly?"rgba(255,255,255,0.3)":"#fff", fontWeight:800, fontSize:15, cursor:tooEarly||startingMission===m.id?"default":"pointer", fontFamily:"inherit", letterSpacing:0.3 }}>
-                            {startingMission===m.id ? "Démarrage…" : tooEarly ? "🔒 Démarrage verrouillé" : "🚀 Je commence la prestation"}
+                            {startingMission===m.id ? "Démarrage…" : tooEarly ? "🔒 Démarrage à l'heure prévue" : "🚀 Je commence la prestation"}
                           </button>
                         </>
                       );
@@ -2668,17 +2672,14 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   // ── Pas encore arrivé : détection GPS ou fallback manuel ──
                   <div style={{ marginBottom:10 }}>
                     {missionCoordCache[m.id] === "loading" || (missionCoordCache[m.id] && typeof missionCoordCache[m.id] === "object") ? (() => {
-                      let tooEarly = false;
-                      let missionStarted = true;
-                      if (m.date && m.heure_debut) {
-                        try {
-                          const [yr,mo,dy] = m.date.split("-").map(Number);
-                          const [hh,mm] = m.heure_debut.split(":").map(Number);
-                          const missionStartMs = new Date(yr, mo-1, dy, hh, mm).getTime();
-                          tooEarly = Date.now() < missionStartMs - 60*60*1000;
-                          missionStarted = Date.now() >= missionStartMs;
-                        } catch { /* ignore */ }
-                      }
+                      // La règle vit dans `api/_temps.js` — la même que celle
+                      // appliquée par le serveur. Elle était recopiée ici quatre
+                      // fois, avec quatre bornes différentes : le bouton
+                      // apparaissait une heure avant, et le serveur refusait
+                      // pendant cinquante-cinq minutes.
+                      const f = fenetrePointage(debutLocalMs(m));
+                      const tooEarly = !f.arrivee;
+                      const missionStarted = f.arrivee;
                       const checkinBtn = (
                         <button disabled={checkingInId === m.id} onClick={async () => {
                           setCheckingInId(m.id);
@@ -2716,14 +2717,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     })() : (
                       // Fallback : GPS refusé ou adresse non géocodable → bouton manuel à l'heure de début
                       (() => {
-                        let missionStarted = true;
-                        if (m.date && m.heure_debut) {
-                          try {
-                            const [yr,mo,dy] = m.date.split("-").map(Number);
-                            const [hh,mm] = m.heure_debut.split(":").map(Number);
-                            missionStarted = Date.now() >= new Date(yr, mo-1, dy, hh, mm).getTime();
-                          } catch { /* ignore */ }
-                        }
+                        const missionStarted = fenetrePointage(debutLocalMs(m)).arrivee;
                         return missionStarted ? (
                           <button disabled={checkingInId === m.id} onClick={async () => {
                             setCheckingInId(m.id);
@@ -3108,6 +3102,20 @@ export function PrestaClientsTab() {
       })}
     </div>
   );
+}
+
+// Instant du début prévu, tel que le navigateur le voit.
+//
+// `debutPrestationMs` n'est PAS utilisable ici : elle interprète une date naïve
+// dans le fuseau du runtime puis applique le décalage français. C'est juste sur
+// Vercel, qui tourne en UTC, et faux dans un navigateur déjà à l'heure de Paris.
+// Chaque côté calcule donc l'instant à sa façon ; seule la RÈGLE des fenêtres
+// est partagée.
+function debutLocalMs(m) {
+  if (!m?.date) return null;
+  const heure = String(m.heure_debut || "00:00").slice(0, 5);
+  const t = new Date(`${m.date}T${heure}`).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
 export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {

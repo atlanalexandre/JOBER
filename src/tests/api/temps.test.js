@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -185,5 +185,73 @@ describe("fenêtre de partage de position", () => {
     expect(fenetrePartagePosition({ hours: 2 }).ouverte).toBe(false);
     expect(fenetrePartagePosition({ hours: 2 }).raison).toBe("horaire_inconnu");
     expect(fenetrePartagePosition(null).ouverte).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fenêtres de pointage
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Signalé par Alexandre le 17/08/2026 : à l'heure pile, aucun bouton ne
+// permettait de déclarer sa présence ni de démarrer.
+//
+// La règle existait en CINQ exemplaires, avec cinq bornes différentes :
+//
+//   • « Je suis sur place », écran   : à partir de l'heure de début ;
+//   • « Je suis sur place », serveur : aucune borne — trois jours avant, si on
+//     voulait ;
+//   • « Je commence », écran (cas 1) : une heure avant ;
+//   • « Je commence », écran (cas 2) : cinq minutes avant ;
+//   • « Je commence », serveur       : cinq minutes avant, jusqu'à H+2 h.
+//
+// Le bouton de démarrage apparaissait donc une heure avant, et le serveur le
+// refusait pendant cinquante-cinq minutes.
+
+describe("fenêtres de pointage", () => {
+  const H = new Date("2026-08-17T08:20:00Z").getTime();
+  const min = (n) => n * 60000;
+
+  it("l'arrivée s'ouvre quinze minutes avant le début", () => {
+    expect(fenetrePointage(H, H - min(16)).arrivee).toBe(false);
+    expect(fenetrePointage(H, H - min(15)).arrivee).toBe(true);
+    expect(fenetrePointage(H, H - min(1)).arrivee).toBe(true);
+  });
+
+  // La demande d'Alexandre, mot pour mot : « pile à l'heure le bouton démarrer ».
+  it("le démarrage s'ouvre à l'heure prévue, pas avant", () => {
+    expect(fenetrePointage(H, H - min(1)).demarrage).toBe(false);
+    expect(fenetrePointage(H, H).demarrage).toBe(true);
+  });
+
+  it("l'arrivée reste ouverte pendant que le démarrage l'est", () => {
+    const f = fenetrePointage(H, H + min(30));
+    expect(f.arrivee).toBe(true);
+    expect(f.demarrage).toBe(true);
+  });
+
+  // Au-delà de deux heures de retard, ce n'est plus un pointage, c'est un litige.
+  it("les deux se ferment deux heures après le début", () => {
+    expect(fenetrePointage(H, H + min(119)).demarrage).toBe(true);
+    expect(fenetrePointage(H, H + min(121)).demarrage).toBe(false);
+    expect(fenetrePointage(H, H + min(121)).arrivee).toBe(false);
+  });
+
+  it("annonce l'heure d'ouverture, pour pouvoir la dire au prestataire", () => {
+    const f = fenetrePointage(H, H - min(60));
+    expect(f.ouvreArrivee).toBe(H - min(15));
+    expect(f.ouvreDemarrage).toBe(H);
+    expect(f.ferme).toBe(H + min(120));
+  });
+
+  // Empêcher un prestataire de déclarer qu'il travaille parce qu'une date est
+  // mal formée serait le punir d'un défaut qui n'est pas le sien — et le
+  // client, lui, attend sur place.
+  it("autorise tout quand l'horaire est illisible", () => {
+    for (const v of [null, 0, NaN, undefined]) {
+      const f = fenetrePointage(v, H);
+      expect(f.arrivee).toBe(true);
+      expect(f.demarrage).toBe(true);
+      expect(f.horaireInconnu).toBe(true);
+    }
   });
 });
