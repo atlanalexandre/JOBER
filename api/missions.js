@@ -1,6 +1,6 @@
 import { resendBody } from "./_email.js";
 import { sendPushToUser, sendWebPush } from "./_push.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage } from "./_temps.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
@@ -4108,10 +4108,22 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,extra_hours_status`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,date,heure_debut,started_at`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
+
+      // La demande n'était bornée par rien : ni ici, ni à l'écran. Un client
+      // pouvait prolonger une prestation terminée depuis des heures — et
+      // l'acceptation rallonge `hours`, donc le montant dû, donc le versement,
+      // sur des heures que personne n'a travaillées.
+      const fenetreSupp = fenetreHeuresSupp(finPrestationMs(mission));
+      if (!fenetreSupp.ouverte) {
+        return res.status(400).json({
+          error: "La prestation est terminée depuis plus de 20 minutes : les heures supplémentaires "
+               + "ne peuvent plus être demandées. Réservez une nouvelle prestation.",
+        });
+      }
 
       // Cap à 24h total pour éviter des prestations aberrantes
       const currentHours = Number(mission.hours || 0);

@@ -235,3 +235,42 @@ export function fenetrePointage(debutMs, nowMs = Date.now()) {
     horaireInconnu: false,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fenêtre de demande d'heures supplémentaires
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La demande restait ouverte jusqu'à la validation de la prestation, sans
+// aucune borne — ni à l'écran, ni côté serveur. Un client pouvait donc
+// demander des heures supplémentaires longtemps après le départ du
+// prestataire, sur une prestation déjà finie.
+//
+// Ce n'est pas seulement incohérent : accepter une telle demande rallonge
+// `hours`, donc le montant dû, donc le versement — sur des heures que personne
+// n'a travaillées.
+//
+// Vingt minutes après la fin laissent le temps de se décider quand le
+// prestataire est encore sur place, et ferment la porte ensuite. Au-delà, ce
+// n'est plus une prolongation : c'est une nouvelle prestation, et elle se
+// réserve.
+export const DELAI_HEURES_SUPP_MS = 20 * 60000;
+
+/**
+ * @param {number|null} finMs  fin de la prestation, déjà calculée par l'appelant
+ * @param {number} nowMs
+ * @returns {{ouverte:boolean, ferme:number|null, horaireInconnu:boolean}}
+ *
+ * Comme `fenetrePointage`, cette fonction prend un instant et non une
+ * prestation : `finPrestationMs` suppose un runtime en UTC, ce qui est faux
+ * dans un navigateur. Chaque côté calcule sa fin ; la règle est partagée.
+ *
+ * Horaire illisible : la fenêtre est OUVERTE. Refuser une prolongation sur une
+ * date mal formée pénaliserait un client qui n'y est pour rien, alors que la
+ * demande reste soumise à l'accord du prestataire — qui, lui, sait s'il est
+ * encore là.
+ */
+export function fenetreHeuresSupp(finMs, nowMs = Date.now()) {
+  if (!finMs || Number.isNaN(finMs)) return { ouverte: true, ferme: null, horaireInconnu: true };
+  const ferme = finMs + DELAI_HEURES_SUPP_MS;
+  return { ouverte: nowMs <= ferme, ferme, horaireInconnu: false };
+}

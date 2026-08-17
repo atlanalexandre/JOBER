@@ -1049,6 +1049,31 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Les heures supplémentaires se ferment 20 minutes après la fin
+
+**Demandé par Alexandre le 17/08/2026.** La demande n'était bornée par rien — ni à l'écran, ni
+côté serveur. Elle restait proposée jusqu'à la validation de la prestation, donc parfois des
+heures après le départ du prestataire.
+
+Ce n'est pas seulement incohérent : **accepter une telle demande rallonge `hours`**, donc le
+montant dû, donc le versement — sur des heures que personne n'a travaillées.
+
+`fenetreHeuresSupp()` (`api/_temps.js`) ferme la demande **20 minutes après la fin**. Le délai
+laisse le temps de se décider pendant que le prestataire est encore là ; au-delà, ce n'est plus
+une prolongation, c'est une nouvelle prestation, et elle se réserve.
+
+La règle est appliquée **aux trois endroits** : l'action `request_extra_hours`, l'écran de
+suivi et l'historique des prestations. Le bouton disparaît, et le serveur refuse.
+
+Fin illisible : la fenêtre reste **ouverte**. Refuser une prolongation sur une date mal formée
+pénaliserait un client qui n'y est pour rien — et la demande reste de toute façon soumise à
+l'accord du prestataire, qui, lui, sait s'il est encore sur place.
+
+**`finMs()` suit désormais le pointage réel** dans `src/lib/accueil.js`, comme le fait déjà
+`finPrestationMs` côté serveur : une prestation commencée avec du retard finit avec du retard.
+Sans cet alignement, l'écran et la base auraient répondu différemment à la question « quand
+cette prestation est-elle finie ? » — et c'est cette réponse qui ferme la fenêtre.
+
 ### La relance de validation ne créait aucune notification
 
 **Signalé par Alexandre le 17/08/2026** : ni le prestataire ni le client ne reçoivent de

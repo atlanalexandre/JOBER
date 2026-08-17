@@ -128,3 +128,26 @@ describe("robustesse", () => {
     }
   });
 });
+
+// Le pointage réel fait foi quand il existe : une prestation commencée avec du
+// retard finit avec du retard. C'est la règle du serveur (`finPrestationMs`) ;
+// la reproduire différemment ici ferait diverger l'écran et la base sur la
+// question de savoir quand une prestation est finie — et c'est cette fin qui
+// ferme la fenêtre des heures supplémentaires.
+describe("la fin suit le pointage réel", () => {
+  it("part du démarrage déclaré plutôt que de l'horaire prévu", () => {
+    const prevu = presta(0, { hours: 2 });
+    const retarde = { ...prevu, started_at: new Date(MAINTENANT + 3600000).toISOString() };
+    expect(finMs(retarde) - finMs(prevu)).toBe(3600000);
+  });
+
+  it("retombe sur l'horaire prévu sans pointage", () => {
+    const m = presta(0, { hours: 2 });
+    expect(finMs(m)).toBeCloseTo(debutMs(m) + 2 * H, -4);
+  });
+
+  it("un pointage illisible ne fait pas perdre la fin prévue", () => {
+    const m = presta(0, { hours: 2, started_at: "n'importe quoi" });
+    expect(finMs(m)).toBeCloseTo(debutMs(m) + 2 * H, -4);
+  });
+});

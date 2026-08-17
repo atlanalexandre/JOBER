@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -252,6 +252,48 @@ describe("fenêtres de pointage", () => {
       expect(f.arrivee).toBe(true);
       expect(f.demarrage).toBe(true);
       expect(f.horaireInconnu).toBe(true);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fenêtre de demande d'heures supplémentaires
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La demande n'était bornée par rien — ni à l'écran, ni côté serveur. Un client
+// pouvait prolonger une prestation terminée depuis des heures, et l'acceptation
+// rallonge `hours`, donc le montant dû, donc le versement : sur des heures que
+// personne n'a travaillées.
+
+describe("fenêtre des heures supplémentaires", () => {
+  const FIN = new Date("2026-08-17T09:20:00Z").getTime();
+  const min = (n) => n * 60000;
+
+  it("reste ouverte pendant la prestation", () => {
+    expect(fenetreHeuresSupp(FIN, FIN - min(30)).ouverte).toBe(true);
+  });
+
+  it("reste ouverte vingt minutes après la fin", () => {
+    expect(fenetreHeuresSupp(FIN, FIN + min(19)).ouverte).toBe(true);
+    expect(fenetreHeuresSupp(FIN, FIN + min(20)).ouverte).toBe(true);
+  });
+
+  it("se ferme au-delà", () => {
+    expect(fenetreHeuresSupp(FIN, FIN + min(21)).ouverte).toBe(false);
+    expect(fenetreHeuresSupp(FIN, FIN + min(180)).ouverte).toBe(false);
+  });
+
+  it("annonce l'heure de fermeture", () => {
+    expect(fenetreHeuresSupp(FIN, FIN).ferme).toBe(FIN + min(20));
+  });
+
+  // Refuser une prolongation sur une date mal formée pénaliserait un client qui
+  // n'y est pour rien — et la demande reste soumise à l'accord du prestataire,
+  // qui, lui, sait s'il est encore là.
+  it("reste ouverte quand la fin est illisible", () => {
+    for (const v of [null, 0, NaN, undefined]) {
+      expect(fenetreHeuresSupp(v, FIN).ouverte).toBe(true);
+      expect(fenetreHeuresSupp(v, FIN).horaireInconnu).toBe(true);
     }
   });
 });
