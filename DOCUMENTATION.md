@@ -1049,6 +1049,44 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Pointage : cinq bornes différentes pour deux boutons
+
+**Signalé par Alexandre le 17/08/2026** : à l'heure pile, aucun bouton ne permettait de
+déclarer sa présence ni de démarrer.
+
+La règle existait en **cinq exemplaires**, avec cinq bornes différentes :
+
+| Où | Borne |
+|---|---|
+| « Je suis sur place », écran | à partir de l'heure de début |
+| « Je suis sur place », **serveur** | **aucune** — on pouvait pointer trois jours avant |
+| « Je commence », écran (cas GPS) | une heure avant |
+| « Je commence », écran (cas arrivé) | cinq minutes avant |
+| « Je commence », serveur | cinq minutes avant, jusqu'à H+2 h |
+
+Conséquence directe : le bouton de démarrage apparaissait **une heure avant**, et le serveur
+le refusait pendant cinquante-cinq minutes. Et un prestataire arrivé en avance ne pouvait rien
+déclarer, alors que le serveur, lui, l'aurait accepté n'importe quand.
+
+**La règle est désormais unique** — `fenetrePointage()` dans `api/_temps.js` :
+
+- **arrivée** : de H−15 min à H+2 h ;
+- **démarrage** : de H à H+2 h, et seulement après une arrivée déclarée.
+
+Un quart d'heure d'avance couvre le prestataire ponctuel sans lui permettre de déclarer une
+présence sans rapport avec la prestation. Au-delà de deux heures de retard, ce n'est plus un
+pointage, c'est un litige.
+
+**La fonction prend un instant, pas une prestation** — et c'est délibéré.
+`debutPrestationMs()` interprète une date naïve dans le fuseau du runtime puis applique le
+décalage français : juste sur Vercel, qui tourne en UTC, **faux dans un navigateur** déjà à
+l'heure de Paris. Chaque côté calcule donc l'instant à sa façon (`debutLocalMs` côté écran) ;
+seule la règle est partagée.
+
+Horaire illisible : les deux gestes sont **autorisés**. Empêcher un prestataire de déclarer
+qu'il travaille parce qu'une date est mal formée serait le punir d'un défaut qui n'est pas le
+sien — et le client, lui, attend sur place.
+
 ### L'accueil client montre la prochaine prestation
 
 **Ajouté le 17/08/2026, à la demande d'Alexandre.** Il fallait ouvrir « Prestations » puis

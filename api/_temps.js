@@ -171,3 +171,67 @@ export function fenetrePartagePosition(m, nowMs = Date.now()) {
   if (nowMs > fin)   return { ouverte: false, debut, fin, raison: "trop_tard" };
   return { ouverte: true, debut, fin, raison: null };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fenêtres de pointage : arrivée sur place, puis démarrage
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POURQUOI ELLES EXISTENT
+//
+// Les deux gestes étaient bornés de quatre façons différentes :
+//
+//   • « Je suis sur place », côté écran : à partir de l'heure de début, pas
+//     avant. Un prestataire arrivé en avance ne pouvait donc rien déclarer —
+//     c'est ce qu'a constaté Alexandre le 17/08/2026 ;
+//   • « Je suis sur place », côté serveur : AUCUNE borne. On pouvait pointer
+//     son arrivée trois jours avant ;
+//   • « Je commence », côté écran : à partir d'une heure avant le début ;
+//   • « Je commence », côté serveur : cinq minutes avant, jusqu'à H+2 h.
+//
+// Le bouton apparaissait donc une heure avant, et le serveur refusait pendant
+// cinquante-cinq minutes.
+//
+// LA RÈGLE, MAINTENANT UNIQUE
+//
+//   arrivée   : de H−15 min à H+2 h
+//   démarrage : de H à H+2 h, et seulement après une arrivée déclarée
+//
+// Un quart d'heure d'avance couvre le prestataire ponctuel sans lui permettre
+// de déclarer une présence qui n'a rien à voir avec la prestation. La borne
+// haute est la même pour les deux : au-delà de deux heures de retard, ce n'est
+// plus un pointage, c'est un litige.
+//
+// POURQUOI CETTE FONCTION PREND UN INSTANT ET NON UNE PRESTATION
+//
+// `debutPrestationMs` interprète une date naïve dans le fuseau du runtime, puis
+// applique le décalage français : c'est juste sur Vercel, qui tourne en UTC, et
+// FAUX dans un navigateur, qui est déjà à l'heure française. Chaque côté
+// calcule donc l'instant à sa façon, et cette fonction ne porte que la règle.
+export const AVANCE_ARRIVEE_MS   = 15 * 60000;
+export const FENETRE_POINTAGE_MS = 2 * 3600000;
+
+/**
+ * @param {number|null} debutMs  instant du début prévu, déjà calculé par l'appelant
+ * @param {number} nowMs
+ * @returns {{arrivee:boolean, demarrage:boolean, ouvreArrivee:number|null,
+ *            ouvreDemarrage:number|null, ferme:number|null, horaireInconnu:boolean}}
+ *
+ * Horaire illisible : les deux gestes sont AUTORISÉS. Empêcher un prestataire
+ * de déclarer qu'il travaille parce qu'une date est mal formée serait le punir
+ * d'un défaut qui n'est pas le sien — et le client, lui, attend sur place.
+ */
+export function fenetrePointage(debutMs, nowMs = Date.now()) {
+  if (!debutMs || Number.isNaN(debutMs)) {
+    return { arrivee: true, demarrage: true, ouvreArrivee: null, ouvreDemarrage: null, ferme: null, horaireInconnu: true };
+  }
+  const ouvreArrivee = debutMs - AVANCE_ARRIVEE_MS;
+  const ferme        = debutMs + FENETRE_POINTAGE_MS;
+  return {
+    arrivee:   nowMs >= ouvreArrivee && nowMs <= ferme,
+    demarrage: nowMs >= debutMs      && nowMs <= ferme,
+    ouvreArrivee,
+    ouvreDemarrage: debutMs,
+    ferme,
+    horaireInconnu: false,
+  };
+}
