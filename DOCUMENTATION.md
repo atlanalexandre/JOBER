@@ -1049,6 +1049,30 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Les avis pouvaient être déposés sans passer par les contrôles
+
+**Troisième résultat du diagnostic RLS, le 17/08/2026.** `ratings` portait **deux** policies
+d'insertion, toutes deux pour le rôle `public` :
+
+```
+ratings | ratings_insert               | INSERT | {public}
+ratings | users can insert own ratings | INSERT | {public}
+```
+
+Le doublon n'est pas l'essentiel. Le dépôt d'un avis passe par `submit_rating`, qui vérifie que
+la prestation existe, que l'appelant y a pris part, qu'elle est terminée, et qu'il n'a pas déjà
+donné son avis. Ces contrôles ont été ajoutés **parce qu'ils manquaient** : « rien n'empêchait
+de noter n'importe qui, autant de fois que voulu », et la note pilote le classement du
+catalogue.
+
+Or une policy d'INSERT laisse le navigateur écrire **directement** dans la table. Les quatre
+contrôles étaient donc contournables — même forme que `messages_ecriture`, fermée quelques
+heures plus tôt : **un contrôle serveur ne protège rien tant que la base accepte l'écriture
+directe**.
+
+Les deux règles sont retirées. Aucun code front n'en avait besoin : les trois usages de
+`ratings` côté application sont des lectures.
+
 ### Messagerie : n'importe qui pouvait écrire à n'importe qui
 
 **Deuxième résultat du diagnostic RLS, le 17/08/2026.** La règle d'écriture :

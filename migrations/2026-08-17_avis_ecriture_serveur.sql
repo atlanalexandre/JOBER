@@ -1,0 +1,74 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Avis : fermer l'écriture depuis le navigateur
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- Le relevé des règles de `ratings`, le 17/08/2026, remonte DEUX policies
+-- d'insertion, toutes deux pour le rôle `public` :
+--
+--   ratings | ratings_insert               | INSERT | {public}
+--   ratings | users can insert own ratings | INSERT | {public}
+--
+-- Deux fois la même chose — et le doublon n'est pas l'essentiel.
+--
+-- CE QUE ÇA CONTOURNE
+--
+-- Le dépôt d'un avis passe par l'action `submit_rating` de /api, qui vérifie,
+-- dans cet ordre :
+--
+--   • la prestation existe ;
+--   • l'appelant y a pris part — ni le client ni le prestataire ne peuvent
+--     noter une prestation qui n'est pas la leur ;
+--   • elle est terminée ou close ;
+--   • l'appelant n'a pas déjà déposé d'avis dessus.
+--
+-- Ces contrôles ont été ajoutés parce qu'ils manquaient : « rien n'empêchait de
+-- noter n'importe qui, autant de fois que voulu », et la note pilote le
+-- classement du catalogue. Un concurrent pouvait effondrer un prestataire en
+-- quelques minutes.
+--
+-- Or une policy d'INSERT laisse le navigateur écrire DIRECTEMENT dans la
+-- table, sans passer par /api. Les quatre contrôles étaient donc contournables
+-- par quiconque sait envoyer une requête — c'est-à-dire n'importe qui, la clé
+-- publique étant lisible dans le code de la page.
+--
+-- Même forme que `messages_ecriture`, fermée plus tôt le même jour : un
+-- contrôle serveur ne protège rien tant que la base accepte l'écriture directe.
+--
+-- CE QUE FAIT CETTE MIGRATION
+--
+-- Elle retire l'insertion au navigateur. Aucun code front n'en a besoin : les
+-- trois usages de `ratings` côté application sont des lectures. L'insertion
+-- serveur continue de fonctionner, le service role n'étant pas soumis à la RLS.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+DROP POLICY IF EXISTS ratings_insert ON public.ratings;
+DROP POLICY IF EXISTS "users can insert own ratings" ON public.ratings;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    SELECT policyname, cmd, roles::text FROM pg_policies
+--    WHERE schemaname = 'public' AND tablename = 'ratings';
+--    -- attendu : 1 ligne — ratings_read, SELECT
+--
+-- Puis, depuis l'application : terminer une prestation et déposer un avis.
+-- Il doit s'enregistrer normalement. Si le dépôt échoue, c'est que le front
+-- insère encore en direct quelque part — ce que la relecture du code contredit,
+-- mais qui se vérifie en une minute.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    CREATE POLICY ratings_insert ON public.ratings
+--      FOR INSERT TO authenticated
+--      WITH CHECK (reviewer_id = (SELECT auth.uid()));
+--
+-- Une seule règle, et pour `authenticated` plutôt que `public` : si l'écriture
+-- directe doit revenir un jour, autant qu'elle revienne sans le doublon ni le
+-- rôle anonyme. Elle rouvrirait malgré tout le contournement décrit plus haut.
+-- ═══════════════════════════════════════════════════════════════════════════
