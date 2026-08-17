@@ -1049,6 +1049,31 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### `npm run rls` — la seule zone qu'un audit du dépôt ne couvre pas
+
+Les règles de sécurité vivent dans la base, pas dans le code. Aucun contrôle du dépôt ne peut
+les voir — et ce sont elles qui décident qui lit quoi.
+
+Le précédent est connu : six tables mortes portaient à elles seules **vingt-cinq règles que
+plus personne ne relisait**, dont une ouverte au rôle `public`. Une table oubliée avec une
+policy permissive n'encombre pas : elle expose.
+
+`scripts/verifier-rls.sql` (affiché par `npm run rls`) pose sept questions, à passer dans
+l'éditeur SQL Supabase :
+
+| # | Question | Attendu |
+|---|---|---|
+| 1 | Tables **sans RLS** | 0 ligne — sans RLS, la clé du navigateur lit et écrit tout |
+| 2 | Policies ouvertes à `public` ou `anon` | Chaque ligne justifiable ; une écriture, presque jamais |
+| 3 | Policies **sans condition** (`USING (true)`) | 0 ligne, sauf justification écrite au §5 |
+| 4 | Écritures autorisées sur les tables sensibles | L'argent et les statuts passent par `/api` |
+| 5 | Les règles de `messages` | À lire en entier — le modèle de participants n'existe pas |
+| 6 | Tables verrouillées (RLS active, zéro policy) | Pas une faille : un blocage silencieux |
+| 7 | Tables vides portant encore des policies | Le précédent des six tables mortes |
+
+Ce n'est pas un contrôle automatique et ça ne peut pas l'être. C'est une relecture, à faire
+avant toute mise en production et après toute migration touchant aux droits.
+
 ### Messagerie : la clé de conversation ne vient plus du navigateur
 
 **Corrigé le 17/08/2026.** L'insertion d'un message se faisait **depuis le navigateur**, et

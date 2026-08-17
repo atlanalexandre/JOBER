@@ -17,7 +17,8 @@
     "coherence": "node .github/scripts/coherence.cjs",
     "preview": "vite preview",
     "colonnes": "node scripts/verifier-colonnes.mjs",
-    "ecritures": "node scripts/verifier-ecritures.mjs"
+    "ecritures": "node scripts/verifier-ecritures.mjs",
+    "rls": "cat scripts/verifier-rls.sql"
   },
   "dependencies": {
     "@sentry/react": "^10.62.0",
