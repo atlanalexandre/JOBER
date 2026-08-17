@@ -265,6 +265,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | CI eslint | Doit rester à 0 erreur |
 | Contrôle de cohérence | `npm run coherence` vérifie automatiquement les règles ci-dessus. Il bloque la CI. Avant d'ajouter une exception, se demander si ce n'est pas le code qui a tort |
 | Colonne inexistante | PostgREST refuse **toute** la requête, pas seulement la colonne fautive — et en silence si le résultat n'est pas vérifié. `npm run colonnes` produit la requête qui confronte le code à la base : à passer après chaque migration |
+| Écriture après un paiement | Toute écriture qui SUIT un mouvement d'argent doit vérifier son résultat. Un `.catch()` n'attrape que les erreurs réseau ; un refus de PostgREST résout normalement. `npm run ecritures` liste les candidates — à relire, pas à corriger en bloc |
 
 ---
 

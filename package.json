@@ -16,7 +16,8 @@
     "cgps:verifier": "node scripts/generer-cgps-html.mjs --verifier",
     "coherence": "node .github/scripts/coherence.cjs",
     "preview": "vite preview",
-    "colonnes": "node scripts/verifier-colonnes.mjs"
+    "colonnes": "node scripts/verifier-colonnes.mjs",
+    "ecritures": "node scripts/verifier-ecritures.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.62.0",

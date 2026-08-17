@@ -1049,6 +1049,32 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### L'audit des écritures qui suivent un mouvement d'argent
+
+**Mené le 17/08/2026**, après que quatre pannes de la même famille sont apparues en une
+journée. La question posée : `cancellation_reason` était-elle isolée ?
+
+Non. `npm run ecritures` relève les PATCH/POST vers `missions` ou `profiles` qui touchent une
+colonne d'argent ou de statut sans que le résultat soit exploité. **45 au premier passage.**
+Trois d'entre elles suivaient un mouvement d'argent réel :
+
+| Où | Ce qui se passait |
+|---|---|
+| `stripe-webhook` — `checkout.session.completed` | **L'abonnement était payé et le plan jamais accordé.** L'écriture dans `auth` était vérifiée, celle dans `profiles` non — or c'est `profiles` que lit l'application, `user_metadata` n'étant jamais consulté pour le plan |
+| `stripe-webhook` — `subscription.updated` / `.deleted` | Même chose dans les deux sens : un abonnement résilié restant « premium » offre un quota que plus personne ne paie |
+| `stripe-refund` | Remboursement parti, prestation jamais close : elle se clôturait d'elle-même et le prestataire était payé sur un montant déjà rendu |
+| `presta_cancel` | Remboursement parti, prestation toujours attribuée au prestataire qui venait d'annuler |
+
+Toutes vérifient désormais leur résultat. Les webhooks répondent **500**, ce qui fait réessayer
+Stripe — c'est ce que le même fichier faisait déjà pour l'écriture voisine, et personne n'avait
+remarqué que la seconde ne le faisait pas.
+
+**Le script n'est pas branché sur `npm run coherence`, volontairement.** Il reste 41
+signalements, et beaucoup sont légitimes : compteurs, horodatages accessoires, écritures dont
+l'échec est sans conséquence. Le critère qui compte — « de l'argent a-t-il déjà bougé avant
+cette ligne ? » — ne se décide pas automatiquement. C'est une liste à relire, pas une liste à
+corriger ; en faire un bloqueur produirait un contrôle qu'on ignore.
+
 ### Le bouton « Ma facture » ne faisait rien sur iPhone
 
 **Signalé par Alexandre le 17/08/2026.** On appuie, et rien ne se passe. Aucune erreur, aucun

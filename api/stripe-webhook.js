@@ -353,12 +353,24 @@ export default async function handler(req, res) {
           console.error("stripe-webhook: user metadata update failed", r.status);
           return res.status(500).json({ error: "User update failed" });
         }
-        // Mettre à jour aussi la table profiles pour que le client puisse lire le plan
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        // `profiles` est la SOURCE du plan : l'application ne lit jamais
+        // user_metadata pour cela. Cette écriture était la seule des deux à ne
+        // pas être vérifiée — et un `.catch()` n'attrape que les erreurs
+        // réseau, pas un refus de PostgREST, qui résout normalement.
+        //
+        // L'abonné payait donc son abonnement et restait en plan gratuit, sans
+        // que rien ne le signale. Répondre 500 fait réessayer Stripe, ce que le
+        // bloc au-dessus fait déjà pour l'autre écriture.
+        const rp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: "PATCH",
-          headers: { ...hdrs, "Prefer": "return=minimal" },
+          headers: { ...hdrs, "Prefer": "return=representation" },
           body: JSON.stringify({ plan_abonnement: plan, subscription_end_date: endDate }),
-        }).catch(e => console.error("stripe-webhook: profiles PATCH failed", e));
+        }).catch(e => { console.error("stripe-webhook: profiles PATCH failed", e.message); return null; });
+        const lp = rp ? await rp.json().catch(() => []) : null;
+        if (!rp || !rp.ok || !Array.isArray(lp) || lp.length === 0) {
+          console.error(`stripe-webhook: plan ${plan} NON accordé à ${userId} (${rp?.status}) — abonnement payé sans effet.`);
+          return res.status(500).json({ error: "Profile update failed" });
+        }
       } catch (e) {
         console.error("stripe-webhook: Supabase down on checkout.session.completed", e);
         return res.status(500).json({ error: "Supabase unavailable" });
@@ -542,15 +554,22 @@ export default async function handler(req, res) {
           }
         } catch (e) { console.error("[sub.updated] metadata update failed:", e.message); }
 
-        // Update profiles table
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        // Même vérification que ci-dessus : c'est `profiles` que lit
+        // l'application, et un refus silencieux laisserait l'abonné sur son
+        // ancien plan.
+        const ru = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: "PATCH",
-          headers: { ...hdrs, "Prefer": "return=minimal" },
+          headers: { ...hdrs, "Prefer": "return=representation" },
           body: JSON.stringify({
             plan_abonnement: effectivePlan,
             subscription_end_date: endDate ? endDate.split("T")[0] : null,
           }),
-        }).catch(e => console.error("[sub.updated] profile patch failed:", e.message));
+        }).catch(e => { console.error("[sub.updated] profile patch failed:", e.message); return null; });
+        const lu = ru ? await ru.json().catch(() => []) : null;
+        if (!ru || !ru.ok || !Array.isArray(lu) || lu.length === 0) {
+          console.error(`[sub.updated] plan ${effectivePlan} NON appliqué à ${userId} (${ru?.status}).`);
+          return res.status(500).json({ error: "Profile update failed" });
+        }
 
       } else {
         // Downgrade to free (subscription canceled or payment failed past grace period)
@@ -566,11 +585,18 @@ export default async function handler(req, res) {
           }
         } catch (e) { console.error("[sub.deleted] metadata downgrade failed:", e.message); }
 
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        // Le sens inverse compte autant : un abonnement résilié qui reste
+        // « premium » en base offre un quota que plus personne ne paie.
+        const rd = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: "PATCH",
-          headers: { ...hdrs, "Prefer": "return=minimal" },
+          headers: { ...hdrs, "Prefer": "return=representation" },
           body: JSON.stringify({ plan_abonnement: "free", subscription_end_date: null, stripe_subscription_id: null }),
-        }).catch(e => console.error("[sub.deleted] profile downgrade failed:", e.message));
+        }).catch(e => { console.error("[sub.deleted] profile downgrade failed:", e.message); return null; });
+        const ld = rd ? await rd.json().catch(() => []) : null;
+        if (!rd || !rd.ok || !Array.isArray(ld) || ld.length === 0) {
+          console.error(`[sub.deleted] retour au plan gratuit NON appliqué à ${userId} (${rd?.status}).`);
+          return res.status(500).json({ error: "Profile downgrade failed" });
+        }
       }
     }
   }

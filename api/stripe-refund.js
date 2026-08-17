@@ -109,18 +109,33 @@ export default async function handler(req, res) {
       }
     }
 
-    // Update mission status to closed
+    // Clôture de la prestation.
+    //
+    // Le remboursement — et le cas échéant l'annulation du virement — sont déjà
+    // partis à ce stade. Le résultat de cette écriture n'était pas vérifié : si
+    // elle échouait, la prestation restait ouverte, se clôturait normalement à
+    // son terme, et le prestataire était payé sur un montant déjà rendu au
+    // client. C'est exactement ce que faisait `cancellation_reason`.
     {
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
+      const rc = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, {
         method: "PATCH",
         headers: {
           "apikey": SERVICE_ROLE_KEY,
           "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
-          "Prefer": "return=minimal",
+          "Prefer": "return=representation",
         },
         body: JSON.stringify({ status: "closed" }),
-      }).catch(() => {});
+      }).catch(e => { console.error("[stripe-refund] clôture impossible :", e.message); return null; });
+      const lc = rc ? await rc.json().catch(() => []) : null;
+      if (!rc || !rc.ok || !Array.isArray(lc) || lc.length === 0) {
+        console.error(`[stripe-refund] prestation ${missionId} REMBOURSÉE mais NON close (${rc?.status}) `
+          + "— elle se clôturera d'elle-même et le prestataire sera payé. À reprendre à la main.");
+        return res.status(500).json({
+          error: "Le remboursement est parti, mais la prestation n'a pas pu être close. "
+               + "Reprenez-la à la main avant qu'elle ne se clôture d'elle-même.",
+        });
+      }
     }
 
     return res.status(200).json({ ok: true, refundId: refundData.id, amount: refundData.amount, transferReversalId, transferReversalFailed: transferReversalFailed || undefined });
