@@ -1,0 +1,123 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Les droits résiduels — doublons et écritures sans usage
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- Le relevé après `2026-08-17_droits_ouverts_inutiles.sql` montre que les
+-- policies fermées avaient des JUMELLES, invisibles jusque-là parce qu'elles
+-- portent sur le rôle `authenticated` et non `public` : la requête de
+-- diagnostic ne remontait que les secondes.
+--
+--   contracts     | contracts_insert / contracts_select / contracts_update
+--   candidatures  | cand_insert / cand_select / cand_update
+--   documents     | docs_select   (en double avec documents_presta_own)
+--
+-- Fermer une porte pendant qu'une seconde reste ouverte à côté ne ferme rien.
+-- C'est le même défaut que les policies en double relevées toute la journée,
+-- vu sous un autre angle : ce ne sont pas deux règles identiques, ce sont deux
+-- règles pour le même geste, écrites à deux moments, et dont une seule était
+-- visible dans le contrôle.
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- CONTRACTS — le front ne fait qu'en créer
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- `src/` contient exactement UN accès à cette table : une insertion, à la
+-- signature du contrat. Aucune lecture — l'écran de contrat lit `missions`,
+-- pas `contracts`.
+--
+-- `contracts_update` permettait donc de modifier un contrat signé, pour un
+-- geste que personne ne fait. C'est la même pièce que les dates de signature
+-- fermées plus tôt : ce qui prouve ce qui a été commandé, à quel prix, par qui.
+--
+-- On garde les deux règles explicites écrites plus tôt — création et lecture
+-- par le client — et on retire les trois anciennes, dont on ne connaît pas les
+-- conditions.
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- CANDIDATURES — le front lit, ne crée jamais
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- Un seul accès dans `src/` : une lecture, côté client, pour voir qui s'est
+-- porté candidat sur sa prestation. Les deux règles de SELECT restent donc —
+-- elles couvrent deux cas différents, le prestataire qui voit les siennes et le
+-- client qui voit celles de sa prestation.
+--
+-- `cand_insert` et `cand_update` ne servent à rien : aucun écran ne crée ni ne
+-- modifie de candidature. Et une candidature acceptée déclenche la création
+-- d'un PaymentIntent — c'est une écriture vers un chemin qui mène à de
+-- l'argent, laissée ouverte pour une fonctionnalité qui n'existe pas.
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- DOCUMENTS — deux lectures pour une
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- `docs_select` et `documents_presta_own` autorisent la même chose. On garde
+-- celle dont la condition est connue et vérifiée : `prestataire_id = auth.uid()`.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Contrats : création et lecture par le client, rien d'autre.
+DROP POLICY IF EXISTS contracts_insert ON public.contracts;
+DROP POLICY IF EXISTS contracts_select ON public.contracts;
+DROP POLICY IF EXISTS contracts_update ON public.contracts;
+
+-- Candidatures : lecture seule depuis le navigateur.
+DROP POLICY IF EXISTS cand_insert ON public.candidatures;
+DROP POLICY IF EXISTS cand_update ON public.candidatures;
+
+-- Documents : une seule règle de lecture.
+DROP POLICY IF EXISTS docs_select ON public.documents;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    SELECT tablename, policyname, cmd, roles::text
+--    FROM pg_policies
+--    WHERE schemaname = 'public'
+--      AND tablename IN ('contracts','candidatures','documents')
+--    ORDER BY tablename, cmd, policyname;
+--
+-- Attendu, et rien de plus :
+--
+--    candidatures | cand_select               | SELECT
+--    candidatures | candidatures_presta_own   | SELECT
+--    contracts    | contracts_client_creation | INSERT
+--    contracts    | contracts_client_lecture  | SELECT
+--    documents    | docs_insert               | INSERT
+--    documents    | docs_update               | UPDATE
+--    documents    | documents_presta_own      | SELECT
+--
+-- CONTRÔLES DEPUIS L'APPLICATION :
+--
+--   1. déposer un document, puis le remplacer → doit fonctionner ;
+--   2. réserver une prestation et signer le contrat → doit fonctionner ;
+--   3. côté client, ouvrir une prestation ouverte et voir les candidatures →
+--      doit fonctionner si des candidatures existent.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CE QUI RESTE OUVERT, VOLONTAIREMENT
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- `missions_insert` et `missions_update` portent encore le rôle `public` plutôt
+-- qu'`authenticated`. En pratique cela ne change rien : leurs conditions
+-- exigent `auth.uid()`, qu'un visiteur anonyme n'a pas. Les renommer serait
+-- cosmétique, et toucher aux deux règles qui gouvernent la création des
+-- prestations pour un gain nul n'en vaut pas le risque.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    CREATE POLICY contracts_update ON public.contracts
+--      FOR UPDATE TO authenticated USING (client_id = (SELECT auth.uid()));
+--    CREATE POLICY cand_insert ON public.candidatures
+--      FOR INSERT TO authenticated
+--      WITH CHECK (prestataire_id = (SELECT auth.uid()));
+--
+-- Les conditions ci-dessus sont une RECONSTRUCTION : les originales n'ont pas
+-- été relevées avant suppression. Si un geste casse, mieux vaut me le décrire
+-- que rejouer ces lignes à l'aveugle.
+-- ═══════════════════════════════════════════════════════════════════════════

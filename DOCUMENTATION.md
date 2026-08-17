@@ -1070,6 +1070,34 @@ au serveur.
 Une table sans policy n'est une anomalie que si l'application y accède : l'écran afficherait
 alors une liste vide sans jamais dire pourquoi.
 
+### Les jumelles invisibles
+
+**Constaté après avoir fermé les quatre droits ouverts, le 17/08/2026.** Le relevé suivant a
+montré que les policies fermées avaient des **jumelles** — invisibles jusque-là parce qu'elles
+portent sur `authenticated` et non `public`, et que la requête de diagnostic ne remontait que
+les secondes :
+
+```
+contracts    | contracts_insert / contracts_select / contracts_update
+candidatures | cand_insert / cand_select / cand_update
+documents    | docs_select   (en double avec documents_presta_own)
+```
+
+**Fermer une porte pendant qu'une seconde reste ouverte à côté ne ferme rien.** Ce ne sont pas
+deux règles identiques : ce sont deux règles pour le même geste, écrites à deux moments, dont
+une seule apparaissait dans le contrôle.
+
+`contracts` : `src/` contient exactement **un** accès — une insertion à la signature. Aucune
+lecture, l'écran de contrat lit `missions`. `contracts_update` permettait donc de modifier un
+contrat signé, pour un geste que personne ne fait.
+
+`candidatures` : un seul accès, une **lecture** côté client. `cand_insert` et `cand_update`
+laissaient ouverte une écriture vers un chemin qui mène à de l'argent — une candidature
+acceptée déclenche un PaymentIntent — pour une fonctionnalité qui n'existe pas.
+
+**La leçon sur le contrôle lui-même** : filtrer sur `public` ne suffisait pas. Le relevé
+complet, sans filtre de rôle, est celui qui a tout montré — et c'est celui qu'il faut passer.
+
 ### Quatre droits ouverts sur des gestes que l'application ne fait pas
 
 **Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,
