@@ -1070,11 +1070,20 @@ fermer casserait ce geste. Elles ne déplacent pas d'argent par elles-mêmes —
 qui programme le versement, et elle refait ses propres contrôles. À reprendre le jour où cet
 écran passera par `/api` comme le reste.
 
-**Deux colonnes mortes découvertes au passage** : `nb_heures` et `stripe_transfer_id_col`, qui
-ne sont référencées **nulle part** — ni dans `api/`, ni dans `src/`, ni ici. La première
-ressemble à un ancien nom de `hours`, la seconde à une colonne créée par erreur à côté de
-`stripe_transfer_id`. Un nom si proche d'une colonne vivante finit par être écrit à sa place.
-La requête de contrôle et la suppression figurent dans le fichier de migration.
+**Deux colonnes mortes découvertes au passage**, et supprimées le même jour : `nb_heures` et
+`stripe_transfer_id_col` n'étaient référencées **nulle part** — ni dans `api/`, ni dans `src/`,
+ni ici — et le comptage a confirmé qu'elles étaient vides.
+
+La première ressemble à un ancien nom de `hours`, la seconde à une colonne créée par erreur à
+côté de `stripe_transfer_id` : le suffixe `_col` a tout d'un copier-coller resté en place.
+
+Le risque n'était pas ce qu'elles contenaient, mais ce qu'elles attendaient. Le jour où
+quelqu'un écrit dans `stripe_transfer_id_col` en croyant écrire dans `stripe_transfer_id`, le
+virement devient intraçable : `stripe-refund` lit la seconde pour annuler un transfert, et ne
+trouverait rien. Aucun message — juste une colonne remplie que personne ne regarde, et une
+autre restée vide.
+
+Même raisonnement que pour les six tables mortes du 05/08/2026 (`2026-08-17_colonnes_mortes.sql`).
 
 ### Le navigateur pouvait fixer le montant de son propre virement
 

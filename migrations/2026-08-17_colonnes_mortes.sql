@@ -1,0 +1,68 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Supprimer deux colonnes mortes de `missions`
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- `nb_heures` et `stripe_transfer_id_col` sont apparues dans le relevé des
+-- colonnes modifiables depuis le navigateur, le 17/08/2026. Aucune des deux
+-- n'est référencée nulle part : ni dans `api/`, ni dans `src/`, ni dans la
+-- documentation.
+--
+-- Vérifié avant suppression, le même jour :
+--
+--    SELECT count(*) FILTER (WHERE nb_heures IS NOT NULL),
+--           count(*) FILTER (WHERE stripe_transfer_id_col IS NOT NULL)
+--    FROM missions;
+--    -- 0 et 0
+--
+-- Elles sont donc vides, et personne ne les lit.
+--
+-- CE QU'ELLES RISQUAIENT
+--
+-- Rien, tant que personne ne les écrit. C'est précisément le problème.
+--
+-- `nb_heures` ressemble à un ancien nom de `hours`. `stripe_transfer_id_col`
+-- ressemble à une colonne créée par erreur à côté de `stripe_transfer_id` — le
+-- suffixe `_col` a tout d'un copier-coller resté en place.
+--
+-- Le jour où quelqu'un écrit dans `stripe_transfer_id_col` en croyant écrire
+-- dans `stripe_transfer_id`, le virement devient intraçable : `stripe-refund`
+-- lit `stripe_transfer_id` pour annuler un transfert, et ne trouvera rien.
+-- L'erreur ne produira aucun message — juste une colonne remplie que personne
+-- ne regarde et une autre restée vide.
+--
+-- Une colonne morte au nom presque identique à une colonne vivante n'encombre
+-- pas : elle attend. C'est le même raisonnement qui a fait supprimer les six
+-- tables mortes du 05/08/2026.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.missions
+  DROP COLUMN IF EXISTS nb_heures,
+  DROP COLUMN IF EXISTS stripe_transfer_id_col;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    SELECT column_name FROM information_schema.columns
+--    WHERE table_schema = 'public' AND table_name = 'missions'
+--      AND column_name IN ('nb_heures', 'stripe_transfer_id_col');
+--    -- attendu : 0 ligne
+--
+-- Elles disparaîtront aussi d'elles-mêmes de la liste des colonnes modifiables
+-- depuis le navigateur : les droits suivent la colonne.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    ALTER TABLE public.missions
+--      ADD COLUMN nb_heures numeric,
+--      ADD COLUMN stripe_transfer_id_col text;
+--
+-- Les données ne reviendront pas — mais il n'y en avait aucune. Le seul motif
+-- de retour arrière serait la découverte d'un code qui les lit, ce que la
+-- relecture contredit.
+-- ═══════════════════════════════════════════════════════════════════════════
