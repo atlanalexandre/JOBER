@@ -4863,11 +4863,24 @@ export default async function handler(req, res) {
         }
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+      // Le remboursement est déjà parti quand on arrive ici. Sans vérification,
+      // une écriture refusée laissait la prestation `assigned` au prestataire
+      // qui vient d'annuler : elle se serait clôturée normalement, et il aurait
+      // été payé pour une prestation qu'il n'a pas faite.
+      const rRempl = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ status: "needs_replacement", prestataire_id: null }),
-      });
+      }).catch(e => { console.error("[presta_cancel] mise en recherche impossible :", e.message); return null; });
+      const lRempl = rRempl ? await rRempl.json().catch(() => []) : null;
+      if (!rRempl || !rRempl.ok || !Array.isArray(lRempl) || lRempl.length === 0) {
+        console.error(`[presta_cancel] prestation ${mission_id} NON remise en recherche (${rRempl?.status}) `
+          + "— elle reste assignée au prestataire qui vient d'annuler.");
+        return res.status(500).json({
+          error: "Votre annulation n'a pas pu être enregistrée. Écrivez à direction@alane.fr : "
+               + "la prestation vous est encore attribuée.",
+        });
+      }
 
       // Recherche d'un remplaçant. L'écran client annonce « nous recherchons un
       // remplaçant » : jusqu'ici personne n'était prévenu, la prestation devenait
