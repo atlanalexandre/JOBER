@@ -1049,6 +1049,43 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### L'accueil client montre la prochaine prestation
+
+**Ajouté le 17/08/2026, à la demande d'Alexandre.** Il fallait ouvrir « Prestations » puis
+l'onglet « Assignées » pour voir une prestation réservée : deux clics pour l'information la
+plus attendue de l'écran.
+
+L'accueil avait pourtant déjà deux blocs — mais aucun ne couvrait ce cas :
+
+| Bloc | Quand il s'affiche |
+|---|---|
+| « Prestation à valider » (bandeau fixe) | Le prestataire a confirmé la fin |
+| « Prestation en cours » (carte flottante) | Uniquement **pendant** le créneau |
+| **« Prochaine prestation »** (nouveau) | La prestation n'a pas encore commencé |
+
+La nouvelle carte est **dans le flux**, et non en surimpression : trois éléments flottants
+superposés rendraient l'accueil illisible, et celui-ci informe — il n'interrompt pas. Elle
+couvre aussi `pending_acceptance`, l'état où le client a payé et attend une réponse : c'est
+précisément le moment où il a besoin de voir sa prestation.
+
+**Deux sources devenaient une.** « À valider » venait de `/api/missions` toutes les 8 s,
+« en cours » d'une requête Supabase directe toutes les 60 s — et cette seconde requête
+**oubliait `actual_hours` dans son `select`** : une prestation prolongée disparaissait de
+l'écran avant d'être finie. Les trois états sont désormais dérivés du même chargement.
+
+Le tri vit dans `src/lib/accueil.js` (`etatAccueil`), hors du composant, pour être testable :
+les dates de bord — une prestation qui vient de commencer, une qui vient de finir, une
+prolongée au-delà de son créneau — ne se vérifient pas en cliquant dans une interface.
+Quatorze tests les couvrent.
+
+Les trois états sont **exclusifs**. Sans cela, une prestation dont le prestataire a confirmé
+la fin serait comptée à la fois « à valider » et « en cours » tant que son créneau n'est pas
+écoulé, et le client verrait deux blocs se contredire.
+
+**Le temps y est celui du navigateur**, et c'est assumé : `heure_debut` est une heure locale
+française, exacte pour un client en France. Un client à l'étranger verrait l'horaire décalé de
+son propre décalage. Côté serveur, la conversion reste obligatoire — Vercel tourne en UTC.
+
 ### Ce que `npm run colonnes` a trouvé du premier coup
 
 **Une prestation clôturée sans versement n'apparaissait nulle part.** L'écran « Versements »
