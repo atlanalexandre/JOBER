@@ -994,7 +994,7 @@ export default async function handler(req, res) {
       // Vérifier si la mission a déjà un paiement Stripe — inclure status pour éviter double PaymentIntent
       // B-07: on utilise mission.tarif_horaire (fixé à la création) et non tarif_net du prestataire
       const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre,date,heure_debut`, { headers });
+      const mCheckRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=stripe_payment_intent,hours,tarif_horaire,client_id,status,metier,titre,date,heure_debut,date_debut,date_fin`, { headers });
       const mCheckData = await mCheckRes.json();
       const missionCheck = Array.isArray(mCheckData) && mCheckData[0];
       if (missionCheck && missionCheck.client_id !== caller.id) return res.status(403).json({ error: "Non autorisé" });
@@ -1048,8 +1048,24 @@ export default async function handler(req, res) {
         const missionTarif = Number(missionCheck.tarif_horaire) || 0;
         if (missionTarif <= 0) return res.status(400).json({ error: "Tarif horaire non défini sur cette prestation — impossible de créer le paiement" });
         try {
+          // Le montant ignorait le NOMBRE DE JOURS et les FRAIS DE SERVICE.
+          //
+          // Sur une prestation récurrente de cinq jours à 8 h et 15 €/h, il
+          // encaissait 120 € au lieu de 600 € — puis, à la clôture, la part du
+          // prestataire se calcule bien sur les cinq jours. ALANE versait donc
+          // 600 € pour 120 € encaissés, et ne percevait aucun frais : la
+          // différence entre le montant payé et la part horaire tombant à zéro,
+          // `montantsDeCloture` conclut à des frais nuls. Perte : 480 €.
+          //
+          // Les deux calculs viennent désormais des mêmes fonctions que le
+          // tunnel de réservation. Ce chemin en tenait une version à lui.
           const hours = missionCheck.hours || 1;
-          const amountCents = Math.max(50, Math.round(missionTarif * hours * 100));
+          const jours = nombreDeJours(missionCheck);
+          const partHoraire = Math.round(missionTarif * hours * jours * 100) / 100;
+          const fraisAccept = await lireFraisService(SUPABASE_URL, headers);
+          const fraisMontant = calculerFrais(jours > 1 ? "range" : "single", partHoraire, jours, fraisAccept);
+          const totalAccept = Math.round((partHoraire + fraisMontant) * 100) / 100;
+          const amountCents = Math.max(50, Math.round(totalAccept * 100));
           const params = new URLSearchParams({
             amount: String(amountCents),
             currency: "eur",
@@ -1064,6 +1080,17 @@ export default async function handler(req, res) {
           });
           const intent = await ir.json();
           if (intent.client_secret) {
+            // `montant_total` porte ce que le client va régler. Sans cette
+            // écriture, la clôture déduirait les frais de service d'un montant
+            // périmé — c'est cette soustraction qui les fait tomber à zéro.
+            const majTotal = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+              body: JSON.stringify({ montant_total: totalAccept }),
+            }).catch(e => { console.error("[accept] montant non enregistré :", e.message); return null; });
+            if (!majTotal || !majTotal.ok) {
+              console.error(`[accept] montant_total NON écrit sur ${mission_id} (${majTotal?.status}) — `
+                + "les frais de service seront faux à la clôture.");
+            }
             return res.status(200).json({ payment_required: true, client_secret: intent.client_secret, amount: amountCents / 100 });
           }
         } catch (stripeErr) {

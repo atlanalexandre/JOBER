@@ -1049,6 +1049,32 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Prestations récurrentes : un paiement calculé sur un seul jour
+
+**Trouvé le 17/08/2026** en auditant les calculs multi-jours. Le paiement d'une **candidature
+acceptée** — le parcours où un prestataire se porte candidat sur une prestation ouverte, puis
+le client règle — calculait `tarif × heures`. Sans les **jours**, sans les **frais de service**.
+
+C'était une troisième version du montant, distincte de celle du tunnel de réservation et de
+celle de la clôture.
+
+Sur cinq jours à 8 h et 15 €/h : **120 € encaissés au lieu de 626,50 €**. La clôture, elle,
+compte bien les cinq jours — et comme les frais se déduisent de ce qui reste du montant payé,
+ils tombent à zéro par-dessus le marché :
+
+| | Attendu | Ancien calcul |
+|---|---|---|
+| Encaissé | 626,50 € | **120,00 €** |
+| Dû au prestataire | 600,00 € | 600,00 € |
+| Frais de service | 26,50 € | **0,00 €** |
+
+**480 € de perte** sur une seule prestation.
+
+Le montant vient désormais de `nombreDeJours` et `calculerFrais`, les mêmes fonctions que le
+tunnel. Et `montant_total` est écrit avec ce qui va réellement être encaissé : sans cette
+écriture, la clôture déduirait les frais d'un montant périmé, ce qui est précisément ce qui les
+faisait disparaître.
+
 ### L'audit des écritures qui suivent un mouvement d'argent
 
 **Mené le 17/08/2026**, après que quatre pannes de la même famille sont apparues en une
