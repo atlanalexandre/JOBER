@@ -116,6 +116,11 @@ duquel le virement est émissible, soit la fin de la prestation + 48 h),
 `payout_compensation` (somme retenue au titre de l'art. 8B.3).
 Voir « Le versement au prestataire » au §6.
 
+`cashback_applique` porte la part du prix réglée en cashback et `cashback_debite` dit si le
+solde du client a réellement été prélevé. La seconde n'est pas une redondance : entre la
+création de l'intention de paiement et sa confirmation, `cashback_applique` porte une réduction
+PROMISE que rien n'a encore consommée — un panier abandonné ne doit rien coûter au client.
+
 `resolution_proposee` (`verser_prestataire` | `rembourser_client`, sous contrainte `CHECK`),
 `resolution_motif`, `resolution_notifiee_at`, `resolution_echeance_at`,
 `resolution_opposition_par` / `resolution_opposition_at` et `resolution_executee_cause`
@@ -376,6 +381,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
+| `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js` et par `wallet.js` (ce second chemin n'est plus emprunté depuis la fermeture du portefeuille). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 
@@ -1989,11 +1995,36 @@ Le **portefeuille prépayé est fermé depuis le 16/08/2026**. `pay_mission` et
 `rembourser_solde` subsistent dans `api/wallet.js` le temps de vérifier qu'aucun solde résiduel
 n'existe ; le tunnel ne propose plus que la carte et Apple Pay.
 
-**Le cashback est crédité mais n'est plus dépensable** : `pay_mission` le consommait en
-premier, et plus rien ne l'appelle. L'article 5B.1 des CGPS promet pourtant un crédit
-« utilisable pour le paiement total ou partiel de futures Prestations ». Promesse sans
-implémentation — à rouvrir par une réduction appliquée au paiement par carte, ou à retirer
-du texte.
+**Le cashback s'impute en réduction du paiement par carte** (`api/_cashback.js`, migration
+`2026-08-17_cashback_en_reduction.sql`). Il l'était auparavant par `pay_mission`, seul code qui
+le consommait : à la fermeture du portefeuille, il est devenu crédité, affiché, et dépensable
+nulle part — alors que l'article 5B.1 des CGPS promet un crédit « utilisable pour le paiement
+total ou partiel de futures Prestations ».
+
+Trois règles gouvernent cette imputation, et il faut les trois :
+
+- **`montant_total` ne bouge pas.** Il porte le PRIX de la prestation. `cashback_applique`
+  porte la part réglée en cashback, et la différence est ce que la carte a supporté. Écrire la
+  réduction dans `montant_total` aurait fait baisser la facture du prestataire, les frais de
+  service constatés et le cashback de la prestation suivante — une remise commerciale d'ALANE
+  serait devenue une baisse du prix de vente.
+- **Le solde est débité à la CONFIRMATION du paiement**, jamais à la création de l'intention —
+  `debiterCashback()`, appelé par `assign_after_payment` **et** par le webhook Stripe, le
+  drapeau `cashback_debite` rendant le second appel sans effet. Réserver puis restituer aurait
+  imposé une restitution sur une douzaine de chemins d'annulation : en oublier un aurait fait
+  disparaître le cashback d'un client en silence.
+- **Tout remboursement partiel est plafonné** à `montant_total − cashback_applique`
+  (`plafonnerRemboursement()`). Stripe refuse de rendre plus qu'il n'a prélevé, et ce refus
+  arriverait APRÈS l'annulation de la prestation.
+
+Les helpers **relisent eux-mêmes** les deux colonnes quand le `select` de l'appelant les a
+omises (`completerCashback`). Une douzaine de requêtes lisent `missions` pour rembourser :
+exiger de chacune qu'elle pense à deux colonnes de plus, c'est accepter qu'une l'oublie — et
+l'oubli serait silencieux.
+
+Le cashback consommé est **restitué** quand la prestation est remboursée
+(`restituerCashback()`, appelé par `rembourserPrestation` et par l'exécution d'une résolution) :
+la prestation n'a pas eu lieu, l'avantage n'a pas été consommé.
 
 ---
 

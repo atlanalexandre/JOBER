@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { Btn, Stars } from "./ui.jsx";
+import { reductionCashback } from "../../api/_cashback.js";
 
 // ── useProviders hook (needed by MissionPendingScreen and CancellationScreen) ──
 function useProviders() {
@@ -386,6 +387,11 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
   const applePayStripeRef = useRef(null);
+  // Solde de cashback du client. Lu ici pour AFFICHER la réduction ; c'est le
+  // serveur qui la calcule et la débite, à partir du même `reductionCashback`.
+  // Deux formules auraient fini par diverger, et c'est le client qui aurait vu
+  // l'écart au moment de payer.
+  const [cashbackDispo, setCashbackDispo] = useState(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -393,6 +399,15 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       if (m.stripe_pm_id) {
         setSavedCard({ pmId: m.stripe_pm_id, customerId: m.stripe_customer_id, brand: m.card_brand||"card", last4: m.card_last4||"••••" });
       }
+      const uid = data?.user?.id;
+      if (!uid) return;
+      supabase.from("profiles").select("cashback_balance").eq("id", uid).single()
+        .then(({ data: prof, error }) => {
+          // Un solde illisible n'empêche pas de payer : la réduction ne
+          // s'affiche pas, et le serveur l'appliquera quand même s'il la lit.
+          if (error) { console.error("[paiement] cashback illisible :", error.message); return; }
+          setCashbackDispo(Number(prof?.cashback_balance || 0));
+        });
     });
   }, []);
 
@@ -467,8 +482,17 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   // ── Apple Pay / Google Pay ──────────────────────────────────────────
   const total = (typeof amount === 'object' ? (amount?.amount ?? 124) : (amount ?? 124));
 
+  // ── Le cashback en réduction ────────────────────────────────────────
+  // Ne s'applique qu'au paiement d'une prestation. Le complément d'heures
+  // supplémentaires (`mode`) suit son propre chemin côté serveur, où aucune
+  // réduction n'est calculée : en afficher une ici annoncerait un montant que
+  // Stripe ne demanderait pas.
+  const reduction = mode ? 0 : reductionCashback(cashbackDispo, Number(total));
+  const aPayer = Math.round((Number(total) - reduction) * 100) / 100;
+  const eur = (v) => Number(v).toFixed(2).replace(".", ",");
+
   useEffect(() => {
-    const amountCents = Math.round(total * 100);
+    const amountCents = Math.round(aPayer * 100);
     (async () => {
       const { loadStripe } = await import("@stripe/stripe-js");
       const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
@@ -581,7 +605,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       <div style={{ width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:44, marginBottom:20 }}>✓</div>
       <h2 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>Paiement sécurisé !</h2>
       <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>
-        <strong>{total} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la prestation.
+        <strong>{eur(aPayer)} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la prestation.
       </p>
       <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 18px", marginBottom:24, fontSize:13, color:"rgba(255,255,255,0.85)" }}>
         ⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation.
@@ -615,9 +639,21 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
               <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{p.name}</div><div style={{ color:C.textSub, fontSize:11 }}>{p.role} · {p.hourlyRate} HT</div></div>
             </div>
           ))}
+          {reduction > 0 && (
+            <>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12 }}>
+                <span style={{ color:C.textSub, fontSize:13 }}>Prestation</span>
+                <span style={{ color:C.text, fontSize:14, fontWeight:600 }}>{eur(total)} €</span>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:6 }}>
+                <span style={{ color:C.success, fontSize:13, fontWeight:600 }}>💰 Votre cashback</span>
+                <span style={{ color:C.success, fontSize:14, fontWeight:700 }}>− {eur(reduction)} €</span>
+              </div>
+            </>
+          )}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12 }}>
-            <span style={{ color:C.textSub, fontSize:13 }}>Total à bloquer</span>
-            <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{total} €</span>
+            <span style={{ color:C.textSub, fontSize:13 }}>{reduction > 0 ? "Reste à payer" : "Total à bloquer"}</span>
+            <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{eur(aPayer)} €</span>
           </div>
           <div style={{ background:`${C.success}15`, borderRadius:8, padding:"8px 10px", marginTop:10, fontSize:11, color:C.success, fontWeight:600 }}>
             🔒 Libéré uniquement après validation des deux parties
@@ -711,7 +747,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
             <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
             <Btn full onClick={handlePay} disabled={processing || !retractationOk}
               style={{ fontSize:16, padding:"18px", position:"relative" }}>
-              {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${total} € en sécurité`}
+              {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${eur(aPayer)} € en sécurité`}
             </Btn>
             <p style={{ textAlign:"center", color:C.textSub, fontSize:11, marginTop:8 }}>Aucun débit avant validation de votre prestation</p>
           </>

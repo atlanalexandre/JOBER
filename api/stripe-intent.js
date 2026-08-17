@@ -3,6 +3,7 @@ import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT }
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 import { prixHeuresSupp } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
+import { reductionCashback } from "./_cashback.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -217,7 +218,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,cashback_applique,cashback_debite`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -325,7 +326,58 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: ERREUR_MONTANT });
     }
   }
-  const amount = computed;
+  // ── Le cashback en réduction ──────────────────────────────────────────
+  //
+  // Le contrôle de cohérence ci-dessus porte sur le PRIX de la prestation, pas
+  // sur ce qui est prélevé : la réduction s'applique après lui, sinon elle
+  // ferait apparaître des frais de service négatifs et le paiement serait
+  // refusé.
+  //
+  // Le solde est lu ici, en service role, et jamais reçu du navigateur. Il
+  // n'est PAS débité : ce sera fait à la confirmation du paiement, pour qu'un
+  // panier abandonné ne coûte rien au client (voir `api/_cashback.js`).
+  let reduction = 0;
+  try {
+    const cbR = await fetch(
+      `${SUPABASE_URL_PI}/rest/v1/profiles?id=eq.${callerPi.id}&select=cashback_balance`,
+      { headers: hdrsPI }
+    );
+    const cbD = await cbR.json().catch(() => []);
+    const solde = Number(Array.isArray(cbD) && cbD[0]?.cashback_balance || 0);
+    reduction = reductionCashback(solde, computed);
+  } catch (e) {
+    // Un cashback illisible ne bloque pas un encaissement : le client paie le
+    // prix plein et son solde reste intact. L'inverse — refuser la réservation
+    // — perdrait une commande pour un avantage commercial.
+    // `reduction` vaut déjà 0 : le client paie le prix plein.
+    console.error(`[stripe-intent] cashback illisible pour ${callerPi.id} :`, e.message);
+  }
+
+  // La réduction retenue est inscrite sur la prestation AVANT la création du
+  // PaymentIntent : c'est elle qui bornera le remboursement, et elle doit être
+  // connue même si la réponse Stripe se perd en chemin.
+  //
+  // Une prestation dont le cashback a déjà été débité ne reçoit pas de nouvelle
+  // réduction : le paiement a abouti, il n'y a rien à recalculer.
+  if (mission.cashback_debite) {
+    reduction = Number(mission.cashback_applique || 0);
+  } else if (reduction !== Number(mission.cashback_applique || 0)) {
+    const upCb = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}`, {
+      method: "PATCH",
+      headers: { ...hdrsPI, "Prefer": "return=minimal" },
+      body: JSON.stringify({ cashback_applique: reduction }),
+    });
+    // Écriture qui décide d'un montant encaissé : son résultat se vérifie.
+    // Sans elle, la carte serait débitée du montant réduit alors que la
+    // prestation porterait zéro — et le remboursement dépasserait le prélevé.
+    if (!upCb.ok) {
+      const txt = await upCb.text().catch(() => "");
+      console.error(`[stripe-intent] réduction non enregistrée sur ${intentMissionId} :`, txt.slice(0, 200));
+      reduction = 0;
+    }
+  }
+
+  const amount = Math.round((computed - reduction) * 100) / 100;
   const missionMetaId = intentMissionId;
 
   // prestataire_id lu depuis la DB, jamais depuis le body client
@@ -392,7 +444,15 @@ export default async function handler(req, res) {
     });
     const intent = await r.json();
     if (intent.error) return res.status(400).json({ error: intent.error.message });
-    return res.status(200).json({ clientSecret: intent.client_secret, intentId: intent.id });
+    return res.status(200).json({
+      clientSecret: intent.client_secret,
+      intentId: intent.id,
+      // Rendus au tunnel pour qu'il affiche ce que le client règle réellement.
+      // Le navigateur ne les CHOISIT pas : il les constate.
+      prix: computed,
+      reductionCashback: reduction,
+      montantPaye: amount,
+    });
   } catch (e) {
     console.error("stripe-intent error:", e);
     return res.status(500).json({ error: "Erreur Stripe" });

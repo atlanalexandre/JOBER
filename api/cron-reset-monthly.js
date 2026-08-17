@@ -341,7 +341,8 @@ export default async function handler(req, res) {
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
             + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
             + `delay_status,arrival_delay_minutes,`
-            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,`
+            + `cashback_applique,cashback_debite`
             + `&limit=100`,
             { headers }
           );

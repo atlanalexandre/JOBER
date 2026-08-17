@@ -30,6 +30,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { montantsDeCloture } from "./_cloture.js";
+import { plafonnerRemboursement, restituerCashback } from "./_cashback.js";
 
 export const DELAI_OPPOSITION_MS = 48 * 3600000;
 
@@ -142,8 +143,13 @@ export async function executerResolution({
         console.log(`[resolution] remboursement de ${(centimes / 100).toFixed(2)} €`
           + ` pour ${mission.id} — ${fraisRetenus.toFixed(2)} € de frais de service retenus.`);
       }
+      // Plafonné à ce que la carte a réellement supporté : une part du prix a
+      // pu être réglée en cashback, et Stripe refuse de rendre plus qu'il n'a
+      // prélevé. Le refus arriverait APRÈS la clôture du litige, laissant le
+      // client sans prestation et sans remboursement.
+      const centimesDus = await plafonnerRemboursement(centimes, mission, supabaseUrl, headers);
       const corpsRemboursement = { payment_intent: mission.stripe_payment_intent };
-      if (centimes !== null) corpsRemboursement.amount = String(centimes);
+      if (centimesDus !== null) corpsRemboursement.amount = String(centimesDus);
 
       const rf = await fetch("https://api.stripe.com/v1/refunds", {
         method: "POST",
@@ -163,6 +169,9 @@ export async function executerResolution({
         return { ok: false, detail: `Remboursement Stripe échoué : ${data?.error?.message || "erreur inconnue"}` };
       }
       console.log(`[resolution] remboursement ${data.id} pour la prestation ${mission.id}`);
+      // Le cashback consommé revient au client : la prestation lui est
+      // remboursée, l'avantage n'a donc pas été consommé.
+      await restituerCashback(mission, supabaseUrl, headers, "resolution");
     } catch (e) {
       console.error(`[resolution] remboursement Stripe impossible pour ${mission.id} :`, e.message);
       return { ok: false, detail: "Erreur lors du remboursement Stripe — prestation non close." };

@@ -218,9 +218,17 @@ remis à zéro chaque mois :
 | 🥇 Gold | 6 à 9 | 1 % |
 | 💎 Platinum | 10 et + | 1,5 % |
 
-⚠️ **Le cashback est crédité et affiché, mais il n'est aujourd'hui dépensable nulle part.**
-Le seul moyen de l'utiliser était le paiement par portefeuille, supprimé le 16 août 2026. Le
-solde est conservé et n'est pas perdu, mais il faut lui rouvrir un chemin — voir §10.
+**Le cashback se dépense en réduction du paiement.** Au moment de régler une prestation, le
+solde disponible est déduit automatiquement du montant à payer par carte. Le client voit la
+ligne dans son récapitulatif, et ne paie que la différence.
+
+Trois garde-fous : un euro reste toujours à la charge de la carte (en dessous, Stripe refuse le
+paiement) ; le solde n'est prélevé **qu'une fois le paiement abouti**, si bien qu'un panier
+abandonné ne coûte rien ; et si la prestation est remboursée, le cashback consommé **revient au
+client** — la prestation n'a pas eu lieu, l'avantage n'a pas été utilisé.
+
+La réduction est une remise commerciale d'ALANE : elle ne change ni ce que touche le
+prestataire, ni les frais de service dus.
 
 ### Abonnements prestataires
 
@@ -230,8 +238,8 @@ solde est conservé et n'est pas perdu, mais il faut lui rouvrir un chemin — v
 | Premium | 29,99 € | 10 | Badge ✓ Certifié |
 | Elite | 79,99 € | illimité | Badge 👑 Elite, première position dans les résultats |
 
-Ce que l'abonnement change aujourd'hui : le **quota mensuel**, le **badge** et le **classement**
-dans les résultats. Rien d'autre.
+Ce que l'abonnement change : le **quota mensuel**, le **badge** et le **classement** dans les
+résultats. Rien d'autre — les prestations urgentes sont ouvertes à tous les plans.
 
 **Offre de lancement en cours** : 10 prestations/mois offertes aux 100 premiers prestataires
 inscrits.
@@ -347,8 +355,6 @@ Pour que la liste précédente garde sa valeur, voici ce qui reste ouvert.
 | **Test Stripe de bout en bout** | Le seul point sérieux. La chaîne complète — paiement, prestation, validation, versement — n'a pas encore été jouée en conditions réelles avec les vraies clés en mode test |
 | **Immatriculation de la société** | Bloque le SIRET sur les factures, les mentions légales, le médiateur de la consommation et l'assurance ALANE |
 | **Architecture Stripe Connect** | Les fonds transitent aujourd'hui par ALANE avant d'être reversés. La cible est un encaissement direct pour le compte du prestataire, ce qui écarte toute question de statut d'établissement de paiement. Recommandé par le conseil juridique, à faire avant la mise en production commerciale |
-| **Cashback dépensable** | Le cashback est calculé, crédité et affiché, mais il n'existe plus de chemin pour le dépenser depuis la fermeture du portefeuille. Le solde n'est pas perdu ; il faut décider par quoi on le remplace — une réduction appliquée au paiement par carte est le plus simple |
-| **Prestations urgentes et abonnement** | L'écran d'abonnement présente l'accès aux prestations urgentes comme un avantage Premium et Elite. Dans les faits, l'urgence est ouverte à tous les plans. À trancher : brancher la restriction, ou retirer la mention |
 | **Messagerie** | Fonctionne, mais son modèle interne est fragile et doit être repris avant une montée en charge |
 | **Application mobile native** | Non prévue à ce stade — le site fonctionne sur mobile et les notifications push sont déjà en place |
 
@@ -363,4 +369,4 @@ d'opposition, les versements différés et automatisés, le back-office complet,
 conformité anti-requalification.
 
 Ce qui **manque avant d'ouvrir commercialement** : la société immatriculée, un test de
-paiement de bout en bout, la bascule Stripe Connect, et un moyen de dépenser le cashback.
+paiement de bout en bout, et la bascule Stripe Connect.

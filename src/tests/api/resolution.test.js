@@ -145,7 +145,8 @@ describe("exécution d'une résolution", () => {
 
   it("rembourser_client appelle Stripe avant de clore la prestation", async () => {
     const out = await executerResolution({
-      mission: { id: "m2", stripe_payment_intent: "pi_1" }, resolution: "rembourser_client",
+      mission: { id: "m2", stripe_payment_intent: "pi_1", cashback_applique: 0, cashback_debite: false },
+      resolution: "rembourser_client",
       supabaseUrl: SB, headers, stripeKey: "sk_test", cause: "justice",
     });
     expect(out.ok).toBe(true);
@@ -159,10 +160,28 @@ describe("exécution d'une résolution", () => {
       mission: {
         id: "m6", stripe_payment_intent: "pi_5",
         montant_total: 118.10, tarif_horaire: 14, hours: 8, actual_hours: 8,
+        cashback_applique: 0, cashback_debite: false,
       },
       resolution: "rembourser_client", supabaseUrl: SB, headers, stripeKey: "sk_test",
     });
     expect(appels[0].opts.body).toContain("amount=11200");
+  });
+
+  // Le remboursement ne peut pas dépasser ce que la carte a supporté : une
+  // part du prix a pu être réglée en cashback, et Stripe refuserait — après la
+  // clôture du litige, laissant le client sans prestation et sans argent.
+  it("le remboursement est plafonné à ce qui a été prélevé sur la carte", async () => {
+    await executerResolution({
+      mission: {
+        id: "m8", stripe_payment_intent: "pi_7",
+        montant_total: 118.10, tarif_horaire: 14, hours: 8, actual_hours: 8,
+        // 112,00 € seraient dus, mais 20 € ont été réglés en cashback :
+        // la carte n'a supporté que 98,10 €.
+        cashback_applique: 20, cashback_debite: true,
+      },
+      resolution: "rembourser_client", supabaseUrl: SB, headers, stripeKey: "sk_test",
+    });
+    expect(appels[0].opts.body).toContain("amount=9810");
   });
 
   it("sans montant établissable, rembourse la totalité plutôt que de retenir à l'aveugle", async () => {

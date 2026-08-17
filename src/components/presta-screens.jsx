@@ -3716,15 +3716,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         {tab==="prestations" && <>
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
-          {(planActuel==="premium"||planActuel==="elite") && (
-            <div style={{ background:`linear-gradient(135deg,${C.accent}15,${C.accentGold}10)`, border:`1px solid ${C.accent}44`, borderRadius:12, padding:"11px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:16 }}>💎</span>
-              <div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>Prestations urgentes activées</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Vous êtes prioritaire sur les prestations urgentes de votre secteur.</div>
-              </div>
-            </div>
-          )}
+          {/* Bandeau « Prestations urgentes activées — vous êtes prioritaire »
+              retiré le 17/08/2026 : aucune priorité de ce genre n'existe.
+              `candidatsPourMission` classe par distance puis par charge du mois,
+              et s'interdit délibérément de tenir compte de l'abonnement — un
+              classement fondé sur autre chose que des critères objectifs
+              donnerait prise au reproche d'un pouvoir de direction déguisé
+              (CGPS art. 5.2). Annoncer une priorité qui n'existe pas la vendait
+              deux fois : au prestataire, et contre la défense de la plateforme. */}
           {ribMissionError && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
