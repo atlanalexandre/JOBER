@@ -12,6 +12,7 @@ import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divi
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
+import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
@@ -5945,6 +5946,10 @@ export function RemplacementsAValider({ onValide }) {
 }
 
 export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
+  // Prolongation en attente de règlement. Le montant affiché vient de
+  // `prixHeuresSupp`, la même fonction que le serveur : l'écran ne recalcule
+  // rien de son côté.
+  const [paiementSupp, setPaiementSupp] = useState(null);
   // Opposition à une proposition de résolution (CGPS art. 17.1). Passe par
   // `/api` : écrite depuis le navigateur, elle permettrait à une partie de
   // s'opposer au nom de l'autre.
@@ -6459,6 +6464,45 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
   const filtered = tab === "all" ? prestations : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement") : prestations.filter(m => m.status === tab);
 
+  // Règlement d'une prolongation. Le montant passé en `amount` n'est
+  // qu'un affichage : le serveur le recalcule depuis la proposition enregistrée,
+  // et refuse un paiement qui ne la couvrirait pas.
+  if (paiementSupp) {
+    const dSupp = prixHeuresSupp(paiementSupp.extra_hours_requested, paiementSupp.extra_hours_tarif, 1);
+    return (
+      <StripePaymentScreen
+        amount={dSupp.total}
+        missionId={paiementSupp.id}
+        mode="supplement"
+        description={`${paiementSupp.extra_hours_requested} h supplémentaires`}
+        onBack={() => setPaiementSupp(null)}
+        onSuccess={async (intentId) => {
+          try {
+            const { data: sd } = await supabase.auth.getSession();
+            const res = await fetch("/api/missions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+              body: JSON.stringify({ action: "confirmer_heures_supp", mission_id: paiementSupp.id, payment_intent: intentId }),
+            });
+            const j = await res.json();
+            if (j.ok) {
+              showToast("Prolongation confirmée ✅", "success");
+              setSelected(sel => sel ? { ...sel, hours: j.hours, montant_total: j.montant_total, extra_hours_status: "accepted", extra_hours_requested: null } : sel);
+              chargerPrestations();
+            } else {
+              // Le paiement est passé : ne jamais laisser croire le contraire.
+              showToast(j.error || "Paiement enregistré, mais la prolongation n'a pas pu être appliquée. Écrivez à direction@alane.fr.");
+            }
+          } catch (e) {
+            console.error("[heures_supp] confirmation impossible :", e.message);
+            showToast("Paiement enregistré, mais la confirmation a échoué. Écrivez à direction@alane.fr.");
+          }
+          setPaiementSupp(null);
+        }}
+      />
+    );
+  }
+
   if (selected) {
     const sector = SECTORS.find(s => s.id === selected.sector);
     return (
@@ -6785,7 +6829,32 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>
                   ⏳ Demande d'heures supp. en attente de confirmation du prestataire
                 </div>
-              ) : selected.extra_hours_status === "accepted" ? (
+              ) : selected.extra_hours_status === "accepte_presta" ? (() => {
+                // Le prestataire a accepté et chiffré. RIEN n'est appliqué tant
+                // que ce montant n'est pas réglé : ni la durée, ni le montant de
+                // la prestation. C'est ce paiement qui déclenche la prolongation.
+                const d = prixHeuresSupp(selected.extra_hours_requested, selected.extra_hours_tarif, 1);
+                return (
+                  <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"14px" }}>
+                    <div style={{ color:C.accentGold, fontWeight:800, fontSize:13, marginBottom:6 }}>
+                      💶 Prolongation à régler
+                    </div>
+                    <div style={{ color:C.textSub, fontSize:12, lineHeight:1.7 }}>
+                      Le prestataire accepte <strong style={{ color:C.text }}>{selected.extra_hours_requested} h</strong> supplémentaires
+                      à <strong style={{ color:C.text }}>{Number(selected.extra_hours_tarif || 0).toFixed(2).replace(".", ",")} €/h</strong>.
+                      <br />Prestation {d.partPrestataire.toFixed(2).replace(".", ",")} € · frais de service {d.fraisService.toFixed(2).replace(".", ",")} €
+                      <br /><strong style={{ color:C.text, fontSize:14 }}>Total {d.total.toFixed(2).replace(".", ",")} €</strong>
+                    </div>
+                    <button onClick={() => setPaiementSupp(selected)}
+                      style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#F0B429,#E09B10)", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+                      Régler {d.total.toFixed(2).replace(".", ",")} €
+                    </button>
+                    <div style={{ color:C.textMuted, fontSize:11, marginTop:8, textAlign:"center", lineHeight:1.5 }}>
+                      La durée n'est prolongée qu'après le règlement. Vous restez libre de refuser.
+                    </div>
+                  </div>
+                );
+              })() : selected.extra_hours_status === "accepted" ? (
                 <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.success }}>
                   ✅ Heures supplémentaires acceptées
                 </div>
