@@ -10,6 +10,7 @@ import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
+import { etatAccueil, debutMs } from "../lib/accueil.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
@@ -813,6 +814,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const [missionsInProgress, setMissionsInProgress] = useState([]);
   const [inProgressTick, setInProgressTick] = useState(Date.now());
   const [inProgressDismissed, setInProgressDismissed] = useState(false);
+  const [prochaine, setProchaine] = useState(null);
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
@@ -899,10 +901,23 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         });
         const missions = await res.json();
         if (!mounted || !Array.isArray(missions)) return;
-        const toValidate = missions.filter(m => m.status === "assigned" && m.validation_prestataire);
-        setMissionsToValidate(toValidate);
+
+        // Les trois états de l'accueil sont dérivés du MÊME chargement.
+        //
+        // Ils venaient de deux sources différentes — celle-ci pour « à valider »,
+        // une requête Supabase directe toutes les 60 s pour « en cours » — et la
+        // seconde oubliait `actual_hours` dans son select : une prestation
+        // prolongée disparaissait de l'écran avant d'être finie.
+        //
+        // Le tri lui-même vit dans `src/lib/accueil.js`, pour être testable :
+        // les dates de bord ne se vérifient pas en cliquant dans une interface.
+        const { aValider, enCours, prochaine: suivante } = etatAccueil(missions);
+        setMissionsToValidate(aValider);
+        setMissionsInProgress(enCours);
+        setProchaine(suivante);
+
       // Sans trace, l'écran n'affiche rien et le client ne valide jamais.
-      } catch (e) { console.error("[client] prestations à valider illisibles :", e.message); }
+      } catch (e) { console.error("[client] prestations du client illisibles :", e.message); }
     };
     loadValidations();
     const t = setInterval(loadValidations, 8000);
@@ -911,36 +926,16 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
     return () => { mounted = false; clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
+  // Le compte à rebours sert aux deux cartes : celle d'une prestation en cours,
+  // et celle d'une prestation qui démarre aujourd'hui. Sans cette seconde
+  // condition, le « dans 3 h 20 » restait figé à la valeur du chargement.
+  const compteARebours = missionsInProgress.length > 0
+    || (!!debutMs(prochaine) && new Date(debutMs(prochaine)).toDateString() === new Date().toDateString());
   useEffect(() => {
-    let mounted = true;
-    const load = () => supabase.auth.getUser().then(({ data }) => {
-      const user = data?.user;
-      if (!user || !mounted) return;
-      supabase.from("missions")
-        .select("id,metier,sector,date,heure_debut,hours,tarif_horaire,ville,prestataire_id,arrived_at")
-        .eq("client_id", user.id)
-        .eq("status", "assigned")
-        .then(({ data: ms }) => {
-          if (!mounted || !Array.isArray(ms)) return;
-          const now = Date.now();
-          const active = ms.filter(m => {
-            const start = m.date ? new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime() : 0;
-            const end   = start  ? start + Number(m.actual_hours ?? m.hours ?? 1) * 3600000 : 0;
-            return start > 0 && start < now && end > now;
-          });
-          setMissionsInProgress(active);
-        });
-    });
-    load();
-    const t = setInterval(load, 60000);
-    return () => { mounted = false; clearInterval(t); };
-  }, []);
-
-  useEffect(() => {
-    if (missionsInProgress.length === 0) return;
+    if (!compteARebours) return;
     const t = setInterval(() => setInProgressTick(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [missionsInProgress.length]);
+  }, [compteARebours]);
 
   const violetLite = "#A29BFE";
 
@@ -1251,6 +1246,71 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           </div>
         </div>
       </div>
+
+      {/* ── Prochaine prestation ──────────────────────────────────────────
+          Le trou entre les deux bandeaux existants. « À valider » ne s'affiche
+          qu'une fois le prestataire arrivé au bout, « En cours » seulement
+          pendant le créneau : une prestation réservée pour demain n'apparaissait
+          nulle part sur l'accueil. Il fallait ouvrir « Prestations », puis
+          l'onglet « Assignées ».
+
+          Volontairement dans le flux, et non en surimpression : trois éléments
+          flottants superposés rendraient l'accueil illisible, et celui-ci n'a
+          rien d'urgent — il informe, il n'interrompt pas. */}
+      {prochaine && (() => {
+        const debutTs = debutMs(prochaine);
+        if (!debutTs) return null;
+        const debut = new Date(debutTs);
+        const restantMs = debut.getTime() - inProgressTick;
+        const heures    = Math.floor(restantMs / 3600000);
+        const minutes   = Math.floor((restantMs % 3600000) / 60000);
+        const aujourdHui = debut.toDateString() === new Date().toDateString();
+        const attente   = prochaine.status === "pending_acceptance";
+        const teinte    = attente ? "#F0B429" : C.violet;
+        const nomPresta = [prochaine.prestataire_prenom, prochaine.prestataire_nom].filter(Boolean).join(" ")
+          || providers.find(p => p.id === prochaine.prestataire_id)?.name
+          || null;
+
+        const quand = aujourdHui
+          ? (heures > 0 ? `dans ${heures} h ${String(minutes).padStart(2, "0")}` : `dans ${Math.max(0, minutes)} min`)
+          : debut.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+            + (prochaine.heure_debut ? ` à ${prochaine.heure_debut}` : "");
+
+        return (
+          <div style={{ padding:"0 22px 24px", position:"relative", zIndex:2 }}>
+            <div onClick={() => onNavigate("mission_history")} className="card-hover"
+              style={{
+                background:`linear-gradient(135deg, ${teinte}18, ${teinte}08)`,
+                border:`1px solid ${teinte}44`, borderRadius:18, padding:"16px 18px",
+                cursor:"pointer", position:"relative", overflow:"hidden",
+              }}>
+              <div style={{ position:"absolute", right:-12, top:-12, fontSize:64, opacity:0.12 }}>
+                {attente ? "⏳" : "📅"}
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                <span style={{ color:teinte, fontWeight:800, fontSize:12, letterSpacing:0.4, textTransform:"uppercase" }}>
+                  {attente ? "En attente de confirmation" : "Prochaine prestation"}
+                </span>
+              </div>
+              <div style={{ color:C.text, fontWeight:800, fontSize:16, position:"relative" }}>
+                {prochaine.metier || prochaine.titre || "Prestation"}
+              </div>
+              <div style={{ color:C.textSub, fontSize:13, marginTop:4, lineHeight:1.6, position:"relative" }}>
+                {aujourdHui ? <>Aujourd&apos;hui, <strong style={{ color:C.text }}>{quand}</strong></> : <>{quand}</>}
+                {prochaine.ville ? ` · ${prochaine.ville}` : ""}
+              </div>
+              {nomPresta && (
+                <div style={{ color:C.textMuted, fontSize:12, marginTop:3, position:"relative" }}>
+                  {attente ? `Proposée à ${nomPresta}` : `Avec ${nomPresta}`}
+                </div>
+              )}
+              <div style={{ color:teinte, fontSize:12, fontWeight:700, marginTop:10, position:"relative" }}>
+                Voir le détail →
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Dispo maintenant ── */}
       {(() => {
