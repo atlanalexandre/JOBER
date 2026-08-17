@@ -218,7 +218,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif,cashback_applique,cashback_debite`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -336,8 +336,36 @@ export default async function handler(req, res) {
   // Le solde est lu ici, en service role, et jamais reçu du navigateur. Il
   // n'est PAS débité : ce sera fait à la confirmation du paiement, pour qu'un
   // panier abandonné ne coûte rien au client (voir `api/_cashback.js`).
+  //
+  // Les deux colonnes sont lues À PART, jamais dans le select qui cherche la
+  // prestation. PostgREST refuse TOUTE une requête qui mentionne une colonne
+  // inexistante (erreur 42703), pas seulement la colonne fautive : les inclure
+  // dans le select principal transformait une migration en attente en
+  // « Prestation introuvable » au moment de payer. Un avantage commercial ne
+  // doit jamais pouvoir bloquer un encaissement.
   let reduction = 0;
+  let cashbackDisponible = false;
   try {
+    const cbCols = await fetch(
+      `${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=cashback_applique,cashback_debite`,
+      { headers: hdrsPI }
+    );
+    const colD = await cbCols.json().catch(() => null);
+    if (!cbCols.ok || !Array.isArray(colD) || !colD[0]) {
+      console.error("[stripe-intent] colonnes de cashback illisibles — la migration "
+        + "2026-08-17_cashback_en_reduction.sql n'est probablement pas appliquée. "
+        + "Réduction désactivée, le client paie le prix plein.");
+    } else {
+      cashbackDisponible = true;
+      mission.cashback_applique = colD[0].cashback_applique;
+      mission.cashback_debite   = colD[0].cashback_debite;
+    }
+  } catch (e) {
+    console.error("[stripe-intent] lecture des colonnes de cashback impossible :", e.message);
+  }
+
+  try {
+    if (!cashbackDisponible) throw new Error("colonnes indisponibles");
     const cbR = await fetch(
       `${SUPABASE_URL_PI}/rest/v1/profiles?id=eq.${callerPi.id}&select=cashback_balance`,
       { headers: hdrsPI }
@@ -359,7 +387,9 @@ export default async function handler(req, res) {
   //
   // Une prestation dont le cashback a déjà été débité ne reçoit pas de nouvelle
   // réduction : le paiement a abouti, il n'y a rien à recalculer.
-  if (mission.cashback_debite) {
+  if (!cashbackDisponible) {
+    reduction = 0;
+  } else if (mission.cashback_debite) {
     reduction = Number(mission.cashback_applique || 0);
   } else if (reduction !== Number(mission.cashback_applique || 0)) {
     const upCb = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}`, {

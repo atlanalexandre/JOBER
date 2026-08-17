@@ -1016,7 +1016,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,cashback_applique,cashback_debite`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });

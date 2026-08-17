@@ -124,9 +124,17 @@ async function completerCashback(mission, supabaseUrl, headers) {
       `${supabaseUrl}/rest/v1/missions?id=eq.${mission.id}&select=cashback_applique,cashback_debite`,
       { headers }
     );
-    const d = await r.json().catch(() => []);
+    const d = await r.json().catch(() => null);
     const ligne = Array.isArray(d) && d[0];
-    if (!ligne) return mission;
+    if (!ligne) {
+      // Colonnes absentes = migration non appliquée. PostgREST refuse alors
+      // toute la requête. On dégrade vers « aucun cashback » plutôt que de
+      // bloquer un remboursement, mais cela doit se voir : sans ce message, un
+      // plafond de remboursement disparaîtrait en silence.
+      console.error(`[cashback] colonnes absentes sur ${mission.id} — migration `
+        + `2026-08-17_cashback_en_reduction.sql non appliquée ? Traité comme sans cashback.`);
+      return mission;
+    }
     return { ...mission, ...ligne };
   } catch (e) {
     console.error(`[cashback] colonnes illisibles sur ${mission.id} :`, e.message);
