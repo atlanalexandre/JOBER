@@ -10,7 +10,8 @@ import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
-import { etatAccueil, debutMs } from "../lib/accueil.js";
+import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
+import { fenetreHeuresSupp } from "../../api/_temps.js";
 import { StripePaymentScreen } from "./payment.jsx";
 
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
@@ -3584,6 +3585,9 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
   const [extraHoursValue, setExtraHoursValue] = useState(1);
   const [extraHoursStatus, setExtraHoursStatus] = useState(null); // null | "pending" | "accepted" | "refused"
   const [extraHoursSending, setExtraHoursSending] = useState(false);
+  // Pointage réel du démarrage : il fixe la fin, donc la fermeture de la
+  // fenêtre des heures supplémentaires.
+  const [startedAtTrack, setStartedAtTrack] = useState(null);
   const [showTrackingCancel, setShowTrackingCancel] = useState(false);
   const [trackingCancelling, setTrackingCancelling] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
@@ -3625,6 +3629,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
       else if(data.status==="assigned" && data.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
       else if(data.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
       if(data.extra_hours_status) setExtraHoursStatus(data.extra_hours_status);
+      setStartedAtTrack(data.started_at || null);
 
       // Poll GPS position
       const { data:{ session: posSession } } = await supabase.auth.getSession();
@@ -3665,6 +3670,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         else if(d.status==="assigned" && d.arrived_at){ setStep(1); setTimelineStatus("enroute"); }
         else if(d.status==="assigned"){ setStep(0); setTimelineStatus("enroute"); }
         if(d.extra_hours_status) setExtraHoursStatus(d.extra_hours_status);
+        if (d.started_at !== undefined) setStartedAtTrack(d.started_at || null);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -3778,8 +3784,12 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
           </div>
         )}
 
-        {/* Heures supplémentaires — visible dès que le prestataire est sur place */}
-        {step >= 1 && step < 3 && (
+        {/* Heures supplémentaires — dès que le prestataire est sur place, et
+            jusqu'à vingt minutes après la fin. La demande n'était bornée par
+            rien : elle restait proposée sur une prestation terminée depuis des
+            heures, alors que l'accepter rallonge la durée facturée. */}
+        {step >= 1 && step < 3
+          && fenetreHeuresSupp(finMs({ ...(contractMissionData || {}), started_at: startedAtTrack })).ouverte && (
           <div style={{ marginBottom:16 }}>
             {extraHoursStatus === "pending" ? (
               <div style={{ background:`${C.accentGold}10`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
@@ -6768,7 +6778,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
-          {selected.status === "assigned" && (selected.started_at || selected.arrived_at) && !completedResult && (
+          {selected.status === "assigned" && (selected.started_at || selected.arrived_at) && !completedResult
+            && fenetreHeuresSupp(finMs(selected)).ouverte && (
             <div style={{ marginTop:12 }}>
               {selected.extra_hours_status === "pending" ? (
                 <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"12px 14px", fontSize:13, color:C.accentGold }}>

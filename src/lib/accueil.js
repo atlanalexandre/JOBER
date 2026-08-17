@@ -34,12 +34,22 @@ export function debutMs(m) {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** Instant (ms) de la fin prévue. 0 si le début est illisible. */
+/**
+ * Instant (ms) de la fin de la prestation. 0 si elle n'est pas calculable.
+ *
+ * Le pointage réel fait foi quand il existe : une prestation commencée avec du
+ * retard finit avec du retard. C'est la règle qu'applique déjà le serveur dans
+ * `finPrestationMs` — la reproduire différemment ici ferait diverger l'écran et
+ * la base sur la question de savoir quand une prestation est finie.
+ */
 export function finMs(m) {
+  const heures = Number(m?.actual_hours ?? m?.hours ?? 1) || 1;
+  if (m?.started_at) {
+    const debutReel = new Date(m.started_at).getTime();
+    if (!Number.isNaN(debutReel)) return debutReel + heures * 3600000;
+  }
   const d = debutMs(m);
-  if (!d) return 0;
-  const heures = Number(m.actual_hours ?? m.hours ?? 1) || 1;
-  return d + heures * 3600000;
+  return d ? d + heures * 3600000 : 0;
 }
 
 /**
