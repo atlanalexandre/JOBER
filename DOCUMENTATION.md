@@ -1049,6 +1049,27 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Le contrôle des tables mortes confondait « vide » et « jamais analysée »
+
+**Corrigé le 17/08/2026, après l'avoir passé.** La septième requête de `npm run rls` lisait
+`pg_class.reltuples` pour estimer le nombre de lignes. Or PostgreSQL y écrit **-1** tant que la
+table n'a jamais été analysée — ce qui n'a rien à voir avec une table vide.
+
+Sur la base réelle, onze tables ressortaient à `-1`, dont `messages`, `ratings` et `contracts`.
+Prises pour vides, elles auraient été candidates à la suppression. **Le contrôle censé
+identifier les tables mortes désignait des tables pleines.**
+
+Il compte désormais réellement, via `query_to_xml` — un compte par table, sans écrire une
+requête par table.
+
+**Ce que le passage a donné.** Six tables sans aucune policy : `account_blacklist`, `bo_logs`,
+`bo_rate_limits`, `booking_drafts`, `factures_archives`, `wallet_topups`. Aucune n'est touchée
+depuis `src/` — vérifié. Zéro policy y est donc **la bonne réponse** : c'est ce qui les réserve
+au serveur.
+
+Une table sans policy n'est une anomalie que si l'application y accède : l'écran afficherait
+alors une liste vide sans jamais dire pourquoi.
+
 ### Quatre droits ouverts sur des gestes que l'application ne fait pas
 
 **Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,

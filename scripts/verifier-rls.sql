@@ -112,12 +112,37 @@ ORDER BY 1;
 --
 -- Le précédent des six tables mortes. Une table vide qui porte encore des
 -- policies est une surface d'attaque que personne ne relit.
+--
+-- ⚠️ NE PAS SE FIER À `pg_class.reltuples` : PostgreSQL y écrit -1 tant que la
+-- table n'a jamais été analysée. Une table jamais analysée n'est pas une table
+-- vide, et la première version de ce contrôle confondait les deux — elle
+-- aurait fait supprimer des tables pleines. Le compte est donc réel.
+--
+-- `query_to_xml` permet de compter les lignes de chaque table sans écrire une
+-- requête par table.
 
-SELECT c.relname AS table_probablement_morte,
-       c.reltuples::bigint AS lignes_estimees,
+SELECT c.relname                                        AS table_,
+       (xpath('/row/n/text()',
+              query_to_xml(format('SELECT count(*) AS n FROM public.%I', c.relname),
+                           false, true, '')))[1]::text::bigint AS lignes,
        (SELECT count(*) FROM pg_policies p
         WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS policies
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.reltuples <= 0
-ORDER BY policies DESC, 1;
+WHERE n.nspname = 'public' AND c.relkind = 'r'
+ORDER BY lignes, policies DESC, 1;
+
+-- Lecture du résultat :
+--
+--   lignes = 0 ET policies > 0  → table morte qui porte encore des règles.
+--                                 C'est le cas des six tables supprimées le
+--                                 05/08/2026, qui portaient 25 policies dont
+--                                 une ouverte à `public`.
+--
+--   policies = 0                → table réservée au serveur. Ce n'est une
+--                                 anomalie QUE si `src/` y accède : l'écran
+--                                 afficherait alors une liste vide sans dire
+--                                 pourquoi. Vérifié le 17/08/2026 pour
+--                                 account_blacklist, bo_logs, bo_rate_limits,
+--                                 booking_drafts, factures_archives et
+--                                 wallet_topups : aucun accès depuis `src/`.
