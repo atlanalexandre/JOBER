@@ -1049,6 +1049,29 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Quatre droits ouverts sur des gestes que l'application ne fait pas
+
+**Dernier résultat du diagnostic RLS, le 17/08/2026.** Quatre policies `ALL` — donc SELECT,
+INSERT, UPDATE **et DELETE** — et deux doublons. Chacune correctement bornée aux lignes de
+l'intéressé ; aucune ne correspondant à un geste réel de l'application.
+
+| Règle | Ce qu'elle permettait |
+|---|---|
+| `documents.docs_own` (ALL) | Un prestataire pouvait **supprimer ses propres pièces** — identité, Kbis, RC Pro — y compris après vérification. L'article 14.4 dit l'inverse : la trace de la vérification est conservée « ALANE devant pouvoir justifier de ses obligations de vigilance ». Une trace que l'intéressé efface ne justifie rien. L'application ne fait que déposer et lire |
+| `contracts.contracts_client_own` (ALL) | Même défaut sur la pièce la plus lourde : le client pouvait réécrire ou **faire disparaître le contrat signé** — ce qui prouve ce qui a été commandé, à quel prix, par qui |
+| `tracking_positions.tracking_presta_write` (ALL) | **Le contournement de la fenêtre de partage** fermée le matin même. Le contrôle vit dans `update_position` ; cette règle permettait d'écrire directement dans la table. L'application ne touche jamais cette table |
+| `candidatures.candidatures_presta_insert` | Une écriture vers un chemin qui mène à de l'argent — une candidature acceptée déclenche un PaymentIntent — pour un geste que **l'application ne propose pas** : ni bouton « postuler », ni insertion dans `src/` |
+
+Plus deux policies de lecture sur `missions` qui se répètent : les policies permissives
+s'additionnent, `missions_select` n'ajoute rien à `missions_open_read` sinon la règle qu'on
+oubliera de modifier le jour où la règle change.
+
+`contracts` reçoit deux règles explicites — lecture et création — à la place de son `ALL`.
+
+**C'est le même motif pour la cinquième fois de la journée** : un droit ouvert « au cas où »,
+sur un geste que personne ne fait, et qui se trouve contourner un contrôle serveur écrit
+ailleurs avec soin.
+
 ### La preuve et les dates étaient réécrivables
 
 **Suite du précédent, le 17/08/2026.** Le relevé de ce qui restait modifiable après la première
