@@ -8,7 +8,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CA
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -6968,18 +6968,17 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           {(selected.status === "completed" || selected.status === "closed") && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:12 }}>
               <button
-                onClick={async () => {
-                  const { data: sd } = await supabase.auth.getSession();
-                  const jwt = sd?.session?.access_token;
-                  if (!jwt) { showToast("Session expirée — reconnectez-vous"); return; }
-                  const r = await fetch("/api/missions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
-                    body: JSON.stringify({ action: "generate_invoice_token", mission_id: selected.id }),
-                  }).catch(() => null);
-                  const d = r ? await r.json().catch(() => null) : null;
-                  if (!d?.token) { showToast(d?.error || "Impossible de générer le lien facture"); return; }
-                  window.open(`/api/invoice?mission_id=${encodeURIComponent(selected.id)}&token=${encodeURIComponent(d.token)}`, "_blank");
+                onClick={() => {
+                  // Même correction que côté prestataire : l'onglet doit
+                  // s'ouvrir dans le clic, pas après les deux `await`.
+                  ouvrirFacture(selected.id, {
+                    getSession: async () => (await supabase.auth.getSession()).data?.session?.access_token,
+                    apiFetch: (jwt) => fetch("/api/missions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+                      body: JSON.stringify({ action: "generate_invoice_token", mission_id: selected.id }),
+                    }).catch(() => null),
+                  });
                 }}
                 style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}
               >

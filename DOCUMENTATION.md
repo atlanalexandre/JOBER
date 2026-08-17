@@ -1049,6 +1049,27 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Le bouton « Ma facture » ne faisait rien sur iPhone
+
+**Signalé par Alexandre le 17/08/2026.** On appuie, et rien ne se passe. Aucune erreur, aucun
+message : impossible même de savoir que quelque chose avait échoué.
+
+Les deux boutons — celui du client, celui du prestataire — appelaient `window.open()` **après
+deux `await`** : la lecture de la session, puis la génération du jeton. À cet instant, le
+navigateur ne rattache plus l'ouverture au clic, et **Safari sur iOS la bloque silencieusement**.
+Sur un poste de bureau, l'ouverture passait ; c'est pourquoi le défaut n'avait jamais été vu.
+
+`ouvrirFacture()` (`src/components/ui.jsx`) ouvre l'onglet **tout de suite, dans le geste**, y
+affiche « Préparation de la facture… », puis y envoie l'adresse une fois le jeton obtenu.
+
+Si l'ouverture est refusée malgré tout — bloqueur strict, mode restreint — la facture s'affiche
+dans **l'onglet courant** plutôt que de ne rien faire. Un échec qui ne se voit pas est pire
+qu'un échec.
+
+Vérifié en navigateur, sur les trois propriétés qui comptent : `window.open` est bien appelé
+avant le premier `await`, le repli s'active quand l'onglet est refusé, et le jeton arrive
+intact à destination.
+
 ### Les heures supplémentaires sont payées avant d'être appliquées
 
 **Corrigé le 17/08/2026.** Elles n'étaient facturées à **personne**. Le client demandait, le
