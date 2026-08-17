@@ -3416,8 +3416,20 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const unseen = done.filter(m => !seenIds.has(m.id)).sort((a,b) => (b.date||"") > (a.date||"") ? 1 : -1);
       if (unseen.length > 0) setRecapCard(unseen[0]);
 
-      const { data: myRatings } = await supabase.from("ratings").select("mission_id").eq("reviewer_id", u.id);
-      if (Array.isArray(myRatings)) setRatedMissions(new Set(myRatings.map(r => r.mission_id).filter(Boolean)));
+      // Même raison que côté client : filtrer sur `reviewer_id` imposait de
+      // laisser cette colonne lisible par tous.
+      try {
+        const rAvis = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ action: "mes_avis" }),
+        });
+        const jAvis = await rAvis.json();
+        if (Array.isArray(jAvis.mission_ids)) setRatedMissions(new Set(jAvis.mission_ids));
+        else console.error("[avis] liste illisible :", jAvis?.error);
+      } catch (e) {
+        console.error("[avis] relecture impossible :", e.message);
+      }
       const assignedNow = allM.filter(m=>m.status==="assigned").length;
       setMissionsUsedMonth(doneMois.length + assignedNow);
       const { data: docsArr } = await supabase.from("documents").select("type,verified").eq("prestataire_id", u.id);

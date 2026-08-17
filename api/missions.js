@@ -3728,6 +3728,38 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Les prestations que j'ai déjà notées ──────────────────────────
+    //
+    // Cette lecture se faisait depuis le navigateur, en filtrant sur
+    // `reviewer_id`. Or filtrer sur une colonne exige de pouvoir la lire : tant
+    // que le front en avait besoin, `ratings.reviewer_id` devait rester
+    // accessible à tous les comptes — et la table étant en lecture publique,
+    // n'importe qui pouvait dresser la carte de QUI a noté QUI.
+    //
+    // En la déplaçant ici, la colonne peut être retirée de la lecture publique
+    // sans rien casser. Le serveur ne renvoie que les identifiants de
+    // prestations de l'appelant, rien d'autre.
+    if (action === "mes_avis") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/ratings?reviewer_id=eq.${caller.id}&select=mission_id`,
+        { headers }
+      );
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        console.error(`[mes_avis] lecture impossible (${r.status}) : ${detail.slice(0, 200)}`);
+        // Une liste vide et une lecture impossible se ressemblent à l'écran :
+        // sans ce signal, le bouton « Noter » réapparaîtrait sur une prestation
+        // déjà notée, et l'insertion serait refusée sans explication.
+        return res.status(500).json({ error: "Vos avis n'ont pas pu être relus." });
+      }
+      const lignes = await r.json().catch(() => []);
+      return res.status(200).json({
+        mission_ids: (Array.isArray(lignes) ? lignes : []).map(x => x.mission_id).filter(Boolean),
+      });
+    }
+
     if (action === "my_missions") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
