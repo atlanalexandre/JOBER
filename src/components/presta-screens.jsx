@@ -1981,6 +1981,9 @@ function ElapsedTimer({ startedAt, maxMs, onEnd }) {
 }
 
 export function PMissionsTab({ onNavigate }) {
+  // Tarif proposé pour une prolongation, par prestation. Vide = le tarif
+  // habituel du prestataire.
+  const [tarifSupp, setTarifSupp] = useState({});
   const [pendingMissions, setPendingMissions] = useState([]);
   const [assignedMissions, setAssignedMissions] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -2566,6 +2569,13 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <span style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Prestation terminée — pensez à valider !</span>
                   </div>
                 )}
+                {/* Proposition envoyée, en attente du règlement du client. */}
+                {m.extra_hours_status === "accepte_presta" && (
+                  <div style={{ background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+                    <div style={{ fontWeight:700, color:C.accentGold, fontSize:13, marginBottom:3 }}>⏳ Prolongation en attente de règlement</div>
+                    Le client doit régler le complément. La durée sera prolongée à ce moment-là, pas avant.
+                  </div>
+                )}
                 {/* Demande d'heures supplémentaires en attente */}
                 {m.extra_hours_status === "pending" && m.extra_hours_requested > 0 && (
                   <div style={{ background:"rgba(124,111,224,0.1)", border:`1px solid ${C.violet}44`, borderRadius:12, padding:"14px", marginBottom:10 }}>
@@ -2573,6 +2583,30 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <div style={{ color:C.textSub, fontSize:12, marginBottom:12 }}>
                       Le client souhaite prolonger la prestation de <strong style={{ color:C.text }}>{m.extra_hours_requested}h supplémentaire{m.extra_hours_requested > 1 ? "s" : ""}</strong>.
                     </div>
+
+                    {/* Le tarif de la prolongation est le vôtre.
+                        Vous fixez librement votre prix (CGPS art. 6.1), et une
+                        prolongation imprévue n'a pas de raison d'être vendue au
+                        tarif d'un créneau réservé à l'avance. Le client voit le
+                        montant exact et reste libre de refuser. */}
+                    <div style={{ marginBottom:12 }}>
+                      <label style={{ display:"block", color:C.textMuted, fontSize:11, fontWeight:700, letterSpacing:0.4, textTransform:"uppercase", marginBottom:6 }}>
+                        Votre tarif pour ces heures
+                      </label>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <input
+                          type="number" min={1} max={500} step="0.5"
+                          value={tarifSupp[m.id] ?? (m.tarif_horaire ?? "")}
+                          onChange={e => setTarifSupp(t => ({ ...t, [m.id]: e.target.value }))}
+                          style={{ width:110, padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:14, fontFamily:"inherit", textAlign:"center" }}
+                        />
+                        <span style={{ color:C.textSub, fontSize:13 }}>€ HT/h</span>
+                        <span style={{ color:C.textMuted, fontSize:11, marginLeft:"auto" }}>
+                          Habituel : {Number(m.tarif_horaire || 0).toFixed(2).replace(".", ",")} €
+                        </span>
+                      </div>
+                    </div>
+
                     <div style={{ display:"flex", gap:8 }}>
                       <button onClick={async () => {
                         const { data: sd } = await supabase.auth.getSession();
@@ -2585,10 +2619,17 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <button onClick={async () => {
                         const { data: sd } = await supabase.auth.getSession();
                         const token = sd?.session?.access_token;
-                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept" }) });
-                        if (r.ok) {
-                          const d = await r.json();
-                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, hours: d.newHours||x.hours, actual_hours: null, extra_hours_status:"accepted", extra_hours_requested:null} : x));
+                        const tarif = Number(tarifSupp[m.id] ?? m.tarif_horaire);
+                        const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"accept", tarif_horaire: tarif }) });
+                        const d = await r.json().catch(() => ({}));
+                        if (r.ok && d.ok) {
+                          // La durée ne change PAS ici : elle ne bouge qu'au
+                          // règlement du client. L'annoncer maintenant ferait
+                          // croire à une prolongation acquise.
+                          setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"accepte_presta", extra_hours_tarif: tarif} : x));
+                          showToast(`Proposition envoyée — ${Number(d.devis?.total || 0).toFixed(2).replace(".", ",")} € à régler par le client.`, "success");
+                        } else {
+                          showToast(d.error || "Votre réponse n'a pas pu être enregistrée.");
                         }
                       }} style={{ flex:2, padding:"10px", borderRadius:10, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                         ✅ Accepter +{m.extra_hours_requested}h

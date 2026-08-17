@@ -1,9 +1,10 @@
 import { resendBody } from "./_email.js";
 import { sendPushToUser, sendWebPush } from "./_push.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
-import { montantsDeCloture } from "./_cloture.js";
+import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
 // enregistrée avec la renonciation : sans elle, on saura dans deux ans QUAND le
@@ -3654,7 +3655,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,extra_hours_tarif,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -4108,7 +4109,7 @@ export default async function handler(req, res) {
       if (!eh || eh < 1 || eh > 8) return res.status(400).json({ error: "extra_hours invalide (1-8)" });
 
       // Vérifier que le client est bien propriétaire de la mission et qu'elle est en cours
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,date,heure_debut,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.assigned&select=id,prestataire_id,metier,hours,actual_hours,extra_hours_status,extra_hours_requested,date,heure_debut,started_at`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
@@ -4133,6 +4134,12 @@ export default async function handler(req, res) {
       // Refus si une demande est déjà en cours
       if (mission.extra_hours_status === "pending") {
         return res.status(409).json({ error: "Une demande d'heures supplémentaires est déjà en attente de réponse" });
+      }
+      // Une proposition chiffrée attend d'être réglée : en superposer une
+      // seconde écraserait le tarif annoncé et le montant que le client
+      // s'apprête à payer.
+      if (mission.extra_hours_status === "accepte_presta") {
+        return res.status(409).json({ error: "Une prolongation est déjà proposée et attend votre règlement." });
       }
 
       // Enregistrer la demande
@@ -4204,20 +4211,52 @@ export default async function handler(req, res) {
       if (!["accept", "refuse"].includes(response)) return res.status(400).json({ error: "response invalide" });
 
       // Vérifier que le prestataire est bien assigné à cette mission
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,extra_hours_requested`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,hours,tarif_horaire,date_debut,date_fin,extra_hours_requested,extra_hours_status`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non active" });
       const extraH = Number(mission.extra_hours_requested || 0);
 
+      let devis = null;
       if (response === "accept" && extraH > 0) {
-        // Mettre à jour les heures totales et marquer accepté — cap à 24h
-        const newHours = Math.min(24, Number(mission.hours || 0) + extraH);
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        // L'ACCEPTATION N'APPLIQUE PLUS RIEN.
+        //
+        // Elle augmentait `hours` sur-le-champ, sans qu'aucun paiement
+        // complémentaire ne soit réclamé. À la clôture, la part du prestataire
+        // suivait les heures et les frais de service tombaient à zéro : ALANE
+        // versait plus qu'elle n'avait encaissé, et perdait sa rémunération au
+        // passage. Voir `api/_heures_supp.js` pour le chiffrage de la perte.
+        //
+        // Le prestataire annonce désormais son tarif — il fixe librement son
+        // prix (CGPS art. 6.1), et une prolongation imprévue n'a pas de raison
+        // d'être vendue au tarif d'un créneau réservé à l'avance. La durée ne
+        // bouge qu'au paiement du client, dans `confirmer_heures_supp`.
+        const tarif = payload.tarif_horaire == null
+          ? Number(mission.tarif_horaire || 0)
+          : Number(payload.tarif_horaire);
+        if (!tarifSuppValide(tarif)) {
+          return res.status(400).json({ error: `Tarif horaire invalide (entre ${TARIF_SUPP_MIN} et ${TARIF_SUPP_MAX} €).` });
+        }
+        if (Number(mission.hours || 0) + extraH > 24) {
+          return res.status(400).json({ error: "La durée totale dépasserait 24 h." });
+        }
+
+        const frais = await lireFraisService(SUPABASE_URL, headers);
+        devis = prixHeuresSupp(extraH, tarif, nombreDeJours(mission), frais);
+        if (!(devis.total > 0)) {
+          return res.status(400).json({ error: "Montant de la prolongation incalculable." });
+        }
+
+        const up = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.pending`, {
           method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ hours: newHours, actual_hours: null, extra_hours_status: "accepted", extra_hours_requested: null }),
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ extra_hours_status: "accepte_presta", extra_hours_tarif: tarif }),
         });
+        const lignes = await up.json().catch(() => []);
+        if (!up.ok || !Array.isArray(lignes) || lignes.length === 0) {
+          console.error(`[heures_supp] acceptation non enregistrée pour ${mission_id} (${up.status}) : ${JSON.stringify(lignes).slice(0, 200)}`);
+          return res.status(500).json({ error: "Votre réponse n'a pas pu être enregistrée. Réessayez." });
+        }
       } else {
         // Refus : effacer la demande
         await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
@@ -4238,7 +4277,9 @@ export default async function handler(req, res) {
             type: "mission",
             title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
             body: isAccepted
-              ? `Le prestataire a accepté la prolongation de ${extraH}h. La durée totale est mise à jour.`
+              ? `Le prestataire accepte la prolongation de ${extraH} h à ${Number(devis?.partPrestataire ? devis.partPrestataire / extraH : 0).toFixed(2).replace(".", ",")} €/h, `
+                + `soit ${Number(devis?.total || 0).toFixed(2).replace(".", ",")} € à régler. `
+                + "La durée sera prolongée dès le règlement — rien n'est modifié avant."
               : "Le prestataire n'a pas pu accepter la prolongation.",
             read: false,
             ref_id: mission_id,
@@ -4255,7 +4296,125 @@ export default async function handler(req, res) {
         }, SUPABASE_URL, headers).catch(() => {});
       }
 
-      return res.status(200).json({ ok: true, newHours: response === "accept" ? Number(mission.hours || 0) + extraH : null });
+      // `newHours` n'est plus renvoyé : la durée ne change qu'au paiement, et
+      // l'annoncer ici ferait afficher au prestataire une prolongation qui n'a
+      // pas encore d'effet.
+      return res.status(200).json({
+        ok: true,
+        enAttenteDePaiement: response === "accept",
+        devis: devis ? { heures: extraH, tarif: Number(payload.tarif_horaire ?? mission.tarif_horaire), ...devis } : null,
+      });
+    }
+
+    // ── Paiement de la prolongation (client) ──────────────────────────
+    //
+    // C'est ce paiement, et lui seul, qui applique les heures supplémentaires.
+    // Le PaymentIntent est vérifié AUPRÈS DE STRIPE : son statut, son montant et
+    // la prestation qu'il porte. Se fier à ce que le navigateur affirme
+    // reviendrait à laisser le client s'accorder des heures gratuitement.
+    if (action === "confirmer_heures_supp") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id, payment_intent } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+      if (!payment_intent || typeof payment_intent !== "string") {
+        return res.status(400).json({ error: "payment_intent requis" });
+      }
+
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
+        + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
+        + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent`,
+        { headers }
+      );
+      const mission = (await mr.json().catch(() => []))[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+
+      // Rejoué après coup : on répond que c'est fait, sans rien réappliquer.
+      if (mission.extra_hours_payment_intent === payment_intent && mission.extra_hours_status === "accepted") {
+        return res.status(200).json({ ok: true, deja: true, hours: mission.hours });
+      }
+      if (mission.extra_hours_status !== "accepte_presta") {
+        return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
+      }
+
+      const extraH = Number(mission.extra_hours_requested || 0);
+      const frais  = await lireFraisService(SUPABASE_URL, headers);
+      const devisC = prixHeuresSupp(extraH, mission.extra_hours_tarif, nombreDeJours(mission), frais);
+      if (!(devisC.total > 0)) return res.status(400).json({ error: "Montant de la prolongation incalculable." });
+
+      const stripeKey = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+      if (!stripeKey) {
+        console.error(`[heures_supp] STRIPE_SECRET_KEY absente — confirmation impossible pour ${mission_id}`);
+        return res.status(500).json({ error: "Paiement indisponible. Réessayez plus tard." });
+      }
+      let pi = null;
+      try {
+        const pr = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(payment_intent)}`, {
+          headers: { "Authorization": `Bearer ${stripeKey}` },
+        });
+        pi = await pr.json();
+      } catch (e) {
+        console.error(`[heures_supp] lecture Stripe impossible pour ${mission_id} :`, e.message);
+        return res.status(502).json({ error: "Vérification du paiement impossible. Réessayez." });
+      }
+      if (!pi?.id || pi.status !== "succeeded") {
+        return res.status(400).json({ error: "Le paiement n'est pas confirmé." });
+      }
+      // Le paiement doit porter SUR CETTE prestation et couvrir le montant dû.
+      if (String(pi.metadata?.mission || "") !== String(mission_id)) {
+        console.error(`[heures_supp] paiement ${pi.id} rattaché à une autre prestation que ${mission_id}`);
+        return res.status(400).json({ error: "Ce paiement ne correspond pas à cette prestation." });
+      }
+      if (Number(pi.amount_received || 0) < devisC.centimes) {
+        console.error(`[heures_supp] paiement ${pi.id} insuffisant : ${pi.amount_received} c reçus pour ${devisC.centimes} c dus`);
+        return res.status(400).json({ error: "Le montant réglé ne couvre pas la prolongation." });
+      }
+
+      const nouvellesHeures = Math.min(24, Number(mission.hours || 0) + extraH);
+      const nouveauTotal    = Math.round((Number(mission.montant_total || 0) + devisC.total) * 100) / 100;
+
+      // Filtre sur l'état : deux confirmations simultanées n'appliquent pas la
+      // prolongation deux fois. L'index unique sur `extra_hours_payment_intent`
+      // ferme la même porte côté base.
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&extra_hours_status=eq.accepte_presta`,
+        { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({
+            hours: nouvellesHeures,
+            actual_hours: null,
+            montant_total: nouveauTotal,
+            extra_hours_status: "accepted",
+            extra_hours_requested: null,
+            extra_hours_payment_intent: payment_intent,
+          }) }
+      );
+      const lignesC = await up.json().catch(() => []);
+      if (!up.ok || !Array.isArray(lignesC) || lignesC.length === 0) {
+        // Le client a payé : le dire franchement plutôt que de le laisser
+        // croire que son règlement s'est perdu.
+        console.error(`[heures_supp] application impossible après paiement ${payment_intent} `
+          + `sur ${mission_id} (${up.status}) : ${JSON.stringify(lignesC).slice(0, 200)}`);
+        return res.status(500).json({
+          error: "Votre paiement est bien enregistré mais la prolongation n'a pas pu être appliquée. "
+               + "Écrivez à direction@alane.fr en indiquant la date : nous la reprenons à la main.",
+        });
+      }
+
+      const mPresta = lignesC[0]?.prestataire_id || null;
+      if (mPresta) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            user_id: mPresta, type: "mission", title: "💶 Prolongation réglée",
+            body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`,
+            read: false, ref_id: mission_id,
+          }),
+        }).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
+        sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+      }
+
+      return res.status(200).json({ ok: true, hours: nouvellesHeures, montant_total: nouveauTotal });
     }
 
     // ── Annulation par le prestataire ─────────────────────────────────

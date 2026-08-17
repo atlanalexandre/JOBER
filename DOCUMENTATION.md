@@ -1049,6 +1049,57 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Les heures supplémentaires sont payées avant d'être appliquées
+
+**Corrigé le 17/08/2026.** Elles n'étaient facturées à **personne**. Le client demandait, le
+prestataire acceptait, et le code se contentait d'augmenter `hours`.
+
+À la clôture, la part du prestataire suit les heures et les frais de service se déduisent de ce
+qui reste du montant encaissé. Avec des heures gonflées et un encaissement inchangé, **les deux
+dérivent ensemble** :
+
+| | Avant | Après +1 h |
+|---|---|---|
+| Encaissé auprès du client | 19,90 € | **19,90 €** |
+| Dû au prestataire | 15,00 € | **30,00 €** |
+| Frais de service | 4,90 € | **0,00 €** |
+
+Soit **10,10 € de perte** sur une heure ; plus de 50 € sur une prestation de 8 h prolongée de
+2 h à 25 €/h. Un test reproduit ce calcul, chiffres à l'appui — il n'existe pas pour vérifier
+le code d'aujourd'hui, mais pour que personne ne rétablisse l'ancien comportement en croyant
+simplifier.
+
+**Le nouveau parcours.** `extra_hours_status` gagne l'état `accepte_presta` : le prestataire a
+accepté et **annoncé son tarif**, le client n'a pas encore payé. Rien ne s'applique dans cet
+état — ni la durée, ni le montant.
+
+1. le client demande *n* heures ;
+2. le prestataire accepte **et fixe son tarif** pour ces heures (`extra_hours_tarif`). Il fixe
+   librement son prix (CGPS art. 6.1), et une prolongation imprévue n'a pas de raison d'être
+   vendue au tarif d'un créneau réservé à l'avance ;
+3. le client voit le détail — heures, frais, total — et règle ;
+4. `confirmer_heures_supp` **vérifie le paiement auprès de Stripe** : statut `succeeded`,
+   `metadata.mission` égale à la prestation, montant reçu ≥ montant dû. Alors seulement `hours`
+   et `montant_total` bougent.
+
+Se fier à ce que le navigateur affirme reviendrait à laisser le client s'accorder des heures
+gratuitement. Le montant du PaymentIntent est lui aussi calculé côté serveur, depuis la
+proposition enregistrée — jamais depuis ce que l'écran envoie.
+
+**Les frais de service du complément ne comportent que leur part proportionnelle.** La part
+fixe rémunère la mise en relation : elle a déjà eu lieu, et elle est déjà payée. La part
+proportionnelle, elle, reste due — les CGPS disent qu'elle « couvre notamment les frais
+prélevés par le prestataire de services de paiement », et ces frais-là s'appliquent bien au
+nouvel encaissement. Le calcul vit dans `api/_heures_supp.js`, appelé par les trois chemins qui
+doivent annoncer le même chiffre.
+
+Deux verrous contre le double effet : le PATCH filtre sur `extra_hours_status=eq.accepte_presta`,
+et un index unique sur `extra_hours_payment_intent` empêche qu'un même paiement serve deux fois.
+
+Si l'application échoue **après** le paiement, la réponse le dit — « votre paiement est bien
+enregistré mais la prolongation n'a pas pu être appliquée » — et l'incident part en erreur dans
+les journaux. Laisser croire à un règlement perdu serait pire que l'échec.
+
 ### Les heures supplémentaires se ferment 20 minutes après la fin
 
 **Demandé par Alexandre le 17/08/2026.** La demande n'était bornée par rien — ni à l'écran, ni

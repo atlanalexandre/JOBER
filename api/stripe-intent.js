@@ -1,6 +1,8 @@
 import { verifyUser } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
+import { prixHeuresSupp } from "./_heures_supp.js";
+import { nombreDeJours } from "./_cloture.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -215,7 +217,7 @@ export default async function handler(req, res) {
   }
 
   const hdrsPI = { "apikey": SERVICE_ROLE_PI, "Authorization": `Bearer ${SERVICE_ROLE_PI}`, "Content-Type": "application/json" };
-  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector`, { headers: hdrsPI });
+  const mRes = await fetch(`${SUPABASE_URL_PI}/rest/v1/missions?id=eq.${intentMissionId}&select=id,client_id,prestataire_id,tarif_horaire,hours,montant_total,status,date_debut,date_fin,sector,extra_hours_requested,extra_hours_status,extra_hours_tarif`, { headers: hdrsPI });
   const mData = await mRes.json();
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -235,6 +237,63 @@ export default async function handler(req, res) {
   if (!await secteurOuvert(mission.sector, SUPABASE_URL_PI, hdrsPI)) {
     console.error(`[stripe-intent] paiement refusé — secteur ${mission.sector} fermé (prestation ${intentMissionId})`);
     return res.status(400).json({ error: messageSecteurFerme(mission.sector) });
+  }
+
+  // ── Complément d'heures supplémentaires ───────────────────────────────
+  //
+  // Le montant est calculé ICI, depuis la proposition enregistrée en base —
+  // jamais depuis ce que le navigateur annonce. Le client ne choisit pas ce
+  // qu'il paie : il paie ce que le prestataire a chiffré.
+  if (req.body?.mode === "supplement") {
+    if (mission.extra_hours_status !== "accepte_presta") {
+      return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
+    }
+    const fraisS = await lireFraisService(SUPABASE_URL_PI, hdrsPI);
+    const devisS = prixHeuresSupp(mission.extra_hours_requested, mission.extra_hours_tarif, nombreDeJours(mission), fraisS);
+    if (!(devisS.total > 0)) {
+      return res.status(400).json({ error: "Montant de la prolongation incalculable." });
+    }
+    let clientSupp = null;
+    try { clientSupp = await clientStripeDuCompte(callerPi, SUPABASE_URL_PI, SERVICE_ROLE_PI); }
+    catch (e) { console.error(`[supplement] client Stripe indisponible pour ${callerPi.id} :`, e.message); }
+
+    const paramsS = {
+      amount: String(devisS.centimes),
+      currency,
+      "payment_method_types[]": "card",
+      // `metadata[mission]` est relu par `confirmer_heures_supp` : c'est lui qui
+      // garantit qu'un paiement ne peut pas servir pour une autre prestation.
+      "metadata[mission]":     intentMissionId,
+      "metadata[client]":      callerPi.id || "",
+      "metadata[type]":        "heures_supp",
+      "metadata[heures]":      String(mission.extra_hours_requested || ""),
+      description: `Heures supplémentaires — ${mission.extra_hours_requested} h`,
+    };
+    if (clientSupp) paramsS.customer = clientSupp;
+
+    try {
+      const rs = await fetch("https://api.stripe.com/v1/payment_intents", {
+        method: "POST",
+        // Le montant fait partie de la clé : une prolongation rechiffrée ne
+        // doit pas réutiliser le PaymentIntent de la précédente.
+        headers: { ...stripeHeaders, "Idempotency-Key": `supp-${intentMissionId}-${callerPi.id}-${paramsS.amount}` },
+        body: new URLSearchParams(paramsS),
+      });
+      const intentS = await rs.json();
+      if (intentS.error) {
+        console.error(`[supplement] Stripe a refusé pour ${intentMissionId} :`, intentS.error.message);
+        return res.status(400).json({ error: intentS.error.message });
+      }
+      return res.status(200).json({
+        clientSecret: intentS.client_secret,
+        intentId: intentS.id,
+        amount: devisS.total,
+        detail: devisS,
+      });
+    } catch (e) {
+      console.error(`[supplement] création du paiement impossible pour ${intentMissionId} :`, e.message);
+      return res.status(502).json({ error: "Le paiement n'a pas pu être préparé. Réessayez." });
+    }
   }
 
   const computed = mission.montant_total
