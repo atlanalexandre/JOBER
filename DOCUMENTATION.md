@@ -1049,6 +1049,33 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### La preuve et les dates étaient réécrivables
+
+**Suite du précédent, le 17/08/2026.** Le relevé de ce qui restait modifiable après la première
+migration a montré trois familles oubliées. La première visait l'argent et les droits ;
+celle-ci vise **la preuve et les dates**.
+
+| Colonne | Ce qu'elle permettait |
+|---|---|
+| `invoice_number` | Le numéro de facture, réécrivable par le client comme par le prestataire. `api/invoice.js` le dit lui-même : « numérotation continue, sans rupture ». C'est une obligation (art. 289 CGI), et le mandat de facturation qu'ALANE exerce repose entièrement sur cette séquence |
+| `contrat_client_signe_at` / `contrat_presta_signe_at` | **Ces deux dates *sont* la signature** — il n'y a rien d'autre. L'article 11 du contrat leur donne la valeur d'une signature manuscrite (eIDAS, art. 1366 C. civ.). Chaque partie pouvait effacer la sienne, ou inscrire celle de l'autre |
+| `date`, `date_debut`, `date_fin`, `heure_debut` | Tout en dépend : fenêtre de pointage, heures supplémentaires, délai de réclamation, échéance de versement. Déplacer la date d'une prestation réservée déplace toutes ces bornes d'un coup, sans que l'autre partie le sache |
+
+La création n'est pas concernée — elle relève de l'INSERT. Un changement de date après
+réservation est une modification du contrat, et passe donc par le serveur.
+
+**Ce qui reste volontairement modifiable** : `validation_client` et `validation_prestataire`.
+L'écran de validation les écrit directement, en même temps que les notes et commentaires ; les
+fermer casserait ce geste. Elles ne déplacent pas d'argent par elles-mêmes — c'est `complete`
+qui programme le versement, et elle refait ses propres contrôles. À reprendre le jour où cet
+écran passera par `/api` comme le reste.
+
+**Deux colonnes mortes découvertes au passage** : `nb_heures` et `stripe_transfer_id_col`, qui
+ne sont référencées **nulle part** — ni dans `api/`, ni dans `src/`, ni ici. La première
+ressemble à un ancien nom de `hours`, la seconde à une colonne créée par erreur à côté de
+`stripe_transfer_id`. Un nom si proche d'une colonne vivante finit par être écrit à sa place.
+La requête de contrôle et la suppression figurent dans le fichier de migration.
+
 ### Le navigateur pouvait fixer le montant de son propre virement
 
 **Le résultat le plus grave du diagnostic RLS, le 17/08/2026.** Trois règles de mise à jour
