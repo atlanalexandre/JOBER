@@ -1049,6 +1049,38 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### La relance de validation ne créait aucune notification
+
+**Signalé par Alexandre le 17/08/2026** : ni le prestataire ni le client ne reçoivent de
+notification pour valider la fin d'une prestation.
+
+Le traitement de relance existait pourtant, et il tournait. Mais il n'envoyait **que des
+e-mails et des SMS** — jamais de notification dans l'application, jamais de notification
+poussée. La cloche restait vide, alors que c'est le premier endroit où l'on regarde.
+
+Pire : tout le bloc était conditionné à `if (pastMissions.length && RESEND_API_KEY)`. **Sans
+clé Resend, plus rien ne partait du tout** — pas même ce qui n'a rien à voir avec l'e-mail.
+
+Les notifications in-app et poussées partent désormais **d'abord**, indépendamment de toute
+clé tierce. L'e-mail et le SMS restent, en plus.
+
+L'horodatage anti-répétition (`last_validation_reminder_at`) est posé avec les notifications
+et non plus avec les e-mails : il ne dépend donc plus d'un envoi tiers. Son échec est
+journalisé — sans lui, la relance repart à chaque passage, toutes les deux heures.
+
+**L'autre chemin de notification a une condition qui l'annule souvent.** L'action `notify_end`
+crée bien les deux notifications, mais elle refuse si `started_at` est vide — donc si le
+prestataire n'a jamais appuyé sur « Je commence », ce qui était précisément le cas tant que le
+bouton de démarrage était inatteignable. Et elle n'est déclenchée que par l'écran du client,
+donc seulement s'il a l'application ouverte. Le traitement automatique est le seul chemin
+fiable ; c'est celui qui manquait.
+
+**`sendWebPush` existait en deux exemplaires** — `api/missions.js` et `api/cron-abandon.js` —
+déjà divergents. Le commentaire du second justifiait la copie par des « imports relatifs non
+fiables sur Vercel », alors que `_temps.js`, `_email.js` et `_cloture.js` sont importés d'un
+fichier à l'autre depuis toujours. Les deux fonctions vivent maintenant dans `api/_push.js`,
+et les trois appelants l'importent.
+
 ### Pointage : cinq bornes différentes pour deux boutons
 
 **Signalé par Alexandre le 17/08/2026** : à l'heure pile, aucun bouton ne permettait de

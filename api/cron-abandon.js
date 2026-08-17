@@ -1,4 +1,5 @@
 import { resendBody } from "./_email.js";
+import { sendWebPush } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
@@ -6,54 +7,7 @@ import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 //   1. Push notification (si abonnement existant)
 //   2. Email de relance via Resend
 
-// ── Web Push (copie de missions.js — imports relatifs non fiables sur Vercel) ──
-async function sendWebPush(sub, notification) {
-  const VAPID_PUB = (process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "");
-  const VAPID_PRV = (process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "");
-  if (!VAPID_PUB || !VAPID_PRV) return false;
-  if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) return false;
-  try {
-    const sc = globalThis.crypto.subtle;
-    const b64u = buf => Buffer.from(buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf).toString("base64url");
-    const deb64u = s => { const p = s.replace(/-/g,"+").replace(/_/g,"/"); return Buffer.from(p.padEnd(p.length+(4-p.length%4)%4,"="),"base64"); };
-    const aud = new URL(sub.endpoint).origin;
-    const hdr = b64u(Buffer.from(JSON.stringify({typ:"JWT",alg:"ES256"})));
-    const pay = b64u(Buffer.from(JSON.stringify({aud,exp:Math.floor(Date.now()/1000)+43200,sub:"mailto:admin@alane.fr"})));
-    const inp = `${hdr}.${pay}`;
-    const pubRaw = deb64u(VAPID_PUB);
-    const prvKey = await sc.importKey("jwk",{kty:"EC",crv:"P-256",x:b64u(pubRaw.slice(1,33)),y:b64u(pubRaw.slice(33,65)),d:b64u(deb64u(VAPID_PRV))},{name:"ECDSA",namedCurve:"P-256"},false,["sign"]);
-    const sig = await sc.sign({name:"ECDSA",hash:"SHA-256"},prvKey,Buffer.from(inp));
-    const jwt = `${inp}.${b64u(sig)}`;
-    const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
-    const srvKP = await sc.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
-    const srvPubRaw = new Uint8Array(await sc.exportKey("raw",srvKP.publicKey));
-    const cliPubKey = await sc.importKey("raw",deb64u(sub.p256dh),{name:"ECDH",namedCurve:"P-256"},false,[]);
-    const ecdh = await sc.deriveBits({name:"ECDH",public:cliPubKey},srvKP.privateKey,256);
-    const authSec = deb64u(sub.auth);
-    const cliPubRaw = deb64u(sub.p256dh);
-    const hkdf = async (s, ikm, info, len) => {
-      const k = await sc.importKey("raw",ikm,"HKDF",false,["deriveBits"]);
-      return sc.deriveBits({name:"HKDF",hash:"SHA-256",salt:s,info},k,len*8);
-    };
-    const ikm = await hkdf(authSec, ecdh, Buffer.concat([Buffer.from("WebPush: info\0"), cliPubRaw, Buffer.from(srvPubRaw)]), 32);
-    const cek = await hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
-    const nonceRaw = await hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
-    const aesKey = await sc.importKey("raw",cek,"AES-GCM",false,["encrypt"]);
-    const plaintext = Buffer.concat([Buffer.from(JSON.stringify(notification)), Buffer.from([0x02])]);
-    const cipher = await sc.encrypt({name:"AES-GCM",iv:nonceRaw},aesKey,plaintext);
-    const rsBuf = Buffer.alloc(4); rsBuf.writeUInt32BE(4096,0);
-    const record = Buffer.concat([salt, rsBuf, Buffer.from([65]), Buffer.from(srvPubRaw), Buffer.from(new Uint8Array(cipher))]);
-    const r = await fetch(sub.endpoint, {
-      method:"POST",
-      headers:{"Content-Type":"application/octet-stream","Content-Encoding":"aes128gcm","Authorization":`vapid t=${jwt},k=${VAPID_PUB}`,"TTL":"86400"},
-      body: record,
-    });
-    return r.status;
-  } catch(e) {
-    console.error("[sendWebPush] error:", e.message);
-    return null;
-  }
-}
+// Web Push : le module partagé `_push.js`.
 
 const esc = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 

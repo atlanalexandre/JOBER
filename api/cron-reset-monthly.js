@@ -1,4 +1,5 @@
 import { resendBody } from "./_email.js";
+import { sendPushToUser } from "./_push.js";
 import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
@@ -1084,8 +1085,56 @@ ${(() => {
           }
           return true;
         }) : [];
-        if (pastMissions.length && RESEND_API_KEY) {
+        // La relance ne partait QUE par e-mail et par SMS, et tout le bloc était
+        // conditionné à la présence de la clé Resend : sans elle, plus rien.
+        //
+        // La cloche de l'application restait donc vide, alors que c'est le
+        // premier endroit où l'on regarde. Les notifications in-app et les
+        // notifications poussées partent maintenant d'abord, indépendamment de
+        // toute clé tierce ; l'e-mail et le SMS restent, en plus.
+        if (pastMissions.length) {
           await Promise.all(pastMissions.map(async (m) => {
+            const label = m.metier || m.sector || "votre prestation";
+            const notifier = async (userId, title, corps) => {
+              if (!userId) return 0;
+              const r = await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ user_id: userId, type: "mission", title, body: corps, read: false }),
+              }).catch(e => { console.error("[relance] notification non insérée :", e.message); return null; });
+              if (r && !r.ok) {
+                const detail = await r.text().catch(() => "");
+                console.error(`[relance] notification refusée (${r.status}) : ${detail.slice(0, 200)}`);
+              }
+              await sendPushToUser(userId, { title, body: corps, url: "/" }, SUPABASE_URL, headers).catch(() => {});
+              return 1;
+            };
+
+            let envoyees = 0;
+            if (!m.validation_prestataire) {
+              envoyees += await notifier(m.prestataire_id, "⏱ Confirmez la fin de votre prestation",
+                `« ${label} » du ${m.date} est terminée. Confirmez-la pour déclencher votre paiement.`);
+            }
+            if (m.validation_prestataire && !m.validation_client) {
+              envoyees += await notifier(m.client_id, "✅ Prestation à valider",
+                `Le prestataire a confirmé la fin de « ${label} » du ${m.date}. Validez-la depuis votre espace.`);
+            }
+            validationSent += envoyees;
+            if (envoyees > 0) {
+              const up = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
+                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
+              }).catch(e => { console.error("[relance] horodatage non écrit :", e.message); return null; });
+              if (up && !up.ok) {
+                // Sans cet horodatage, la relance repart à CHAQUE passage du
+                // traitement, toutes les deux heures. C'est la colonne qui
+                // manquait en base jusqu'au 16/08/2026.
+                const detail = await up.text().catch(() => "");
+                console.error(`[relance] horodatage refusé (${up.status}) : ${detail.slice(0, 200)}`
+                  + " — les relances vont se répéter.");
+              }
+            }
+
+            if (!RESEND_API_KEY) return;
             const clientEmail  = userMap[m.client_id]?.email;
             const prestaEmail  = userMap[m.prestataire_id]?.email;
             const clientName   = nameMap[m.client_id]  || "Client";
@@ -1149,15 +1198,8 @@ ${(() => {
               if (m.validation_prestataire && !m.validation_client && clientPhone) vSends.push(sendSms(BREVO_API_KEY, clientPhone, smsCashback));
             }
             await Promise.all(vSends);
-            validationSent += vSends.length;
-            // N-05: stamp last_validation_reminder_at to prevent duplicate sends within 12h
-            if (vSends.length > 0) {
-              fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
-                method: "PATCH",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ last_validation_reminder_at: new Date().toISOString() }),
-              }).catch(() => {});
-            }
+            // L'horodatage anti-répétition est posé plus haut, avec les
+            // notifications : il ne dépend plus de l'envoi des e-mails.
           }));
         }
       } catch (e) { console.error("cron validation reminders error:", e); }
