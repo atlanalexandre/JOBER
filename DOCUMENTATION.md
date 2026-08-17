@@ -1049,6 +1049,29 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Messagerie : la clé de conversation ne vient plus du navigateur
+
+**Corrigé le 17/08/2026.** L'insertion d'un message se faisait **depuis le navigateur**, et
+c'est lui qui choisissait `conversation_key` et `sender_tag`.
+
+Or ces deux valeurs sont **la seule chose** qui rattache un message à une conversation et à son
+auteur : la table `messages` n'a pas de modèle de participants, et les règles de sécurité
+elles-mêmes lisent la chaîne de caractères — c'est le point ouvert documenté depuis des mois.
+
+L'action `envoyer_message` dérive désormais les deux **de la prestation partagée** : elle exige
+une prestation en commun entre l'auteur et le destinataire — le même contrôle que `chat_notify`
+appliquait déjà pour la notification, mais pas pour le message lui-même — puis construit la clé
+et le tag à partir de `client_id` et `prestataire_id`. Le navigateur n'envoie plus que le
+destinataire et le texte, tous deux bornés.
+
+**Ce n'est pas la refonte du modèle de conversation**, qui reste à faire. C'est ce qu'on peut
+faire sans elle : retirer au client la main sur ce qui l'identifie. La lecture reste gouvernée
+par la RLS, qu'aucun code ne peut corriger depuis l'extérieur.
+
+Le comptage des non-lus, lui, cherche toujours l'identifiant de l'utilisateur **par `ILIKE`
+dans la clé**. Cela fonctionne, mais c'est le symptôme du même défaut de modèle : une
+appartenance qui se prouve par une sous-chaîne. À reprendre avec la refonte.
+
 ### Prestations récurrentes : un paiement calculé sur un seul jour
 
 **Trouvé le 17/08/2026** en auditant les calculs multi-jours. Le paiement d'une **candidature
