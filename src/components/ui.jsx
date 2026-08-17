@@ -618,3 +618,67 @@ export function BlocPropositionResolution({ mission, onOppose }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Ouvrir une facture
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POURQUOI CETTE FONCTION
+//
+// Les deux boutons de facture — celui du client, celui du prestataire —
+// appelaient `window.open()` APRÈS deux `await` : la lecture de la session,
+// puis la génération du jeton. À cet instant, le navigateur ne rattache plus
+// l'ouverture au clic de l'utilisateur, et Safari sur iOS la bloque
+// silencieusement.
+//
+// Résultat, signalé le 17/08/2026 : on appuie sur « Ma facture », et rien ne se
+// passe. Aucune erreur, aucun message — le prestataire n'avait aucun moyen de
+// comprendre, ni même de savoir que quelque chose avait échoué.
+//
+// La parade est d'ouvrir l'onglet TOUT DE SUITE, dans le geste, puis d'y
+// envoyer l'adresse une fois le jeton obtenu. Si l'ouverture est quand même
+// refusée — bloqueur strict, mode restreint — on bascule sur l'onglet courant
+// plutôt que d'abandonner sans rien dire.
+export async function ouvrirFacture(missionId, { getSession, apiFetch }) {
+  // Ouvert AVANT toute attente : c'est tout l'intérêt.
+  const onglet = window.open("", "_blank");
+  if (onglet) {
+    try {
+      onglet.document.write(
+        "<!doctype html><meta charset='utf-8'><title>Facture</title>"
+        + "<body style=\"margin:0;display:flex;align-items:center;justify-content:center;"
+        + "height:100vh;font-family:system-ui;background:#0A1628;color:#8B8FA8\">"
+        + "Préparation de la facture…</body>"
+      );
+    } catch (e) {
+      // Certains navigateurs refusent l'écriture dans un onglet vierge.
+      // Sans conséquence : l'adresse sera posée juste après.
+      console.error("[facture] onglet non préparé :", e.message);
+    }
+  }
+
+  const echec = (message) => {
+    if (onglet) onglet.close();
+    showToast(message);
+    return false;
+  };
+
+  try {
+    const jwt = await getSession();
+    if (!jwt) return echec("Session expirée — reconnectez-vous.");
+
+    const r = await apiFetch(jwt);
+    const d = r ? await r.json().catch(() => null) : null;
+    if (!d?.token) return echec(d?.error || "La facture n'a pas pu être ouverte.");
+
+    const url = `/api/invoice?mission_id=${encodeURIComponent(missionId)}&token=${encodeURIComponent(d.token)}`;
+    if (onglet) onglet.location.href = url;
+    // Onglet refusé malgré tout : on ouvre dans la page courante. Le document
+    // s'affiche, l'utilisateur revient avec le bouton « précédent ».
+    else window.location.assign(url);
+    return true;
+  } catch (e) {
+    console.error("[facture] ouverture impossible :", e.message);
+    return echec("La facture n'a pas pu être ouverte. Réessayez.");
+  }
+}

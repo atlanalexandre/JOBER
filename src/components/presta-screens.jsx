@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
-import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution } from "./ui.jsx";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage } from "../../api/_temps.js";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
@@ -3845,19 +3845,18 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                     // l'ouvrir — il manquait seulement le bouton, et lui n'avait donc
                     // aucun moyen d'accéder à son propre document comptable.
                     <button
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
-                        const { data: sd } = await supabase.auth.getSession();
-                        const jwt = sd?.session?.access_token;
-                        if (!jwt) { showToast("Session expirée — reconnectez-vous"); return; }
-                        const r = await fetch("/api/missions", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
-                          body: JSON.stringify({ action: "generate_invoice_token", mission_id: m.id }),
-                        }).catch(() => null);
-                        const d = r ? await r.json().catch(() => null) : null;
-                        if (!d?.token) { showToast(d?.error || "Impossible d'ouvrir la facture"); return; }
-                        window.open(`/api/invoice?mission_id=${encodeURIComponent(m.id)}&token=${encodeURIComponent(d.token)}`, "_blank");
+                        // L'onglet s'ouvre DANS le clic — voir `ouvrirFacture`.
+                        // Appelé après un `await`, Safari le bloquait en silence.
+                        ouvrirFacture(m.id, {
+                          getSession: async () => (await supabase.auth.getSession()).data?.session?.access_token,
+                          apiFetch: (jwt) => fetch("/api/missions", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+                            body: JSON.stringify({ action: "generate_invoice_token", mission_id: m.id }),
+                          }).catch(() => null),
+                        });
                       }}
                       style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:10, border:`1px solid ${C.violet}55`, background:`${C.violet}15`, color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}
                     >
