@@ -1,4 +1,5 @@
 import { resendBody } from "./_email.js";
+import { debiterCashback } from "./_cashback.js";
 export const config = { api: { bodyParser: false } };
 
 async function getRawBody(req) {
@@ -256,6 +257,13 @@ export default async function handler(req, res) {
         console.log("[stripe-webhook] mission already processed (0 rows updated) — skipping secondary effects", intent.id);
         return res.status(200).json({ received: true });
       }
+
+      // Le paiement est confirmé : le cashback promis au tunnel est prélevé ici.
+      // `assign_after_payment` fait le même appel sur le chemin applicatif ; le
+      // drapeau `cashback_debite` rend le second sans effet, quel que soit
+      // l'ordre d'arrivée. Un échec ne bloque jamais le webhook : Stripe
+      // retenterait tout l'événement pour un avantage commercial.
+      await debiterCashback(patchedRows[0], SUPABASE_URL, headers);
 
       // Prestataire écarté : le client doit savoir que sa prestation est payée
       // mais qu'on lui cherche quelqu'un d'autre. Sans ce message, il attend un

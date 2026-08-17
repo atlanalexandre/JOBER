@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
 import { sendPushToUser, sendWebPush } from "./_push.js";
+import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
@@ -188,6 +189,10 @@ async function rembourserPrestation(mission, supabaseUrl, serviceHeaders, motif)
     console.error(`[remboursement/${motif}] STRIPE_SECRET_KEY absente — remboursement NON effectué pour ${mission.id}`);
     return { ok: false, mode: "stripe", detail: "cle_absente" };
   }
+  // Aucun `amount` n'est transmis : Stripe rend exactement ce qu'il a prélevé,
+  // donc le prix moins la part réglée en cashback. Ce montant est déjà juste,
+  // il n'y a rien à plafonner. Le cashback consommé, lui, doit revenir au
+  // client : la prestation n'a pas eu lieu, l'avantage n'a pas été consommé.
   try {
     const r = await fetch("https://api.stripe.com/v1/refunds", {
       method: "POST",
@@ -205,6 +210,7 @@ async function rembourserPrestation(mission, supabaseUrl, serviceHeaders, motif)
     const d = await r.json();
     if (d.id) {
       console.log(`[remboursement/${motif}] Stripe OK ${d.id} — prestation ${mission.id}`);
+      await restituerCashback(mission, supabaseUrl, serviceHeaders, motif);
       return { ok: true, mode: "stripe", detail: d.id };
     }
     console.error(`[remboursement/${motif}] Stripe a refusé — prestation ${mission.id} :`, JSON.stringify(d));
@@ -2010,6 +2016,15 @@ export default async function handler(req, res) {
         console.error("[assign_after_payment] échec du PATCH:", patchRes.status, txt);
         return res.status(500).json({ error: "Affectation impossible" });
       }
+
+      // Le paiement a abouti : c'est ici, et pas avant, que le cashback promis
+      // au tunnel est réellement prélevé. Un panier abandonné ne consomme rien.
+      // Le webhook Stripe passe par le même helper — `cashback_debite` rend le
+      // second appel sans effet.
+      if (stripe_payment_intent) {
+        await debiterCashback(patched[0], SUPABASE_URL, headers);
+      }
+
       return res.status(200).json({ success: true, mission_id });
     }
 
@@ -3143,7 +3158,11 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: "Stripe non configuré — la prestation n'a pas été annulée. Contactez le support." });
         }
         try {
-          const refundCents = Math.round(refundAmount * 100);
+          // Plafonné à ce que la carte a réellement supporté : une part du
+          // prix a pu être réglée en cashback, et Stripe refuse de rendre plus
+          // qu'il n'a prélevé — ce qui laisserait la prestation annulée et le
+          // client sans son remboursement.
+          const refundCents = await plafonnerRemboursement(Math.round(refundAmount * 100), mission, SUPABASE_URL, headers);
           const rfRes = await fetch("https://api.stripe.com/v1/refunds", {
             method: "POST",
             headers: {

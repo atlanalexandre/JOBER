@@ -3365,12 +3365,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
 
           {/* Second exemplaire du même bouton, retiré pour la même raison. */}
+          {/* Le message annonçait une déduction « sur votre prochain paiement par
+              portefeuille », moyen de paiement supprimé le 16/08/2026. Le cashback
+              s'impute désormais en réduction du paiement par carte, à l'écran
+              suivant : on annonce donc ce qui va réellement se passer. */}
           {walletInfo.balance > 0 && (
             <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"13px 15px", marginBottom:14 }}>
               <div style={{ fontWeight:700, color:C.success, fontSize:13, marginBottom:2 }}>💰 Cashback disponible</div>
               <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>
-                {walletInfo.balance.toFixed(2).replace(".", ",")} € seront déduits automatiquement de votre prochain
-                paiement par portefeuille, avant vos sommes rechargées.
+                {walletInfo.balance.toFixed(2).replace(".", ",")} € seront déduits du montant à régler
+                à l'étape suivante.
               </div>
             </div>
           )}
