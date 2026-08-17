@@ -1,0 +1,102 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Messagerie : fermer l'écriture depuis le navigateur
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- Le diagnostic RLS du 17/08/2026 a remonté la règle d'écriture :
+--
+--   messages_ecriture | INSERT | {authenticated}
+--     WITH CHECK (sender_id = auth.uid()
+--                 AND conversation_key LIKE '%' || auth.uid() || '%')
+--
+-- Elle vérifie deux choses : que l'auteur déclaré est bien l'appelant, et que
+-- son identifiant figure quelque part dans la clé de conversation.
+--
+-- CE QU'ELLE NE VÉRIFIE PAS
+--
+-- Que l'autre participant ait le moindre rapport avec l'appelant.
+--
+-- La clé s'écrit `prov{prestataire}-user{client}`, et les identifiants des
+-- prestataires sont publics : ils figurent dans le catalogue. N'importe quel
+-- compte pouvait donc fabriquer la clé `prov{X}-user{moi}` et écrire dedans,
+-- sans prestation, sans relation, sans que X puisse s'y opposer.
+--
+-- Le tag n'était pas contraint non plus. Un prestataire pouvait insérer un
+-- message portant `sender_tag = 'client'` : l'écran affiche les messages selon
+-- ce tag, le message apparaissait donc du mauvais côté de la conversation.
+--
+-- Ce n'est pas anodin. L'article 17.1 des CGPS fait des messages une PIÈCE :
+-- « Les messages échangés via la Plateforme ne peuvent être supprimés par leurs
+-- auteurs. Ils sont conservés en l'état [...] pour les besoins de la preuve. »
+-- Une preuve dont l'apparence d'auteur se falsifie n'en est pas une.
+--
+-- CE QUE FAIT CETTE MIGRATION
+--
+-- Elle retire l'écriture au navigateur. Plus personne n'insère de message
+-- directement : tout passe par l'action `envoyer_message` de /api, qui exige
+-- une prestation en commun entre l'auteur et le destinataire, puis DÉRIVE
+-- elle-même la clé et le tag des identifiants de cette prestation. Le client
+-- n'envoie plus que le destinataire et le texte.
+--
+-- Le service role n'est pas soumis à la RLS : l'insertion serveur continue de
+-- fonctionner sans policy dédiée.
+--
+-- ⚠️ ORDRE D'APPLICATION
+--
+-- À passer APRÈS que le déploiement contenant `envoyer_message` soit en ligne
+-- (PR #701, fusionnée le 17/08/2026). Appliquée avant, elle couperait l'envoi
+-- de messages : l'ancien code écrivait encore depuis le navigateur.
+--
+-- LA LECTURE EST LAISSÉE EN L'ÉTAT
+--
+--   messages_lecture | SELECT | (sender_id = auth.uid()
+--                                OR conversation_key LIKE '%' || auth.uid() || '%')
+--
+-- Elle tient, mais pour une raison fragile : la clé contient les deux
+-- identifiants entiers, séparés par `-user`, qui n'apparaît dans aucun UUID.
+-- Un identifiant ne peut donc pas s'y retrouver par accident, ni chevaucher la
+-- frontière. La règle est juste tant que le FORMAT DE LA CLÉ ne change pas —
+-- c'est-à-dire qu'elle repose sur une convention de nommage, pas sur un modèle.
+--
+-- C'est le point ouvert de fond : `messages` n'a pas de table de participants.
+-- Le refaire suppose une migration des conversations existantes ; ce n'est pas
+-- l'objet de ce fichier, et l'écriture, elle, ne pouvait pas attendre.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+DROP POLICY IF EXISTS messages_ecriture ON public.messages;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Une seule règle doit rester, en lecture :
+--
+--    SELECT policyname, cmd, roles::text FROM pg_policies
+--    WHERE schemaname = 'public' AND tablename = 'messages';
+--    -- attendu : 1 ligne — messages_lecture, SELECT
+--
+-- Contrôle depuis l'application, dans cet ordre :
+--
+--   1. ouvrir une conversation existante : les messages s'affichent ;
+--   2. envoyer un message : il part et apparaît des deux côtés ;
+--   3. si l'envoi échoue, le message n'est PAS laissé à l'écran et le texte est
+--      rendu — c'est le comportement attendu, pas un bug.
+--
+-- Si l'envoi échoue systématiquement, le déploiement de `envoyer_message`
+-- n'est pas en ligne : rétablir la policy le temps de le déployer.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RETOUR ARRIÈRE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--    CREATE POLICY messages_ecriture ON public.messages
+--      FOR INSERT TO authenticated
+--      WITH CHECK (sender_id = (SELECT auth.uid())
+--                  AND conversation_key LIKE '%' || (SELECT auth.uid())::text || '%');
+--
+-- Cela rouvre l'écriture directe, avec le défaut décrit plus haut : n'importe
+-- quel compte peut écrire à n'importe qui, et choisir de quel côté son message
+-- s'affiche. À ne faire que le temps de rétablir le service.
+-- ═══════════════════════════════════════════════════════════════════════════

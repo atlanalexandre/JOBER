@@ -1049,6 +1049,46 @@ malgré le seuil » puis cliquer sur celui de gauche enregistrait l'autre régla
 pourquoi. Un seul bouton enregistre désormais les deux clés, le second seulement si le
 premier a réussi : une erreur suivie d'un « ✓ Sauvé » ferait croire que tout est passé.
 
+### Messagerie : n'importe qui pouvait écrire à n'importe qui
+
+**Deuxième résultat du diagnostic RLS, le 17/08/2026.** La règle d'écriture :
+
+```
+messages_ecriture | INSERT | {authenticated}
+  WITH CHECK (sender_id = auth.uid()
+              AND conversation_key LIKE '%' || auth.uid() || '%')
+```
+
+Elle vérifie que l'auteur déclaré est bien l'appelant, et que son identifiant figure dans la
+clé. **Elle ne vérifie pas que l'autre participant ait le moindre rapport avec lui.**
+
+La clé s'écrit `prov{prestataire}-user{client}`, et les identifiants des prestataires sont
+publics — ils figurent dans le catalogue. N'importe quel compte pouvait donc fabriquer la clé
+`prov{X}-user{moi}` et écrire dedans : sans prestation, sans relation, sans que X puisse s'y
+opposer.
+
+Le tag n'était pas contraint non plus. Un prestataire pouvait insérer un message portant
+`sender_tag = 'client'` : l'écran affiche les messages selon ce tag, le message apparaissait
+donc **du mauvais côté de la conversation**.
+
+Ce n'est pas anodin. L'article 17.1 des CGPS fait des messages une **pièce** : « Les messages
+échangés via la Plateforme ne peuvent être supprimés par leurs auteurs. Ils sont conservés en
+l'état […] pour les besoins de la preuve. » Une preuve dont l'apparence d'auteur se falsifie
+n'en est pas une.
+
+**L'écriture est retirée au navigateur.** Tout passe par `envoyer_message`, qui exige une
+prestation en commun puis dérive lui-même la clé et le tag. Le service role n'étant pas soumis
+à la RLS, l'insertion serveur continue sans policy dédiée.
+
+⚠️ La migration se passe **après** le déploiement de `envoyer_message` : appliquée avant, elle
+couperait l'envoi.
+
+**La lecture est laissée en l'état**, et elle tient — mais pour une raison fragile : la clé
+contient les deux identifiants entiers, séparés par `-user`, qui n'apparaît dans aucun UUID. Un
+identifiant ne peut donc ni s'y retrouver par accident, ni chevaucher la frontière. La règle est
+juste **tant que le format de la clé ne change pas** : elle repose sur une convention de
+nommage, pas sur un modèle. C'est le point de fond qui reste ouvert.
+
 ### Les avis étaient lisibles en entier, sans compte
 
 **Premier résultat du diagnostic RLS, le 17/08/2026.** Deux règles sur `ratings`, toutes deux
