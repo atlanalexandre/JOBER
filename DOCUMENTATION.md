@@ -298,6 +298,15 @@ nom, sans aucun code de paiement à modifier.
 RLS : **lecture seule**, réservée aux trois personnes concernées. Aucune policy d'écriture —
 tout passe par `/api/missions`, qui seul vérifie les qualifications et l'ordre des accords.
 
+**`push_subscriptions`** — **un appareil n'appartient qu'à un compte à la fois.** L'`endpoint`
+identifie une installation du site dans un navigateur, pas une personne : à la reconnexion sous
+un autre compte, il est réenregistré sans que l'ancienne ligne soit retirée. L'appareil recevait
+alors les notifications des deux comptes — nom du client, montant, adresse d'intervention — soit
+une communication de données personnelles à qui n'y a pas droit. `push_subscribe` supprime
+désormais les lignes portant le même endpoint et un autre `user_id` avant d'insérer la sienne
+(migration `2026-08-18_un_appareil_un_compte.sql`). Plusieurs appareils par compte reste normal ;
+c'est l'inverse qui ne l'est pas.
+
 **`bo_logs`**, **`bo_rate_limits`** — traçabilité et limitation du backoffice.
 
 ### Tables supprimées

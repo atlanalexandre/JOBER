@@ -2499,6 +2499,26 @@ export default async function handler(req, res) {
           const epUrl = new URL(subscription.endpoint);
           if (epUrl.protocol !== "https:") return res.status(400).json({ error: "Endpoint invalide — HTTPS requis" });
         } catch { return res.status(400).json({ error: "Endpoint invalide" }); }
+        // UN APPAREIL N'APPARTIENT QU'À UN COMPTE À LA FOIS.
+        //
+        // L'abonnement (`endpoint`) identifie une installation du site dans un
+        // navigateur, pas une personne. Quand quelqu'un se déconnecte et
+        // rouvre l'application avec un autre compte, le même endpoint est
+        // réenregistré sous le nouveau compte — et l'ancienne ligne restait.
+        //
+        // L'appareil recevait alors les notifications des DEUX comptes : le nom
+        // d'un client, le montant d'une prestation, une adresse d'intervention
+        // partaient sur un téléphone qui ne devait plus rien recevoir. C'est une
+        // fuite de données personnelles, pas un simple doublon.
+        //
+        // Le nettoyage précède l'insertion : si l'insertion échouait après, on
+        // aurait retiré un abonnement sans en poser de nouveau — le téléphone
+        // serait muet, ce qui est gênant mais jamais indiscret.
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(subscription.endpoint)}&user_id=neq.${caller.id}`,
+          { method: "DELETE", headers }
+        ).catch(e => console.error("[push] anciens abonnements non retirés :", e.message));
+
         await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions`, {
           method: "POST",
           headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
