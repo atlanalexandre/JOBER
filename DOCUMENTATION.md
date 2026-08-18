@@ -790,6 +790,21 @@ fonction écrivant précisément le champ visé par la règle 1.1 : toute valeur
 `data:` est refusée, et l'ensemble est plafonné à 6 Ko — bien en deçà des 16 Ko de l'en-tête,
 qui doit aussi porter la signature du jeton.
 
+**Les avis reçus par un CLIENT ne sont visibles que dans le back-office** (décision du
+18/08/2026). Ils étaient enregistrés et lus par personne — une collecte de données
+personnelles sans finalité, ce que le RGPD n'admet pas. Les montrer au prestataire avant qu'il
+accepte aurait été l'usage naturel, mais aurait fait de la note un critère de sélection, donc
+un pouvoir sur le client exercé par la plateforme qui l'affiche.
+
+L'onglet Avis sépare les deux sens et calcule une moyenne par client **à partir de trois
+avis** : en dessous, un seul prestataire mécontent condamnerait quelqu'un. Le sens de l'avis se
+déduit du rôle du destinataire, sans colonne supplémentaire.
+
+**`ratings.reviewee_provider_id` porte le prestataire OU le client** selon le sens — le nom est
+trompeur. `list_ratings` demandait `reviewee_id`, colonne qui n'existe pas : PostgREST refusait
+toute la requête et l'onglet affichait « Aucun avis » quel qu'en soit le nombre. Corrigé le
+18/08/2026.
+
 **Les avis passent par `/api/missions` (`submit_rating`), jamais par le navigateur.**
 L'insertion s'y faisait directement : le contrôle d'éligibilité était une requête du front,
 contournable, et côté prestataire il n'existait pas du tout — on pouvait noter n'importe qui,
