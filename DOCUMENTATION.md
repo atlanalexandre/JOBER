@@ -1963,6 +1963,26 @@ rémunération, et c'est ce qu'annonce le contrat signé par les deux parties (�
 au Prestataire »). Les heures retenues sont les heures réelles (`actual_hours`) quand elles
 existent, sinon les heures prévues.
 
+**Une prestation prolongée porte DEUX tarifs.** Le prestataire annonce son prix pour les heures
+supplémentaires (CGPS art. 6.2), et ce prix doit suivre jusqu'au versement. `partHoraire()` dans
+`api/_cloture.js` scinde la durée :
+
+    part = (heures − extra_hours_appliquees) × tarif_horaire
+         +  extra_hours_appliquees          × extra_hours_tarif
+
+`extra_hours_appliquees` (migration `2026-08-18_heures_supp_tarif_au_versement.sql`) porte le
+nombre d'heures réellement ajoutées et réglées. Sans elle, la clôture recalculait tout au tarif
+de base : une heure vendue 17 € sur une prestation à 15 € était versée 15 €, et les frais de
+service paraissaient valoir 2 € de plus que ce qui avait été encaissé. Constaté le 18/08/2026,
+au premier parcours complet de la prolongation payante.
+
+Le plafonnement pour décalage d'horaire réduit **la part de base en premier** : le retard
+concerne le début de la prestation, pas la prolongation acceptée en cours de route.
+
+Trois endroits appellent ce calcul et doivent rester alignés : la clôture, `api/invoice.js`
+(la facture montre les deux lignes, jamais un tarif moyen qui n'a jamais été convenu), et
+`montantPrestataire()` dans `presta-screens.jsx`.
+
 **Côté interface, `montantPrestataire()` dans `presta-screens.jsx` calcule la même chose** et
 doit rester alignée : six copies d'une formule privilégiant `montant_total` surévaluaient tous
 les montants montrés au prestataire — revenu du mois, fiche de fin de prestation, historique,

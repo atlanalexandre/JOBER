@@ -4,6 +4,7 @@
 //       Valide 30 min — jamais le JWT Supabase en clair dans l'URL
 
 import crypto from "crypto";
+import { partHoraire } from "./_cloture.js";
 
 function escHtml(str) {
   return String(str || "")
@@ -255,7 +256,9 @@ export default async function handler(req, res) {
   const nbJours = (mission.date_debut && mission.date_fin)
     ? Math.max(1, Math.round((new Date(mission.date_fin) - new Date(mission.date_debut)) / 86400000) + 1)
     : 1;
-  const htCalc = Math.round(hours * tarifHoraire * nbJours * 100) / 100;
+  // Le tarif des heures supplémentaires suit jusqu'à la facture : le
+  // prestataire facture ce qu'il a vendu, pas une moyenne.
+  const htCalc = partHoraire(mission, hours, nbJours);
   // Repli sur montant_total seulement s'il n'y a rien à calculer. Il inclut les frais
   // de service d'ALANE, qui ne relèvent pas de la facture du prestataire : c'est un
   // pis-aller, signalé pour qu'il ne passe pas inaperçu.
@@ -406,10 +409,19 @@ export default async function handler(req, res) {
   const ville = mission.ville || "";
   const adresse = mission.adresse || "";
 
-  const lineItem = htCalc > 0
-    ? `${metier} — ${hours}h × ${tarifHoraire.toFixed(2).replace(".", ",")} €/h`
-      + (nbJours > 1 ? ` × ${nbJours} jours` : "")
-    : metier;
+  // Une prestation prolongée porte deux tarifs. Les fondre en une seule ligne
+  // afficherait un prix unitaire qui n'a jamais été convenu : la facture doit
+  // montrer ce qui a été commandé, et ce qui a été prolongé.
+  const eurTarif = (t) => Number(t).toFixed(2).replace(".", ",");
+  const heuresSupp = Math.min(hours, Math.max(0, Number(mission.extra_hours_appliquees) || 0));
+  const tarifSupp = Number(mission.extra_hours_tarif) > 0 ? Number(mission.extra_hours_tarif) : tarifHoraire;
+  const suffixeJours = nbJours > 1 ? ` × ${nbJours} jours` : "";
+  const lineItem = htCalc <= 0
+    ? metier
+    : heuresSupp > 0
+      ? `${metier} — ${hours - heuresSupp}h × ${eurTarif(tarifHoraire)} €/h`
+        + ` + ${heuresSupp}h supplémentaires × ${eurTarif(tarifSupp)} €/h${suffixeJours}`
+      : `${metier} — ${hours}h × ${eurTarif(tarifHoraire)} €/h${suffixeJours}`;
 
   // Build HTML
   const html = `<!DOCTYPE html>

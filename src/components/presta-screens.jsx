@@ -34,7 +34,12 @@ function montantPrestataire(m) {
   const jours  = (m?.date_debut && m?.date_fin)
     ? Math.max(1, Math.round((new Date(m.date_fin) - new Date(m.date_debut)) / 86400000) + 1)
     : 1;
-  return Math.round(heures * tarif * jours * 100) / 100;
+  // Une prolongation acceptée est payée au tarif que le prestataire a annoncé,
+  // pas au tarif de la commande. Même découpage que `partHoraire` dans
+  // api/_cloture.js, qui fait foi : les deux doivent rester alignés.
+  const supp = Math.min(heures, Math.max(0, Number(m?.extra_hours_appliquees) || 0));
+  const tarifSupp = Number(m?.extra_hours_tarif) > 0 ? Number(m.extra_hours_tarif) : tarif;
+  return Math.round(((heures - supp) * tarif + supp * tarifSupp) * jours * 100) / 100;
 }
 
 function validateDocSync(file) {

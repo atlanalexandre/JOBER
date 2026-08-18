@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { montantsDeCloture, nombreDeJours } from "../../../api/_cloture.js";
+import { montantsDeCloture, nombreDeJours, partHoraire } from "../../../api/_cloture.js";
 
 // Prestation de référence : 4 h à 28 €/h, un seul jour, 116,90 € encaissés
 // (112 € de part horaire + 4,90 € de frais de service).
@@ -120,5 +120,59 @@ describe("montant d'une prestation récurrente", () => {
     const c = montantsDeCloture({ ...recurrente, actual_hours: 8, montant_total: 626.50 });
     expect(c.partPrestataire).toBe(600);
     expect(c.fraisService).toBeCloseTo(26.50, 2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Le tarif des heures supplémentaires
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Constaté le 18/08/2026 au premier parcours complet : une heure ajoutée à
+// 17 €/h sur une prestation à 15 €/h était versée 15 €. Le prestataire perdait
+// l'écart, et ALANE paraissait retenir des frais qu'elle n'avait pas encaissés.
+describe("partHoraire — deux tarifs sur une même prestation", () => {
+  const base = {
+    tarif_horaire: 15, hours: 2,
+    extra_hours_tarif: 17, extra_hours_appliquees: 1,
+  };
+
+  it("paie la prolongation au tarif annoncé, pas à celui de la commande", () => {
+    expect(partHoraire(base, 2, 1)).toBe(32);      // 15 + 17
+    expect(partHoraire(base, 2, 1)).not.toBe(30);  // le défaut corrigé
+  });
+
+  it("retombe sur le tarif de base sans prolongation", () => {
+    expect(partHoraire({ tarif_horaire: 15, hours: 2 }, 2, 1)).toBe(30);
+  });
+
+  it("ignore un tarif supplémentaire sans heures appliquées", () => {
+    // La proposition a été chiffrée mais jamais réglée : rien n'est dû dessus.
+    expect(partHoraire({ tarif_horaire: 15, extra_hours_tarif: 17 }, 2, 1)).toBe(30);
+  });
+
+  it("multiplie par le nombre de jours", () => {
+    expect(partHoraire(base, 2, 3)).toBe(96);      // 32 × 3
+  });
+
+  it("réduit d'abord les heures de BASE quand la durée est plafonnée", () => {
+    // Le décalage concerne le début de la prestation, pas la prolongation
+    // acceptée en cours de route : c'est la part commandée qui se réduit.
+    expect(partHoraire({ ...base, hours: 3 }, 2, 1)).toBe(32); // 1h base + 1h supp
+    expect(partHoraire(base, 1, 1)).toBe(17);                  // il ne reste que la supp
+    expect(partHoraire(base, 0, 1)).toBe(0);
+  });
+
+  it("ne compte jamais plus d'heures supplémentaires que d'heures retenues", () => {
+    expect(partHoraire({ ...base, extra_hours_appliquees: 9 }, 2, 1)).toBe(34); // 2 × 17
+  });
+
+  it("laisse les frais de service refléter ce qui a été encaissé", () => {
+    // 20,20 € réglés à la commande + 17,34 € de prolongation = 37,54 €.
+    // La part du prestataire vaut 32 € : il reste 5,54 € de frais, exactement
+    // ce qui a été perçu (4,90 + 0,30 + 0,34).
+    const m = { ...base, montant_total: 37.54 };
+    const r = montantsDeCloture(m);
+    expect(r.partPrestataire).toBe(32);
+    expect(r.fraisService).toBeCloseTo(5.54, 2);
   });
 });
