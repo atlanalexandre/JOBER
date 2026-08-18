@@ -905,6 +905,21 @@ qu'on ne traite pas est **pire que pas de détection** : elle établit que la pl
 Cinq décisions possibles, et « classer sans suite » exige un motif écrit — c'est la plus
 exposée, celle qu'il faudra justifier.
 
+**L'axe de la durée** (18/08/2026, sur recommandation du conseil juridique). La détection
+mesurait la RÉCURRENCE — un même lieu revient au moins trois fois — sans distinguer un pic de
+trois semaines d'une présence continue de six mois. Or c'est la continuité qui caractérise la
+mise à disposition durable.
+
+`analyserContinuite()` dans `api/_dependance.js` rend, pour le lieu qui revient le plus : mois
+civils consécutifs, mois distincts, jours maximum dans un même mois, et bornes de la période.
+Le drapeau `presence_continue` exige **les deux** conditions — au moins 3 mois consécutifs ET
+au moins 4 jours dans un même mois. Trois mois à raison d'une venue chacun n'est pas une
+présence ; huit jours dans un seul mois est un chantier, pas une intégration.
+
+Les comptes marqués remontent en tête de l'onglet Modération, avec un badge. Comme le reste du
+module, **ce ne sont pas des seuils légaux** : ils déclenchent un examen, ils n'absolvent rien,
+et ils ne doivent jamais être présentés comme une limite à ne pas franchir.
+
 **Détection des schémas de mise à disposition** — action `signaux_mise_a_disposition` de
 `api/bo-action.js`, affichée dans l'onglet Modération. Elle croise le lieu d'intervention des
 prestations avec la ville déclarée par le client et ne retient que la **récurrence au même

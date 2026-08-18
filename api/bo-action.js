@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
-import { couplesADependance, SEUILS_PAR_DEFAUT } from "./_dependance.js";
+import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
@@ -2313,6 +2313,18 @@ export default async function handler(req, res) {
         }
         const [lieuTop, occurrences] = Object.entries(parLieu).sort((a, b) => b[1] - a[1])[0] || [null, 0];
 
+        // L'axe de la DURÉE, sur le lieu qui revient le plus.
+        //
+        // La récurrence dit qu'un endroit revient ; elle ne dit pas si c'est un
+        // pic de trois semaines ou une présence de six mois. Or c'est la
+        // continuité qui caractérise la mise à disposition durable : revenir
+        // chaque mois, plusieurs jours par mois, finit par ressembler à une
+        // place dans l'équipe du client.
+        const auLieuTop = lieuTop
+          ? horsVille.filter(m => norm([m.adresse, m.ville].filter(Boolean).join(" ")) === lieuTop)
+          : [];
+        const continuite = analyserContinuite(auLieuTop);
+
         const prestatairesDistincts = new Set(horsVille.map(m => m.prestataire_id).filter(Boolean)).size;
         const dureeMoyenne = horsVille.reduce((s2, m) => s2 + (Number(m.hours) || 0), 0) / horsVille.length;
 
@@ -2336,13 +2348,27 @@ export default async function handler(req, res) {
           lieu_recurrent: lieuTop,
           interventions_hors_ville: horsVille.length,
           occurrences_meme_lieu: occurrences,
+          // Durée : ces valeurs ne sont PAS des seuils légaux, elles déclenchent
+          // un examen. Voir l'en-tête de `api/_dependance.js`.
+          mois_consecutifs: continuite.moisConsecutifs,
+          mois_distincts: continuite.moisDistincts,
+          jours_max_par_mois: continuite.joursMaxParMois,
+          premiere_intervention: continuite.premiere,
+          derniere_intervention: continuite.derniere,
+          presence_continue: continuite.continu,
           prestataires_distincts: prestatairesDistincts,
           duree_moyenne_h: Math.round(dureeMoyenne * 10) / 10,
           total_prestations: siennes.length,
         });
       }
 
-      resultat.sort((a, b) => b.occurrences_meme_lieu - a.occurrences_meme_lieu);
+      // Une présence continue passe devant : c'est le signal le plus lourd, et
+      // celui qu'on veut voir en premier en ouvrant l'onglet.
+      resultat.sort((a, b) =>
+        (b.presence_continue ? 1 : 0) - (a.presence_continue ? 1 : 0)
+        || b.mois_consecutifs - a.mois_consecutifs
+        || b.occurrences_meme_lieu - a.occurrences_meme_lieu
+      );
       return res.status(200).json(resultat);
     }
 

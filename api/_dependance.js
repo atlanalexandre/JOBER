@@ -145,3 +145,97 @@ export function couplesADependance(prestations, seuils = SEUILS_PAR_DEFAUT) {
   signaux.sort((a, b) => b.gravite - a.gravite);
   return signaux;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'axe de la DURÉE — présence continue au même endroit
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POURQUOI
+//
+// Ajouté le 18/08/2026 sur recommandation du conseil juridique. La détection de
+// mise à disposition mesurait la RÉCURRENCE — un même lieu revient au moins
+// trois fois — mais rien ne distinguait un pic de trois semaines d'une présence
+// continue de six mois.
+//
+// Or c'est précisément la continuité qui caractérise la mise à disposition
+// durable : quelqu'un qui revient chaque mois au même endroit, plusieurs jours
+// par mois, finit par ressembler à un membre de l'équipe du client — quels que
+// soient les termes du contrat.
+//
+// Les mêmes réserves qu'en tête de fichier s'appliquent : ce ne sont PAS des
+// seuils légaux. Aucun texte ne fixe une durée en deçà de laquelle une relation
+// serait sûre. Ces valeurs déclenchent un examen, elles n'absolvent rien.
+export const SEUILS_CONTINUITE = {
+  // Nombre de mois civils consécutifs comportant au moins une intervention.
+  // Trois mois, c'est le moment où une présence cesse d'être un renfort
+  // ponctuel pour devenir une habitude.
+  moisConsecutifs: 3,
+  // Jours distincts d'intervention dans un même mois, au même endroit.
+  // Quatre, c'est environ une fois par semaine.
+  joursParMois: 4,
+};
+
+/**
+ * Analyse la continuité d'une série d'interventions.
+ *
+ * @param {Array<{date?:string}>} prestations  interventions d'un même couple
+ * @param {object} seuils
+ * @returns {{moisDistincts:number, moisConsecutifs:number, joursMaxParMois:number,
+ *            premiere:string|null, derniere:string|null, continu:boolean}}
+ *
+ * Les dates illisibles sont ignorées plutôt que comptées à zéro : une date
+ * absente n'est pas une intervention le 1er janvier, et le signal doit se taire
+ * quand il ne sait pas, jamais accuser à tort.
+ */
+export function analyserContinuite(prestations, seuils = SEUILS_CONTINUITE) {
+  const s = { ...SEUILS_CONTINUITE, ...(seuils || {}) };
+  const jours = new Set();
+  const mois = new Set();
+
+  for (const p of (prestations || [])) {
+    const d = String(p?.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    jours.add(d);
+    mois.add(d.slice(0, 7));
+  }
+  if (jours.size === 0) {
+    return { moisDistincts: 0, moisConsecutifs: 0, joursMaxParMois: 0, premiere: null, derniere: null, continu: false };
+  }
+
+  const joursTries = [...jours].sort();
+  const moisTries = [...mois].sort();
+
+  // Jours distincts du mois le plus chargé.
+  const parMois = {};
+  for (const j of joursTries) {
+    const m = j.slice(0, 7);
+    parMois[m] = (parMois[m] || 0) + 1;
+  }
+  const joursMaxParMois = Math.max(...Object.values(parMois));
+
+  // Plus longue suite de mois civils qui se suivent. Le calcul passe par un
+  // rang absolu (année × 12 + mois) : comparer « 2026-12 » et « 2027-01 » comme
+  // des chaînes ferait croire à une rupture au passage d'année.
+  const rang = (m) => {
+    const [a, mo] = m.split("-").map(Number);
+    return a * 12 + mo;
+  };
+  let moisConsecutifs = 1;
+  let courante = 1;
+  for (let i = 1; i < moisTries.length; i++) {
+    courante = rang(moisTries[i]) - rang(moisTries[i - 1]) === 1 ? courante + 1 : 1;
+    if (courante > moisConsecutifs) moisConsecutifs = courante;
+  }
+
+  return {
+    moisDistincts: moisTries.length,
+    moisConsecutifs,
+    joursMaxParMois,
+    premiere: joursTries[0],
+    derniere: joursTries[joursTries.length - 1],
+    // Les DEUX conditions, pas l'une ou l'autre : trois mois de suite à raison
+    // d'une intervention chacun n'est pas une présence, et huit jours dans un
+    // seul mois est un chantier, pas une intégration.
+    continu: moisConsecutifs >= s.moisConsecutifs && joursMaxParMois >= s.joursParMois,
+  };
+}
