@@ -136,6 +136,73 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── La carte utilisée pour la commande d'origine ──────────────────
+  //
+  // POURQUOI
+  //
+  // Le paiement d'une prolongation redemandait le numéro de carte, alors que le
+  // client venait de régler la même prestation quelques minutes plus tôt. Lui
+  // faire ressaisir seize chiffres pour dix-sept euros est le meilleur moyen de
+  // perdre la vente — et c'est incompréhensible pour lui : de son point de vue,
+  // c'est la même commande.
+  //
+  // LA CONTRAINTE STRIPE
+  //
+  // Une carte saisie pour un paiement n'est PAS conservée. Stripe ne la rattache
+  // au client que si on le lui demande explicitement, ce que le tunnel principal
+  // ne fait pas — délibérément : conserver une coordonnée bancaire sans l'accord
+  // exprès du client n'est pas acceptable.
+  //
+  // Cette action lit donc la carte du paiement d'origine et la RENVOIE POUR
+  // AFFICHAGE seulement. Le rattachement n'a lieu qu'au moment où le client
+  // choisit « payer avec cette carte » : c'est ce geste qui vaut accord, il est
+  // fait en connaissance de cause, et il porte sur la prestation qu'il est en
+  // train de prolonger.
+  if (action === "carte_prestation") {
+    const SUPABASE_URL_CP = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+    const SERVICE_ROLE_CP = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+    const callerCp = await verifyUser(req, SUPABASE_URL_CP, SERVICE_ROLE_CP);
+    if (!callerCp) return res.status(401).json({ error: "Non authentifié" });
+    const { mission_id: cpMission } = req.body || {};
+    if (!cpMission || !/^[0-9a-f-]{36}$/i.test(cpMission)) {
+      return res.status(400).json({ error: "mission_id invalide" });
+    }
+
+    const hdrsCp = { "apikey": SERVICE_ROLE_CP, "Authorization": `Bearer ${SERVICE_ROLE_CP}`, "Content-Type": "application/json" };
+    try {
+      const mr = await fetch(
+        `${SUPABASE_URL_CP}/rest/v1/missions?id=eq.${cpMission}&select=id,client_id,stripe_payment_intent`,
+        { headers: hdrsCp }
+      );
+      const md = await mr.json().catch(() => []);
+      const mCp = Array.isArray(md) && md[0];
+      if (!mCp) return res.status(404).json({ error: "Prestation introuvable" });
+      // La carte d'une prestation ne se lit que par son client.
+      if (mCp.client_id !== callerCp.id) return res.status(403).json({ error: "Accès interdit" });
+      if (!mCp.stripe_payment_intent || String(mCp.stripe_payment_intent).startsWith("wallet_")) {
+        return res.status(200).json({ carte: null });
+      }
+
+      const pir = await fetch(`https://api.stripe.com/v1/payment_intents/${mCp.stripe_payment_intent}`, { headers: stripeHeaders });
+      const pi = await pir.json();
+      const pmId = pi?.payment_method;
+      if (!pmId) return res.status(200).json({ carte: null });
+
+      const pmr = await fetch(`https://api.stripe.com/v1/payment_methods/${pmId}`, { headers: stripeHeaders });
+      const pm = await pmr.json();
+      if (pm.error || pm.type !== "card") return res.status(200).json({ carte: null });
+
+      return res.status(200).json({
+        carte: { pmId, brand: pm.card?.brand || "card", last4: pm.card?.last4 || "••••" },
+      });
+    } catch (e) {
+      // Ne jamais bloquer un paiement pour un confort d'affichage : sans carte
+      // proposée, le client saisit la sienne comme avant.
+      console.error("[carte_prestation] lecture impossible :", e.message);
+      return res.status(200).json({ carte: null });
+    }
+  }
+
   // ── Supprimer la carte enregistrée ────────────────────────────────
   //
   // « Supprimer ma carte » n'effaçait que l'affichage, côté navigateur : le moyen
@@ -271,6 +338,41 @@ export default async function handler(req, res) {
       description: `Heures supplémentaires — ${mission.extra_hours_requested} h`,
     };
     if (clientSupp) paramsS.customer = clientSupp;
+
+    // Le client a choisi « payer avec la carte de la commande ». On vérifie que
+    // c'est BIEN celle-là — un identifiant reçu du navigateur ne prouve rien —
+    // puis on la rattache à son compte Stripe, sans quoi elle ne peut pas
+    // servir à un second paiement.
+    const pmDemande = req.body?.payment_method_id;
+    if (pmDemande && clientSupp && mission.stripe_payment_intent) {
+      try {
+        const piOr = await fetch(`https://api.stripe.com/v1/payment_intents/${mission.stripe_payment_intent}`, { headers: stripeHeaders });
+        const piOrD = await piOr.json();
+        if (piOrD?.payment_method !== pmDemande) {
+          console.error(`[supplement] carte ${pmDemande} refusée : ce n'est pas celle du paiement de ${intentMissionId}`);
+          return res.status(403).json({ error: "Ce moyen de paiement n'est pas celui de cette prestation." });
+        }
+        const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${pmDemande}`, { headers: stripeHeaders });
+        const pmD = await pmR.json();
+        if (!pmD?.customer) {
+          const att = await fetch(`https://api.stripe.com/v1/payment_methods/${pmDemande}/attach`, {
+            method: "POST", headers: stripeHeaders,
+            body: new URLSearchParams({ customer: clientSupp }),
+          });
+          const attD = await att.json();
+          if (attD.error) {
+            console.error(`[supplement] rattachement de ${pmDemande} refusé :`, attD.error.message);
+            return res.status(400).json({ error: "Cette carte n'a pas pu être réutilisée. Saisissez-la à nouveau." });
+          }
+        } else if (pmD.customer !== clientSupp) {
+          console.error(`[supplement] carte ${pmDemande} rattachée à ${pmD.customer}, pas à ${clientSupp}`);
+          return res.status(403).json({ error: "Ce moyen de paiement n'est pas rattaché à votre compte." });
+        }
+      } catch (e) {
+        console.error("[supplement] réutilisation de la carte impossible :", e.message);
+        return res.status(502).json({ error: "La carte n'a pas pu être vérifiée. Réessayez." });
+      }
+    }
 
     try {
       const rs = await fetch("https://api.stripe.com/v1/payment_intents", {

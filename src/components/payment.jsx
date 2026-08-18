@@ -401,6 +401,23 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       }
       const uid = data?.user?.id;
       if (!uid) return;
+      // Prolongation : la carte de la commande d'origine est proposée plutôt
+      // que redemandée. Elle n'est lue que si aucune carte enregistrée ne
+      // couvre déjà le besoin — inutile d'en présenter deux.
+      if (mode === "supplement" && missionId && !m.stripe_pm_id) {
+        supabase.auth.getSession().then(({ data: sd }) => {
+          fetch("/api/stripe-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+            body: JSON.stringify({ action: "carte_prestation", mission_id: missionId }),
+          })
+            .then(r => r.json())
+            .then(j => { if (j?.carte?.pmId) setSavedCard({ ...j.carte, origine: "prestation" }); })
+            // Sans carte proposée, le client saisit la sienne : le paiement
+            // reste possible, c'est seulement moins confortable.
+            .catch(e => console.error("[paiement] carte de la prestation illisible :", e.message));
+        });
+      }
       supabase.from("profiles").select("cashback_balance").eq("id", uid).single()
         .then(({ data: prof, error }) => {
           // Un solde illisible n'empêche pas de payer : la réduction ne
@@ -409,7 +426,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           setCashbackDispo(Number(prof?.cashback_balance || 0));
         });
     });
-  }, []);
+  }, [mode, missionId]);
 
 
   // ── Sauvegarde du brouillon à l'entrée dans le tunnel de paiement ──────────
@@ -593,7 +610,15 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       const r = await fetch("/api/stripe-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
-        body: JSON.stringify({ mode: mode || undefined, amount: total, currency: "eur", customerId: savedCard?.customerId||null, mission_id: missionId, metadata: { prestataire: providers[0]?.id || "", description: description || "" } }),
+        body: JSON.stringify({
+          mode: mode || undefined, amount: total, currency: "eur",
+          customerId: savedCard?.customerId || null, mission_id: missionId,
+          // Envoyé seulement si le client a choisi la carte de la commande.
+          // Le serveur refuse tout identifiant qui ne serait pas celui du
+          // paiement de CETTE prestation.
+          payment_method_id: (useStored && savedCard?.origine === "prestation") ? savedCard.pmId : undefined,
+          metadata: { prestataire: providers[0]?.id || "", description: description || "" },
+        }),
       });
       const { clientSecret, error: intentErr } = await r.json();
       if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
@@ -713,7 +738,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                       <span style={{ fontSize:20 }}>💳</span>
                       <div>
                         <div style={{ fontWeight:700, color:C.text, fontSize:13, textTransform:"capitalize" }}>{savedCard.brand} ••••{savedCard.last4}</div>
-                        <div style={{ color:C.textSub, fontSize:11 }}>Carte enregistrée</div>
+                        <div style={{ color:C.textSub, fontSize:11 }}>{savedCard.origine === "prestation" ? "Carte utilisée pour cette prestation" : "Carte enregistrée"}</div>
                       </div>
                     </div>
                     <div style={{ width:18, height:18, borderRadius:"50%", border:`2px solid ${useSavedCard?C.violet:C.border}`, background:useSavedCard?C.violet:"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>
