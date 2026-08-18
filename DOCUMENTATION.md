@@ -622,6 +622,31 @@ webhook contrôle `status=approved` **et** `missions_enabled`. Si le prestataire
 plus les conditions, la prestation passe en `needs_replacement` plutôt qu'en `assigned` —
 l'argent est encaissé, le client doit être servi — et le client est prévenu.
 
+### Les contraintes de la base peuvent être en retard sur le code
+
+**Constaté le 18/08/2026**, sur un prestataire qui ne pouvait pas accepter une
+prolongation. `missions_extra_hours_status_check` n'autorisait pas `accepte_presta`, valeur
+introduite la veille avec la prolongation payante.
+
+Le relevé a montré **trois contraintes** dans cet état, corrigées par
+`2026-08-18_contraintes_en_retard_sur_le_code.sql` :
+
+| Contrainte | Valeur manquante | Ce que ça cassait |
+|---|---|---|
+| `missions_extra_hours_status_check` | `accepte_presta` | Aucune prolongation acceptable |
+| `missions_delay_status_check` | `pending` | **Le pointage entier** échouait en cas de retard > 15 min |
+| `missions_payout_status_check` | `held` | Une retenue de l'art. 7.4 ne retenait rien |
+
+La deuxième est la plus instructive. `delay_status = "pending"` est écrit **dans le même
+PATCH** que `arrived_at` et `started_at` : la contrainte faisait donc échouer le pointage
+lui-même, mais uniquement quand il y avait du retard. Un prestataire ponctuel n'écrit pas
+cette colonne, et le défaut restait invisible. L'arbitrage du décalage (CGPS art. 10C) n'a
+ainsi jamais pu se déclencher.
+
+C'est la règle 1.6 de CLAUDE.md prise par l'autre bout : elle prescrit de relever toutes les
+valeurs avant d'ajouter une contrainte ; il faut aussi relire la contrainte avant d'ajouter
+une valeur. `npm run contraintes` met les deux listes en regard.
+
 ### Migrations
 
 Le dossier `migrations/` contient les changements de schéma et de policies, datés et

@@ -266,6 +266,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | Contrôle de cohérence | `npm run coherence` vérifie automatiquement les règles ci-dessus. Il bloque la CI. Avant d'ajouter une exception, se demander si ce n'est pas le code qui a tort |
 | Colonne inexistante | PostgREST refuse **toute** la requête, pas seulement la colonne fautive — et en silence si le résultat n'est pas vérifié. `npm run colonnes` produit la requête qui confronte le code à la base : à passer après chaque migration |
 | Écriture après un paiement | Toute écriture qui SUIT un mouvement d'argent doit vérifier son résultat. Un `.catch()` n'attrape que les erreurs réseau ; un refus de PostgREST résout normalement. `npm run ecritures` liste les candidates — à relire, pas à corriger en bloc |
+| Valeur refusée par une contrainte | Le pendant de la ligne précédente : la colonne existe, mais la valeur écrite est hors de la `CHECK`. PostgREST rejette là aussi **toute** la requête. Trois contraintes de `missions` étaient en retard sur le code le 18/08/2026, dont une qui faisait échouer le pointage en cas de retard. `npm run contraintes` met les valeurs du code en regard des contraintes de la base |
 | Règles RLS | Elles vivent dans la base : aucun contrôle du dépôt ne les voit. `npm run rls` imprime les sept requêtes de relecture — à passer avant toute mise en production |
 
 ---
