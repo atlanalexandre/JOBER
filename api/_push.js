@@ -95,3 +95,68 @@ export async function sendPushToUser(userId, notification, supabaseUrl, serviceH
     console.error("[sendPushToUser] error:", e.message);
   }
 }
+
+/**
+ * Notifier quelqu'un : dans l'application ET sur son téléphone.
+ *
+ * POURQUOI CE HELPER
+ *
+ * Le 18/08/2026, le dépôt comptait 86 insertions de notifications pour 20
+ * envois push. L'écart n'était pas une décision : personne ne l'avait choisi.
+ * Chaque nouvel événement écrivait sa ligne dans la cloche, et pensait ou non
+ * au téléphone selon qui l'avait écrit et quel jour.
+ *
+ * Le résultat est incohérent pour l'utilisateur — la validation de sa
+ * prestation ne le prévenait pas, alors qu'un retard de quinze minutes oui — et
+ * impossible à maintenir : rien ne signale l'oubli, puisqu'une notification
+ * absente ne casse rien.
+ *
+ * Un seul appel écrit donc les deux. Ajouter un événement, c'est appeler cette
+ * fonction ; l'oublier devient aussi visible que d'oublier la notification
+ * elle-même.
+ *
+ * @param {object} corps       la ligne `notifications` — user_id, title, body, type, ref_id
+ * @param {string} supabaseUrl
+ * @param {object} headers     en-têtes service role
+ * @param {object} [options]
+ * @param {boolean} [options.push=true]  mettre à false pour une notification
+ *   discrète, qui n'a pas à faire vibrer un téléphone
+ * @param {string} [options.url="/"]     destination du clic sur la push
+ *
+ * Ne lève jamais. Une notification est un service rendu, pas une étape d'un
+ * traitement : son échec ne doit jamais interrompre ce qui l'a déclenchée —
+ * surtout quand ce qui l'a déclenchée est un mouvement d'argent.
+ */
+export async function notifier(corps, supabaseUrl, headers, options = {}) {
+  const { push = true, url = "/" } = options;
+  const userId = corps?.user_id;
+  if (!userId) {
+    console.error("[notifier] notification sans destinataire, ignorée :", JSON.stringify(corps).slice(0, 120));
+    return;
+  }
+
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "return=minimal" },
+      body: JSON.stringify({ read: false, ...corps }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      console.error(`[notifier] insertion refusée pour ${userId} :`, txt.slice(0, 200));
+    }
+  } catch (e) {
+    console.error(`[notifier] insertion impossible pour ${userId} :`, e.message);
+  }
+
+  if (!push) return;
+  // Le titre et le corps sont ceux de la notification : deux textes différents
+  // pour un même événement, c'est deux textes à maintenir, et l'un des deux
+  // finit par mentir.
+  await sendPushToUser(
+    userId,
+    { title: corps.title || "ALANE", body: corps.body || "", url },
+    supabaseUrl,
+    headers
+  ).catch(e => console.error(`[notifier] push impossible pour ${userId} :`, e.message));
+}

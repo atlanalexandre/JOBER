@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { sendPushToUser, sendWebPush } from "./_push.js";
+import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
@@ -582,7 +582,7 @@ async function handleEmailAction(req, res) {
 
   if (mission.client_id) {
     const isAccepted = action === "accept";
-    await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, read: false, ref_id: missionId }) }).catch(() => {});
+    await notifier({ user_id: mission.client_id, type: "mission", title: isAccepted ? "Prestation acceptée ! 🎉" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté la prestation "${missionLabel}" depuis son email.` : `Le prestataire a décliné "${missionLabel}". Vous pouvez choisir un autre prestataire.`, ref_id: missionId }, SUPABASE_URL, hdrs).catch(() => {});
     sendPushToUser(mission.client_id, { title: isAccepted ? "Prestation acceptée ✅" : "Prestation refusée", body: isAccepted ? `Votre prestataire a accepté "${missionLabel}".` : `Le prestataire a décliné "${missionLabel}".`, url: "/" }, SUPABASE_URL, hdrs).catch(() => {});
   }
 
@@ -820,19 +820,13 @@ export default async function handler(req, res) {
                   body: JSON.stringify({ p_user_id: m.client_id, p_delta: cashbackEarned, p_missions: 1 }),
                 }).catch(() => {});
                 if (cashbackEarned > 0) {
-                  fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                    body: JSON.stringify({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement. Cashback crédité.`, read: false }),
-                  }).catch(() => {});
+                  notifier({ user_id: m.client_id, type: "cashback", title: `+${cashbackEarned.toFixed(2).replace(".", ",")} € de cashback 🎁`, body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement. Cashback crédité.`}, SUPABASE_URL, headers).catch(() => {});
                 }
               } catch (e2) { console.error(`auto-validate cashback ${m.id}:`, e2.message); }
             }
             // Notifier le prestataire
             if (m.prestataire_id) {
-              fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`, read: false }),
-              }).catch(() => {});
+              notifier({ user_id: m.prestataire_id, type: "mission", title: "Prestation validée automatiquement ✅", body: `Votre prestation "${m.metier || "la prestation"}" a été validée automatiquement (délai 24h dépassé). Votre paiement est en cours.`}, SUPABASE_URL, headers).catch(() => {});
             }
           } catch (e) { console.error(`auto-validate mission ${m.id}:`, e.message); }
         }));
@@ -1132,17 +1126,12 @@ export default async function handler(req, res) {
 
       // Notification au prestataire
       if (verified_prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: verified_prestataire_id,
             type: "mission",
             title: "Proposition acceptée ✅",
             body: "Votre proposition a été acceptée ! Préparez-vous pour la prestation.",
-            read: false,
-          }),
-        });
+          }, SUPABASE_URL, headers);
         sendPushToUser(verified_prestataire_id, { title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée ! Préparez-vous pour la prestation.", url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -1289,29 +1278,21 @@ export default async function handler(req, res) {
       }
 
       // Notification mission validée — toujours envoyée, même si RPC cashback a échoué
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: client_id,
           type: "mission",
           title: "Prestation validée ✅",
           body: cashbackEarned > 0 && rpcRes.ok
             ? `Votre prestation a été validée. Cashback : +${cashbackEarned.toFixed(2)} € (solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €)`
             : "Votre prestation a été validée avec succès.",
-          read: false,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, headers).catch(() => {});
 
       // Le prestataire est informé de l'ajustement de durée, avec les chiffres et
       // une voie de contestation. Sans cela, il découvrirait un montant réduit sans
       // explication : c'est le silence, plus que l'ajustement lui-même, qui donne au
       // mécanisme l'allure d'une sanction.
       if (ajustementRetard && mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Durée facturée ajustée ⏱",
@@ -1320,24 +1301,17 @@ export default async function handler(req, res) {
               + `${ajustementRetard.apres} h ont été facturées au lieu de ${ajustementRetard.avant} h, `
               + `soit le temps effectivement réalisé. Si ce décalage ne vous est pas imputable, `
               + `écrivez à direction@alane.fr : la prestation sera réexaminée.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
 
       // Notification cashback dédiée uniquement si RPC a réussi
       if (cashbackEarned > 0 && rpcRes.ok) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: client_id,
             type: "cashback",
             title: "Cashback crédité 💰",
             body: `+${cashbackEarned.toFixed(2)} € crédités sur votre wallet. Solde : ${atomicBalance.toFixed ? atomicBalance.toFixed(2) : atomicBalance} €`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
 
       // Création automatique de la prochaine occurrence si mission récurrente
@@ -1386,17 +1360,12 @@ export default async function handler(req, res) {
 
           // Notification in-app au client
           const recurrenceLabel = mission.recurrence === "weekly" ? "hebdomadaire" : mission.recurrence === "biweekly" ? "bi-mensuelle" : "mensuelle";
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({
+          await notifier({
               user_id: client_id,
               type: "mission",
               title: "🔄 Prestation récurrente planifiée",
               body: `Votre prochaine prestation ${mission.metier || mission.sector || ""} (${recurrenceLabel}) a été programmée pour le ${nextDateStr}.`,
-              read: false,
-            }),
-          }).catch(() => {});
+            }, SUPABASE_URL, headers).catch(() => {});
           sendPushToUser(client_id, {
             title: "🔄 Prestation récurrente planifiée",
             body: `Prochaine prestation le ${nextDateStr}.`,
@@ -1409,17 +1378,12 @@ export default async function handler(req, res) {
 
       // Notification + email au prestataire
       if (mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation validée ✅",
             body: `Votre prestation "${mission.metier || mission.sector || ""}" a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est en cours de traitement.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
 
         // La clôture était le SEUL moment important dépourvu de notification
         // push : l'e-mail partait, la cloche de l'application se remplissait,
@@ -1550,17 +1514,12 @@ export default async function handler(req, res) {
             }).catch(e => console.error("[complete] prestataire missions_completed_month update error:", e.message));
             // Notifier le prestataire qu'il a épuisé son quota gratuit
             if (justExhausted) {
-              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({
+              await notifier({
                   user_id: mission.prestataire_id,
                   type: "system",
                   title: "⛔ Quota mensuel épuisé",
                   body: `Vous avez atteint votre limite de ${planLimit} prestation${planLimit > 1 ? "s" : ""} gratuites ce mois-ci. Passez Premium pour continuer à accepter des prestations.`,
-                  read: false,
-                }),
-              }).catch(() => {});
+                }, SUPABASE_URL, headers).catch(() => {});
             }
           }
         } catch (e) {
@@ -1637,14 +1596,10 @@ export default async function handler(req, res) {
       const quoi  = mission.resolution_proposee === "rembourser_client"
         ? "le remboursement du client" : "le versement de la rémunération au prestataire";
       if (autre) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: autre, type: "system", title: "Opposition à la proposition ⛔",
             body: `L'autre partie s'est opposée à la proposition de résolution portant sur « ${mission.titre || mission.metier || "la prestation"} » (${quoi}).\n\nLes fonds restent bloqués : ALANE ne peut plus les débloquer sans un accord entre vous, une décision de justice, ou une procédure de l'établissement de paiement. Vous pouvez poursuivre par la médiation ou par les voies judiciaires (article 17 des CGPS).`,
-            read: false,
-          }),
-        }).catch(e => console.error("[opposer_resolution] notification non envoyée :", e.message));
+          }, SUPABASE_URL, headers).catch(e => console.error("[opposer_resolution] notification non envoyée :", e.message));
       }
 
       return res.status(200).json({ success: true });
@@ -1750,17 +1705,12 @@ export default async function handler(req, res) {
 
       // Notification au prestataire
       if (mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "system",
             title: "Prestation contestée ⚠️",
             body: "Le client a signalé un problème sur votre prestation. ALANE examine le dossier sous 72h.",
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ ok: true });
@@ -1798,30 +1748,20 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "La fin de prestation a déjà été confirmée — vérifiez votre espace." });
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: mission.client_id,
           type: "mission",
           title: "Prestation à valider ✅",
           body: `Le prestataire a confirmé la fin de prestation "${mission.metier || mission.sector || ""}". Validez-la depuis votre espace pour débloquer son paiement.`,
-          read: false,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, headers).catch(() => {});
 
       // Notification de confirmation au prestataire
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: mission.prestataire_id,
           type: "mission",
           title: "Prestation confirmée 👍",
           body: `Votre fin de prestation "${mission.metier || mission.sector || ""}" a bien été enregistrée. En attente de validation client pour déclencher votre paiement.`,
-          read: false,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, headers).catch(() => {});
 
       // Send email to client (awaited — Vercel kills fire-and-forget before it completes)
       try {
@@ -2105,17 +2045,12 @@ export default async function handler(req, res) {
         }
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: mission.client_id,
           type:    "prestation",
           title:   "Prestation non confirmée",
           body:    `${prestaName} n'a pas répondu dans le délai imparti.${rembTimeout.ok ? " Votre paiement a été intégralement remboursé." : " Notre équipe procède au remboursement."} Vous pouvez choisir un autre prestataire.`,
-          read:    false,
-        }),
-      }).catch(e => console.error("[acceptance_timeout] insertion notification échouée :", e.message));
+        }, SUPABASE_URL, headers).catch(e => console.error("[acceptance_timeout] insertion notification échouée :", e.message));
 
       return res.status(200).json({ success: true });
     }
@@ -2222,11 +2157,7 @@ export default async function handler(req, res) {
         const clientBody = mission.stripe_payment_intent
           ? `Votre prestation "${mission.metier || mission.sector}" du ${mission.date} recherche un remplaçant. Votre paiement est conservé, aucune nouvelle facturation ne sera effectuée.`
           : `Votre prestation "${mission.metier || mission.sector}" du ${mission.date} a été réouverte automatiquement. De nouveaux prestataires vont être notifiés.`;
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: mission.client_id, type: "mission", title: clientTitle, body: clientBody, read: false }),
-        });
+        await notifier({ user_id: mission.client_id, type: "mission", title: clientTitle, body: clientBody}, SUPABASE_URL, headers);
       }
 
       // Rediffuser aux prestataires approuvés du même secteur (sauf le désisté)
@@ -2247,17 +2178,12 @@ export default async function handler(req, res) {
               const meta = ud.user_metadata || {};
               const prestaSector = meta.secteur || meta.sector;
               if (mission.sector && prestaSector && prestaSector !== mission.sector) return;
-              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({
+              await notifier({
                   user_id: p.id,
                   type: "mission",
                   title: "🔔 Prestation disponible — urgent !",
                   body: `Prestation ${mission.metier || mission.sector || ""} le ${mission.date || ""} à ${mission.ville || ""} (${mission.hours || ""}h). Postulez maintenant !`,
-                  read: false,
-                }),
-              });
+                }, SUPABASE_URL, headers);
             } catch (e) { console.error("[missions] notification de prestation urgente non envoyée :", e.message); }
           }));
         }
@@ -2400,17 +2326,12 @@ export default async function handler(req, res) {
               }
 
               // In-app notification
-              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({
+              await notifier({
                   user_id: p.id,
                   type: "mission",
                   title: pushTitle,
                   body: `${pushBody}. Postulez dans votre espace !`,
-                  read: false,
-                }),
-              });
+                }, SUPABASE_URL, headers);
 
               console.log("[broadcast] in-app notification sent");
 
@@ -2605,18 +2526,13 @@ export default async function handler(req, res) {
       const phone = ud.user_metadata?.telephone;
 
       // In-app notification (with ref_id = sender id for direct chat navigation)
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: recipient_id,
           type: "system",
           title: `💬 Nouveau message de ${esc(sender_name || "votre contact")}`,
           body: message_preview ? message_preview.slice(0, 100) : "Vous avez reçu un nouveau message.",
-          read: false,
           ref_id: caller.id,
-        }),
-      });
+        }, SUPABASE_URL, headers);
 
       // Email Resend (quand app fermée)
       const RESEND_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
@@ -3094,17 +3010,12 @@ export default async function handler(req, res) {
       // Notifier le prestataire (in-app + SMS si assignée et potentiellement en route)
       if (mission.prestataire_id) {
         const missionLabel = mission.metier || mission.sector || "la prestation";
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation annulée ❌",
             body: `La prestation "${missionLabel}" a été annulée par le client.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
 
         // SMS d'alerte immédiat si le prestataire était assigné (peut être en déplacement)
         if (mission.status === "assigned") {
@@ -3327,17 +3238,12 @@ export default async function handler(req, res) {
 
       // Notification in-app au prestataire
       if (mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation interrompue — paiement prorata 💶",
             body: `La prestation "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT). L'équipe ALANE vous contacte sous 24h.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
 
       // Ticket admin pour traiter le remboursement partiel
@@ -3455,10 +3361,7 @@ export default async function handler(req, res) {
           notifTitle = "Prestataire arrivé(e) sur place 📍";
           notifBody = `Votre prestataire est arrivé(e) pour « ${label} ». La prestation démarre.`;
         }
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
-        }).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -3488,9 +3391,7 @@ export default async function handler(req, res) {
       });
       if (m2.prestataire_id) {
         const label = m2.titre || m2.metier || "la prestation";
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: m2.prestataire_id, type: "mission",
             // Formulation volontairement contractuelle et non disciplinaire : ce
             // n'est pas une pénalité, c'est le prix du temps réellement effectué.
@@ -3503,9 +3404,7 @@ export default async function handler(req, res) {
               : `La prestation « ${label} » prend fin à l'heure convenue : ${actualHours} h seront facturées au lieu de ${plannedHours} h, `
                 + `soit le temps effectivement réalisé après un démarrage décalé de ${delayMins} min. `
                 + `Si ce décalage ne vous est pas imputable, écrivez à direction@alane.fr : la prestation sera réexaminée.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
       return res.status(200).json({ ok: true, actual_hours: actualHours });
     }
@@ -3838,15 +3737,11 @@ export default async function handler(req, res) {
           });
           // Notifier le client que le prestataire n'a pas répondu dans les temps
           if (m.client_id) {
-            await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-              method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({
+            await notifier({
                 user_id: m.client_id, type: "mission",
                 title: "Prestataire non disponible ⏱️",
                 body: `Le prestataire n'a pas répondu à temps pour la prestation "${m.metier || m.titre || ""}". Elle est de nouveau disponible.`,
-                read: false,
-              }),
-            }).catch(() => {});
+              }, SUPABASE_URL, headers).catch(() => {});
           }
         }));
       }
@@ -3977,11 +3872,8 @@ export default async function handler(req, res) {
         const missionLabel = mission.titre || mission.metier || "";
         const isAccepted = response === "accept";
 
-        // Notification in-app client
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        // Notification au client — dans l'application ET sur son téléphone.
+        await notifier({
             user_id: mission.client_id,
             type: "mission",
             // Sur une prestation affectée par la plateforme, le client n'a désigné
@@ -3996,10 +3888,8 @@ export default async function handler(req, res) {
                     ? "Le prestataire pressenti n'est pas disponible. Un autre professionnel correspondant à votre mission vient d'être sollicité — votre réservation et votre paiement sont conservés."
                     : "Le prestataire pressenti n'est pas disponible. Votre mission a été proposée à l'ensemble des professionnels du secteur — votre réservation et votre paiement sont conservés.")
                 : `${resolvedPrestaName} a décliné votre demande. Vous pouvez choisir un autre prestataire.`,
-            read: false,
             ref_id: mission_id,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers);
 
         // Email + SMS client
         const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.client_id}`, { headers });
@@ -4060,10 +3950,7 @@ export default async function handler(req, res) {
 
       // Reminder notification to prestataire when they accept
       if (response === "accept") {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: caller.id, type: "mission", title: "Rappel : signalez votre arrivée 📍", body: `N'oubliez pas de cliquer « Je suis sur place » dans l'app dès que vous arrivez pour la prestation ${mission.titre || mission.metier || ""}.`, read: false }),
-        }).catch(() => {});
+        await notifier({ user_id: caller.id, type: "mission", title: "Rappel : signalez votre arrivée 📍", body: `N'oubliez pas de cliquer « Je suis sur place » dans l'app dès que vous arrivez pour la prestation ${mission.titre || mission.metier || ""}.`}, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ success: true });
@@ -4164,17 +4051,12 @@ export default async function handler(req, res) {
       // Le front l'insérait lui-même, ce qui obligeait à laisser la policy
       // notifs_insert ouverte à tout compte connecté.
       const delaiTexte = payload.same_day ? "1 heure" : "4 heures";
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: prestataire_id,
           type:    "prestation",
           title:   "Nouvelle demande de prestation",
           body:    `Un client vous propose une prestation. Vous avez ${delaiTexte} pour accepter ou refuser.`,
-          read:    false,
-        }),
-      }).catch(e => console.error("[notify_prestataire] insertion notification échouée :", e.message));
+        }, SUPABASE_URL, headers).catch(e => console.error("[notify_prestataire] insertion notification échouée :", e.message));
 
       const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
       const ud = await ur.json();
@@ -4315,18 +4197,13 @@ export default async function handler(req, res) {
 
       // Notifier le prestataire
       if (mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
             title: "⏱ Demande d'heures supplémentaires",
             body: `Le client souhaite prolonger la prestation de ${eh}h supplémentaire${eh > 1 ? "s" : ""}. Acceptez ou refusez depuis l'application.`,
-            read: false,
             ref_id: mission_id,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
 
         // Email au prestataire
         try {
@@ -4433,10 +4310,7 @@ export default async function handler(req, res) {
       // Notifier le client
       if (mission.client_id) {
         const isAccepted = response === "accept";
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.client_id,
             type: "mission",
             title: isAccepted ? "✅ Heures supplémentaires acceptées" : "❌ Heures supplémentaires refusées",
@@ -4445,10 +4319,8 @@ export default async function handler(req, res) {
                 + `soit ${Number(devis?.total || 0).toFixed(2).replace(".", ",")} € à régler. `
                 + "La durée sera prolongée dès le règlement — rien n'est modifié avant."
               : "Le prestataire n'a pas pu accepter la prolongation.",
-            read: false,
             ref_id: mission_id,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
 
         // Web push au client
         sendPushToUser(mission.client_id, {
@@ -4572,14 +4444,10 @@ export default async function handler(req, res) {
 
       const mPresta = lignesC[0]?.prestataire_id || null;
       if (mPresta) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mPresta, type: "mission", title: "💶 Prolongation réglée",
-            body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`,
-            read: false, ref_id: mission_id,
-          }),
-        }).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
+            body: `Le client a réglé les ${extraH} h supplémentaires. La prestation est prolongée, et le montant s'ajoute à votre versement.`, ref_id: mission_id,
+          }, SUPABASE_URL, headers).catch(e => console.error("[heures_supp] notification non envoyée :", e.message));
         sendPushToUser(mPresta, { title: "💶 Prolongation réglée", body: `${extraH} h supplémentaires confirmées.`, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -4715,14 +4583,11 @@ export default async function handler(req, res) {
       const quand = [mission.date, mission.heure_debut ? String(mission.heure_debut).replace(":", "h") : null].filter(Boolean).join(" à ");
 
       // Le remplaçant : on lui demande s'il accepte de prendre la prestation.
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          user_id: remplacant_id, type: "mission", read: false, ref_id: mission_id,
+      await notifier({
+          user_id: remplacant_id, type: "mission", ref_id: mission_id,
           title: "🤝 On vous propose de remplacer un confrère",
           body: `Un prestataire vous propose de reprendre « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""}. Vous êtes libre d'accepter ou non ; le client doit également donner son accord.`,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, headers).catch(() => {});
       sendPushToUser(remplacant_id, {
         title: "🤝 Remplacement proposé",
         body: `« ${libelle} »${quand ? " le " + quand : ""} — à vous de décider.`,
@@ -4730,14 +4595,11 @@ export default async function handler(req, res) {
       }, SUPABASE_URL, headers).catch(() => {});
 
       // Le client : son accord est requis, la prestation ne bouge pas sans lui.
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          user_id: mission.client_id, type: "mission", read: false, ref_id: mission_id,
+      await notifier({
+          user_id: mission.client_id, type: "mission", ref_id: mission_id,
           title: "🔄 Votre prestataire propose un remplaçant",
           body: `Pour « ${libelle} »${quand ? " le " + quand : ""}, votre prestataire propose qu'un confrère qualifié le remplace${motif ? ` (${String(motif).slice(0, 120)})` : ""}. Rien ne change tant que vous n'avez pas donné votre accord.`,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, headers).catch(() => {});
       sendPushToUser(mission.client_id, {
         title: "🔄 Remplaçant proposé",
         body: `« ${libelle} »${quand ? " le " + quand : ""} — votre accord est nécessaire.`,
@@ -4781,14 +4643,11 @@ export default async function handler(req, res) {
         });
         // Le sortant reste titulaire : il doit le savoir sans ambiguïté, sinon il
         // croira être déchargé et ne se présentera pas.
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            user_id: dem.sortant_id, type: "mission", read: false, ref_id: dem.mission_id,
+        await notifier({
+            user_id: dem.sortant_id, type: "mission", ref_id: dem.mission_id,
             title: "❌ Remplacement refusé",
             body: `${role === "client" ? "Le client" : "Le confrère que vous aviez proposé"} a refusé le remplacement pour « ${libelle} »${quand ? " le " + quand : ""}. Vous restez titulaire de cette prestation.`,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(dem.sortant_id, {
           title: "❌ Remplacement refusé",
           body: "Vous restez titulaire de la prestation.",
@@ -4854,10 +4713,7 @@ export default async function handler(req, res) {
         [dem.sortant_id, "✅ Vous avez été remplacé",        `« ${libelle} »${quand ? " le " + quand : ""} a été reprise par le confrère que vous aviez proposé. Vous restez responsable de la bonne exécution devant le client (CGPS art. 9).`],
       ];
       for (const [uid, title, body] of messages) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: uid, type: "mission", read: false, ref_id: dem.mission_id, title, body }),
-        }).catch(() => {});
+        await notifier({ user_id: uid, type: "mission", ref_id: dem.mission_id, title, body }, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(uid, { title, body, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -4945,14 +4801,11 @@ export default async function handler(req, res) {
         body: JSON.stringify({ statut: "annule" }),
       });
       for (const uid of [dem.entrant_id, dem.client_id]) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            user_id: uid, type: "mission", read: false, ref_id: dem.mission_id,
+        await notifier({
+            user_id: uid, type: "mission", ref_id: dem.mission_id,
             title: "↩️ Demande de remplacement retirée",
             body: "Le prestataire initial a retiré sa demande : il assurera finalement la prestation lui-même.",
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
       }
       return res.status(200).json({ ok: true, statut: "annule" });
     }
@@ -5220,17 +5073,12 @@ export default async function handler(req, res) {
       }).catch(() => {});
 
       if (mission.client_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: mission.client_id,
             type: "mission",
             title: "❌ Prestataire indisponible",
             body: `Le prestataire ne peut plus assurer la prestation "${mission.titre || mission.metier}". Vous pouvez choisir un autre prestataire.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, headers).catch(() => {});
 
         // Web push au client
         sendPushToUser(mission.client_id, {
@@ -5314,10 +5162,7 @@ export default async function handler(req, res) {
         const labelR = m.titre || m.metier || "votre prestation";
         const corpsR = `Le prestataire a démarré « ${labelR} » avec ${patchStart.arrival_delay_minutes} min de retard. `
           + `Sans votre accord, la prestation prendra fin à l'heure initialement prévue.`;
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: "⏰ Démarrage en retard", body: corpsR, read: false }),
-        }).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: "⏰ Démarrage en retard", body: corpsR}, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(m.client_id, { title: "⏰ Démarrage en retard", body: corpsR, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -5328,10 +5173,7 @@ export default async function handler(req, res) {
         const notifBody = auto_start
           ? `La prestation « ${label} » a démarré automatiquement (10 min après l'arrivée du prestataire). Le timer est lancé.`
           : `La prestation « ${label} » a démarré. Le timer est lancé.`;
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody, read: false }),
-        }).catch(() => {});
+        await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -5393,11 +5235,7 @@ export default async function handler(req, res) {
       }).catch(e => console.error("[raise_dispute] ticket creation failed:", e.message));
 
       // Notifier le client
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: caller.id, type: "system", title: "Litige enregistré ✅", body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 48h.", read: false }),
-      }).catch(() => {});
+      await notifier({ user_id: caller.id, type: "system", title: "Litige enregistré ✅", body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 48h."}, SUPABASE_URL, headers).catch(() => {});
 
       // Email admin
       const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
@@ -5447,11 +5285,11 @@ export default async function handler(req, res) {
       const label = m.metier || m.sector || "la prestation";
       const notifs = [];
       if (!m.validation_prestataire && m.prestataire_id) {
-        notifs.push(fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ user_id: m.prestataire_id, type:"mission", title:"⏱ Prestation terminée — confirmez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Confirmez pour recevoir votre paiement.`, read:false }) }));
+        notifs.push(notifier({ user_id: m.prestataire_id, type:"mission", title:"⏱ Prestation terminée — confirmez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Confirmez pour recevoir votre paiement.`}, SUPABASE_URL, headers));
         sendPushToUser(m.prestataire_id, { title:"⏱ Prestation terminée — confirmez !", body:`« ${label} » du ${m.date} — confirmez pour être payé(e).`, url:"/" }, SUPABASE_URL, headers).catch(() => {});
       }
       if (!m.validation_client && m.client_id) {
-        notifs.push(fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ user_id: m.client_id, type:"mission", title:"✅ Prestation terminée — validez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Validez pour créditer votre cashback.`, read:false }) }));
+        notifs.push(notifier({ user_id: m.client_id, type:"mission", title:"✅ Prestation terminée — validez !", body:`Votre prestation « ${label} » du ${m.date} est terminée. Validez pour créditer votre cashback.`}, SUPABASE_URL, headers));
         sendPushToUser(m.client_id, { title:"✅ Prestation terminée — validez !", body:`« ${label} » du ${m.date} — validez pour votre cashback.`, url:"/" }, SUPABASE_URL, headers).catch(() => {});
       }
       await Promise.all(notifs.map(p => p.catch(() => {})));

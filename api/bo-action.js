@@ -1,3 +1,4 @@
+import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
@@ -537,17 +538,12 @@ export default async function handler(req, res) {
             // Notifier le client affecté (si ce n'est pas lui qui est supprimé)
             const affectedClient = pm.client_id !== profileId ? pm.client_id : null;
             if (affectedClient) {
-              await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-                method: "POST",
-                headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({
+              await notifier({
                   user_id: affectedClient,
                   type: "system",
                   title: "Prestation annulée — remboursement en cours",
                   body: `La prestation "${pm.metier || pm.sector || ""}" a été annulée suite à la fermeture du compte prestataire. Un remboursement automatique est en cours (5-10 jours ouvrés).`,
-                  read: false,
-                }),
-              }).catch(() => {});
+                }, SUPABASE_URL, headers).catch(() => {});
             }
           }
         } catch (e) {
@@ -710,14 +706,10 @@ export default async function handler(req, res) {
           ),
         }).catch(e => console.error(`[programmer_resiliation] e-mail NON envoyé à ${profileId} :`, e.message));
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: profileId, type: "system",
+      await notifier({ user_id: profileId, type: "system",
           title: "Résiliation de votre compte",
           body: `Votre compte sera résilié le ${effetLe}. Motif : ${motif}. `
-              + `Vous pouvez contester à support@alane.fr — la décision est réexaminée de façon contradictoire.`,
-          read: false }),
-      }).catch(() => {});
+              + `Vous pouvez contester à support@alane.fr — la décision est réexaminée de façon contradictoire.`}, SUPABASE_URL, headers).catch(() => {});
 
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "programmer_resiliation", target_id: profileId, target_email: uData?.email || null, reason: motif }) }).catch(() => {});
@@ -734,13 +726,9 @@ export default async function handler(req, res) {
       if (!maj.ok || !Array.isArray(rows) || rows.length === 0) {
         return res.status(409).json({ error: "Aucune résiliation programmée sur ce compte." });
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: profileId, type: "system",
+      await notifier({ user_id: profileId, type: "system",
           title: "Résiliation annulée ✅",
-          body: "Après examen, la résiliation de votre compte est annulée. Votre accès reste inchangé.",
-          read: false }),
-      }).catch(() => {});
+          body: "Après examen, la résiliation de votre compte est annulée. Votre accès reste inchangé."}, SUPABASE_URL, headers).catch(() => {});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "annuler_resiliation", target_id: profileId }) }).catch(() => {});
       return res.status(200).json({ success: true });
@@ -784,7 +772,7 @@ export default async function handler(req, res) {
       await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata:{ ...existingMeta, plan_abonnement:plan, subscription_end_date:end_date||null } }) }).catch(()=>{});
       const planLabels = { free:"Gratuit", premium:"Premium", elite:"Elite" };
       const planLabel = planLabels[plan] || plan;
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:profileId, type:"system", title:`Abonnement mis à jour → ${planLabel}`, body:end_date?`Votre abonnement ${planLabel} est actif jusqu'au ${new Date(end_date).toLocaleDateString("fr-FR")}.`:`Votre abonnement a été mis à jour vers ${planLabel}.`, read:false }) }).catch(()=>{});
+      await notifier({ user_id:profileId, type:"system", title:`Abonnement mis à jour → ${planLabel}`, body:end_date?`Votre abonnement ${planLabel} est actif jusqu'au ${new Date(end_date).toLocaleDateString("fr-FR")}.`:`Votre abonnement a été mis à jour vers ${planLabel}.`}, SUPABASE_URL, headers).catch(()=>{});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"set_subscription", target_id:profileId, details:{ plan, end_date } }) }).catch(()=>{});
       return res.status(200).json({ success: true });
     }
@@ -982,10 +970,7 @@ export default async function handler(req, res) {
       const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.${detailFrais}\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: uid, type: "system", title: "Proposition de résolution 📩", body: corps, read: false }),
-        }).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
+        await notifier({ user_id: uid, type: "system", title: "Proposition de résolution 📩", body: corps}, SUPABASE_URL, headers).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
       }
 
       journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre } });
@@ -1038,10 +1023,7 @@ export default async function handler(req, res) {
         : "";
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`, read: false }),
-        }).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
+        await notifier({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 
       journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
@@ -1330,17 +1312,12 @@ export default async function handler(req, res) {
         rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document",
       };
       const label = LABELS[doc.type] || doc.type;
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: profileId,
           type:    "system",
           title:   `Document à renvoyer : ${label}`,
           body:    `Votre document « ${label} » n'a pas pu être validé. Motif : ${motif}. Merci de déposer un nouveau document depuis votre espace.`,
-          read:    false,
-        }),
-      }).catch(e => console.error("[reject_doc] notification échouée :", e.message));
+        }, SUPABASE_URL, headers).catch(e => console.error("[reject_doc] notification échouée :", e.message));
 
       journaliser("reject_doc", { target_id: profileId, reason: motif, details: { doc_id: String(req.body.docId), type: doc.type } });
       return res.status(200).json({ success: true, type: doc.type });
@@ -1506,16 +1483,12 @@ export default async function handler(req, res) {
       // appel, à l'administrateur d'en décider le moment.
       if (body.notifier === true) {
         for (const p of (Array.isArray(rows) ? rows : [])) {
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ user_id: p.id, type: "system",
+          await notifier({ user_id: p.id, type: "system",
               title: "Votre portefeuille va être remboursé",
               body: `Le portefeuille ALANE est fermé. Votre solde de ${Number(p.prepaid_balance).toFixed(2)} € `
                   + `vous est intégralement remboursé sur votre moyen de paiement d'origine : `
                   + `utilisez le bouton « Me rembourser » depuis votre portefeuille. `
-                  + `Vous pouvez aussi l'utiliser pour régler une prestation d'ici là.`,
-              read: false }),
-          }).catch(e => console.error(`[soldes_a_rembourser] notification échouée pour ${p.id} :`, e.message));
+                  + `Vous pouvez aussi l'utiliser pour régler une prestation d'ici là.`}, SUPABASE_URL, headers).catch(e => console.error(`[soldes_a_rembourser] notification échouée pour ${p.id} :`, e.message));
         }
         console.log(`[soldes_a_rembourser] ${rows.length} client(s) notifié(s), ${total.toFixed(2)} € au total`);
       }
@@ -1662,12 +1635,8 @@ export default async function handler(req, res) {
       }
 
       if (m.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: m.prestataire_id, type: "system", title: "Versement programmé 💶",
-            body: `Le versement de votre prestation du ${m.date || ""} a été programmé : ${partPrestataire.toFixed(2).replace(".", ",")} €. Il part à l'expiration du délai de réclamation.`,
-            read: false }),
-        }).catch(e => console.error("[programmer_versement] notification non envoyée :", e.message));
+        await notifier({ user_id: m.prestataire_id, type: "system", title: "Versement programmé 💶",
+            body: `Le versement de votre prestation du ${m.date || ""} a été programmé : ${partPrestataire.toFixed(2).replace(".", ",")} €. Il part à l'expiration du délai de réclamation.`}, SUPABASE_URL, headers).catch(e => console.error("[programmer_versement] notification non envoyée :", e.message));
       }
 
       journaliser("programmer_versement", { target_id: mission_id, details: { montant: partPrestataire, echeance } });
@@ -1733,15 +1702,11 @@ export default async function handler(req, res) {
       const montant = Number(mission.payout_amount || 0).toFixed(2);
       const finLe = jusqua.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
       if (mission.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: mission.prestataire_id, type: "system",
+        await notifier({ user_id: mission.prestataire_id, type: "system",
             title: "Versement suspendu",
             body: `Le versement de ${montant} € pour « ${libelle} » du ${mission.date || "?"} est suspendu au motif suivant : `
                 + `${MOTIFS[motif]}. La retenue prend fin au plus tard le ${finLe}. `
-                + `Vous pouvez la contester à direction@alane.fr : elle est examinée de façon contradictoire et levée si le motif n'est pas établi.`,
-            read: false }),
-        }).catch(e => console.error("[retenir_versement] notification non créée :", e.message));
+                + `Vous pouvez la contester à direction@alane.fr : elle est examinée de façon contradictoire et levée si le motif n'est pas établi.`}, SUPABASE_URL, headers).catch(e => console.error("[retenir_versement] notification non créée :", e.message));
 
         try {
           const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mission.prestataire_id}`, { headers });
@@ -1789,13 +1754,9 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Aucune retenue en cours sur cette prestation." });
       }
       if (rows[0].prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ user_id: rows[0].prestataire_id, type: "system",
+        await notifier({ user_id: rows[0].prestataire_id, type: "system",
             title: "Retenue levée ✅",
-            body: "La retenue sur votre versement a été levée. Le virement est de nouveau programmé et partira au prochain traitement.",
-            read: false }),
-        }).catch(() => {});
+            body: "La retenue sur votre versement a été levée. Le virement est de nouveau programmé et partira au prochain traitement."}, SUPABASE_URL, headers).catch(() => {});
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "lever_retenue", target_id: mission_id }) }).catch(() => {});
@@ -1837,15 +1798,11 @@ export default async function handler(req, res) {
       const creance = rows[0];
 
       const exigibleLe = new Date(creance.exigible_at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: prestataire_id, type: "system",
+      await notifier({ user_id: prestataire_id, type: "system",
           title: "Somme due à ALANE",
           body: `Une somme de ${m.toFixed(2)} € est due au titre de l'article 8B.3 des CGPS. Motif : ${String(motif).trim()}. `
               + `Elle sera récupérée sur vos versements à venir, dans la limite de la moitié de chacun d'eux. `
-              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`,
-          read: false }),
-      }).catch(() => {});
+              + `Vous pouvez contester à direction@alane.fr sous quinze jours ; la contestation suspend la retenue.`}, SUPABASE_URL, headers).catch(() => {});
 
       try {
         const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${prestataire_id}`, { headers });
@@ -1900,12 +1857,9 @@ export default async function handler(req, res) {
         active:     "Après examen, la somme due est maintenue. La retenue sur vos versements à venir reprend.",
         abandonnee: "La somme qui vous était réclamée est abandonnée. Plus aucune retenue ne sera appliquée.",
       };
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: c.prestataire_id, type: "system",
+      await notifier({ user_id: c.prestataire_id, type: "system",
           title: decision === "abandonnee" ? "Somme due abandonnée ✅" : "Somme due — mise à jour",
-          body: messages[decision], read: false }),
-      }).catch(() => {});
+          body: messages[decision]}, SUPABASE_URL, headers).catch(() => {});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method: "POST", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action: "statuer_creance", target_id: creance_id, reason: decision }) }).catch(() => {});
       return res.status(200).json({ success: true });
@@ -1993,10 +1947,10 @@ export default async function handler(req, res) {
       if (!cashbackRes?.ok) console.error(`[force_complete] cashback RPC failed for mission ${mission_id} — manual credit may be needed`);
       // Notification prestataire
       if (m.prestataire_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`, read:false }) }).catch(()=>{});
+        await notifier({ user_id:m.prestataire_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée. Votre paiement de ${partPrestataire.toFixed(2)} € est programmé à la fermeture du délai de 48 h dont le client dispose pour signaler un problème.`}, SUPABASE_URL, headers).catch(()=>{});
       }
       // Notification client
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`, read:false }) }).catch(()=>{});
+      await notifier({ user_id:m.client_id, type:"mission", title:"Prestation validée ✅", body:`Votre prestation "${m.metier||m.sector}" du ${m.date} a été validée.${cashback>0?` Cashback +${cashback.toFixed(2)} €`:""}`}, SUPABASE_URL, headers).catch(()=>{});
       // Incrémenter le quota mensuel du prestataire (comme pour une mission validée normalement)
       if (m.prestataire_id) {
         const prQ = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=missions_completed_month`, { headers }).catch(() => null);
@@ -2033,7 +1987,7 @@ export default async function handler(req, res) {
       }
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"closed" }) });
       if (m.client_id) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés.", read:false }) }).catch(()=>{});
+        await notifier({ user_id:m.client_id, type:"system", title:"Remboursement initié 💰", body: reason || "Un remboursement a été initié par ALANE. Vous serez crédité sous 5 à 10 jours ouvrés."}, SUPABASE_URL, headers).catch(()=>{});
       }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"manual_refund", target_id:mission_id, details:{ reason } }) }).catch(()=>{});
       return res.status(200).json({ success: true });
@@ -2055,7 +2009,15 @@ export default async function handler(req, res) {
       const notifs = [];
       if (m.client_id) notifs.push({ user_id:m.client_id, type:"system", title:"Prestation annulée", body:reason||(refund&&m.stripe_payment_intent?"Votre prestation a été annulée par ALANE. Un remboursement sera effectué sous 5-10 jours ouvrés.":"Votre prestation a été annulée par ALANE."), read:false });
       if (m.prestataire_id) notifs.push({ user_id:m.prestataire_id, type:"system", title:"Prestation annulée", body:reason||"Une prestation vous a été retirée par ALANE.", read:false });
-      if (notifs.length) await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs) }).catch(()=>{});
+      // Insertion groupée conservée — deux lignes, un seul aller-retour — mais
+      // les téléphones sont prévenus : une prestation annulée par ALANE est
+      // exactement ce qu'on ne découvre pas en ouvrant l'application par hasard.
+      if (notifs.length) {
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs) }).catch(()=>{});
+        await Promise.all(notifs.map(n =>
+          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(() => {})
+        ));
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"cancel_mission", target_id:mission_id, details:{ reason, refund } }) }).catch(()=>{});
       return res.status(200).json({ success: true });
     }
@@ -2075,8 +2037,8 @@ export default async function handler(req, res) {
       if (!newUser) return res.status(404).json({ error: "Prestataire introuvable avec cet email" });
       const old_presta = m.prestataire_id;
       await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ prestataire_id:newUser.id, status:"assigned", validation_prestataire:false, validation_client:false }) });
-      if (old_presta && old_presta !== newUser.id) await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire.", read:false }) }).catch(()=>{});
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE.", read:false }) }).catch(()=>{});
+      if (old_presta && old_presta !== newUser.id) await notifier({ user_id:old_presta, type:"system", title:"Prestation réassignée", body:reason||"Une prestation vous a été retirée et réassignée à un autre prestataire."}, SUPABASE_URL, headers).catch(()=>{});
+      await notifier({ user_id:newUser.id, type:"mission", title:"Nouvelle prestation assignée ✅", body:reason||"Une prestation vous a été assignée directement par ALANE."}, SUPABASE_URL, headers).catch(()=>{});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"reassign_mission", target_id:mission_id, details:{ old_presta, new_presta:newUser.id, reason } }) }).catch(()=>{});
       return res.status(200).json({ success: true, new_presta_name:`${newUser.user_metadata?.prenom||""} ${newUser.user_metadata?.nom||""}`.trim()||new_presta_email });
     }
@@ -2102,7 +2064,7 @@ export default async function handler(req, res) {
       const { profileId, delta, reason } = body;
       if (!profileId || delta == null) return res.status(400).json({ error: "profileId + delta requis" });
       await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:profileId, p_delta:Number(delta), p_missions:0 }) }).catch(()=>{});
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${Math.abs(Number(delta)).toFixed(2)} €` : `Cashback ajusté ${Number(delta).toFixed(2)} €`, body: reason || "Ajustement par l'administration ALANE.", read:false }) }).catch(()=>{});
+      await notifier({ user_id:profileId, type:"cashback", title: Number(delta) >= 0 ? `Cashback crédité +${Math.abs(Number(delta)).toFixed(2)} €` : `Cashback ajusté ${Number(delta).toFixed(2)} €`, body: reason || "Ajustement par l'administration ALANE."}, SUPABASE_URL, headers).catch(()=>{});
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"adjust_cashback", target_id:profileId, details:{ delta, reason } }) }).catch(()=>{});
       return res.status(200).json({ ok: true });
     }
@@ -2118,6 +2080,18 @@ export default async function handler(req, res) {
       for (let i = 0; i < notifs.length; i += 100) {
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify(notifs.slice(i, i+100)) }).catch(()=>{});
       }
+      // Communication globale : la notification part aussi sur les téléphones.
+      //
+      // C'est un envoi de MASSE — une push à tous les comptes approuvés. Il est
+      // fait par paquets, après l'écriture en base, et son volume est journalisé
+      // : une annonce mal calibrée doit se retrouver dans les traces, pas se
+      // découvrir dans les désabonnements.
+      for (let i = 0; i < notifs.length; i += 100) {
+        await Promise.all(notifs.slice(i, i + 100).map(n =>
+          sendPushToUser(n.user_id, { title: n.title, body: n.body, url: "/" }, SUPABASE_URL, headers).catch(() => {})
+        ));
+      }
+      console.log(`[broadcast] ${notifs.length} notifications et autant de push envoyées (cible : ${target || "tous"}).`);
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, { method:"POST", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ action:"broadcast_notification", details:{ title, target, count:notifs.length } }) }).catch(()=>{});
       return res.status(200).json({ ok:true, sent:notifs.length });
     }

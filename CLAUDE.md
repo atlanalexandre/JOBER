@@ -262,6 +262,7 @@ Oublier l'étape 3 crée une faille : l'URL contourne le contrôle de rôle.
 | `platform_settings` | Lecture restreinte par clé ; une clé absente provoque une erreur 406 |
 | Réécriture Vercel | La destination doit être `/` et non `/index.html` (à cause de `cleanUrls`) |
 | CGPS | Source unique : `src/constants/cgps.js`. Ne jamais recopier un extrait dans un écran — quatre copies divergentes, dont deux fausses sur l'argent, étaient présentées à l'inscription. Après modification : `npm run cgps` |
+| Notification sans push | Une notification dans l'application doit se doubler d'une push. Le passage obligé est `notifier()` de `api/_push.js`, qui écrit les deux. Le dépôt comptait 86 insertions pour 20 push le 18/08/2026 : l'écart n'avait été décidé par personne. `npm run coherence` le refuse désormais |
 | CI eslint | Doit rester à 0 erreur |
 | Contrôle de cohérence | `npm run coherence` vérifie automatiquement les règles ci-dessus. Il bloque la CI. Avant d'ajouter une exception, se demander si ce n'est pas le code qui a tort |
 | Colonne inexistante | PostgREST refuse **toute** la requête, pas seulement la colonne fautive — et en silence si le résultat n'est pas vérifié. `npm run colonnes` produit la requête qui confronte le code à la base : à passer après chaque migration |

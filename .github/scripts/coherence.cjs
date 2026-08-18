@@ -332,6 +332,46 @@ try {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Une notification dans l'application se double d'une notification push
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le 18/08/2026, le dépôt comptait 86 insertions de notifications pour 20
+// envois push. L'écart n'était pas une décision : personne ne l'avait choisi.
+// Chaque événement écrivait sa ligne dans la cloche, et pensait ou non au
+// téléphone selon qui l'avait écrit et quel jour.
+//
+// Résultat : la validation d'une prestation — l'annonce que le prestataire
+// attend le plus — ne le prévenait pas, alors qu'un retard de quinze minutes
+// oui. Et rien ne signalait l'oubli, puisqu'une notification absente ne casse
+// jamais rien.
+//
+// Le passage obligé est `notifier()` dans `api/_push.js`, qui écrit les deux.
+// Une insertion directe reste tolérée pour un envoi GROUPÉ — plusieurs
+// destinataires en un aller-retour — à condition qu'un `sendPushToUser` suive
+// dans les vingt lignes.
+
+for (const f of fichiers("api")) {
+  if (f.endsWith("_push.js")) continue;          // le helper lui-même
+  const lignes = lire(f).split("\n");
+  lignes.forEach((texte, i) => {
+    const t = texte.trim();
+    if (t.startsWith("//") || t.startsWith("*")) return;
+    if (!/rest\/v1\/notifications`/.test(texte)) return;
+    // Lecture ou marquage comme lu : ce n'est pas une notification créée.
+    if (/notifications\?/.test(texte)) return;
+
+    const suite = lignes.slice(i, i + 20).join("\n");
+    if (!/method:\s*"POST"/.test(suite)) return;
+    if (/sendPushToUser/.test(suite)) return;    // envoi groupé, push assurée
+
+    violation("Notification sans push", f, i + 1,
+      "Insertion directe dans `notifications` sans `sendPushToUser` à proximité. "
+      + "Passer par `notifier()` de `api/_push.js`, qui écrit la notification ET "
+      + "envoie la push — sauf envoi groupé, où le push doit suivre explicitement.");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Rapport
 // ═══════════════════════════════════════════════════════════════════════════
 

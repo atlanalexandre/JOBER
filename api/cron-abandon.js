@@ -1,5 +1,5 @@
 import { resendBody } from "./_email.js";
-import { sendWebPush } from "./_push.js";
+import { sendWebPush, notifier } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
@@ -70,27 +70,19 @@ export default async function handler(req, res) {
 
       const label = m.metier || m.sector || "Prestation";
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: m.prestataire_id,
             type: "mission",
             title: `Retard de ${retard} min ⏰`,
             body: `Votre prestation « ${label} »${m.ville ? " à " + m.ville : ""} devait commencer à ${String(m.heure_debut).replace(":","h")}. Signalez votre arrivée dans l'application : le client est informé du retard.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(() => {});
         // Le client est informé aussi : il attendait jusqu'ici sans rien savoir.
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: m.client_id,
             type: "mission",
             title: "Prestataire en retard ⏰",
             body: `Votre prestataire n'a pas encore signalé son arrivée pour « ${label} », prévue à ${String(m.heure_debut).replace(":","h")}. Vous pouvez le contacter depuis l'application.`,
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(() => {});
       } catch (e) { console.error(`[cron-abandon] relance retard ${m.id} :`, e.message); }
     }
   } catch (e) {
