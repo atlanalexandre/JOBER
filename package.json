@@ -18,6 +18,7 @@
     "preview": "vite preview",
     "colonnes": "node scripts/verifier-colonnes.mjs",
     "ecritures": "node scripts/verifier-ecritures.mjs",
+    "contraintes": "node scripts/verifier-contraintes.mjs",
     "rls": "cat scripts/verifier-rls.sql"
   },
   "dependencies": {
