@@ -7012,9 +7012,15 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               >
                 📄 Télécharger la facture
               </button>
-              <button onClick={()=>onNavigate("invoice", selected)} style={{ width:"100%", padding:"11px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                Voir la facture dans l'app
-              </button>
+              {/* « Voir la facture dans l'app » retiré le 18/08/2026.
+                  Il ouvrait un SECOND document pour la même prestation : un
+                  numéro fabriqué par le navigateur (ALA-…), un montant recalculé
+                  sur le seul tarif de base, et aucune possibilité de le
+                  télécharger. Deux documents portant deux numéros pour une seule
+                  opération, ce qu'interdit l'article 242 nonies A de l'annexe II
+                  au CGI. La facture au-dessus est la seule : elle vient du
+                  serveur, elle est numérotée dans la séquence, et elle est
+                  archivée telle qu'émise. */}
             </div>
           )}
 

@@ -2134,9 +2134,9 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `STRIPE_WEBHOOK_SECRET` | Signature du webhook Stripe |
 | `VITE_SENTRY_DSN` | Remontée d'erreurs — si absente, Sentry est désactivé |
 | `VITE_VAPID_PUBLIC_KEY` | Contrepartie navigateur des clés VAPID, requise pour l'abonnement push |
-| `VITE_ALANE_SIRET` | SIRET affiché sur les factures — **vide = ligne masquée** |
-| `VITE_ALANE_ADRESSE` | Adresse affichée sur les factures — **vide = ligne masquée** |
-| `VITE_ALANE_FORME` | Forme juridique sur les factures (défaut `SAS`) |
+| ~~`VITE_ALANE_SIRET`~~ | **Plus lue par aucun code depuis le 18/08/2026.** Elle n'alimentait que l'écran de facture « dans l'app », supprimé ce jour-là. La facture serveur (`api/invoice.js`) n'a jamais affiché les mentions d'ALANE : elle porte celles du prestataire et du client, ALANE n'étant pas l'émetteur. À rebrancher le jour où ALANE facturera ses frais de service en son nom propre |
+| ~~`VITE_ALANE_ADRESSE`~~ | idem |
+| ~~`VITE_ALANE_FORME`~~ | idem |
 | `RESEND_API_KEY` | Envoi d'emails |
 | `RESEND_FROM` | Expéditeur — **contient une espace significative**. Le nom affiché doit être `ALANE`, comme le contenu des emails et le domaine : un nom d'expéditeur qui ne correspond ni au domaine ni à la marque est lu comme une tentative d'usurpation par les filtres anti-spam. |
 | `RESEND_REPLY_TO` | Adresse de réponse (`support@alane.fr`). Facultative, mais son absence combinée à un expéditeur `no-reply@` pénalise la délivrabilité. Si elle n'est pas renseignée, aucun `Reply-To` n'est envoyé. |
