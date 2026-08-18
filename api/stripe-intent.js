@@ -290,7 +290,20 @@ export default async function handler(req, res) {
   const mission = Array.isArray(mData) && mData[0];
   if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
   if (mission.client_id !== callerPi.id) return res.status(403).json({ error: "Accès interdit — vous n'êtes pas le client de cette prestation" });
-  if (!["open", "pending_acceptance"].includes(mission.status)) {
+  // Les deux contrôles qui suivent gardent une RÉSERVATION. Un complément
+  // d'heures est autre chose : il porte sur une prestation déjà attribuée, déjà
+  // commencée, et dont le prestataire vient de chiffrer la prolongation.
+  //
+  // Les lui appliquer les rendait tous deux faux. Le statut `assigned` était
+  // rejeté comme « ni ouverte ni en attente d'attribution », et un secteur fermé
+  // entre-temps aurait empêché de payer un travail déjà en cours — ALANE aurait
+  // alors reçu une heure de travail sans que le prestataire soit payé.
+  //
+  // Le complément a ses propres gardes, plus bas : prestation attribuée, et
+  // proposition du prestataire en attente de règlement.
+  const estComplement = req.body?.mode === "supplement";
+
+  if (!estComplement && !["open", "pending_acceptance"].includes(mission.status)) {
     return res.status(400).json({ error: "Un paiement ne peut être créé que pour une prestation ouverte ou en attente d'attribution" });
   }
   // Le secteur doit être ouvert AVANT que le moindre euro ne bouge.
@@ -302,7 +315,7 @@ export default async function handler(req, res) {
   // production le 16/08/2026.
   //
   // Refuser ici ne coûte rien au client : il n'a pas encore payé.
-  if (!await secteurOuvert(mission.sector, SUPABASE_URL_PI, hdrsPI)) {
+  if (!estComplement && !await secteurOuvert(mission.sector, SUPABASE_URL_PI, hdrsPI)) {
     console.error(`[stripe-intent] paiement refusé — secteur ${mission.sector} fermé (prestation ${intentMissionId})`);
     return res.status(400).json({ error: messageSecteurFerme(mission.sector) });
   }
@@ -312,7 +325,12 @@ export default async function handler(req, res) {
   // Le montant est calculé ICI, depuis la proposition enregistrée en base —
   // jamais depuis ce que le navigateur annonce. Le client ne choisit pas ce
   // qu'il paie : il paie ce que le prestataire a chiffré.
-  if (req.body?.mode === "supplement") {
+  if (estComplement) {
+    // Le garde de statut propre au complément : on ne prolonge que ce qui est
+    // en cours. Une prestation close, annulée ou en litige ne se rallonge pas.
+    if (mission.status !== "assigned") {
+      return res.status(409).json({ error: "Cette prestation n'est plus en cours : la prolongation ne peut plus être réglée." });
+    }
     if (mission.extra_hours_status !== "accepte_presta") {
       return res.status(409).json({ error: "Aucune prolongation en attente de paiement sur cette prestation." });
     }
