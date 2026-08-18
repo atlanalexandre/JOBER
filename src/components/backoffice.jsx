@@ -2117,11 +2117,32 @@ export function BOModerationTab({ d }) {
         )}
         {signaux && signaux.map(sg => (
           <div key={sg.client_id} style={{ background:"rgba(240,180,41,0.06)", border:"1px solid rgba(240,180,41,0.25)", borderRadius:10, padding:"10px 12px", marginBottom:8 }}>
-            <div style={{ color:C.accentGold, fontWeight:700, fontSize:12, marginBottom:4 }}>{sg.client}</div>
+            <div style={{ color:C.accentGold, fontWeight:700, fontSize:12, marginBottom:4, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              {sg.client}
+              {sg.presence_continue && (
+                <span style={{ background:"rgba(242,94,94,0.15)", border:"1px solid rgba(242,94,94,0.45)", color:C.danger, borderRadius:6, padding:"2px 7px", fontSize:10, fontWeight:800, letterSpacing:0.3 }}>
+                  PRÉSENCE CONTINUE
+                </span>
+              )}
+            </div>
             <div style={{ color:C.textSub, fontSize:11, lineHeight:1.7 }}>
               {sg.occurrences_meme_lieu} interventions <strong style={{ color:C.text }}>non déclarées</strong> au même endroit, hors de sa ville
               {sg.ville_compte ? ` (compte déclaré à ${sg.ville_compte})` : ""}<br/>
               Lieu récurrent : <span style={{ color:C.text }}>{sg.lieu_recurrent || "—"}</span><br/>
+              {/* L'axe de la durée. La récurrence dit qu'un endroit revient ;
+                  la continuité dit s'il s'agit d'un renfort ponctuel ou d'une
+                  place tenue mois après mois. Les chiffres sont donnés bruts,
+                  jamais présentés comme un seuil à ne pas franchir : aucun
+                  texte n'en fixe, et le prétendre fournirait à l'adversaire la
+                  preuve qu'ALANE se croyait protégée. */}
+              {sg.mois_distincts > 0 && (
+                <>
+                  Sur ce lieu : <span style={{ color:C.text }}>{sg.mois_consecutifs} mois consécutif{sg.mois_consecutifs > 1 ? "s" : ""}</span>
+                  {sg.mois_distincts !== sg.mois_consecutifs ? ` (${sg.mois_distincts} mois au total)` : ""} ·
+                  jusqu'à <span style={{ color:C.text }}>{sg.jours_max_par_mois} jour{sg.jours_max_par_mois > 1 ? "s" : ""}</span> dans un même mois
+                  {sg.premiere_intervention ? ` · du ${sg.premiere_intervention} au ${sg.derniere_intervention}` : ""}<br/>
+                </>
+              )}
               {sg.prestataires_distincts} prestataire{sg.prestataires_distincts > 1 ? "s" : ""} distinct{sg.prestataires_distincts > 1 ? "s" : ""} ·
               durée moyenne {sg.duree_moyenne_h} h · {sg.interventions_hors_ville}/{sg.total_prestations} prestations concernées<br/>
               <span style={{ color: sg.declarations > 0 ? C.success : C.danger, fontWeight:700 }}>

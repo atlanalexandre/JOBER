@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { couplesADependance, etalementSemaines, SEUILS_PAR_DEFAUT } from "../../../api/_dependance.js";
+import { couplesADependance, etalementSemaines, SEUILS_PAR_DEFAUT, analyserContinuite } from "../../../api/_dependance.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Vigilance sur la dépendance économique (CGPS art. 10D)
@@ -151,5 +151,80 @@ describe("les seuils par défaut restent explicites", () => {
     expect(SEUILS_PAR_DEFAUT.min_prestations_client).toBe(8);
     expect(SEUILS_PAR_DEFAUT.min_jours_distincts).toBe(24);
     expect(SEUILS_PAR_DEFAUT.min_semaines_ecart).toBe(8);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'axe de la durée — présence continue au même endroit
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Ajouté le 18/08/2026 sur recommandation du conseil juridique : la détection
+// mesurait la récurrence, pas la continuité. Un pic de trois semaines et une
+// présence de six mois donnaient le même signal.
+describe("analyserContinuite", () => {
+  const p = (...dates) => dates.map(d => ({ date: d }));
+
+  it("signale une présence hebdomadaire sur trois mois de suite", () => {
+    const r = analyserContinuite(p(
+      "2026-05-04", "2026-05-11", "2026-05-18", "2026-05-25",
+      "2026-06-01", "2026-06-08", "2026-06-15", "2026-06-22",
+      "2026-07-06", "2026-07-13", "2026-07-20", "2026-07-27",
+    ));
+    expect(r.moisConsecutifs).toBe(3);
+    expect(r.joursMaxParMois).toBe(4);
+    expect(r.continu).toBe(true);
+  });
+
+  it("ne signale pas un chantier concentré sur un seul mois", () => {
+    // Huit jours en trois semaines : c'est un chantier, pas une intégration.
+    const r = analyserContinuite(p(
+      "2026-05-04", "2026-05-05", "2026-05-06", "2026-05-07",
+      "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14",
+    ));
+    expect(r.joursMaxParMois).toBe(8);
+    expect(r.moisConsecutifs).toBe(1);
+    expect(r.continu).toBe(false);
+  });
+
+  it("ne signale pas une venue mensuelle isolée", () => {
+    // Trois mois de suite, mais une seule fois par mois : ce n'est pas une
+    // présence. Les deux conditions sont requises, jamais l'une ou l'autre.
+    const r = analyserContinuite(p("2026-05-04", "2026-06-04", "2026-07-06"));
+    expect(r.moisConsecutifs).toBe(3);
+    expect(r.joursMaxParMois).toBe(1);
+    expect(r.continu).toBe(false);
+  });
+
+  it("ne compte pas deux fois un même jour", () => {
+    // Deux prestations le même jour chez le même client, c'est un jour.
+    const r = analyserContinuite(p("2026-05-04", "2026-05-04", "2026-05-04"));
+    expect(r.joursMaxParMois).toBe(1);
+  });
+
+  it("suit les mois par-dessus le changement d'année", () => {
+    // Comparer « 2026-12 » et « 2027-01 » comme des chaînes ferait croire à
+    // une rupture, et une présence de bout en bout passerait inaperçue.
+    const r = analyserContinuite(p("2026-11-02", "2026-12-02", "2027-01-05"));
+    expect(r.moisConsecutifs).toBe(3);
+  });
+
+  it("repart de zéro après un mois d'interruption", () => {
+    const r = analyserContinuite(p("2026-01-05", "2026-02-05", "2026-04-05", "2026-05-05"));
+    expect(r.moisDistincts).toBe(4);
+    expect(r.moisConsecutifs).toBe(2);
+  });
+
+  it("se tait plutôt que d'accuser sur des dates illisibles", () => {
+    const r = analyserContinuite([{ date: null }, { date: "" }, { date: "pas-une-date" }, {}]);
+    expect(r).toEqual({
+      moisDistincts: 0, moisConsecutifs: 0, joursMaxParMois: 0,
+      premiere: null, derniere: null, continu: false,
+    });
+  });
+
+  it("borne la période observée", () => {
+    const r = analyserContinuite(p("2026-07-20", "2026-05-04", "2026-06-08"));
+    expect(r.premiere).toBe("2026-05-04");
+    expect(r.derniere).toBe("2026-07-20");
   });
 });
