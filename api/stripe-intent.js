@@ -153,11 +153,18 @@ export default async function handler(req, res) {
   // ne fait pas — délibérément : conserver une coordonnée bancaire sans l'accord
   // exprès du client n'est pas acceptable.
   //
-  // Cette action lit donc la carte du paiement d'origine et la RENVOIE POUR
-  // AFFICHAGE seulement. Le rattachement n'a lieu qu'au moment où le client
-  // choisit « payer avec cette carte » : c'est ce geste qui vaut accord, il est
-  // fait en connaissance de cause, et il porte sur la prestation qu'il est en
-  // train de prolonger.
+  // Une carte déjà utilisée sur un paiement SANS rattachement ne peut plus
+  // jamais resservir, et Stripe refuse même de la rattacher après coup :
+  //
+  //   « The provided PaymentMethod was previously used with a PaymentIntent
+  //     without Customer attachment [...] It may not be used again. »
+  //
+  // Rattacher au moment du second paiement — ce que cette action tentait
+  // d'abord — est donc impossible, et le client se prenait le message de Stripe
+  // en anglais après avoir cliqué. La carte n'est proposée que si elle est DÉJÀ
+  // rattachée à son compte, c'est-à-dire s'il a coché « mémoriser ma carte » à
+  // la commande. Sinon on ne propose rien, et il la saisit : mieux vaut une
+  // saisie qu'une promesse que Stripe refusera.
   if (action === "carte_prestation") {
     const SUPABASE_URL_CP = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
     const SERVICE_ROLE_CP = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
@@ -191,6 +198,15 @@ export default async function handler(req, res) {
       const pmr = await fetch(`https://api.stripe.com/v1/payment_methods/${pmId}`, { headers: stripeHeaders });
       const pm = await pmr.json();
       if (pm.error || pm.type !== "card") return res.status(200).json({ carte: null });
+
+      // Réutilisable seulement si elle est rattachée AU COMPTE DE L'APPELANT.
+      // Le client Stripe est lu dans `profiles`, jamais dans la requête.
+      const prCp = await fetch(`${SUPABASE_URL_CP}/rest/v1/profiles?id=eq.${callerCp.id}&select=stripe_customer_id`, { headers: hdrsCp });
+      const pdCp = prCp.ok ? await prCp.json().catch(() => []) : [];
+      const monClientCp = Array.isArray(pdCp) && pdCp[0]?.stripe_customer_id;
+      if (!pm.customer || !monClientCp || pm.customer !== monClientCp) {
+        return res.status(200).json({ carte: null });
+      }
 
       return res.status(200).json({
         carte: { pmId, brand: pm.card?.brand || "card", last4: pm.card?.last4 || "••••" },
@@ -357,37 +373,25 @@ export default async function handler(req, res) {
     };
     if (clientSupp) paramsS.customer = clientSupp;
 
-    // Le client a choisi « payer avec la carte de la commande ». On vérifie que
-    // c'est BIEN celle-là — un identifiant reçu du navigateur ne prouve rien —
-    // puis on la rattache à son compte Stripe, sans quoi elle ne peut pas
-    // servir à un second paiement.
+    // Le client a choisi une carte déjà rattachée à son compte. On revérifie ce
+    // rattachement ici : un identifiant reçu du navigateur ne prouve rien, et
+    // une carte non rattachée ferait échouer la confirmation chez Stripe avec un
+    // message en anglais, après le clic.
+    //
+    // On ne tente PAS de la rattacher à cet instant : une carte déjà passée sur
+    // un paiement sans rattachement est définitivement inutilisable, Stripe
+    // refusant aussi bien sa réutilisation que son rattachement tardif.
     const pmDemande = req.body?.payment_method_id;
-    if (pmDemande && clientSupp && mission.stripe_payment_intent) {
+    if (pmDemande && mission.stripe_payment_intent) {
       try {
-        const piOr = await fetch(`https://api.stripe.com/v1/payment_intents/${mission.stripe_payment_intent}`, { headers: stripeHeaders });
-        const piOrD = await piOr.json();
-        if (piOrD?.payment_method !== pmDemande) {
-          console.error(`[supplement] carte ${pmDemande} refusée : ce n'est pas celle du paiement de ${intentMissionId}`);
-          return res.status(403).json({ error: "Ce moyen de paiement n'est pas celui de cette prestation." });
-        }
         const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${pmDemande}`, { headers: stripeHeaders });
         const pmD = await pmR.json();
-        if (!pmD?.customer) {
-          const att = await fetch(`https://api.stripe.com/v1/payment_methods/${pmDemande}/attach`, {
-            method: "POST", headers: stripeHeaders,
-            body: new URLSearchParams({ customer: clientSupp }),
-          });
-          const attD = await att.json();
-          if (attD.error) {
-            console.error(`[supplement] rattachement de ${pmDemande} refusé :`, attD.error.message);
-            return res.status(400).json({ error: "Cette carte n'a pas pu être réutilisée. Saisissez-la à nouveau." });
-          }
-        } else if (pmD.customer !== clientSupp) {
-          console.error(`[supplement] carte ${pmDemande} rattachée à ${pmD.customer}, pas à ${clientSupp}`);
-          return res.status(403).json({ error: "Ce moyen de paiement n'est pas rattaché à votre compte." });
+        if (!clientSupp || pmD?.customer !== clientSupp) {
+          console.error(`[supplement] carte ${pmDemande} non rattachée à ${clientSupp || "aucun client"} — saisie manuelle requise`);
+          return res.status(400).json({ error: "Cette carte ne peut pas être réutilisée. Saisissez-la à nouveau." });
         }
       } catch (e) {
-        console.error("[supplement] réutilisation de la carte impossible :", e.message);
+        console.error("[supplement] vérification de la carte impossible :", e.message);
         return res.status(502).json({ error: "La carte n'a pas pu être vérifiée. Réessayez." });
       }
     }
