@@ -1397,6 +1397,11 @@ export default async function handler(req, res) {
               read: false,
             }),
           }).catch(() => {});
+          sendPushToUser(client_id, {
+            title: "🔄 Prestation récurrente planifiée",
+            body: `Prochaine prestation le ${nextDateStr}.`,
+            url: "/",
+          }, SUPABASE_URL, headers).catch(() => {});
         } catch (recErr) {
           console.error("[complete] recurrence creation error:", recErr.message);
         }
@@ -1415,6 +1420,16 @@ export default async function handler(req, res) {
             read: false,
           }),
         }).catch(() => {});
+
+        // La clôture était le SEUL moment important dépourvu de notification
+        // push : l'e-mail partait, la cloche de l'application se remplissait,
+        // et le téléphone restait muet. C'est pourtant l'annonce que le
+        // prestataire attend le plus — celle qui lui dit qu'il va être payé.
+        sendPushToUser(mission.prestataire_id, {
+          title: "Prestation validée ✅",
+          body: `Paiement de ${partPrestataire.toFixed(2)} € programmé.`,
+          url: "/",
+        }, SUPABASE_URL, headers).catch(() => {});
 
         const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
