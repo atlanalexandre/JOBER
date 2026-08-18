@@ -392,6 +392,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   // Deux formules auraient fini par diverger, et c'est le client qui aurait vu
   // l'écart au moment de payer.
   const [cashbackDispo, setCashbackDispo] = useState(0);
+  // « Mémoriser ma carte » — décochée par défaut. Une coordonnée bancaire ne se
+  // conserve que sur demande expresse du client, jamais par défaut.
+  const [memoriserCarte, setMemoriserCarte] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -617,6 +620,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           // Le serveur refuse tout identifiant qui ne serait pas celui du
           // paiement de CETTE prestation.
           payment_method_id: (useStored && savedCard?.origine === "prestation") ? savedCard.pmId : undefined,
+          // Ne vaut que pour une carte saisie : une carte déjà mémorisée n'a
+          // pas à l'être une seconde fois.
+          memoriser: (!useStored && memoriserCarte) || undefined,
           metadata: { prestataire: providers[0]?.id || "", description: description || "" },
         }),
       });
@@ -628,6 +634,25 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
       if (error) { setStripeError(error.message); setProcessing(false); return; }
       if (paymentIntent?.status === "succeeded") {
+        // La carte vient d'être rattachée par Stripe : on garde son identifiant
+        // pour la proposer au paiement suivant. Un échec ici ne remet rien en
+        // cause — le paiement a eu lieu, la carte sera simplement redemandée.
+        if (!useStored && memoriserCarte && paymentIntent.payment_method) {
+          try {
+            const rp = await fetch("/api/stripe-intent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(piSession?.access_token ? { "Authorization": `Bearer ${piSession.access_token}` } : {}) },
+              body: JSON.stringify({ action: "get_pm", pmId: paymentIntent.payment_method }),
+            });
+            const carte = await rp.json();
+            if (!carte?.error) {
+              await supabase.auth.updateUser({ data: {
+                stripe_pm_id: paymentIntent.payment_method,
+                card_brand: carte.brand, card_last4: carte.last4,
+              } });
+            }
+          } catch (e) { console.error("[paiement] carte non mémorisée :", e.message); }
+        }
         clearDraft(); setDone(true); setProcessing(false); onSuccess && onSuccess(paymentIntent.id);
       }
     } catch (e) { setStripeError(e.message || "Erreur paiement"); setProcessing(false); }
@@ -776,6 +801,25 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                       <div ref={mountRef} style={{ padding:"14px 14px", minHeight:50 }} />
                     </div>
                   </div>
+                  {/* Mémorisation de la carte — DÉCOCHÉE par défaut.
+                      Une case précochée ne vaut pas consentement : le RGPD
+                      comme la CNIL l'écartent, et il s'agit ici d'une donnée
+                      bancaire. Le texte dit qui conserve quoi, et comment
+                      revenir en arrière — sans quoi le client accepte sans
+                      savoir à quoi. */}
+                  <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer", marginBottom:4, padding:"10px 12px", borderRadius:11, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}` }}>
+                    <input
+                      type="checkbox"
+                      checked={memoriserCarte}
+                      onChange={e => setMemoriserCarte(e.target.checked)}
+                      style={{ width:17, height:17, marginTop:1, accentColor:C.violet, flexShrink:0, cursor:"pointer" }}
+                    />
+                    <span style={{ fontSize:12, color:C.textSub, lineHeight:1.55 }}>
+                      <strong style={{ color:C.text }}>Mémoriser ma carte</strong> pour mes prochaines réservations.
+                      Elle est conservée par Stripe, jamais par ALANE, et se supprime à tout moment
+                      depuis vos réglages.
+                    </span>
+                  </label>
                 </>
               )}
               {stripeError && (

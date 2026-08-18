@@ -577,6 +577,21 @@ export default async function handler(req, res) {
     };
     if (validatedCustomerId) params.customer = validatedCustomerId;
 
+    // « Mémoriser ma carte », coché par le client dans le tunnel.
+    //
+    // `setup_future_usage` demande à Stripe de RATTACHER la carte au client une
+    // fois le paiement réussi — sans quoi elle n'est conservée nulle part et le
+    // paiement suivant la redemande. La case est décochée par défaut, et ce
+    // paramètre n'est posé que si elle est cochée : conserver une coordonnée
+    // bancaire sans demande expresse n'est pas acceptable.
+    //
+    // Sans `customer`, Stripe n'a personne à qui rattacher la carte. On
+    // n'envoie donc pas le paramètre plutôt que de laisser Stripe refuser tout
+    // le paiement pour une commodité.
+    if (req.body?.memoriser === true && validatedCustomerId) {
+      params.setup_future_usage = "off_session";
+    }
+
     const r = await fetch("https://api.stripe.com/v1/payment_intents", {
       method: "POST",
       // La clé d'idempotence protège du double-clic : deux envois identiques
