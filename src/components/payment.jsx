@@ -487,7 +487,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   // supplémentaires (`mode`) suit son propre chemin côté serveur, où aucune
   // réduction n'est calculée : en afficher une ici annoncerait un montant que
   // Stripe ne demanderait pas.
-  const reduction = mode ? 0 : reductionCashback(cashbackDispo, Number(total));
+  // `mode` n'est renseigné que par le paiement d'un complément.
+  const estSupplement = Boolean(mode);
+  const reduction = estSupplement ? 0 : reductionCashback(cashbackDispo, Number(total));
   const aPayer = Math.round((Number(total) - reduction) * 100) / 100;
   const eur = (v) => Number(v).toFixed(2).replace(".", ",");
 
@@ -561,7 +563,13 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   };
 
   const providers = teamMode ? (teamProviders||[]) : (provider ? [provider] : []);
-  if (!providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
+
+  // Un COMPLÉMENT de paiement — la prolongation d'heures — porte sur une
+  // prestation déjà attribuée : l'écran n'a pas de prestataire à présenter, et
+  // n'en a pas besoin. Exiger `provider` comme pour une réservation faisait
+  // répondre « Prestataire introuvable » à un client qui voulait simplement
+  // régler son supplément. Le geste était inexécutable depuis son ouverture.
+  if (!estSupplement && !providers.length) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}><button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>Prestataire introuvable.</div>;
 
   const handlePay = async () => {
     if (processing) return;
@@ -608,15 +616,24 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         <strong>{eur(aPayer)} €</strong> sécurisés via Stripe.<br/>Libérés après validation de la prestation.
       </p>
       <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 18px", marginBottom:24, fontSize:13, color:"rgba(255,255,255,0.85)" }}>
-        ⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation.
+        {estSupplement
+          ? "⏱ La durée de la prestation vient d'être prolongée."
+          : "⏳ Prestation en cours d'activation — vous serez notifié(e) dès la confirmation."}
       </div>
       <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:16, padding:"16px 20px", width:"100%", maxWidth:300, marginBottom:24, textAlign:"left" }}>
-        {[
-          "🔒 Argent sécurisé jusqu'à validation",
-          "📧 Confirmation envoyée par email",
-          teamMode ? `👥 ${providers.length} prestataires notifiés` : `👤 ${providers[0]?.name} notifié(e)`,
-          "📄 Contrat de prestation généré",
-        ].map((s,i) => <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"5px 0" }}>{s}</div>)}
+        {(estSupplement
+          ? [
+              "🔒 Argent sécurisé jusqu'à validation",
+              "📧 Confirmation envoyée par email",
+              "⏱ Durée de la prestation prolongée",
+            ]
+          : [
+              "🔒 Argent sécurisé jusqu'à validation",
+              "📧 Confirmation envoyée par email",
+              teamMode ? `👥 ${providers.length} prestataires notifiés` : `👤 ${providers[0]?.name} notifié(e)`,
+              "📄 Contrat de prestation généré",
+            ]
+        ).map((s,i) => <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"5px 0" }}>{s}</div>)}
       </div>
     </div>
   );
@@ -639,6 +656,15 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
               <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{p.name}</div><div style={{ color:C.textSub, fontSize:11 }}>{p.role} · {p.hourlyRate} HT</div></div>
             </div>
           ))}
+          {!providers.length && description && (
+            <div style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>⏱</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Prolongation de la prestation</div>
+                <div style={{ color:C.textSub, fontSize:11 }}>{description}</div>
+              </div>
+            </div>
+          )}
           {reduction > 0 && (
             <>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12 }}>
