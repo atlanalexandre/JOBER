@@ -1943,7 +1943,7 @@ export default async function handler(req, res) {
       const { mission_id } = req.body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,hours,actual_hours,tarif_horaire,montant_total,date_debut,date_fin,delay_status,arrival_delay_minutes,started_at,metier,sector,recurrence,date,heure_debut,ville,extra_hours_tarif,extra_hours_appliquees`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });

@@ -1189,7 +1189,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       // Récupérer la mission pour avoir hours, tarif_horaire et prestataire_id
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=hours,tarif_horaire,status,prestataire_id,metier,sector,client_id,validation_prestataire,recurrence,date,date_debut,date_fin,ville,adresse,description,heure_debut,actual_hours,arrival_delay_minutes,delay_status,stripe_payment_intent,montant_total,started_at,extra_hours_tarif,extra_hours_appliquees`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -3784,7 +3784,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const [r1, r2] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.pending_acceptance&select=id,sector,metier,date,heure_debut,hours,tarif_horaire,acceptance_deadline,client_id,titre,ville,adresse,description&order=created_at.desc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,extra_hours_tarif,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/missions?prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,sector,metier,date,date_debut,date_fin,heure_debut,hours,actual_hours,tarif_horaire,client_id,titre,ville,adresse,description,validation_prestataire,status,arrived_at,started_at,extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_appliquees,delay_status,arrival_delay_minutes&order=created_at.desc`, { headers }),
       ]);
       const [pending, assigned] = await Promise.all([r1.json(), r2.json()]);
       const pendingList = Array.isArray(pending) ? pending : [];
@@ -4453,7 +4453,8 @@ export default async function handler(req, res) {
       const mr = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
         + `&select=id,status,hours,tarif_horaire,montant_total,date_debut,date_fin,`
-        + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent`,
+        + `extra_hours_requested,extra_hours_status,extra_hours_tarif,extra_hours_payment_intent,`
+        + `extra_hours_appliquees`,
         { headers }
       );
       const mission = (await mr.json().catch(() => []))[0];
@@ -4511,6 +4512,10 @@ export default async function handler(req, res) {
         { method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({
             hours: nouvellesHeures,
+            // Combien d'heures relèvent du tarif négocié. Sans cette valeur,
+            // la clôture recalcule tout au tarif de base et le prestataire perd
+            // l'écart qu'il avait annoncé.
+            extra_hours_appliquees: Math.round((Number(mission.extra_hours_appliquees || 0) + extraH) * 100) / 100,
             actual_hours: null,
             montant_total: nouveauTotal,
             extra_hours_status: "accepted",

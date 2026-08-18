@@ -1215,7 +1215,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
