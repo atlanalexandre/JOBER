@@ -23,6 +23,24 @@ const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 // Les heures réellement effectuées priment sur les heures prévues.
 // Volontairement non exportée : exporter une fonction depuis un fichier de
 // composants casse le rafraîchissement à chaud (react-refresh).
+// Libellés des états de versement — une seule source.
+//
+// L'historique des revenus affichait « Versé » EN DUR sous chaque montant,
+// quel que soit l'état réel. Un prestataire lisait donc « Versé » sous une
+// somme programmée pour dans deux jours, retenue au titre de l'article 7.4, ou
+// dont le virement avait échoué.
+//
+// Sur un écran qui parle d'argent, annoncer un versement qui n'a pas eu lieu
+// n'est pas un raccourci d'affichage : c'est ce qui fait qu'on ne réclame pas
+// une somme qu'on croit reçue.
+const ETATS_VERSEMENT = {
+  pending:     "en attente",
+  processing:  "en cours",
+  transferred: "versé",
+  held:        "retenu",
+  failed:      "bloqué",
+};
+
 function montantPrestataire(m) {
   // Une prestation clôturée porte le montant exact qui lui sera versé, figé par
   // le serveur (`payout_amount`). Il fait foi : le recalcul ci-dessous ignore le
@@ -3259,7 +3277,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const t = String(v ?? "");
       return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
     };
-    const etats = { pending:"en attente", processing:"en cours", transferred:"versé", held:"retenu", failed:"bloqué" };
+    const etats = ETATS_VERSEMENT;
     const entete = ["Date","Prestation","Ville","Heures","Tarif horaire","Montant net","Retenue","Versement","N° de facture"];
     const corps = lignes.map(m => [
       m.date || "",
@@ -4094,7 +4112,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       </div>
                       <div style={{ textAlign:"right", flexShrink:0 }}>
                         <div style={{ color:C.success, fontWeight:800, fontSize:14 }}>{amt>0?amt.toFixed(2).replace(".",",")+" €":"—"}</div>
-                        <div style={{ color:C.textMuted, fontSize:10 }}>Versé</div>
+                        <div style={{ color: m.payout_status === "transferred" ? C.success
+                                           : m.payout_status === "failed" ? C.danger
+                                           : m.payout_status === "held" ? C.accentGold
+                                           : C.textMuted, fontSize:10 }}>
+                          {m.payout_status === "pending" && m.payout_due_at
+                            ? `à verser le ${new Date(m.payout_due_at).toLocaleDateString("fr-FR")}`
+                            : ETATS_VERSEMENT[m.payout_status] || "en attente"}
+                        </div>
                       </div>
                     </div>
                     {!ratedMissions.has(m.id) && (
