@@ -1,3 +1,4 @@
+import { notifier } from "./_push.js";
 import { verifyUser } from "./_auth.js";
 import { lireFraisService, verifierMontant, messageIncoherence, ERREUR_MONTANT } from "./_montant.js";
 
@@ -171,14 +172,10 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Votre solde a changé pendant l'opération — contactez support@alane.fr." });
       }
 
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-        body: JSON.stringify({ user_id: caller.id, type: "system",
+      await notifier({ user_id: caller.id, type: "system",
           title: "Remboursement de votre portefeuille",
           body: `${(rembourseC/100).toFixed(2).replace(".", ",")} € vous sont remboursés sur le moyen de paiement d'origine. `
-              + `Comptez 5 à 10 jours ouvrés selon votre banque.`,
-          read: false }),
-      }).catch(() => {});
+              + `Comptez 5 à 10 jours ouvrés selon votre banque.`}, SUPABASE_URL, hdrs).catch(() => {});
 
       console.log(`[rembourser_solde] ${(rembourseC/100).toFixed(2)} € remboursés à ${caller.id} — ${emis.join(", ")}`);
       return res.status(200).json({
@@ -327,17 +324,12 @@ export default async function handler(req, res) {
         `${SUPABASE_URL}/rest/v1/candidatures?mission_id=eq.${mission_id}&prestataire_id=neq.${mission.prestataire_id}`,
         { method: "PATCH", headers: candHdrs, body: JSON.stringify({ status: "rejected" }) }
       ).catch(() => {});
-      await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-        method: "POST",
-        headers: { ...hdrs, "Prefer": "return=minimal" },
-        body: JSON.stringify({
+      await notifier({
           user_id: mission.prestataire_id,
           type:    "mission",
           title:   "Proposition acceptée ✅",
           body:    "Votre proposition a été acceptée. Préparez-vous pour la prestation !",
-          read:    false,
-        }),
-      }).catch(() => {});
+        }, SUPABASE_URL, hdrs).catch(() => {});
     }
 
     return res.status(200).json({ success: true, newBalance });

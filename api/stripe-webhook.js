@@ -1,3 +1,4 @@
+import { notifier } from "./_push.js";
 import { resendBody } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
 export const config = { api: { bodyParser: false } };
@@ -116,15 +117,11 @@ export default async function handler(req, res) {
             console.error(`[wallet_topup] crédit refusé (${rpc.status}) : ${txt}`);
             return res.status(500).json({ error: "Wallet update failed" });
           }
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers: wHdrs,
-            body: JSON.stringify({
+          await notifier({
               user_id: topupUserId, type: "cashback",
               title: "Wallet rechargé 💳",
               body: `${topupAmount.toFixed(2).replace(".", ",")} € ajoutés à votre wallet ALANE. Solde : ${newBal.toFixed(2).replace(".", ",")} €.`,
-              read: false,
-            }),
-          }).catch(e => console.error("[wallet_topup] notification failed:", e));
+            }, SUPABASE_URL, wHdrs).catch(e => console.error("[wallet_topup] notification failed:", e));
           // Email de confirmation de recharge
           const RESEND_API_KEY_W = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
           const RESEND_FROM_W    = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
@@ -271,15 +268,12 @@ export default async function handler(req, res) {
       if (prestataireId && !prestataireRetenu) {
         const clientMission = patchedRows[0] || {};
         if (clientMission.client_id) {
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers,
-            body: JSON.stringify({
-              user_id: clientMission.client_id, type: "mission", read: false, ref_id: missionId,
+          await notifier({
+              user_id: clientMission.client_id, type: "mission", ref_id: missionId,
               title: "Recherche d'un autre professionnel 🔄",
               body: "Votre paiement est bien enregistré. Le professionnel pressenti n'est plus disponible : "
                   + "nous recherchons un remplaçant et vous préviendrons dès qu'il est trouvé.",
-            }),
-          }).catch(e => console.error("[stripe-webhook] notification client échouée :", e.message));
+            }, SUPABASE_URL, headers).catch(e => console.error("[stripe-webhook] notification client échouée :", e.message));
         }
       }
 
@@ -295,10 +289,7 @@ export default async function handler(req, res) {
           method: "PATCH", headers, body: JSON.stringify({ status: "rejected" }),
         }).catch(e => console.error("candidature reject failed:", e));
         if (prestataireRetenu) {
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers,
-            body: JSON.stringify({ user_id: prestataireRetenu, type: "mission", title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !", read: false }),
-          }).catch(e => console.error("notification failed:", e));
+          await notifier({ user_id: prestataireRetenu, type: "mission", title: "Proposition acceptée ✅", body: "Votre proposition a été acceptée et le paiement confirmé. Préparez-vous pour la prestation !"}, SUPABASE_URL, headers).catch(e => console.error("notification failed:", e));
         }
       }
     }
@@ -457,15 +448,11 @@ export default async function handler(req, res) {
             return;
           }
 
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers: { ...hdrs, "Prefer": "return=minimal" },
-            body: JSON.stringify({
+          await notifier({
               user_id: parrainId, type: "system",
               title: "🎁 1 mois offert — parrainage",
               body: `Trois de vos filleuls sont désormais abonnés. Votre abonnement ${planParrain === "elite" ? "Elite" : "Premium"} est prolongé d'un mois, jusqu'au ${new Date(nouvelleFin).toLocaleDateString("fr-FR")}.`,
-              read: false,
-            }),
-          }).catch(() => {});
+            }, SUPABASE_URL, hdrs).catch(() => {});
           console.log(`[parrainage] mois offert à ${parrainId} — ${abonnes} filleuls abonnés, ${duesTotal} récompense(s) au total`);
         } catch (e) {
           console.error("[parrainage] évaluation impossible :", e.message);
@@ -642,15 +629,11 @@ export default async function handler(req, res) {
         const m = Array.isArray(mData) && mData[0];
         if (m?.client_id) {
           const label = m.titre || m.metier || "la prestation";
-          await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-            method: "POST", headers,
-            body: JSON.stringify({
+          await notifier({
               user_id: m.client_id, type: "mission",
               title: "Paiement échoué ⚠️",
               body: `Le paiement pour « ${label} » a échoué. Veuillez réessayer depuis l'application.`,
-              read: false,
-            }),
-          }).catch(() => {});
+            }, SUPABASE_URL, headers).catch(() => {});
         }
       } catch (e) { console.error("[stripe-webhook] notification d'échec de paiement non envoyée :", e.message); }
       console.log("[payment_intent.payment_failed] mission remise en open:", missionId);
@@ -676,17 +659,12 @@ export default async function handler(req, res) {
         }
       } catch (e) { console.error("[stripe-webhook] compte introuvable pour ce client Stripe :", e.message); }
       if (userId) {
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: { ...hdrs, "Prefer": "return=minimal" },
-          body: JSON.stringify({
+        await notifier({
             user_id: userId,
             type: "system",
             title: "⚠️ Paiement de renouvellement échoué",
             body: "Le renouvellement de votre abonnement ALANE a échoué. Mettez à jour votre moyen de paiement dans votre espace pour conserver votre accès Premium.",
-            read: false,
-          }),
-        }).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(() => {});
         console.warn(`[invoice.payment_failed] Renewal failed for user ${userId} — customer ${customerId}`);
       }
     }

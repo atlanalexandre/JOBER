@@ -298,6 +298,13 @@ nom, sans aucun code de paiement à modifier.
 RLS : **lecture seule**, réservée aux trois personnes concernées. Aucune policy d'écriture —
 tout passe par `/api/missions`, qui seul vérifie les qualifications et l'ordre des accords.
 
+**Toute notification part sur les deux canaux.** `notifier()` dans `api/_push.js` écrit la ligne
+dans `notifications` ET envoie la notification push. C'est le passage obligé : le 18/08/2026, le
+dépôt comptait 86 insertions pour 20 push, écart que personne n'avait décidé — la validation
+d'une prestation ne prévenait pas le prestataire, alors qu'un retard de quinze minutes le
+faisait. Les envois groupés gardent leur insertion en lot, suivie d'une boucle de push. Une
+insertion directe sans push est refusée par `npm run coherence`.
+
 **`push_subscriptions`** — **un appareil n'appartient qu'à un compte à la fois.** L'`endpoint`
 identifie une installation du site dans un navigateur, pas une personne : à la reconnexion sous
 un autre compte, il est réenregistré sans que l'ancienne ligne soit retirée. L'appareil recevait
