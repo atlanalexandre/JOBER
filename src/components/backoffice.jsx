@@ -1958,6 +1958,13 @@ export function BORatings() {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
+  // Les avis reçus par les CLIENTS ne sont visibles qu'ici. Décision du
+  // 18/08/2026 : ils étaient enregistrés et lus par personne, ce qui est une
+  // collecte sans finalité. Les montrer au prestataire avant qu'il accepte
+  // aurait été l'usage naturel, mais aurait fait de la note un critère de
+  // sélection — donc un pouvoir sur le client, exercé par la plateforme qui
+  // l'affiche. Le back-office suffit à repérer un client problématique.
+  const [vue, setVue] = useState("prestataires");
   useEffect(() => {
     boFetch({ action:"list_ratings" }).then(r=>r.json()).then(d=>{ setRatings(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
   }, []);
@@ -1975,11 +1982,72 @@ export function BORatings() {
     setDeleting(null);
   };
   if (loading) return <div style={{ color:C.textSub, fontSize:13, padding:"20px 0" }}>Chargement…</div>;
-  if (!ratings.length) return <div style={{ color:C.textSub, fontSize:13, textAlign:"center", padding:"20px 0" }}>Aucun avis pour l'instant</div>;
+
+  const surClients = ratings.filter(r => r.reviewee_role === "client");
+  const surPrestas = ratings.filter(r => r.reviewee_role !== "client");
+  const liste = vue === "clients" ? surClients : surPrestas;
+
+  // Moyenne par client, pour repérer d'un coup d'œil ceux qui posent problème.
+  // Affichée à partir de TROIS avis : en dessous, un seul prestataire mécontent
+  // condamnerait quelqu'un, et le chiffre ne dirait rien de la réalité.
+  const parClient = {};
+  for (const r of surClients) {
+    const c = (parClient[r.reviewee_id] ||= { nom: r.reviewee_name, notes: [] });
+    c.notes.push(Number(r.rating) || 0);
+  }
+  const synthese = Object.entries(parClient)
+    .map(([id, c]) => ({ id, nom: c.nom, nb: c.notes.length,
+                         moyenne: c.notes.reduce((a, b) => a + b, 0) / c.notes.length }))
+    .filter(c => c.nb >= 3)
+    .sort((a, b) => a.moyenne - b.moyenne);
+
   return (
     <div>
-      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:14 }}>⭐ Gestion des avis</div>
-      {ratings.map(r => (
+      <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:12 }}>⭐ Gestion des avis</div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+        {[{ id:"prestataires", l:`Sur les prestataires (${surPrestas.length})` },
+          { id:"clients",     l:`Sur les clients (${surClients.length})` }].map(o => (
+          <button key={o.id} onClick={()=>setVue(o.id)} style={{
+            flex:1, padding:"9px 6px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12,
+            border:`1px solid ${vue===o.id?C.violet:C.border}`,
+            background: vue===o.id ? `${C.violet}18` : "transparent",
+            color: vue===o.id ? C.violet : C.textSub, fontWeight: vue===o.id?700:500,
+          }}>{o.l}</button>
+        ))}
+      </div>
+
+      {vue === "clients" && (
+        <div style={{ background:"rgba(124,111,224,0.07)", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+          <div style={{ color:C.textSub, fontSize:11, lineHeight:1.6, marginBottom: synthese.length ? 10 : 0 }}>
+            Ces avis sont déposés par les prestataires et ne sont visibles nulle part ailleurs :
+            ni le client, ni les autres prestataires n'y ont accès. Ils servent à repérer un
+            client à qui parler, pas à le classer.
+          </div>
+          {synthese.length > 0 && (
+            <>
+              <div style={{ color:C.accentGold, fontWeight:700, fontSize:12, marginBottom:6 }}>
+                Clients avec au moins 3 avis, du moins bien noté au mieux noté
+              </div>
+              {synthese.map(c => (
+                <div key={c.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${C.border}` }}>
+                  <span style={{ color:C.text, fontSize:12 }}>{c.nom}</span>
+                  <span style={{ color: c.moyenne < 3 ? C.danger : c.moyenne < 4 ? C.accentGold : C.success, fontSize:12, fontWeight:700 }}>
+                    {c.moyenne.toFixed(1)} / 5 · {c.nb} avis
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {!liste.length && (
+        <div style={{ color:C.textSub, fontSize:13, textAlign:"center", padding:"20px 0" }}>
+          {vue === "clients" ? "Aucun avis sur un client pour l'instant" : "Aucun avis pour l'instant"}
+        </div>
+      )}
+      {liste.map(r => (
         <div key={r.id} style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 14px", marginBottom:8, border:`1px solid ${C.border}` }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
             <div style={{ flex:1 }}>

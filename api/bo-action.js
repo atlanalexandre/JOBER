@@ -2374,13 +2374,39 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_ratings") {
-      const rr = await fetch(`${SUPABASE_URL}/rest/v1/ratings?select=id,rating,comment,created_at,reviewer_id,reviewee_id&order=created_at.desc&limit=200`, { headers });
+      // La colonne est `reviewee_provider_id`, jamais `reviewee_id`.
+      //
+      // Le select demandait `reviewee_id`, qui n'existe nulle part ailleurs dans
+      // le projet. PostgREST refuse alors TOUTE la requête, pas seulement la
+      // colonne fautive : l'onglet affichait « Aucun avis pour l'instant » quel
+      // que soit le nombre d'avis déposés, et sans le moindre message.
+      //
+      // Le nom est trompeur — `reviewee_provider_id` porte le prestataire OU le
+      // client selon le sens de l'avis — mais c'est celui de la base.
+      const rr = await fetch(`${SUPABASE_URL}/rest/v1/ratings?select=id,rating,comment,created_at,reviewer_id,reviewee_provider_id,mission_id&order=created_at.desc&limit=200`, { headers });
       const ratings = await rr.json();
-      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom`, { headers });
+      if (!rr.ok) {
+        console.error("[list_ratings] lecture refusée :", JSON.stringify(ratings).slice(0, 200));
+        return res.status(500).json({ error: "Avis illisibles" });
+      }
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,prenom,nom,role`, { headers });
       const profs = await pr.json();
-      const nameMap = {};
-      (Array.isArray(profs) ? profs : []).forEach(p => { nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim(); });
-      return res.status(200).json((Array.isArray(ratings) ? ratings : []).map(r => ({ ...r, reviewer_name: nameMap[r.reviewer_id]||"Inconnu", reviewee_name: nameMap[r.reviewee_id]||"Inconnu" })));
+      const nameMap = {}, roleMap = {};
+      (Array.isArray(profs) ? profs : []).forEach(p => {
+        nameMap[p.id] = `${p.prenom||""} ${p.nom||""}`.trim();
+        roleMap[p.id] = p.role;
+      });
+
+      // Le SENS de l'avis se déduit du rôle du destinataire : un avis reçu par
+      // un client vient forcément d'un prestataire, et réciproquement. C'est ce
+      // qui permet de séparer les deux listes sans colonne supplémentaire.
+      return res.status(200).json((Array.isArray(ratings) ? ratings : []).map(r => ({
+        ...r,
+        reviewee_id: r.reviewee_provider_id,
+        reviewer_name: nameMap[r.reviewer_id] || "Inconnu",
+        reviewee_name: nameMap[r.reviewee_provider_id] || "Inconnu",
+        reviewee_role: roleMap[r.reviewee_provider_id] || null,
+      })));
     }
 
     if (action === "delete_rating") {
