@@ -413,8 +413,15 @@ export default async function handler(req, res) {
   // afficherait un prix unitaire qui n'a jamais été convenu : la facture doit
   // montrer ce qui a été commandé, et ce qui a été prolongé.
   const eurTarif = (t) => Number(t).toFixed(2).replace(".", ",");
-  const heuresSupp = Math.min(hours, Math.max(0, Number(mission.extra_hours_appliquees) || 0));
   const tarifSupp = Number(mission.extra_hours_tarif) > 0 ? Number(mission.extra_hours_tarif) : tarifHoraire;
+  // La ligne n'est scindée que si les deux tarifs DIFFÈRENT. Une prolongation
+  // acceptée au tarif de la commande — ce que faisait l'ancien mécanisme, avant
+  // que le prestataire ne fixe son prix — ne se distingue de rien : l'écrire
+  // « 3h × 12,50 € + 1h supplémentaire × 12,50 € » n'apporterait qu'une
+  // question de plus au client, pour un total identique.
+  const heuresSupp = tarifSupp === tarifHoraire
+    ? 0
+    : Math.min(hours, Math.max(0, Number(mission.extra_hours_appliquees) || 0));
   const suffixeJours = nbJours > 1 ? ` × ${nbJours} jours` : "";
   const lineItem = htCalc <= 0
     ? metier
