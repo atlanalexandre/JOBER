@@ -859,197 +859,23 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
 // la société. Un document qui a l'apparence d'une facture ne peut pas affirmer
 // l'existence d'une personne morale qui n'existe pas encore.
 //
-// Ces trois mentions ne s'affichent que si elles sont renseignées dans Vercel.
-// Tant qu'elles ne le sont pas, l'en-tête indique simplement le rôle d'ALANE.
-const ALANE_SIRET   = import.meta.env.VITE_ALANE_SIRET   || "";
-const ALANE_ADRESSE = import.meta.env.VITE_ALANE_ADRESSE || "";
-const ALANE_FORME   = import.meta.env.VITE_ALANE_FORME   || "";
+// L'écran de facture « dans l'app » a été RETIRÉ le 18/08/2026.
+//
+// Il fabriquait un second document pour une prestation déjà facturée : un numéro
+// inventé par le navigateur (`ALA-{année}{mois}-{6 caractères de l'identifiant}`),
+// hors de la séquence continue tenue par le serveur, et un montant recalculé
+// `heures × tarif_horaire` — sans le nombre de jours d'une prestation
+// récurrente, et sans le tarif des heures supplémentaires.
+//
+// Sur la prestation du 18/08/2026, il affichait ainsi 30,00 € là où 32,00 €
+// étaient dus, et sous un numéro que rien ne relie à la facture réelle. Deux
+// documents portant deux numéros pour une seule opération, ce qu'interdit
+// l'article 242 nonies A de l'annexe II au CGI.
+//
+// La facture est produite par `api/invoice.js`, et par lui seul : numérotée une
+// fois, archivée telle qu'émise, imprimable en PDF. Le client comme le
+// prestataire l'ouvrent avec `ouvrirFacture()` de `ui.jsx`.
 
-export function InvoiceScreen({ prestation, onBack }) {
-  const [clientInfo,  setClientInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
-  const [prestaInfo,  setPrestaInfo]  = useState({ name:"", company:"", siret:"", adresse:"", cp:"", ville:"" });
-  const [loading,     setLoading]     = useState(true);
-
-  const billedHours  = prestation?.actual_hours ?? prestation?.hours ?? 0;
-  const missionDate  = prestation?.created_at ? new Date(prestation.created_at) : new Date();
-  const invoiceNum   = prestation
-    ? `ALA-${missionDate.getFullYear()}${String(missionDate.getMonth()+1).padStart(2,"0")}-${prestation.id.slice(-6).toUpperCase()}`
-    : "ALA-000000";
-  const emittedDate  = missionDate.toLocaleDateString("fr-FR");
-  const htCalc       = Math.round(billedHours * Number(prestation?.tarif_horaire||0) * 100) / 100;
-  const ht           = htCalc > 0 ? htCalc : (Number(prestation?.montant_total||0));
-  const htFormatted  = ht.toFixed(2).replace(".",",");
-
-  useEffect(() => {
-    if (!prestation) { setLoading(false); return; }
-    (async () => {
-      try {
-        const [{ data: cu }, { data: cp }] = await Promise.all([
-          supabase.auth.getUser(),
-          supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", prestation.client_id).single(),
-        ]);
-        const clientMeta = cu?.user?.user_metadata || {};
-        setClientInfo({
-          name:    [cp?.prenom||clientMeta.prenom, cp?.nom||clientMeta.nom].filter(Boolean).join(" ") || cu?.user?.email || "—",
-          company: cp?.societe_nom || clientMeta.societe_nom || "",
-          siret:   cp?.siret || clientMeta.kbis || "",
-          adresse: cp?.adresse || clientMeta.adresse || "",
-          cp:      cp?.code_postal || clientMeta.code_postal || "",
-          ville:   cp?.ville || clientMeta.ville || "",
-        });
-        if (prestation.prestataire_id) {
-          const { data: pp } = await supabase.from("profiles").select("prenom,nom,societe_nom,adresse,code_postal,ville,siret").eq("id", prestation.prestataire_id).single();
-          setPrestaInfo({
-            name:    [pp?.prenom, pp?.nom].filter(Boolean).join(" ") || "Prestataire",
-            company: pp?.societe_nom || "",
-            siret:   pp?.siret || "",
-            adresse: pp?.adresse || "",
-            cp:      pp?.code_postal || "",
-            ville:   pp?.ville || "",
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [prestation?.id]);
-
-  if (!prestation) return (
-    <div style={{ padding:40, textAlign:"center", color:C.textSub }}>
-      <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, display:"block", marginBottom:16 }}>← Retour</button>
-      Facture introuvable.
-    </div>
-  );
-
-  return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:80 }}>
-      {/* Header — masqué à l'impression */}
-      <div className="no-print" style={{ background:"linear-gradient(135deg,#0A1628,#162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
-        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Facture de prestation</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{invoiceNum}</p>
-      </div>
-
-      {loading ? (
-        <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Chargement…</div>
-      ) : (
-        <div style={{ padding:"20px 18px" }}>
-          {/* Zone imprimable */}
-          <div id="invoice-print-area">
-            {/* En-tête */}
-            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"20px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-                <div>
-                  <div style={{ fontSize:22, fontWeight:800, color:C.violet, fontFamily:font.display, letterSpacing:1 }}>ALANE</div>
-                  {/* La facture est établie par le prestataire au client :
-                      ALANE n'en est pas l'émetteur, seulement l'intermédiaire.
-                      Le dire évite qu'un lecteur — client, comptable, contrôleur
-                      — attribue la prestation à la plateforme. */}
-                  <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>
-                    Plateforme de mise en relation{ALANE_FORME ? ` · ${ALANE_FORME}` : ""}
-                  </div>
-                  {ALANE_ADRESSE && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>{ALANE_ADRESSE}</div>}
-                  {ALANE_SIRET   && <div style={{ color:C.textSub, fontSize:10, marginTop:1 }}>SIRET : {ALANE_SIRET}</div>}
-                  <div style={{ color:C.textMuted, fontSize:9, marginTop:3, maxWidth:210, lineHeight:1.4 }}>
-                    Facture établie par le prestataire au client. ALANE intervient
-                    comme intermédiaire et n&apos;est pas partie au contrat de prestation.
-                  </div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>FACTURE</div>
-                  <div style={{ color:C.textSub, fontSize:11 }}>{invoiceNum}</div>
-                  <div style={{ color:C.textSub, fontSize:11 }}>Émise le {emittedDate}</div>
-                </div>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
-                <div>
-                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Client</div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{clientInfo.name}</div>
-                  {clientInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{clientInfo.company}</div>}
-                  {clientInfo.siret   && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {clientInfo.siret}</div>}
-                  {clientInfo.adresse && <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>{clientInfo.adresse}</div>}
-                  {(clientInfo.cp || clientInfo.ville) && <div style={{ fontSize:11, color:C.textSub }}>{[clientInfo.cp, clientInfo.ville].filter(Boolean).join(" ")}</div>}
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Prestataire</div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{prestaInfo.name}</div>
-                  {prestaInfo.company && <div style={{ fontSize:11, color:C.textSub }}>{prestaInfo.company}</div>}
-                  {prestaInfo.siret   && <div style={{ fontSize:11, color:C.textSub }}>SIRET : {prestaInfo.siret}</div>}
-                  {prestaInfo.adresse && <div style={{ fontSize:11, color:C.textSub, marginTop:3 }}>{prestaInfo.adresse}</div>}
-                  {(prestaInfo.cp || prestaInfo.ville) && <div style={{ fontSize:11, color:C.textSub }}>{[prestaInfo.cp, prestaInfo.ville].filter(Boolean).join(" ")}</div>}
-                </div>
-              </div>
-            </div>
-
-            {/* Détail prestation */}
-            <div style={{ background:"#0D1B3E", borderRadius:16, padding:"16px", marginBottom:14, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
-              <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>Détail de la prestation</div>
-              <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-                <span style={{ color:C.textSub, fontSize:12, fontWeight:600 }}>Description</span>
-                <span style={{ color:C.textSub, fontSize:12, fontWeight:600 }}>Montant HT</span>
-              </div>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
-                <div>
-                  <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{prestation.metier || "Prestation de service"}</div>
-                  {prestation.sector && <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Secteur : {prestation.sector}</div>}
-                  {prestation.date && <div style={{ color:C.textSub, fontSize:11 }}>Date : {prestation.date}</div>}
-                  {prestation.started_at
-                    ? <div style={{ color:C.textSub, fontSize:11 }}>Début réel : {new Date(prestation.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
-                    : prestation.heure_debut && <div style={{ color:C.textSub, fontSize:11 }}>Début : {prestation.heure_debut}</div>}
-                  {prestation.delay_status === "rejected" && prestation.actual_hours && (
-                    <div style={{ color:"#F59E0B", fontSize:11 }}>Décalage refusé — {prestation.actual_hours}h facturées</div>
-                  )}
-                  {prestation.ville && <div style={{ color:C.textSub, fontSize:11 }}>Lieu : {prestation.ville}</div>}
-                  {htCalc > 0 && (
-                    <div style={{ color:C.textSub, fontSize:11 }}>
-                      {billedHours}h × {Number(prestation.tarif_horaire||0).toFixed(2).replace(".",",")} € HT/h
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontWeight:700, color:C.text, fontSize:14, minWidth:70, textAlign:"right" }}>{htFormatted} €</div>
-              </div>
-              <div style={{ padding:"10px 0 4px" }}>
-                {[
-                  ["Sous-total HT", `${htFormatted} €`],
-                  ["TVA (0% — art. 293 B CGI)", "0,00 €"],
-                  ["Total TTC", `${htFormatted} €`],
-                ].map(([l,v],i) => (
-                  <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
-                    <span style={{ color:i===2?C.text:C.gray, fontSize:i===2?15:13, fontWeight:i===2?900:400 }}>{l}</span>
-                    <span style={{ color:i===2?C.violet:C.text, fontSize:i===2?18:13, fontWeight:i===2?900:600 }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Statut */}
-            <div style={{ background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:r, padding:"14px 16px", marginBottom:14, display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontSize:24 }}>✅</span>
-              <div>
-                <div style={{ fontWeight:800, color:C.success, fontSize:13 }}>Prestation validée</div>
-                <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Paiement traité via ALANE</div>
-              </div>
-            </div>
-
-            {/* Mention légale */}
-            <div style={{ color:C.textMuted, fontSize:10, lineHeight:1.5, padding:"0 2px 4px" }}>
-              TVA non applicable — article 293 B du CGI. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.
-            </div>
-          </div>
-
-          {/* Bouton impression — masqué à l'impression */}
-          <div className="no-print" style={{ marginTop:16 }}>
-            <Btn full onClick={()=> window.print()} style={{ padding:"14px", fontSize:14, fontWeight:700 }}>
-              🖨️ Télécharger / Imprimer PDF
-            </Btn>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── GESTION DES ANNULATIONS ───────────────────────────────────────
 export function CancellationScreen({ provider, missionId, missionDate, onNavigate, onBack }) {
   const p = provider || {};
   const [step, setStep] = useState("policy"); // policy | confirm | replacement | done

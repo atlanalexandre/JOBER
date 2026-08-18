@@ -8,7 +8,7 @@ import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
-import { MissionPendingScreen, StripePaymentScreen, InvoiceScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
+import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
 import { PrestaOnboarding, PrestaProfileEditScreen, PrestaPointageScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
@@ -1026,7 +1026,6 @@ export default function App() {
     try { await supabase.auth.updateUser({ data: { is_online: next } }); } catch (e) { console.error("[statut] passage en ligne/hors ligne non enregistré :", e.message); }
   };
   const [pendingMission,setPendingMission]=useState(null);
-  const [invoiceMission,setInvoiceMission]=useState(null);
   const [unreadCount,setUnreadCount]=useState(0);
   const [notifCount,setNotifCount]=useState(0);
   const [clientCoords,setClientCoords]=useState(null);
@@ -1442,7 +1441,7 @@ export default function App() {
   };
 
   const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
-  const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending","invoice"];
+  const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
   // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
   // Reflète `screen` dans l'URL : chaque changement empile une entrée d'historique,
@@ -1512,7 +1511,6 @@ export default function App() {
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
     if(to==="mission_broadcast") setPendingMission(data);
-    if(to==="invoice") setInvoiceMission(data);
     if(to==="mission_history" || to==="p_missions") setNotifOpenMissionId(data?.openMissionId||null);
     setScreen(to);
   };
@@ -1859,7 +1857,6 @@ export default function App() {
       {screen==="contract"          && <ContractScreen provider={selectedProvider} amount={paymentAmount} hours={paymentHours} missionId={selectedMissionId} onSign={()=>setScreen("tracking")} onBack={()=>setScreen("home")} />}
       {screen==="tracking"          && <TrackingScreen provider={selectedProvider} missionId={selectedMissionId} onNavigate={navigate} clientCoords={clientCoords} />}
       {screen==="validation"        && <ValidationScreen provider={selectedProvider} role={role} missionId={selectedMissionId} onNavigate={navigate} />}
-      {screen==="invoice"           && <InvoiceScreen prestation={invoiceMission} onBack={()=>setScreen("mission_history")} />}
       {screen==="cancellation"      && <CancellationScreen provider={selectedProvider} missionId={selectedMissionId} missionDate={paymentDate||null} onNavigate={navigate} onBack={()=>setScreen("mission_history")} />}
       {screen==="team_booking"      && <TeamBookingScreen onNavigate={navigate} onBack={()=>setScreen("home")} />}
       {screen==="mission_history"   && <MissionHistoryScreen onNavigate={navigate} onBack={()=>setScreen("home")} openMissionId={notifOpenMissionId} />}

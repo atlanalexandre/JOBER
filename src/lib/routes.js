@@ -43,7 +43,6 @@ export const SCREEN_TO_PATH = {
   tracking:          "/missions/tracking",
   validation:        "/missions/validation",
   cancellation:      "/missions/cancellation",
-  invoice:           "/invoices",
   favorites:         "/favorites",
   cashback:          "/cashback",
   client_pro_docs:   "/account/documents",
@@ -80,7 +79,7 @@ export const PATH_TO_SCREEN = Object.entries(SCREEN_TO_PATH)
 export const NEEDS_DATA = new Set([
   "profile", "cv", "booking", "team_booking", "stripe_pay", "sector_detail",
   "mission_request", "mission_broadcast", "mission_pending", "tracking",
-  "validation", "cancellation", "invoice", "payslip", "chat", "rating",
+  "validation", "cancellation", "payslip", "chat", "rating",
   "contract", "presta_pointage",
 ]);
 

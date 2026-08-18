@@ -231,7 +231,16 @@ export default async function handler(req, res) {
   //
   // On refuse donc d'éditer la facture. Ne pas produire de document est
   // rattrapable ; en produire un mal numéroté ne l'est pas.
-  if (!invoiceNum) {
+  //
+  // CE REFUS NE VAUT QUE SI UN NUMÉRO ÉTAIT DÛ.
+  //
+  // Sans mandat de facturation, aucun numéro n'est tiré — c'est voulu, le
+  // document est alors une attestation de prestation. Or ce bloc refusait
+  // l'édition dans les DEUX cas, si bien que l'attestation n'a jamais pu
+  // s'afficher : le prestataire recevait « le numéro n'a pas pu être attribué,
+  // réessayez dans un instant », un message qui décrit une panne passagère là où
+  // il n'y a qu'un mandat non signé. Réessayer n'y changeait rien.
+  if (!invoiceNum && mandatAccepte) {
     console.error(`[invoice] numéro indisponible pour ${mission_id} — édition refusée. `
       + "Vérifier le réglage platform_settings.invoice_sequence.");
     return res.status(503).send(
@@ -239,6 +248,7 @@ export default async function handler(req, res) {
       + `<meta name="viewport" content="width=device-width, initial-scale=1"></head>`
       + `<body style="font-family:sans-serif;padding:40px;background:#0A1628;color:#E8EAF0">`
       + `<h2>Facture momentanément indisponible</h2>`
+      + `<p><a href="javascript:history.back()" style="color:#7C6FE0">← Retour</a></p>`
       + `<p>Le numéro de facture n'a pas pu être attribué. Réessayez dans un instant.</p>`
       + `<p>Si le problème persiste, écrivez à `
       + `<a href="mailto:direction@alane.fr" style="color:#7C6FE0">direction@alane.fr</a>.</p>`
@@ -304,7 +314,11 @@ export default async function handler(req, res) {
   // pas l'édition : on retombe sur les données vivantes, en le signalant.
   const dejaEmise = Boolean(mission.invoice_number);
   let archive = null;
+  // Une attestation n'a pas de numéro : rien à retrouver, rien à figer. Elle se
+  // reconstruit à chaque affichage, ce qui est cohérent — elle ne vaut pas
+  // pièce comptable et ne prétend rien conserver.
   try {
+    if (!invoiceNum) throw new Error("attestation sans numéro");
     const ar = await fetch(
       `${supabaseUrl}/rest/v1/factures_archives?numero=eq.${encodeURIComponent(invoiceNum)}&select=contenu&limit=1`,
       { headers: hdrsDB }
@@ -362,7 +376,8 @@ export default async function handler(req, res) {
   // continueraient sinon de se réécrire indéfiniment. Les figer maintenant fige
   // un état peut-être déjà dérivé — c'est toujours mieux que de le laisser
   // dériver encore.
-  if (!archive) {
+  // Pas d'archivage sans numéro : la clé de l'archive EST le numéro.
+  if (!archive && invoiceNum) {
     if (dejaEmise) {
       console.log(`[invoice] archivage tardif de ${invoiceNum} — facture émise avant la mise en place de l'archive.`);
     }
