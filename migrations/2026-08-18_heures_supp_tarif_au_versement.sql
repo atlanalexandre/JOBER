@@ -116,7 +116,23 @@ END $$;
 --
 -- Fait à la main et non en masse : le nombre d'heures ajoutées ne se déduit
 -- d'aucune colonne survivante — `extra_hours_requested` est remis à NULL à la
--- confirmation. Une seule prestation est concernée à ce jour.
+-- confirmation.
+--
+-- ATTENTION — le 18/08/2026, un rattrapage écrit `WHERE extra_hours_status =
+-- 'accepted'` a touché TROIS prestations au lieu d'une. Deux relevaient de
+-- l'ancien mécanisme, où l'acceptation ajoutait les heures au tarif de la
+-- commande, sans tarif négocié. Elles portaient donc `extra_hours_appliquees = 1`
+-- pour une prolongation dont personne ne connaît la durée réelle.
+--
+-- Sans conséquence sur l'argent — `partHoraire` retombe sur `tarif_horaire`
+-- quand `extra_hours_tarif` est absent — mais c'est une donnée fausse, et une
+-- donnée fausse finit toujours par être lue. À remettre à zéro :
+--
+--    UPDATE missions SET extra_hours_appliquees = 0
+--    WHERE extra_hours_tarif IS NULL;
+--
+-- La leçon : ne cibler un rattrapage que sur les lignes dont on sait ce
+-- qu'elles contiennent. `extra_hours_tarif IS NOT NULL` était le bon filtre.
 --
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VÉRIFICATION
