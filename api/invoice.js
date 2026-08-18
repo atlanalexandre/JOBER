@@ -771,15 +771,18 @@ export default async function handler(req, res) {
         ${invoiceNum
           ? "<br/>Facture établie par ALANE au nom et pour le compte du prestataire, en vertu du mandat de facturation qu'il a accepté (art. 289, I-2 du CGI). Le prestataire peut la contester depuis son espace."
           : "<br/>Ce document est une attestation de prestation. Il ne constitue pas une facture : le prestataire n'a pas accepté le mandat de facturation, et lui seul peut établir la facture correspondante."}
-        ALANE — Plateforme de mise en relation de services à la demande. Ce document tient lieu de facture acquittée.
+        ALANE — Plateforme de mise en relation de services à la demande.${mandatAccepte
+          ? " Ce document tient lieu de facture acquittée."
+          : ""}
       </div>
     </div>
 
     <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Télécharger en PDF</button>
   </div>
-  <script>
-    window.onload = function() { window.print(); };
-  </script>
+  <!-- L'impression ne se déclenche PLUS toute seule au chargement.
+       Sur téléphone, la feuille de partage s'ouvrait par-dessus le document
+       avant qu'on ait pu le lire, et il fallait la fermer pour voir sa propre
+       facture. Le bouton reste : imprimer est un geste, pas une fatalité. -->
 </body>
 </html>`;
 
