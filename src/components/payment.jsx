@@ -506,6 +506,24 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       stripeRef.current = stripe;
       const elements = stripe.elements({
         mode: "payment",
+        // LA CARTE, ET RIEN D'AUTRE.
+        //
+        // En mode différé, le PaymentIntent n'existe pas encore : Payment
+        // Element ne peut donc pas lire le `payment_method_types` que le serveur
+        // lui imposera. Sans cette liste, il propose TOUT ce qui est activé sur
+        // le compte Stripe — Bancontact, MB WAY, Amazon Pay, EPS sont apparus
+        // dans le tunnel le 18/08/2026, sur une plateforme française de services.
+        //
+        // Ce n'est pas qu'une question d'encombrement. Toute la mécanique de
+        // litige — gel des fonds 48 h, remboursement partiel avec rétention des
+        // frais, plafonnement au montant prélevé — raisonne sur une carte. Un
+        // virement avec redirection bancaire ou un paiement fractionné ont
+        // leurs propres règles de remboursement et d'opposition.
+        //
+        // Cette liste doit rester alignée sur le `payment_method_types` de
+        // `api/stripe-intent.js` : un moyen proposé ici et refusé là ferait
+        // échouer la confirmation après le clic, en anglais.
+        paymentMethodTypes: ["card"],
         // Stripe refuse un montant nul : on pose un euro le temps que le vrai
         // montant soit connu, puis `elements.update` le corrige.
         amount: Math.max(100, Math.round((montantRef.current || 1) * 100)),

@@ -498,6 +498,16 @@ Trois conséquences à connaître :
 - `redirect: "if_required"` garde le client sur ALANE quand la banque ne demande rien. Le
   `return_url` doit exister malgré tout — Stripe refuse la confirmation sans lui.
 
+**`paymentMethodTypes: ["card"]` est obligatoire en mode différé.** Le PaymentIntent n'existant
+pas encore au montage, Payment Element ne peut pas lire le `payment_method_types` que le serveur
+lui imposera : sans cette liste, il propose tout ce qui est activé sur le compte Stripe.
+Constaté le 18/08/2026 — Bancontact, MB WAY, Amazon Pay et EPS sont apparus dans le tunnel
+d'une plateforme française de services.
+
+Ce n'est pas qu'une question d'encombrement : toute la mécanique de litige raisonne sur une
+carte. La liste doit rester alignée sur celle d'`api/stripe-intent.js`, sinon un moyen proposé
+au client serait refusé à la confirmation, en anglais, après le clic.
+
 Le nom du titulaire reste dans le champ d'ALANE (`billingDetails.name: "never"`) : il est déjà
 obligatoire et validé. **Apple Pay et Google Pay gardent leur bouton séparé** (`paymentRequest`)
 plutôt que ceux de Payment Element : un seul chantier à la fois sur un tunnel qui déplace de
