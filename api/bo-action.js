@@ -2,6 +2,10 @@ import { notifier, sendPushToUser } from "./_push.js";
 import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
+import { sendWebPush } from "./_push.js";
+
+/** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
+const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
 import { montantsDeCloture } from "./_cloture.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
@@ -2350,6 +2354,80 @@ export default async function handler(req, res) {
     //
     // Contrepartie du masquage dans `list` : la consultation reste possible, mais
     // devient un acte identifié et tracé, au lieu d'un envoi massif silencieux.
+    // ── Éprouver la chaîne des notifications push ─────────────────────
+    //
+    // POURQUOI
+    //
+    // « Je ne reçois pas les notifications » n'avait aucune réponse : rien ne
+    // permettait de distinguer un abonnement absent, une clé VAPID manquante,
+    // un refus d'Apple ou un téléphone mal réglé. On corrigeait au hasard.
+    //
+    // Cette action envoie une notification à un compte donné et rend le
+    // résultat de CHAQUE appareil : l'adresse du service, et ce qu'il a
+    // répondu. Le diagnostic tient alors en un clic.
+    if (action === "test_push") {
+      if (!isUuidId(profileId)) return res.status(400).json({ error: "profileId invalide" });
+
+      // `.replace(/\s/g, "")` et non `.trim()` : les variables Vercel de ce
+      // projet contiennent des espaces INTERNES, invisibles, collés depuis un
+      // iPad (CLAUDE.md §1.4). `trim` ne retire que les bords, et la clé
+      // resterait inutilisable tout en paraissant présente.
+      const cles = {
+        publique: Boolean((process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "")),
+        privee:   Boolean((process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "")),
+      };
+
+      const sr = await fetch(
+        `${SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${profileId}&select=endpoint,p256dh,auth,created_at`,
+        { headers }
+      );
+      const subs = sr.ok ? await sr.json().catch(() => []) : [];
+      if (!Array.isArray(subs) || subs.length === 0) {
+        return res.status(200).json({
+          cles, appareils: [],
+          diagnostic: "Aucun appareil abonné. L'utilisateur doit ouvrir l'application et accepter "
+            + "les notifications. Sur iPhone, le site doit d'abord être ajouté à l'écran d'accueil : "
+            + "Safari ne délivre aucune notification à un simple onglet.",
+        });
+      }
+      if (!cles.publique || !cles.privee) {
+        return res.status(200).json({
+          cles, appareils: subs.map(s => ({ service: hoteDe(s.endpoint), depuis: s.created_at, statut: "non tenté" })),
+          diagnostic: "Clés VAPID absentes de l'environnement Vercel : aucune notification ne peut partir, "
+            + "quel que soit le nombre d'appareils abonnés.",
+        });
+      }
+
+      const resultats = await Promise.all(subs.map(async (sub) => {
+        const statut = await sendWebPush(sub, {
+          title: "🔔 Test ALANE",
+          body: "Si vous lisez ceci, les notifications fonctionnent.",
+          url: "/",
+        });
+        return {
+          service: hoteDe(sub.endpoint),
+          depuis: sub.created_at,
+          statut,
+          lecture: statut === 201 || statut === 200 ? "accepté par le service de notification"
+                 : statut === 410 ? "abonnement expiré — l'appareil a désinstallé ou révoqué"
+                 : statut === false ? "envoi impossible (abonnement incomplet)"
+                 : `refusé (${statut})`,
+        };
+      }));
+
+      const accepte = resultats.some(r => r.statut === 201 || r.statut === 200);
+      journaliser("test_push", { target_id: profileId, details: { appareils: resultats.length, accepte } });
+
+      return res.status(200).json({
+        cles, appareils: resultats,
+        diagnostic: accepte
+          ? "Envoyé et accepté. Si rien n'apparaît sur le téléphone, le réglage est côté appareil : "
+            + "notifications autorisées pour ALANE, mode concentration, et — sur iPhone — site ajouté "
+            + "à l'écran d'accueil et ouvert depuis cette icône."
+          : "Aucun appareil n'a accepté. Voir le détail par appareil ci-dessous.",
+      });
+    }
+
     if (action === "reveal_iban") {
       if (!isUuidId(profileId)) return res.status(400).json({ error: "profileId invalide" });
 

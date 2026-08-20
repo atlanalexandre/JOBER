@@ -369,6 +369,27 @@ export function BOComptes() {
 
   // La valeur complète est demandée au serveur, une fiche à la fois, et
   // l'appel est consigné dans bo_logs.
+  // « Je ne reçois pas les notifications » n'avait aucune réponse : rien ne
+  // distinguait un abonnement absent, une clé manquante, un refus d'Apple ou un
+  // téléphone mal réglé. Ce test rend le résultat de CHAQUE appareil.
+  const [testPush, setTestPush] = useState({});
+  const [testEnCours, setTestEnCours] = useState(null);
+  const testerPush = async (id) => {
+    setTestEnCours(id);
+    try {
+      const r = await fetch("/api/bo-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sessionStorage.getItem("bo_token") || ""}` },
+        body: JSON.stringify({ action: "test_push", profileId: id }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setTestPush(v => ({ ...v, [id]: r.ok ? j : { diagnostic: j.error || `Erreur ${r.status}`, appareils: [] } }));
+    } catch (e) {
+      setTestPush(v => ({ ...v, [id]: { diagnostic: e.message, appareils: [] } }));
+    }
+    setTestEnCours(null);
+  };
+
   const revelerIban = async (id) => {
     setIbanEnCours(id);
     try {
@@ -825,6 +846,22 @@ export function BOComptes() {
                             </span>
                           : null
                     } />
+                    <div style={{ padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
+                      <button onClick={()=>testerPush(p.id)} disabled={testEnCours === p.id}
+                        style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.violet}66`, background:"transparent", color:C.violet, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                        {testEnCours === p.id ? "Envoi…" : "🔔 Tester les notifications"}
+                      </button>
+                      {testPush[p.id] && (
+                        <div style={{ marginTop:8, fontSize:11, color:C.textSub, lineHeight:1.6 }}>
+                          {(testPush[p.id].appareils || []).map((a, i) => (
+                            <div key={i} style={{ color: a.statut === 201 || a.statut === 200 ? C.success : C.danger }}>
+                              {a.service} — {a.lecture}
+                            </div>
+                          ))}
+                          <div style={{ marginTop:4, color:C.textMuted }}>{testPush[p.id].diagnostic}</div>
+                        </div>
+                      )}
+                    </div>
                     <InfoRow icon="👤" label="Type" value={p.type_compte === "professionnel" ? "Professionnel" : p.type_compte === "particulier" ? "Particulier" : p.type_compte} />
                     <InfoRow icon="🏢" label="Société" value={p.societe_nom} />
                     <InfoRow icon="📄" label="KBIS/SIRET" value={p.kbis} />
