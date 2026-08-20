@@ -478,6 +478,31 @@ Pour modifier les CGPS : éditer `src/constants/cgps.js`, mettre à jour `maj` s
 d'une évolution de fond, puis `npm run cgps`. La CI (`npm run cgps:verifier`) refuse toute
 divergence avec `public/cgps.html`.
 
+### Le formulaire de paiement — Payment Element
+
+**Migré le 18/08/2026**, sur signalement de Stripe. `elements.create("card")` et
+`confirmCardPayment` sont une intégration obsolète : aucune nouveauté n'y arrive plus, ni
+moyens de paiement, ni améliorations du 3-D Secure.
+
+Le tunnel utilise désormais **Payment Element en mode différé** — `mode: "payment"` avec un
+montant, sans `clientSecret`. Ce choix n'est pas cosmétique : le PaymentIntent n'est créé
+qu'au clic sur « Payer ». Le créer à l'ouverture remplirait Stripe d'intentions abandonnées et
+romprait la règle du cashback, qui ne réserve rien tant que le paiement n'a pas abouti.
+
+Trois conséquences à connaître :
+
+- `elements.submit()` valide les champs **avant** que le PaymentIntent n'existe. Une erreur à
+  cette étape est une erreur de saisie, jamais un refus bancaire.
+- Le montant est transmis à la création puis par `elements.update()` quand le cashback est lu.
+  Recréer l'élément effacerait un numéro de carte déjà saisi.
+- `redirect: "if_required"` garde le client sur ALANE quand la banque ne demande rien. Le
+  `return_url` doit exister malgré tout — Stripe refuse la confirmation sans lui.
+
+Le nom du titulaire reste dans le champ d'ALANE (`billingDetails.name: "never"`) : il est déjà
+obligatoire et validé. **Apple Pay et Google Pay gardent leur bouton séparé** (`paymentRequest`)
+plutôt que ceux de Payment Element : un seul chantier à la fois sur un tunnel qui déplace de
+l'argent. À reprendre avec la bascule Stripe Connect.
+
 ### Facturation
 
 La facture est établie **par le prestataire au client**. ALANE n'en est pas l'émetteur :
