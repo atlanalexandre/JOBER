@@ -193,7 +193,7 @@ function SplashScreen({ onNext }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>
-                10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
+                8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
               </div>
             </div>
           </div>
@@ -292,7 +292,7 @@ function RoleScreen({ onSelect, onBack, notice }) {
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
             <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>
-              10 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
+              8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
             </div>
           </div>
         </div>

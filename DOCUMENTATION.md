@@ -237,7 +237,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `cashback_rates` | `api/missions.js` (action `complete`) |
 | `subscription_prices` | `api/plans.js`, écrans d'abonnement |
 | `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()`, appliqué au plan lu dans **`profiles`** |
-| `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (10 prestations/mois aux 100 premiers prestataires) |
+| `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (8 prestations/mois aux 100 premiers prestataires) |
 | `frais_service` | tunnel de réservation, `api/stripe-intent.js` |
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
 | `seuils_dependance` | `api/bo-action.js` — action `signaux_dependance`. Absent = valeurs par défaut de `_dependance.js` (60 % du CA, 8 prestations minimum, 24 jours sur 8 semaines, fenêtre 180 j) |

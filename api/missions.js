@@ -329,13 +329,13 @@ function suffixeRemboursement({ rembourse }) {
 
 // Limite mensuelle de prestations d'un prestataire, offre de lancement comprise.
 //
-// L'inscription annonce aux 100 premiers prestataires « 10 prestations/mois
+// L'inscription annonce aux 100 premiers prestataires « 8 prestations/mois
 // gratuites ». Cette promesse n'était appliquée nulle part : le quota retombait
 // systématiquement sur `plan_limits.free` (2), et un prestataire du lancement se
 // voyait refuser sa 3ᵉ prestation avec un message parlant de « limite de son plan ».
 // L'offre s'applique tant que le réglage `launch_phase` est actif.
 async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
-  let limites = { free: 2, premium: 10, elite: 999 };
+  let limites = { free: 2, premium: 8, elite: 999 };
   try {
     const r = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.plan_limits&select=value`, { headers });
     const d = await r.json();
@@ -356,7 +356,7 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
     const cr = await fetch(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&select=id&order=created_at.asc&limit=100`, { headers });
     const cd = await cr.json();
     if (Array.isArray(cd) && cd.some(p => p.id === prestataireId)) {
-      return Math.max(limite, Number(limites.premium) || 10);
+      return Math.max(limite, Number(limites.premium) || 8);
     }
   } catch (e) {
     console.error("[quota] offre de lancement non évaluée :", e.message);
@@ -5376,7 +5376,7 @@ export default async function handler(req, res) {
       }
 
       // La limite effective est renvoyée au front, qui la devinait à partir d'une
-      // constante : le plan gratuit y annonce 10 prestations alors que `plan_limits`
+      // constante : le plan gratuit y annonce 8 prestations alors que `plan_limits`
       // en accorde 2 hors offre de lancement. Un prestataire aurait donc lu « 2/10 »
       // en étant déjà bloqué. Le calcul du quota vit ici, l'affichage le suit.
       const limiteMensuelle = await limitePlanMensuelle(plan, caller.id, SUPABASE_URL, headers);
