@@ -378,6 +378,10 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const stripeRef   = useRef(null);
   const cardElRef   = useRef(null);
   const mountRef    = useRef(null);
+  // Le groupe Elements, nécessaire à `submit()` et `confirmPayment()`.
+  const elementsRef = useRef(null);
+  // Le montant, lu par l'effet de montage qui s'exécute avant son calcul.
+  const montantRef  = useRef(0);
 
   const [savedCard, setSavedCard]     = useState(null); // { pmId, customerId, brand, last4 }
   const [useSavedCard, setUseSavedCard] = useState(true);
@@ -477,7 +481,22 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       })();
       return;
     }
-    let cardEl;
+    // ── Payment Element, en mode différé ──────────────────────────────
+    //
+    // Card Element a été remplacé le 18/08/2026 : Stripe le signale comme une
+    // intégration obsolète, sur laquelle aucune nouveauté n'arrive plus — ni
+    // moyens de paiement, ni améliorations du 3-D Secure.
+    //
+    // Le mode DIFFÉRÉ (`mode: "payment"` avec un montant, sans `clientSecret`)
+    // est choisi délibérément : le PaymentIntent n'est créé qu'au clic sur
+    // « Payer ». Le créer à l'ouverture du tunnel remplirait Stripe
+    // d'intentions abandonnées, et surtout romprait la règle du cashback —
+    // rien n'est réservé tant que le paiement n'a pas abouti.
+    //
+    // Le nom du titulaire reste dans NOTRE champ (`billingDetails.name: never`)
+    // : il est déjà obligatoire, déjà validé, et le déplacer dans le composant
+    // Stripe changerait un formulaire que les utilisateurs connaissent.
+    let paymentEl;
     (async () => {
       const { loadStripe } = await import("@stripe/stripe-js");
       const pk = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
@@ -485,18 +504,32 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       const stripe = await loadStripe(pk);
       if (!stripe) return;
       stripeRef.current = stripe;
-      const elements = stripe.elements();
-      cardEl = elements.create("card", {
-        hidePostalCode: true,
-        style: {
-          base: { color:"#e2e8f0", fontFamily:"inherit", fontSize:"15px", "::placeholder":{ color:"#64748b" } },
-          invalid: { color:"#f87171" },
+      const elements = stripe.elements({
+        mode: "payment",
+        // Stripe refuse un montant nul : on pose un euro le temps que le vrai
+        // montant soit connu, puis `elements.update` le corrige.
+        amount: Math.max(100, Math.round((montantRef.current || 1) * 100)),
+        currency: "eur",
+        appearance: {
+          theme: "night",
+          variables: {
+            colorPrimary: "#7C6FE0", colorBackground: "#162547", colorText: "#e2e8f0",
+            colorDanger: "#f87171", fontFamily: "inherit", borderRadius: "11px",
+          },
         },
       });
-      cardElRef.current = cardEl;
-      if (mountRef.current) cardEl.mount(mountRef.current);
+      elementsRef.current = elements;
+      paymentEl = elements.create("payment", {
+        fields: { billingDetails: { name: "never" } },
+        wallets: { applePay: "never", googlePay: "never" },
+      });
+      cardElRef.current = paymentEl;
+      if (mountRef.current) paymentEl.mount(mountRef.current);
     })();
-    return () => { if (cardEl) { cardEl.destroy(); cardElRef.current = null; } };
+    return () => {
+      if (paymentEl) { paymentEl.destroy(); cardElRef.current = null; }
+      elementsRef.current = null;
+    };
   }, [useSavedCard]);
 
   // ── Apple Pay / Google Pay ──────────────────────────────────────────
@@ -512,6 +545,17 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const reduction = estSupplement ? 0 : reductionCashback(cashbackDispo, Number(total));
   const aPayer = Math.round((Number(total) - reduction) * 100) / 100;
   const eur = (v) => Number(v).toFixed(2).replace(".", ",");
+
+  // Le montant sert deux fois : à la création du groupe Elements — qui a lieu
+  // AVANT ce calcul — et à chaque fois qu'il change, quand le cashback du
+  // client vient d'être lu. `update` corrige sans détruire le formulaire :
+  // recréer l'élément effacerait un numéro de carte déjà saisi.
+  montantRef.current = aPayer;
+  useEffect(() => {
+    if (!elementsRef.current || !(aPayer > 0)) return;
+    try { elementsRef.current.update({ amount: Math.round(aPayer * 100) }); }
+    catch (e) { console.error("[paiement] montant non transmis à Stripe :", e.message); }
+  }, [aPayer]);
 
   useEffect(() => {
     const amountCents = Math.round(aPayer * 100);
@@ -605,7 +649,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       stripeRef.current = pk ? await loadStripe(pk) : null;
     }
     if (!stripeRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
-    if (!useStored && !cardElRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
+    if (!useStored && !elementsRef.current) { setStripeError("Stripe non initialisé, rechargez la page."); return; }
     setProcessing(true);
     try {
       const { data: { session: piSession } } = await supabase.auth.getSession();
@@ -628,10 +672,34 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       });
       const { clientSecret, error: intentErr } = await r.json();
       if (intentErr || !clientSecret) throw new Error(intentErr || "Erreur création paiement");
-      const confirmOpts = useStored
-        ? { payment_method: savedCard.pmId }
-        : { payment_method: { card: cardElRef.current, billing_details: cardName ? { name: cardName } : undefined } };
-      const { error, paymentIntent } = await stripeRef.current.confirmCardPayment(clientSecret, confirmOpts);
+
+      // `redirect: "if_required"` garde le client sur ALANE quand la banque ne
+      // demande rien. Le `return_url` ne sert qu'aux authentifications qui
+      // sortent du site — 3-D Secure sur certaines banques — et doit exister
+      // malgré tout : Stripe refuse la confirmation sans lui.
+      const retour = `${window.location.origin}/dashboard`;
+      const { error, paymentIntent } = useStored
+        ? await stripeRef.current.confirmPayment({
+            clientSecret,
+            confirmParams: { payment_method: savedCard.pmId, return_url: retour },
+            redirect: "if_required",
+          })
+        : await (async () => {
+            // `submit()` valide et transmet les champs AVANT que le
+            // PaymentIntent n'existe : c'est le mode différé. Une erreur ici est
+            // une erreur de saisie, pas un refus bancaire.
+            const { error: erreurSaisie } = await elementsRef.current.submit();
+            if (erreurSaisie) return { error: erreurSaisie };
+            return stripeRef.current.confirmPayment({
+              elements: elementsRef.current,
+              clientSecret,
+              confirmParams: {
+                return_url: retour,
+                payment_method_data: { billing_details: { name: cardName || undefined } },
+              },
+              redirect: "if_required",
+            });
+          })();
       if (error) { setStripeError(error.message); setProcessing(false); return; }
       if (paymentIntent?.status === "succeeded") {
         // La carte vient d'être rattachée par Stripe : on garde son identifiant
@@ -796,10 +864,11 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
                     {cardNameError && <div style={{ color:"#f87171", fontSize:11, marginTop:4 }}>Le nom du titulaire est obligatoire</div>}
                   </div>
                   <div style={{ marginBottom:12 }}>
-                    <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Coordonnées de la carte</label>
-                    <div style={{ borderRadius:11, border:`1px solid ${C.border}`, background:"#162547", overflow:"hidden" }}>
-                      <div ref={mountRef} style={{ padding:"14px 14px", minHeight:50 }} />
-                    </div>
+                    <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:5 }}>Moyen de paiement</label>
+                    {/* Payment Element apporte sa propre bordure et son propre
+                        fond via `appearance` : l'encadrer une seconde fois
+                        dessinerait deux cadres imbriqués. */}
+                    <div ref={mountRef} style={{ minHeight:50 }} />
                   </div>
                   {/* Mémorisation de la carte — DÉCOCHÉE par défaut.
                       Une case précochée ne vaut pas consentement : le RGPD
