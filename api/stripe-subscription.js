@@ -26,11 +26,39 @@ export default async function handler(req, res) {
   }
   if (!userId) return res.status(401).json({ error: "Utilisateur introuvable" });
 
-  const priceEnvKey = plan === "premium"
-    ? (billing === "yearly" ? "STRIPE_PRICE_PREMIUM_YEARLY" : "STRIPE_PRICE_PREMIUM_MONTHLY")
-    : (billing === "yearly" ? "STRIPE_PRICE_ELITE_YEARLY"   : "STRIPE_PRICE_ELITE_MONTHLY");
-  const priceId = process.env[priceEnvKey];
-  if (!priceId) return res.status(500).json({ error: `Variable ${priceEnvKey} manquante dans l'environnement Vercel` });
+  // DEUX NOMS POSSIBLES POUR LA MÊME VARIABLE.
+  //
+  // Le code réclamait `STRIPE_PRICE_ELITE_MONTHLY` ; les variables posées dans
+  // Vercel s'appellent `STRIPE_ELITE_MONTHLY`, sans `PRICE_`. Les quatre
+  // tarifs étaient donc introuvables, et aucun abonnement ne pouvait être
+  // souscrit — ni Elite, ni Premium.
+  //
+  // On accepte les deux écritures plutôt que d'exiger une renomination : ces
+  // variables sont marquées « Sensitive » dans Vercel, donc illisibles après
+  // enregistrement. Les renommer imposerait de retrouver les quatre
+  // identifiants de tarif dans Stripe et de tout ressaisir — quatre occasions
+  // de se tromper, pour un préfixe.
+  //
+  // La forme longue reste la référence : c'est elle que la documentation
+  // décrit, et c'est elle qu'on posera sur l'environnement de production.
+  const suffixe = plan === "premium"
+    ? (billing === "yearly" ? "PREMIUM_YEARLY" : "PREMIUM_MONTHLY")
+    : (billing === "yearly" ? "ELITE_YEARLY"   : "ELITE_MONTHLY");
+  const nomsPossibles = [`STRIPE_PRICE_${suffixe}`, `STRIPE_${suffixe}`];
+  const nomTrouve = nomsPossibles.find(n => (process.env[n] || "").trim());
+  const priceId = nomTrouve ? process.env[nomTrouve].replace(/\s/g, "") : null;
+
+  if (!priceId) {
+    console.error(`[abonnement] tarif introuvable pour ${plan}/${billing} — `
+      + `ni ${nomsPossibles[0]} ni ${nomsPossibles[1]} ne sont renseignées.`);
+    return res.status(500).json({
+      error: `Tarif ${plan} indisponible. Renseignez ${nomsPossibles[0]} dans Vercel.`,
+    });
+  }
+  if (nomTrouve === nomsPossibles[1]) {
+    console.log(`[abonnement] tarif lu depuis ${nomTrouve} — nom hérité, `
+      + `${nomsPossibles[0]} est la forme de référence.`);
+  }
 
   const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
 

@@ -2189,6 +2189,10 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `STRIPE_SECRET_KEY` | Clé secrète Stripe |
 | `STRIPE_WEBHOOK_SECRET` | Signature du webhook Stripe |
 | `VITE_SENTRY_DSN` | Remontée d'erreurs — si absente, Sentry est désactivé |
+| `STRIPE_PRICE_PREMIUM_MONTHLY` | Identifiant du tarif Stripe (`price_…`). **Le nom hérité `STRIPE_PREMIUM_MONTHLY`, sans `PRICE_`, est aussi accepté** — c'est celui posé dans Vercel. Ces variables étant « Sensitive », donc illisibles après enregistrement, le code s'adapte plutôt que d'imposer une renomination |
+| `STRIPE_PRICE_PREMIUM_YEARLY` | idem, abonnement annuel |
+| `STRIPE_PRICE_ELITE_MONTHLY` | idem, plan Elite |
+| `STRIPE_PRICE_ELITE_YEARLY` | idem |
 | `VITE_VAPID_PUBLIC_KEY` | Contrepartie navigateur des clés VAPID, requise pour l'abonnement push |
 | ~~`VITE_ALANE_SIRET`~~ | **Plus lue par aucun code depuis le 18/08/2026.** Elle n'alimentait que l'écran de facture « dans l'app », supprimé ce jour-là. La facture serveur (`api/invoice.js`) n'a jamais affiché les mentions d'ALANE : elle porte celles du prestataire et du client, ALANE n'étant pas l'émetteur. À rebrancher le jour où ALANE facturera ses frais de service en son nom propre |
 | ~~`VITE_ALANE_ADRESSE`~~ | idem |
