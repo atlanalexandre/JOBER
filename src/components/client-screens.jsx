@@ -8551,10 +8551,15 @@ export function AbonnementPrestaScreen({ onBack }) {
                   <div style={{ fontSize:12, color:C.text, lineHeight:1.6 }}>
                     Abonnement couvert dès <strong style={{ color:plan.color }}>la 1ère prestation</strong><br/>
                     <span style={{ color:C.textSub, fontSize:11 }}>
-                      {plan.id==="premium"
-                        ? `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€`
-                        : `1 prestation ≈ 96€ net · Abonnement = ${price}€ · Bénéfice net dès prestation 1 : +${96-price}€ · Position #1 + Accompagnement dédié`
-                      }
+                      {/* `96 - 79.99` vaut 16.010000000000005 en virgule
+                          flottante : l'écran affichait « +16.010000000000005€ »
+                          à un prestataire qu'on essaie de convaincre. Deux
+                          décimales, et la virgule française. */}
+                      {(() => {
+                        const benefice = (Math.round((96 - price) * 100) / 100).toFixed(2).replace(".", ",");
+                        const socle = `1 prestation ≈ 96 € net · Abonnement = ${price} € · Bénéfice net dès prestation 1 : +${benefice} €`;
+                        return plan.id === "premium" ? socle : `${socle} · Position #1 + Accompagnement dédié`;
+                      })()}
                     </span>
                   </div>
                 </div>
