@@ -479,11 +479,24 @@ export default async function handler(req, res) {
   <h2 style="color:#F0B429;margin:0 0 8px">Abonnement ${planLabel} activé 🎉</h2>
   <p style="color:rgba(255,255,255,0.7);margin:0 0 24px">Bonjour${userName ? " " + userName : ""},</p>
   <p style="color:rgba(255,255,255,0.85);line-height:1.6">Votre abonnement <strong style="color:#F0B429">${planLabel} ${billingLabel}</strong> est maintenant actif sur ALANE.</p>
-  <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin:20px 0">
-    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Plan</span><strong>${planLabel}</strong></div>
-    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="color:rgba(255,255,255,0.5)">Facturation</span><strong>${billingLabel}</strong></div>
-    ${endDateFr ? `<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:rgba(255,255,255,0.5)">Renouvellement</span><strong>${endDateFr}</strong></div>` : ""}
-  </div>
+  <!-- Tableau, et non une mise en page flexbox : Gmail, Outlook et la plupart
+       de messagerie ignorent la mise en page en flexbox. Les deux textes se
+       collaient alors l'un à l'autre — « PlanElite », « Facturationmensuel » —
+       sur le seul e-mail qui confirme un paiement récurrent. -->
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;margin:20px 0;border-collapse:separate">
+    <tr>
+      <td style="padding:10px 20px;border-bottom:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)">Plan</td>
+      <td style="padding:10px 20px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right"><strong>${planLabel}</strong></td>
+    </tr>
+    <tr>
+      <td style="padding:10px 20px;${endDateFr ? "border-bottom:1px solid rgba(255,255,255,0.08);" : ""}color:rgba(255,255,255,0.5)">Facturation</td>
+      <td style="padding:10px 20px;${endDateFr ? "border-bottom:1px solid rgba(255,255,255,0.08);" : ""}text-align:right"><strong>${billingLabel}</strong></td>
+    </tr>
+    ${endDateFr ? `<tr>
+      <td style="padding:10px 20px;color:rgba(255,255,255,0.5)">Renouvellement</td>
+      <td style="padding:10px 20px;text-align:right"><strong>${endDateFr}</strong></td>
+    </tr>` : ""}
+  </table>
   <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6">Vous pouvez gérer ou annuler votre abonnement à tout moment depuis votre espace prestataire → Abonnements.</p>
   <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">© ALANE — Cet email est envoyé automatiquement, merci de ne pas y répondre.</p>
 </div>`,
