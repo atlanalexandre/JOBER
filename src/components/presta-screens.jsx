@@ -2449,6 +2449,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   </div>
                   {m.acceptance_deadline && <DeadlineCountdown deadline={m.acceptance_deadline} />}
                 </div>
+                {/* La distance, avant même d'ouvrir les détails : c'est la
+                    question que se pose le prestataire, et elle doit se lire
+                    sans un geste de plus. Le tilde et « à vol d'oiseau »
+                    empêchent de la confondre avec un temps de trajet. */}
+                {m.distance_km != null && (
+                  <div style={{ fontSize:12, color:C.textSub, marginBottom:8 }}>
+                    📍 <strong style={{ color:C.text }}>~{m.distance_km} km</strong> de {m.ville || "votre secteur"}
+                    <span style={{ color:C.textMuted }}> · à vol d'oiseau</span>
+                  </div>
+                )}
                 {(m.ville || m.adresse || m.description) && (
                   <div style={{ marginBottom:8 }}>
                     <button onClick={()=>setExpandedDetail(expandedDetail===m.id?null:m.id)} style={{ background:"transparent", border:`1px solid rgba(255,255,255,0.12)`, borderRadius:8, padding:"5px 12px", color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
@@ -2456,7 +2466,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     </button>
                     {expandedDetail===m.id && (
                       <div style={{ marginTop:8, padding:"10px 12px", background:"rgba(255,255,255,0.03)", borderRadius:10, border:"1px solid rgba(255,255,255,0.07)", display:"flex", flexDirection:"column", gap:6 }}>
-                        {(m.ville||m.adresse) && <div style={{ fontSize:12, color:C.textSub }}>📍 {[m.adresse, m.ville].filter(Boolean).join(", ")}</div>}
+                        {/* L'adresse exacte n'est plus transmise avant
+                            l'acceptation : le serveur ne l'envoie pas. On
+                            annonce la ville, et on dit pourquoi — sans quoi le
+                            prestataire croirait à un oubli. */}
+                        {(m.ville||m.adresse) && (
+                          <div style={{ fontSize:12, color:C.textSub }}>
+                            📍 {[m.adresse, m.ville].filter(Boolean).join(", ")}
+                            {!m.adresse && <span style={{ color:C.textMuted }}> — adresse exacte communiquée dès l'acceptation</span>}
+                          </div>
+                        )}
                         {m.description && <div style={{ fontSize:12, color:C.textSub }}>📝 {m.description}</div>}
                         {m.tarif_horaire && m.hours && <div style={{ fontSize:12, color:C.success, fontWeight:700 }}>💶 Total estimé : {(Number(m.tarif_horaire)*Number(m.hours)).toFixed(2).replace(".",",")} € HT</div>}
                       </div>

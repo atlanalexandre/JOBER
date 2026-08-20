@@ -3745,8 +3745,51 @@ export default async function handler(req, res) {
           }
         }));
       }
+      // ── Ce que voit un prestataire AVANT d'accepter ────────────────────
+      //
+      // LA DISTANCE, PAS L'ADRESSE.
+      //
+      // L'adresse exacte était transmise à tout prestataire sollicité, y
+      // compris à ceux qui refuseraient. Pour un hôtel, sans conséquence ; pour
+      // une prestation au domicile d'un particulier, c'est l'adresse complète
+      // d'une personne communiquée à quelqu'un qui n'y mettra jamais les pieds.
+      // La minimisation (RGPD art. 5.1.c) demande l'inverse : le strict
+      // nécessaire à la décision.
+      //
+      // Ce qui est nécessaire à la décision, c'est « est-ce loin ? ». La
+      // distance y répond sans rien exposer, et le serveur la calcule déjà pour
+      // filtrer les candidats — elle était simplement jetée après usage.
+      //
+      // Elle est donnée À VOL D'OISEAU et arrondie, avec un tilde à
+      // l'affichage : annoncer 12 km quand la route en fait 20 serait pire que
+      // ne rien dire.
+      //
+      // L'adresse complète réapparaît dès l'acceptation, dans `assigned`.
+      let villePresta = null;
+      try {
+        const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+        const ud = await ur.json();
+        villePresta = ud?.user_metadata?.ville || ud?.user_metadata?.code_postal || null;
+      } catch (e) {
+        console.error("[my_missions] ville du prestataire illisible :", e.message);
+      }
+      const coordPresta = villePresta ? await geocodeFR(villePresta) : null;
+
+      const pendingSansAdresse = await Promise.all(stillPending.map(async (m) => {
+        let distance_km = null;
+        if (coordPresta) {
+          const lieu = [m.adresse, m.ville].filter(Boolean).join(" ");
+          const c = lieu ? await geocodeFR(lieu) : null;
+          if (c) distance_km = Math.round(haversineKm(coordPresta.lat, coordPresta.lon, c.lat, c.lon));
+        }
+        // `adresse` retirée de la réponse, pas seulement masquée à l'affichage :
+        // une donnée envoyée au navigateur est une donnée communiquée.
+        const { adresse, ...sansAdresse } = m;
+        return { ...sansAdresse, distance_km };
+      }));
+
       return res.status(200).json({
-        pending:  stillPending,
+        pending:  pendingSansAdresse,
         assigned: Array.isArray(assigned) ? assigned : [],
       });
     }
