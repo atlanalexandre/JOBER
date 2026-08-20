@@ -22,8 +22,17 @@
 export async function sendWebPush(sub, notification) {
   const VAPID_PUB = (process.env.VAPID_PUBLIC_KEY || "").replace(/\s/g, "");
   const VAPID_PRV = (process.env.VAPID_PRIVATE_KEY || "").replace(/\s/g, "");
-  if (!VAPID_PUB || !VAPID_PRV) return false;
-  if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) return false;
+  // Les clés VAPID identifient ALANE auprès d'Apple et de Google. Sans elles,
+  // aucune notification ne part — et c'est le genre de panne qu'on cherche
+  // pendant des heures parce que rien ne la signale.
+  if (!VAPID_PUB || !VAPID_PRV) {
+    console.error("[push] VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY absente — aucune notification ne peut être envoyée.");
+    return false;
+  }
+  if (!sub?.endpoint || !sub?.p256dh || !sub?.auth) {
+    console.error("[push] abonnement incomplet, envoi impossible :", sub?.endpoint?.slice(0, 40) || "sans adresse");
+    return false;
+  }
   try {
     const sc = globalThis.crypto.subtle;
     const b64u = buf => Buffer.from(buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf).toString("base64url");
@@ -68,6 +77,17 @@ export async function sendWebPush(sub, notification) {
       headers:{"Content-Type":"application/octet-stream","Content-Encoding":"aes128gcm","Authorization":`vapid t=${jwt},k=${VAPID_PUB}`,"TTL":"86400"},
       body: record,
     });
+    // Un envoi accepté rend 201, parfois 200. Tout le reste est un échec, et
+    // il doit se voir : sans ce message, un utilisateur qui ne reçoit rien
+    // n'avait aucun moyen de savoir pourquoi — ni nous.
+    //
+    // 410 signifie que l'abonnement n'existe plus (application désinstallée,
+    // notifications révoquées) : l'appelant le supprime. C'est le seul échec
+    // normal, il n'est donc pas signalé comme une erreur.
+    if (r.status !== 201 && r.status !== 200 && r.status !== 410) {
+      const corps = await r.text().catch(() => "");
+      console.error(`[push] refusé (${r.status}) par ${new URL(sub.endpoint).host} :`, corps.slice(0, 200));
+    }
     return r.status;
   } catch(e) {
     console.error("[sendWebPush] error:", e.message);
