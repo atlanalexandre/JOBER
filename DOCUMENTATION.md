@@ -902,6 +902,24 @@ enregistrée et les réservations chez un tiers restent bloquées pour les compt
 professionnels. C'est volontaire : un engagement qu'on ne peut pas prouver ne sert à rien.
 Les réservations ordinaires ne sont pas affectées.
 
+**Ce qu'un prestataire voit avant d'accepter** (18/08/2026) : la ville, la **distance à vol
+d'oiseau**, et non l'adresse exacte.
+
+L'adresse complète était transmise à tout prestataire sollicité, y compris à ceux qui
+refuseraient. Pour un hôtel, sans conséquence ; pour une prestation au domicile d'un
+particulier, c'est l'adresse d'une personne communiquée à quelqu'un qui n'y mettra jamais les
+pieds. Elle est **retirée de la réponse serveur**, pas seulement masquée à l'affichage — une
+donnée envoyée au navigateur est une donnée communiquée. Elle réapparaît dans `assigned`, dès
+l'acceptation.
+
+La distance vient du calcul qui filtrait déjà les candidats (`geocodeFR` + `haversineKm`) :
+elle était jetée après usage. Elle est arrondie et affichée avec un tilde — annoncer 12 km
+quand la route en fait 20 serait pire que ne rien dire.
+
+Au-delà du confort : plus le prestataire dispose d'éléments objectifs pour accepter ou refuser,
+plus son autonomie est manifeste. Une plateforme qui sollicite sans dire où, en comptant sur
+l'urgence pour faire accepter, ressemble à une affectation plutôt qu'à une offre.
+
 **Affectation automatique chez un tiers** — `candidatsPourMission()` et l'action
 `affecter_tiers` dans `api/missions.js`. Dès qu'une prestation porte une
 `tiers_declaration`, le prestataire consulté par le client n'est **pas** transmis :
