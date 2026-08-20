@@ -5089,7 +5089,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
                 {role==="prestataire"
-                  ? `10 prestations gratuites · ${prestaCountHIW != null ? (Math.max(0, 100 - prestaCountHIW) > 0 ? `Plus que ${Math.max(0, 100 - prestaCountHIW)} place${Math.max(0, 100 - prestaCountHIW) > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers inscrits"}`
+                  ? `8 prestations gratuites · ${prestaCountHIW != null ? (Math.max(0, 100 - prestaCountHIW) > 0 ? `Plus que ${Math.max(0, 100 - prestaCountHIW)} place${Math.max(0, 100 - prestaCountHIW) > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers inscrits"}`
                   : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
               </div>
             </div>
@@ -8511,7 +8511,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>10 prestations/mois gratuites</strong>.<br/>Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong>.<br/>Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
               </div>
             </div>
           </div>

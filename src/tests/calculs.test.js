@@ -907,20 +907,21 @@ describe("montant encaissé — contrôle de cohérence", () => {
 });
 
 // ── Quota mensuel du prestataire et offre de lancement ────────────
-// L'inscription annonce « 10 prestations/mois gratuites aux 100 premiers inscrits ».
+// L'inscription annonce « 8 prestations/mois gratuites aux 100 premiers inscrits ».
 // Le quota retombait pourtant toujours sur plan_limits.free (2) : un prestataire du
 // lancement se voyait refuser sa 3ᵉ prestation. Reproduit la décision de
 // limitePlanMensuelle() dans api/missions.js.
 describe("limite mensuelle — offre de lancement", () => {
-  const LIMITES = { free: 2, premium: 10, elite: 999 };
+  // Doit rester le miroir de `limitePlanMensuelle` dans api/missions.js.
+  const LIMITES = { free: 2, premium: 8, elite: 999 };
   const limite = ({ plan, lancement, rangCentPremiers }) => {
     const base = LIMITES[plan] ?? LIMITES.free;
     if (plan !== "free" || !lancement || !rangCentPremiers) return base;
     return Math.max(base, LIMITES.premium);
   };
 
-  it("prestataire du lancement : 10 prestations, pas 2", () => {
-    expect(limite({ plan:"free", lancement:true, rangCentPremiers:true })).toBe(10);
+  it("prestataire du lancement : 8 prestations, pas 2", () => {
+    expect(limite({ plan:"free", lancement:true, rangCentPremiers:true })).toBe(8);
   });
   it("hors des 100 premiers : le plan free reste à 2", () => {
     expect(limite({ plan:"free", lancement:true, rangCentPremiers:false })).toBe(2);
@@ -929,7 +930,7 @@ describe("limite mensuelle — offre de lancement", () => {
     expect(limite({ plan:"free", lancement:false, rangCentPremiers:true })).toBe(2);
   });
   it("un plan payant n'est jamais dégradé par l'offre", () => {
-    expect(limite({ plan:"premium", lancement:true, rangCentPremiers:true })).toBe(10);
+    expect(limite({ plan:"premium", lancement:true, rangCentPremiers:true })).toBe(8);
     expect(limite({ plan:"elite",   lancement:true, rangCentPremiers:true })).toBe(999);
   });
 });

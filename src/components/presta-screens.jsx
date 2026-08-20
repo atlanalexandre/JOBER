@@ -3328,7 +3328,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   };
   const [missionsUsedMonth,setMissionsUsedMonth]=useState(0);
   // Limite mensuelle telle que le serveur l'applique réellement. Le front la
-  // déduisait d'une constante où le plan gratuit annonce 10 prestations, alors que
+  // déduisait d'une constante où le plan gratuit annonce 8 prestations, alors que
   // `plan_limits` en accorde 2 hors offre de lancement : un prestataire pouvait lire
   // « 2/10 » en étant déjà bloqué. Seul /api/missions connaît la vraie valeur.
   const [limiteMensuelle,setLimiteMensuelle]=useState(null);
