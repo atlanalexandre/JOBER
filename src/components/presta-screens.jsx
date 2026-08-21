@@ -1791,57 +1791,109 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
 }
 
 export function PrestaOnboardingChecklist({ onNavigate }) {
+  // ═══════════════════════════════════════════════════════════════════════
+  // CE QUI RESTE À FAIRE, ET RIEN D'AUTRE
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Cette liste répétait ce que l'inscription venait de collecter — secteur,
+  // métier, disponibilités, tarif — et omettait les deux seules choses qui
+  // empêchent réellement de travailler : les documents justificatifs et les
+  // mandats.
+  //
+  // Elle annonçait donc « 4/5 étapes complétées » à un prestataire qui, faute
+  // de documents vérifiés, n'apparaissait dans aucun catalogue et ne recevait
+  // aucune proposition. Un guide qui rassure au lieu d'orienter est pire que
+  // pas de guide : il fait croire que l'attente est normale.
+  //
+  // Les quatre premières lignes sont retirées : elles sont obligatoires dans le
+  // parcours d'inscription, donc toujours vertes.
   const [meta, setMeta] = useState(null);
+  const [profil, setProfil] = useState(null);
+  const [nbDocs, setNbDocs] = useState(null);
   const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem("alane_presta_checklist_dismissed") === "1"; } catch { return false; } });
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setMeta(data?.user?.user_metadata || {}));
+    supabase.auth.getUser().then(async ({ data }) => {
+      const u = data?.user;
+      if (!u) return;
+      setMeta(u.user_metadata || {});
+      // Les mandats et l'accès aux prestations vivent dans `profiles`, jamais
+      // dans le jeton : c'est le serveur qui les accorde.
+      const { data: p, error } = await supabase
+        .from("profiles")
+        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib")
+        .eq("id", u.id).single();
+      if (error) console.error("[premiers pas] profil illisible :", error.message);
+      setProfil(p || {});
+      const { count, error: eDocs } = await supabase
+        .from("documents").select("id", { count: "exact", head: true }).eq("prestataire_id", u.id);
+      if (eDocs) console.error("[premiers pas] documents illisibles :", eDocs.message);
+      setNbDocs(count ?? 0);
+    });
   }, []);
 
-  if (dismissed || !meta) return null;
+  if (dismissed || !meta || !profil || nbDocs === null) return null;
 
+  const requis = DOCS_REQUIS.filter(d => d.required).length;
   const items = [
-    { id:"secteur",  label:"Secteur d'activité choisi",   done:!!meta.secteur,               action:"presta_profile_edit" },
-    { id:"metier",   label:"Métier renseigné",             done:!!meta.metier,                 action:"presta_profile_edit" },
-    { id:"dispos",   label:"Disponibilités configurées",   done:!!(meta.dispon_jours?.length), action:"presta_profile_edit" },
-    { id:"tarif",    label:"Tarif horaire défini",         done:!!meta.tarif_net,              action:"presta_profile_edit" },
-    { id:"rib",      label:"IBAN renseigné",               done:!!meta.rib,                    action:"settings"            },
+    { id:"docs",    label:"Documents justificatifs déposés",
+      aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
+      done:nbDocs >= requis, action:"doc_upload" },
+    { id:"rib",     label:"IBAN renseigné",
+      aide:"Sans IBAN, aucun versement ne peut partir",
+      done:!!(profil.rib || meta.rib), action:"settings" },
+    { id:"mandats", label:"Mandats de facturation et d'encaissement acceptés",
+      aide:"Onglet Revenus — sans eux, pas de facture à votre nom",
+      done:!!(profil.mandat_facturation_at && profil.mandat_encaissement_at), action:"p_dashboard" },
   ];
 
   const doneCount = items.filter(i => i.done).length;
-  if (doneCount === items.length) return null;
+  if (doneCount === items.length && profil.missions_enabled) return null;
   const pct = Math.round((doneCount / items.length) * 100);
 
+  // L'attente de validation n'est pas une étape à cocher : le prestataire n'y
+  // peut rien. On la dit, pour qu'il ne cherche pas ce qu'il a mal fait.
+  const enAttente = doneCount === items.length && !profil.missions_enabled;
+
   return (
-    <div style={{ background:"linear-gradient(135deg,#0D1B3E,#162547)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px", marginBottom:18 }}>
+    <div style={{ background:"linear-gradient(135deg,#0D1B3E,#162547)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px", marginBottom:14 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
         <div>
-          <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Premiers pas</div>
+          <div style={{ fontWeight:800, color:C.text, fontSize:13 }}>🚀 Pour recevoir des prestations</div>
           <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>{doneCount}/{items.length} étapes complétées</div>
         </div>
-        <button onClick={() => { try { localStorage.setItem("alane_presta_checklist_dismissed","1"); } catch { /* ignore */ } setDismissed(true); }} style={{ background:"none", border:"none", color:C.textMuted, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 0 0 8px" }}>×</button>
+        <button onClick={() => { try { localStorage.setItem("alane_presta_checklist_dismissed","1"); } catch { /* préférence non conservée, sans conséquence */ } setDismissed(true); }}
+          style={{ background:"transparent", border:"none", color:C.textMuted, fontSize:18, cursor:"pointer", lineHeight:1, padding:0 }}>×</button>
       </div>
       <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:99, height:6, marginBottom:14, overflow:"hidden" }}>
-        <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.5s" }} />
+        <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${C.violet},${C.violetLight})`, borderRadius:99, transition:"width 0.3s" }} />
       </div>
       {items.map((item, idx) => (
         <div key={item.id}
           onClick={() => !item.done && onNavigate(item.action)}
-          style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom: idx < items.length-1 ? `1px solid rgba(255,255,255,0.05)` : "none", cursor:item.done?"default":"pointer" }}>
-          <div style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800,
+          style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"9px 0", borderBottom: idx < items.length-1 ? `1px solid rgba(255,255,255,0.05)` : "none", cursor: item.done ? "default" : "pointer" }}>
+          <div style={{ width:22, height:22, borderRadius:"50%", flexShrink:0, marginTop:1,
             background: item.done ? `${C.success}22` : `${C.violet}22`,
-            border: `1.5px solid ${item.done ? C.success : C.violet}66`,
-            color: item.done ? C.success : C.violet }}>
+            border:`1.5px solid ${item.done ? C.success : C.violet}`,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:item.done?C.success:C.violet }}>
             {item.done ? "✓" : "→"}
           </div>
-          <span style={{ flex:1, fontSize:13, color:item.done?C.textSub:C.text, fontWeight:item.done?400:600, textDecoration:item.done?"line-through":"none" }}>{item.label}</span>
-          {!item.done && <span style={{ color:C.violet, fontSize:11, fontWeight:700, flexShrink:0 }}>Compléter →</span>}
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, color: item.done ? C.textMuted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
+            {!item.done && <div style={{ fontSize:11, color:C.textSub, marginTop:2 }}>{item.aide}</div>}
+          </div>
+          {!item.done && <span style={{ color:C.violet, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>Compléter →</span>}
         </div>
       ))}
+      {enAttente && (
+        <div style={{ marginTop:12, padding:"10px 12px", borderRadius:10, background:`${C.accentGold}12`, border:`1px solid ${C.accentGold}33`, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+          ⏳ <strong style={{ color:C.accentGold }}>Tout est complet.</strong> Vos documents sont en cours de vérification par ALANE.
+          Vous recevrez une notification dès que l'accès aux prestations sera ouvert — vous n'avez rien d'autre à faire.
+        </div>
+      )}
     </div>
   );
 }
-
 export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
   const [checking, setChecking] = useState(false);
   const handleRetry = async () => {
