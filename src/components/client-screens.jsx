@@ -1998,7 +1998,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               <button onClick={()=>setShowFilters(!showFilters)} style={{ flex:1, padding:"10px 14px", borderRadius:r, border:`1.5px solid ${showFilters?s.color:C.border}`, background:showFilters?`${s.color}20`:"rgba(255,255,255,0.04)", color:showFilters?s.color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:6, transition:"all 0.2s" }}>
                 🎛️ Filtres {filterDispo||filterNoteMin>0||filterTarifMax<50?<span style={{ background:s.color, color:"#fff", borderRadius:"50%", width:16, height:16, fontSize:10, display:"inline-flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>!</span>:null}
               </button>
-              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ flex:1, padding:"10px 10px", borderRadius:r, border:`1.5px solid ${C.border}`, background:"rgba(255,255,255,0.04)", color:C.text, fontSize:12, fontFamily:"inherit", cursor:"pointer" }}>
+              <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ colorScheme:"dark", flex:1, padding:"10px 10px", borderRadius:r, border:`1.5px solid ${C.border}`, background:"rgba(255,255,255,0.04)", color:C.text, fontSize:12, fontFamily:"inherit", cursor:"pointer" }}>
                 <option value="rating">⭐ Par note</option>
                 <option value="tarif">💶 Par tarif</option>
                 <option value="distance">📍 Par distance</option>

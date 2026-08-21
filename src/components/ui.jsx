@@ -305,6 +305,14 @@ export const Select = ({ label, options, value, onChange }) => (
         fontSize:14, fontFamily:"inherit",
         color: value ? C.text : C.textMuted,
         background: "#0D1B3E",
+        // La LISTE dépliée d'un `<select>` est dessinée par le système, pas par
+        // la page : ni le fond ni la couleur du texte ne s'y appliquent. Sur
+        // Windows, elle s'ouvrait donc en clair sous un texte clair — illisible.
+        //
+        // `colorScheme: "dark"` est le seul moyen de le lui dire. Les options
+        // reçoivent la même consigne : certains navigateurs ne propagent pas
+        // celle du parent.
+        colorScheme: "dark",
         outline:"none", boxSizing:"border-box",
         backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238B8FA8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
         backgroundRepeat:"no-repeat",
@@ -313,7 +321,10 @@ export const Select = ({ label, options, value, onChange }) => (
       }}
     >
       <option value="">Sélectionner…</option>
-      {options.map(o=><option key={o} value={o}>{o}</option>)}
+      {/* Fond et couleur posés sur chaque option : Firefox et certaines
+          versions de Chrome sous Windows ignorent le `color-scheme` du parent
+          pour les options, et retombent sur le thème clair du système. */}
+      {options.map(o=><option key={o} value={o} style={{ background:"#0D1B3E", color:"#F0F0F5" }}>{o}</option>)}
     </select>
   </div>
 );
