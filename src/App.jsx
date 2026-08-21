@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component {
         <button aria-label="Recharger la page" onClick={()=>window.location.reload()} style={{ background:"#7C6FE0", border:"none", color:"#fff", borderRadius:12, padding:"13px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
           &#128260; Recharger la page
         </button>
-        <button aria-label="Réessayer sans recharger la page" onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.5)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        <button aria-label="Réessayer sans recharger la page" onClick={()=>{ this.setState({ hasError:false, error:null }); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.2)", color:"rgba(255,255,255,0.6)", borderRadius:12, padding:"11px 24px", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
           Réessayer sans recharger
         </button>
       </div>
@@ -192,7 +192,7 @@ function SplashScreen({ onNext }) {
             <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,217,143,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎉</div>
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.5 }}>
                 8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
               </div>
             </div>
@@ -291,7 +291,7 @@ function RoleScreen({ onSelect, onBack, notice }) {
           <span style={{ fontSize:20, flexShrink:0 }}>🚀</span>
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, lineHeight:1.5 }}>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.5 }}>
               8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
             </div>
           </div>
@@ -510,7 +510,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
       <div style={{ width:80, height:80, borderRadius:24, background:checking?"rgba(16,217,143,0.15)":"rgba(124,111,224,0.15)", border:`2px solid ${checking?"#10D98F":"rgba(124,111,224,0.4)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, marginBottom:24, transition:"all 0.4s" }}>{checking?"🎉":"⏳"}</div>
       <h2 style={{ color:"#fff", fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", margin:"0 0 10px" }}>{checking ? "Compte approuvé !" : "Compte en attente"}</h2>
-      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
+      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 0 28px" }}>
         {checking ? "Votre compte a été validé. Redirection en cours…" : "Vos informations sont en cours de vérification. Notre équipe reviendra vers vous très rapidement."}
       </p>
 
@@ -524,16 +524,16 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
             </div>
             <div style={{ paddingTop:9, paddingBottom:i<steps.length-1?0:0 }}>
               <div style={{ color:step.done?"#10D98F":step.active?"#fff":"rgba(255,255,255,0.3)", fontWeight:step.active||step.done?700:400, fontSize:13 }}>{step.label}</div>
-              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11, marginTop:1, marginBottom:i<steps.length-1?16:0 }}>{step.sub}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:1, marginBottom:i<steps.length-1?16:0 }}>{step.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
       <div style={{ background:"rgba(124,111,224,0.1)", border:"1px solid rgba(124,111,224,0.25)", borderRadius:14, padding:"14px 20px", marginBottom:24, width:"100%", maxWidth:320 }}>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>Notification envoyée à</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginBottom:4 }}>Notification envoyée à</div>
         <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>{userEmail||"votre email"}</div>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6 }}>Vérifiez vos spams si vous ne recevez rien</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:6 }}>Vérifiez vos spams si vous ne recevez rien</div>
       </div>
 
       {/* URSSAF nudge pendant l'attente */}
@@ -541,7 +541,7 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
         <div style={{ width:40, height:40, borderRadius:12, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🏛️</div>
         <div style={{ flex:1, textAlign:"left" }}>
           <div style={{ color:"#FFD250", fontWeight:700, fontSize:13, marginBottom:3 }}>Profitez de l'attente !</div>
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.5 }}>Créez votre auto-entreprise gratuitement sur le guichet officiel de l'INPI →</div>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.5 }}>Créez votre auto-entreprise gratuitement sur le guichet officiel de l'INPI →</div>
         </div>
       </a>
 
@@ -549,10 +549,10 @@ function PendingApprovalScreen({ onLogout, onApproved }) {
         {manualChecking ? "Vérification…" : "🔄 Vérifier mon statut"}
       </button>
       {manualMsg && <div style={{ fontSize:12, color: manualMsg.includes("refusé") ? "#F25E5E" : "rgba(255,255,255,0.5)", marginBottom:14, maxWidth:300 }}>{manualMsg}</div>}
-      {!hasSession && <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:14, maxWidth:300, lineHeight:1.6, textAlign:"center" }}>
+      {!hasSession && <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:14, maxWidth:300, lineHeight:1.6, textAlign:"center" }}>
         Déconnectez-vous puis reconnectez-vous pour vérifier votre statut.
       </div>}
-      <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+      <button onClick={onLogout} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"12px 28px", color:"rgba(255,255,255,0.6)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
         Se déconnecter
       </button>
     </div>
@@ -746,7 +746,7 @@ function DesktopSidebar({ screen, role, onNavigate, onlineStatus, onToggleOnline
             <div style={{ fontSize:18 }}>{role==="prestataire"?"👷":"🏢"}</div>
             <div style={{ minWidth:0 }}>
               <div style={{ color:C.white, fontSize:12, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{userName||userEmail||"Mon compte"}</div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{role==="prestataire"?"Prestataire":"Client"}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10 }}>{role==="prestataire"?"Prestataire":"Client"}</div>
             </div>
           </div>
         )}
@@ -873,7 +873,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
               <span style={{ color:C.white }}>LAN</span>
               <span style={{ color:C.accentGold }}>E</span>
             </div>
-            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, letterSpacing:2, textTransform:"uppercase", fontWeight:600 }}>Plateforme de services à la demande</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, letterSpacing:2, textTransform:"uppercase", fontWeight:600 }}>Plateforme de services à la demande</div>
           </div>
 
           {/* Tagline */}
@@ -904,7 +904,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             {[["88+","Prestataires"],["7","Secteurs"],["<10min","Réponse"]].map(([v,l])=>(
               <div key={l}>
                 <div style={{ color:C.white, fontWeight:900, fontSize:22 }}>{v}</div>
-                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>{l}</div>
+                <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>{l}</div>
               </div>
             ))}
           </div>
@@ -1549,7 +1549,7 @@ export default function App() {
             <div style={{ fontWeight:800, color:"#F0F0F5", fontSize:13, marginBottom:2 }}>
               Vous n'avez pas finalisé votre réservation
             </div>
-            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {bookingDraftBanner.prestataireName
                 ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${bookingDraftBanner.montant} €` : ""}`
                 : "Reprenez là où vous en étiez"}
@@ -1602,7 +1602,7 @@ export default function App() {
           >Reprendre</button>
           <button
             onClick={()=>{ setBookingDraftBanner(null); try { localStorage.removeItem("alane_booking_draft"); } catch {} }}
-            style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", lineHeight:1, flexShrink:0 }}
+            style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.6)", fontSize:18, cursor:"pointer", padding:"4px", lineHeight:1, flexShrink:0 }}
           >×</button>
         </div>
       </div>

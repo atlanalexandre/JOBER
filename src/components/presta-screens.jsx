@@ -1927,10 +1927,10 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
     <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
       <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
       <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"inherit" }}>Accès suspendu</h2>
-      <p style={{ color:"rgba(255,255,255,0.55)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
+      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
         Votre offre gratuite a été entièrement utilisée ce mois-ci.
       </p>
-      <p style={{ color:"rgba(255,255,255,0.35)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
+      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
         Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite. Le quota gratuit se réinitialise le 1er de chaque mois.
       </p>
       <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 }}>
@@ -1940,7 +1940,7 @@ export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
         <button onClick={handleRetry} disabled={checking} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(16,217,143,0.3)", background:"rgba(16,217,143,0.06)", color:"#10D98F", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:checking?0.6:1 }}>
           {checking ? "Vérification…" : "🔄 Vérifier mon accès"}
         </button>
-        <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.4)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
           Se déconnecter
         </button>
       </div>
@@ -2430,7 +2430,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             <div style={{ textAlign:"center", marginBottom:20 }}>
               <div style={{ fontSize:48, marginBottom:8 }}>✅</div>
               <div style={{ fontWeight:800, fontSize:18, color:"#10D98F", marginBottom:4 }}>Prestation validée !</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>En attente de validation par le client</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>En attente de validation par le client</div>
             </div>
             <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
               {[
@@ -2442,7 +2442,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 ["Ville",     validatedSummary.ville || "—"],
               ].map(([l, v]) => (
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                  <span style={{ color:"rgba(255,255,255,0.45)", fontSize:12 }}>{l}</span>
+                  <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>{l}</span>
                   <span style={{ color:"#E8EAF0", fontWeight:600, fontSize:12 }}>{v}</span>
                 </div>
               ))}
@@ -2519,7 +2519,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 )}
                 {(m.ville || m.adresse || m.description) && (
                   <div style={{ marginBottom:8 }}>
-                    <button onClick={()=>setExpandedDetail(expandedDetail===m.id?null:m.id)} style={{ background:"transparent", border:`1px solid rgba(255,255,255,0.12)`, borderRadius:8, padding:"5px 12px", color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
+                    <button onClick={()=>setExpandedDetail(expandedDetail===m.id?null:m.id)} style={{ background:"transparent", border:`1px solid rgba(255,255,255,0.12)`, borderRadius:8, padding:"5px 12px", color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", width:"100%" }}>
                       {expandedDetail===m.id ? "▲ Masquer les détails" : "▼ Voir les détails"}
                     </button>
                     {expandedDetail===m.id && (
@@ -2557,7 +2557,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                         {trialExhausted && userPlan === "free" ? (
                           <div style={{ background:`rgba(242,94,94,0.1)`, border:`1px solid rgba(242,94,94,0.35)`, borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
                             <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>⛔ Quota épuisé — acceptation impossible</div>
-                            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
+                            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
                             <button onClick={()=>onNavigate&&onNavigate("abonnement_presta")} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                               💎 Passer Premium — 29€/mois
                             </button>
@@ -3111,66 +3111,146 @@ export function RemplacementsProposes({ onRepondu }) {
 }
 
 // ── PRESTA TOUR ───────────────────────────────────────────────────
+//
+// CE QUE CE GUIDE MONTRE, ET POURQUOI IL A CHANGÉ
+//
+// L'ancien tutoriel racontait le fonctionnement d'ALANE en cinq écrans —
+// « complétez votre profil », « recevez des demandes », « acceptez ou
+// refusez ». Trois défauts :
+//
+//   1. il répétait ce que le prestataire venait de lire à l'inscription ;
+//   2. il ne disait jamais OÙ se trouvent les choses, alors que c'est la seule
+//      question qu'on se pose devant un écran inconnu ;
+//   3. il faisait doublon avec la liste « Pour recevoir des prestations » du
+//      tableau de bord, qui, elle, dit ce qui manque réellement.
+//
+// Il montre désormais la barre d'onglets telle qu'elle apparaît à l'écran,
+// onglet par onglet, avec ce qu'on y fait et ce qui arrive si on ne le fait
+// pas. Chaque étape ouvre l'onglet dont elle parle : on ne lit pas un mode
+// d'emploi, on est emmené à l'endroit.
+//
+// Les onglets répliqués ci-dessous doivent rester alignés sur ceux de
+// `PrestaDashboard` — même identifiants, même ordre.
+const ONGLETS_PRESTA_GUIDE = [
+  { id:"prestations", l:"Prestations" },
+  { id:"profil",      l:"Profil" },
+  { id:"docs",        l:"Docs" },
+  { id:"revenus",     l:"Revenus" },
+  { id:"historique",  l:"Historique" },
+  { id:"clients",     l:"Clients" },
+];
+
 const PRESTA_TOUR_STEPS = [
   {
-    icon:"👷",
-    title:"Bienvenue sur ALANE !",
-    desc:"ALANE vous connecte directement avec des clients qui ont besoin de vos compétences. Voici comment ça fonctionne.",
+    cible:null,
+    icon:"🧭",
+    title:"Tout se passe dans cette barre",
+    desc:"Votre espace tient en six onglets, juste sous votre photo. Deux d'entre eux doivent être complétés avant de recevoir votre première prestation — on vous les montre maintenant.",
     color:"#7C6FE0",
   },
   {
-    icon:"📋",
-    title:"1. Complétez votre profil",
-    desc:"Renseignez votre secteur, votre métier, vos disponibilités et votre IBAN. Un profil complet vous rend visible et rassure les clients.",
-    color:"#4FC3F7",
-  },
-  {
-    icon:"🔔",
-    title:"2. Recevez des demandes",
-    desc:"Un client vous choisit directement et vous envoie une demande de prestation. Vous recevez une notification immédiate sur votre téléphone.",
+    cible:"docs",
+    icon:"📎",
+    title:"Onglet Docs — vos justificatifs",
+    desc:"C'est ici que vous déposez vos sept documents : pièce d'identité, justificatif d'immatriculation, attestation URSSAF, justificatif de domicile, RIB, photo et attestation RC Pro.",
+    consequence:"Tant qu'ils ne sont pas déposés et vérifiés, votre profil n'apparaît dans aucune recherche : vous ne recevrez aucune proposition.",
     color:"#F0B429",
   },
   {
-    icon:"⏱️",
-    title:"3. Acceptez ou refusez",
-    desc:"Vous avez 1 heure (prestation du jour) ou 4 heures (autre jour) pour répondre. Sans réponse, la prestation est automatiquement annulée.",
-    color:"#F06292",
+    cible:"revenus",
+    icon:"✍️",
+    title:"Onglet Revenus — vos deux mandats",
+    desc:"Deux autorisations à signer une seule fois : le mandat de facturation (ALANE établit vos factures en votre nom) et le mandat d'encaissement (ALANE encaisse le client et vous reverse).",
+    consequence:"Sans ces deux signatures, aucune facture ne peut être émise à votre nom, donc aucun versement ne peut partir.",
+    color:"#10D98F",
   },
   {
-    icon:"💶",
-    title:"4. Réalisez & soyez payé",
-    desc:"Effectuez la prestation, le client la valide, et vous êtes payé directement sur votre IBAN sous 3 à 5 jours ouvrés.",
-    color:"#81C784",
+    cible:"profil",
+    icon:"👤",
+    title:"Onglet Profil — votre tarif et vos créneaux",
+    desc:"Votre tarif horaire, vos métiers, votre rayon d'intervention et vos disponibilités. Vous les fixez librement et vous pouvez les modifier à tout moment.",
+    consequence:"Ce sont ces critères qui déterminent les prestations qui vous sont proposées : un rayon trop court ou des créneaux trop étroits réduisent ce que vous recevez.",
+    color:"#4FC3F7",
+  },
+  {
+    cible:"prestations",
+    icon:"🔔",
+    title:"Onglet Prestations — vos propositions",
+    desc:"Les prestations qui vous sont proposées arrivent ici, et une notification vous prévient sur votre téléphone. Vous acceptez ou vous refusez, sans avoir à vous justifier.",
+    consequence:"Vous avez 1 heure pour répondre à une prestation du jour, 4 heures pour les autres. Passé ce délai, elle est proposée à quelqu'un d'autre.",
+    color:"#F06292",
   },
 ];
 
-export function PrestaTour({ onDone }) {
+// La barre d'onglets telle qu'elle apparaît vraiment, avec l'onglet visé mis en
+// avant. Reproduire la barre plutôt que la désigner par une flèche évite de
+// mesurer la position d'un élément qui défile horizontalement — une flèche
+// posée au mauvais endroit désigne pire que rien.
+function BarreOngletsGuide({ cible, couleur }) {
+  return (
+    <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, gap:2, overflow:"hidden" }}>
+      {ONGLETS_PRESTA_GUIDE.map(t => {
+        const vise = t.id === cible;
+        return (
+          <div key={t.id} style={{
+            flex:"1 0 auto", padding:"8px 4px", borderRadius:9, textAlign:"center",
+            fontSize:10, fontWeight:vise?800:500, fontFamily:"inherit",
+            background: vise ? couleur : "transparent",
+            color: vise ? "#0A1628" : (cible ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.7)"),
+            boxShadow: vise ? `0 0 0 3px ${couleur}44` : "none",
+            transition:"all 0.25s",
+          }}>{t.l}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function PrestaTour({ onDone, onOuvrirOnglet }) {
   const [step, setStep] = useState(0);
   const s = PRESTA_TOUR_STEPS[step];
   const isLast = step === PRESTA_TOUR_STEPS.length - 1;
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 28px" }}>
-      <div style={{ width:"100%", maxWidth:360, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
+    <div style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(5,14,32,0.92)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"24px 22px", overflowY:"auto" }}>
+      <div style={{ width:"100%", maxWidth:380, background:"#0D1B3E", borderRadius:24, overflow:"hidden", boxShadow:"0 24px 80px rgba(0,0,0,0.7)" }}>
         <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
           {PRESTA_TOUR_STEPS.map((_,i) => (
-            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.3)", transition:"all 0.3s" }} />
           ))}
         </div>
-        <div style={{ textAlign:"center", padding:"24px 28px 0" }}>
-          <div style={{ width:84, height:84, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, margin:"0 auto 20px" }}>{s.icon}</div>
-          <h2 style={{ color:"#fff", fontSize:20, fontWeight:800, margin:"0 0 12px", fontFamily:font.display, lineHeight:1.2 }}>{s.title}</h2>
-          <p style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.7, margin:0 }}>{s.desc}</p>
+
+        <div style={{ padding:"20px 22px 0" }}>
+          <BarreOngletsGuide cible={s.cible} couleur={s.color} />
         </div>
-        <div style={{ padding:"24px 28px 28px", display:"flex", gap:10 }}>
-          {step > 0 && (
-            <button onClick={()=>setStep(s=>s-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Précédent</button>
+
+        <div style={{ textAlign:"center", padding:"18px 22px 0" }}>
+          <div style={{ width:64, height:64, borderRadius:"50%", background:s.color+"20", border:`2px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>{s.icon}</div>
+          <h2 style={{ color:"#fff", fontSize:18, fontWeight:800, margin:"0 0 10px", fontFamily:font.display, lineHeight:1.25 }}>{s.title}</h2>
+          <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13.5, lineHeight:1.65, margin:0 }}>{s.desc}</p>
+          {s.consequence && (
+            <p style={{ marginTop:12, padding:"10px 12px", borderRadius:10, background:`${s.color}12`, border:`1px solid ${s.color}33`, color:"rgba(255,255,255,0.75)", fontSize:12, lineHeight:1.6, textAlign:"left" }}>
+              <strong style={{ color:s.color }}>À savoir&nbsp;:</strong> {s.consequence}
+            </p>
           )}
-          <button onClick={()=>{ if(isLast) onDone(); else setStep(s=>s+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
-            {isLast ? "C'est parti ! 🚀" : "Suivant →"}
+        </div>
+
+        <div style={{ padding:"20px 22px 22px", display:"flex", gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(v=>v-1)} style={{ flex:1, padding:"13px", border:"1px solid rgba(255,255,255,0.15)", borderRadius:14, background:"transparent", color:"rgba(255,255,255,0.7)", fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>← Retour</button>
+          )}
+          <button onClick={()=>{ if(isLast) onDone(); else setStep(v=>v+1); }} style={{ flex:2, padding:"13px", border:"none", borderRadius:14, background:s.color, color:"#0A1628", fontSize:14, fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>
+            {isLast ? "J'ai compris 🚀" : "Suivant →"}
           </button>
         </div>
+
+        {s.cible && (
+          <button onClick={()=>{ onOuvrirOnglet?.(s.cible); onDone(); }}
+            style={{ display:"block", width:"100%", padding:"0 0 14px", background:"none", border:"none", color:s.color, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+            Ouvrir l’onglet {ONGLETS_PRESTA_GUIDE.find(t=>t.id===s.cible)?.l} maintenant →
+          </button>
+        )}
         {!isLast && (
-          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.6)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer le guide</button>
         )}
       </div>
     </div>
@@ -3737,7 +3817,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           </div>
         </div>
       )}
-      {showTour && <PrestaTour onDone={dismissTour} />}
+      {showTour && <PrestaTour onDone={dismissTour} onOuvrirOnglet={setTab} />}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 28px", borderRadius:"0 0 26px 26px" }}>
         <div style={{ display:"flex", gap:14, alignItems:"center", marginBottom:18 }}>
           <div style={{ width:58, height:58, borderRadius:18, background:`${C.accent}44`, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, border:"2px solid rgba(255,255,255,0.2)", flexShrink:0 }}>
@@ -3746,7 +3826,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         : "👨‍💼"}
     </div>
           <div style={{ flex:1 }}>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>Espace prestataire</p>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0 }}>Espace prestataire</p>
             <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"2px 0 5px" }}>{userName||"Mon espace"}</h2>
             <div style={{ display:"flex", gap:6 }}>
               <div style={{ width:8, height:8, borderRadius:"50%", background:userStatus==="approved"?C.success:userStatus==="rejected"?C.accent:userStatus===null?"rgba(255,255,255,0.3)":C.accentGold }} />
@@ -3770,7 +3850,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <div key={s.l} style={{ background:s.highlight?"linear-gradient(135deg,rgba(240,180,41,0.2),rgba(240,120,41,0.12))":"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center", border:s.highlight?"1px solid rgba(240,180,41,0.4)":"none" }}>
               {s.i && <div style={{ fontSize:16 }}>{s.i}</div>}
               <div style={{ color:s.highlight?C.accentGold:C.white, fontWeight:800, fontSize:s.highlight?13:12 }}>{s.v}</div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9 }}>{s.l}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:9 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -3784,7 +3864,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <div style={{ height:4, borderRadius:2, background:"rgba(255,255,255,0.15)", overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${profilPct}%`, borderRadius:2, background:profilPct>=80?C.success:profilPct>=50?C.accentGold:C.accent, transition:"width 0.6s" }} />
             </div>
-            <p style={{ color:"rgba(255,255,255,0.4)", fontSize:10, margin:"4px 0 0" }}>Complétez votre profil pour être mis en avant →</p>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:10, margin:"4px 0 0" }}>Complétez votre profil pour être mis en avant →</p>
           </div>
         )}
         {/* Toggle disponibilité rapide */}
@@ -3886,7 +3966,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             <span style={{ fontSize:22 }}>🚀</span>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>Pas encore auto-entrepreneur ?</div>
-              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>LegalStart & URSSAF vous accompagnent dans vos démarches</div>
+              <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Créez-la sur le Guichet unique, ou faites-vous accompagner</div>
             </div>
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>

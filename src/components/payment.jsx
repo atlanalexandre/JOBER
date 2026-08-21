@@ -779,7 +779,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>💳 Paiement sécurisé</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Argent bloqué 48 h après la prestation</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, margin:0 }}>Argent bloqué 48 h après la prestation</p>
       </div>
 
       <div style={{ padding:"20px 18px" }}>
