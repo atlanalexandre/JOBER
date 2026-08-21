@@ -4,7 +4,7 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
-import { fenetrePointage } from "../../api/_temps.js";
+import { fenetrePointage, finPrestationMs } from "../../api/_temps.js";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
@@ -2913,6 +2913,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       </button>
                     )
                   )}
+                  {/* Le bouton d'annulation disparaît dès que la prestation est
+                      faite : le prestataire l'a confirmée, ou l'heure de fin est
+                      passée. Il restait affiché sous « Validé — en attente
+                      client », c'est-à-dire au moment où annuler aurait
+                      remboursé intégralement un client déjà servi et privé le
+                      prestataire de son dû. Le serveur refuse aussi ces deux
+                      cas : masquer un bouton ne protège de rien si l'action
+                      reste possible. */}
+                  {!m.validation_prestataire && !(finPrestationMs(m) && Date.now() > finPrestationMs(m)) && (
                   <button onClick={async()=>{
                     if(!await showConfirm("Annuler cette prestation ?")) return;
                     const { data:{ session } } = await supabase.auth.getSession();
@@ -2929,6 +2938,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   }} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.35)", background:"transparent", color:"#F25E5E", fontWeight:600, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                     ✕ Annuler la prestation
                   </button>
+                  )}
                 </div>
               </div>
             );

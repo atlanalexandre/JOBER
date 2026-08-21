@@ -4871,10 +4871,36 @@ export default async function handler(req, res) {
         console.error("[presta_cancel] clôture des remplacements en attente :", e.message);
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=in.(assigned,pending_acceptance)&select=id,client_id,metier,titre,stripe_payment_intent,montant_total,heure_debut,sector,date,ville,hours,started_at,validation_prestataire,date_debut,date_fin,actual_hours`, { headers });
       const mData = await mr.json();
       const mission = Array.isArray(mData) && mData[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non annulable" });
+
+      // ── UNE PRESTATION FAITE NE S'ANNULE PLUS ─────────────────────────
+      //
+      // Le filtre de statut laissait passer toute prestation `assigned` — or
+      // elle le reste jusqu'à ce que le CLIENT valide, c'est-à-dire bien après
+      // que le travail a été exécuté et confirmé par le prestataire.
+      //
+      // « Annuler » remboursait alors intégralement un client qui a reçu son
+      // service, et privait le prestataire de son dû. Le bouton restait affiché
+      // sous « Validé — en attente client », ce qui en faisait moins une
+      // possibilité qu'un piège.
+      //
+      // Deux refus, aux deux moments où la question ne se pose plus :
+      const finMs = finPrestationMs(mission);
+      if (mission.validation_prestataire) {
+        return res.status(409).json({
+          error: "Vous avez confirmé la fin de cette prestation : elle ne peut plus être annulée. "
+               + "En cas de difficulté, écrivez à direction@alane.fr.",
+        });
+      }
+      if (finMs && Date.now() > finMs) {
+        return res.status(409).json({
+          error: "Cette prestation est terminée : elle ne peut plus être annulée. "
+               + "Confirmez-en la fin, ou écrivez à direction@alane.fr si elle ne s'est pas déroulée.",
+        });
+      }
 
       // Remboursement si la mission était payée — abort si le refund échoue
       if (mission.stripe_payment_intent) {

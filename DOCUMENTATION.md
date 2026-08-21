@@ -1964,6 +1964,23 @@ est dû, on ne retient rien au consommateur.
 Le montant retenu est annoncé dans la proposition et dans la notification de clôture. Le taire
 ferait découvrir l'écart sur le relevé bancaire, ce qui rouvre le litige qu'on vient de fermer.
 
+### Une prestation faite ne s'annule plus
+
+**Corrigé le 21/08/2026.** `presta_cancel` ne filtrait que sur le statut — `assigned` ou
+`pending_acceptance`. Or une prestation reste `assigned` jusqu'à la validation du **client**,
+c'est-à-dire bien après que le travail a été exécuté et confirmé par le prestataire.
+
+Le bouton « Annuler la prestation » restait donc affiché sous « Validé — en attente client ».
+L'utiliser remboursait intégralement un client qui avait reçu son service, et privait le
+prestataire de son dû. Moins une possibilité qu'un piège.
+
+Deux refus, aux deux moments où la question ne se pose plus : `validation_prestataire` est
+vrai, ou `finPrestationMs` est dépassée. La borne est la même que celle du pointage et des
+heures supplémentaires, pour que les trois ne divergent pas.
+
+Le bouton est masqué **et** le serveur refuse : masquer ne protège de rien si l'action reste
+possible par un autre chemin.
+
 ### Se faire remplacer
 
 Un prestataire empêché a deux issues : annuler, ou **se faire remplacer** par un confrère

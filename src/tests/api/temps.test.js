@@ -297,3 +297,39 @@ describe("fenêtre des heures supplémentaires", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Une prestation faite ne s'annule plus
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Le filtre de statut de `presta_cancel` laissait passer toute prestation
+// `assigned` — or elle le reste jusqu'à la validation du CLIENT, bien après que
+// le travail a été exécuté. Annuler remboursait alors un client déjà servi.
+//
+// La borne est `finPrestationMs` : le même calcul que la fenêtre de pointage et
+// celle des heures supplémentaires, pour que les trois ne divergent pas.
+describe("finPrestationMs — la borne qui ferme l'annulation", () => {
+  it("suit le pointage réel quand il existe", () => {
+    const debut = new Date("2026-08-21T08:38:00Z").getTime();
+    const fin = finPrestationMs({ started_at: new Date(debut).toISOString(), hours: 1 });
+    expect(fin).toBe(debut + 3600000);
+  });
+
+  it("retombe sur l'horaire prévu sans pointage", () => {
+    const fin = finPrestationMs({ date: "2026-08-21", heure_debut: "08:38", hours: 1 });
+    expect(fin).toBeGreaterThan(0);
+  });
+
+  it("ne rend rien quand l'horaire est illisible", () => {
+    // Sans borne, on ne ferme pas l'annulation : refuser un geste légitime sur
+    // une donnée manquante serait pire que de le laisser passer.
+    expect(finPrestationMs({})).toBeNull();
+    expect(finPrestationMs({ date: "pas-une-date", heure_debut: "08:00", hours: 1 })).toBeNull();
+  });
+
+  it("compte les heures réelles quand elles diffèrent des prévues", () => {
+    const debut = new Date("2026-08-21T08:00:00Z").getTime();
+    const base = { started_at: new Date(debut).toISOString(), hours: 4 };
+    expect(finPrestationMs(base)).toBe(debut + 4 * 3600000);
+  });
+});
