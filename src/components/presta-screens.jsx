@@ -669,7 +669,13 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             <div style={{ marginBottom:14 }}>
               {[
                 { id:"legalstart", nom:"LegalStart",        logo:"⚖️", color:"#4F46E5", badge:"Recommandé", info:"0€ · SIRET en 48h · Validation juridique incluse", lien:"https://www.legalstart.fr/micro-entreprise/" },
-                { id:"urssaf",     nom:"URSSAF (officiel)", logo:"🏛️", color:"#059669", badge:"100% gratuit", info:"Gratuit · Site officiel de l’État · SIRET 24h", lien:"https://www.autoentrepreneur.urssaf.fr/" },
+                // Depuis le 1er janvier 2023, TOUTE création d'entreprise passe par le
+                // Guichet unique des formalités, tenu par l'INPI. Le portail
+                // autoentrepreneur.urssaf.fr informe encore, mais ne permet plus de
+                // s'immatriculer : il y renvoie. Envoyer le prestataire à l'URSSAF,
+                // c'est lui faire faire un détour au début d'un parcours où on lui
+                // demande déjà beaucoup.
+                { id:"urssaf",     nom:"Guichet unique (officiel)", logo:"🏛️", color:"#059669", badge:"100% gratuit", info:"Gratuit · Site officiel de l’État · SIRET sous quelques jours", lien:"https://procedures.inpi.fr/" },
               ].map(p=>(
                 <div key={p.id} onClick={()=>setChoixAE(choixAE===p.id?null:p.id)} style={{ background:choixAE===p.id?p.color+"15":"#0D1B3E", border:`2px solid ${choixAE===p.id?p.color:C.border}`, borderRadius:r+2, padding:"13px", marginBottom:8, cursor:"pointer" }}>
                   <div style={{ display:"flex", gap:10, alignItems:"center" }}>
@@ -4263,17 +4269,24 @@ export function MicroEntrepriseScreen({ onBack }) {
     },
     {
       id: "urssaf_ae",
-      name: "URSSAF (officiel)",
+      name: "Guichet unique (officiel)",
       emoji: "🏛️",
-      tagline: "Le site officiel pour créer votre auto-entreprise",
+      tagline: "Le portail officiel de création d'entreprise",
       color: "#059669",
       avantages: [
         "100% gratuit · Site officiel de l'État",
-        "Immatriculation SIRET en 24h",
-        "Démarches simplifiées en ligne",
+        "Déclaration transmise à l'URSSAF et à l'INSEE",
+        "SIRET délivré sous quelques jours",
       ],
       cta: "Créer mon auto-entreprise →",
-      url: "https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html",
+      // Guichet unique des formalités d'entreprises, obligatoire depuis le
+      // 1er janvier 2023 — l'ancien portail URSSAF n'immatricule plus.
+      //
+      // Le délai annoncé passe de « 24 h » à « quelques jours » : le SIRET
+      // dépend du traitement par l'INSEE, qu'aucune des deux plateformes ne
+      // maîtrise. Promettre 24 h à quelqu'un qui attend son numéro pour
+      // travailler, c'est fabriquer une déception.
+      url: "https://procedures.inpi.fr/",
     },
   ];
 

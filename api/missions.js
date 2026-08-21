@@ -333,7 +333,7 @@ function suffixeRemboursement({ rembourse }) {
 // gratuites ». Cette promesse n'était appliquée nulle part : le quota retombait
 // systématiquement sur `plan_limits.free` (2), et un prestataire du lancement se
 // voyait refuser sa 3ᵉ prestation avec un message parlant de « limite de son plan ».
-// L'offre s'applique tant que le réglage `launch_phase` est actif.
+// L'offre s'applique tant que le réglage `launch_phase` n'a pas été fermé.
 async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
   let limites = { free: 2, premium: 8, elite: 999 };
   try {
@@ -349,8 +349,20 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
   try {
     const sr = await fetch(`${supabaseUrl}/rest/v1/platform_settings?key=eq.launch_phase&select=value`, { headers });
     const sd = await sr.json();
-    const brut = Array.isArray(sd) && sd[0] ? sd[0].value : null;
-    if (brut !== true && brut !== "true") return limite;
+    // Une ligne ABSENTE n'est pas une ligne à `false` : c'est une décision que
+    // personne n'a jamais prise. Or l'inscription annonce l'offre de lancement à
+    // tout le monde sans condition (`IS_LAUNCH` dans src/constants/plans.js).
+    // Traiter l'absence comme un refus, c'est promettre 8 prestations à l'écran
+    // et en refuser la 3ᵉ — constaté sur un inscrit du 21/08/2026.
+    // L'absence suit donc l'annonce ; seul un `false` explicite, posé depuis le
+    // back-office, ferme l'offre.
+    const absente = !Array.isArray(sd) || !sd.length;
+    const brut = absente ? null : sd[0].value;
+    if (absente) {
+      console.warn("[quota] platform_settings.launch_phase absente — offre de lancement appliquée par défaut, conformément à ce qu'annonce l'inscription.");
+    } else if (brut !== true && brut !== "true") {
+      return limite;
+    }
 
     // Les 100 premiers prestataires inscrits, dans l'ordre de création du profil.
     const cr = await fetch(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&select=id&order=created_at.asc&limit=100`, { headers });
