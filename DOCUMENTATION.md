@@ -1994,6 +1994,18 @@ Le parcours normal, celui de l'accord :
 En cas d'opposition, **rien ne se débloque**. Les fonds restent chez Stripe et le différend
 se poursuit entre les parties, par la médiation ou par les voies judiciaires.
 
+**Où vit un litige à l'écran** (21/08/2026) : un litige en cours n'est pas de l'histoire, c'est
+un dossier ouvert dont le délai de 48 h court. Il était pourtant rangé dans l'onglet
+« Historique » du prestataire, parmi les affaires classées. Il vit désormais en tête de
+l'onglet « Prestations », et rejoint l'historique une fois dénoué. Côté client, il est épinglé
+en tête de liste quel que soit l'onglet — un dossier ouvert ne doit pas dépendre du filtre
+choisi.
+
+**`closed` manquait aux deux écrans.** C'est l'état d'une prestation dont le litige s'est
+dénoué par un remboursement, et celui d'une prestation clôturée depuis le back-office. Elle
+disparaissait de l'historique du prestataire et de l'onglet « Terminées » du client : ni l'un
+ni l'autre ne pouvait plus la retrouver.
+
 **Le routage des notifications de litige** (corrigé le 21/08/2026) : elles portaient
 `type: "system"` sans référence, et le routeur de l'écran des notifications envoyait alors le
 client vers l'écran de **recherche**. On touchait « Proposition de résolution » et on

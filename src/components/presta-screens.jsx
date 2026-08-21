@@ -3427,6 +3427,8 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [statsData,setStatsData]=useState({prestations:0,revenuMois:0,note:null,taux:null});
   const [completedMissions,setCompletedMissions]=useState([]);
   const [historyMissions,setHistoryMissions]=useState([]);
+  // Les litiges en cours : un dossier ouvert, pas de l'histoire.
+  const [litiges,setLitiges]=useState([]);
   // Sommes dues à ALANE (CGPS art. 8B.3). La notification envoyée au prestataire
   // lors d'une retenue lui annonce que « le détail figure dans votre espace » :
   // sans cet écran, la promesse était vide et la retenue restait inexpliquée.
@@ -3580,7 +3582,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_montant,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled","disputed"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_montant,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at").eq("prestataire_id",u.id).in("status",["assigned","completed","closed","refused","cancelled","disputed"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
@@ -3609,11 +3611,24 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const taux=totalR>0?Math.round((done.length/totalR)*100):null;
       setStatsData({prestations:done.length,revenuMois:Math.round(revenuMois*100)/100,note:avgNote?avgNote.toFixed(1):null,taux:taux!==null?taux+"%":null});
       setCompletedMissions(done);
-      // `disputed` était absent de cette liste : un prestataire dont la
-      // prestation était contestée ne la voyait plus nulle part — ni le litige,
-      // ni la proposition de résolution qu'il a 48 h pour contester (CGPS 17.1).
-      // Un droit qu'on ne voit pas ne s'exerce pas.
-      setHistoryMissions([...done, ...allM.filter(m => ["cancelled","refused","disputed"].includes(m.status))].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      // L'HISTORIQUE NE GARDE QUE CE QUI EST FINI
+      //
+      // `disputed` y figurait — c'était mieux que rien, un prestataire dont la
+      // prestation était contestée ne la voyait nulle part. Mais un litige en
+      // cours n'est pas de l'histoire : c'est un dossier ouvert qui attend une
+      // réponse sous 48 h. Rangé dans l'historique, il se lit comme une affaire
+      // classée, et le délai court pendant qu'on ne le regarde pas.
+      //
+      // Les litiges vivent donc dans l'onglet « Prestations », en tête. Ils
+      // rejoignent l'historique une fois dénoués — c'est-à-dire quand leur
+      // statut devient `completed`, `closed` ou `cancelled`.
+      //
+      // `closed` manquait aux deux listes : c'est pourtant l'état d'une
+      // prestation dont le litige s'est dénoué par un remboursement, et celui
+      // d'une prestation clôturée depuis le back-office. Elle disparaissait
+      // alors de tous les écrans du prestataire.
+      setHistoryMissions([...done, ...allM.filter(m => ["closed","cancelled","refused"].includes(m.status))].sort((a,b) => (b.date||"").localeCompare(a.date||"")));
+      setLitiges(allM.filter(m => m.status === "disputed").sort((a,b) => (b.date||"").localeCompare(a.date||"")));
 
       // Lecture directe : la RLS n'autorise que ses propres créances.
       supabase.from("creances_prestataires")
@@ -3942,6 +3957,38 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ))}
         </div>
         {tab==="prestations" && <>
+          {/* ── Litiges en cours ─────────────────────────────────────────
+              Ils étaient rangés dans l'historique. Un litige n'est pourtant
+              pas de l'histoire : c'est un dossier ouvert, avec une réponse
+              attendue sous 48 h et de l'argent gelé des deux côtés. Rangé
+              parmi les affaires classées, il se lit comme réglé — et le délai
+              court pendant qu'on ne le regarde pas.
+
+              Ils passent donc en tête des prestations, avant même la liste
+              des choses à faire, et rejoignent l'historique une fois dénoués. */}
+          {litiges.map(m => {
+            const secteurLitige = SECTORS.find(x => x.id === m.sector);
+            return (
+              <div key={m.id} style={{ background:"rgba(242,166,94,0.07)", border:"1px solid rgba(242,166,94,0.35)", borderRadius:16, padding:"14px", marginBottom:14 }}>
+                <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                  <div style={{ width:40, height:40, borderRadius:11, background:`${secteurLitige?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{secteurLitige?.icon||"📋"}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre||m.metier||secteurLitige?.label||"Prestation"}</div>
+                    <div style={{ color:C.textSub, fontSize:11 }}>📅 {m.date}{m.heure_debut?` · ${m.heure_debut}`:""}{m.hours ? ` · ${m.hours}h` : ""}</div>
+                  </div>
+                  <span style={{ background:"rgba(242,166,94,0.2)", border:"1px solid rgba(242,166,94,0.45)", borderRadius:20, padding:"3px 9px", color:"#F2A65E", fontSize:10, fontWeight:800, flexShrink:0 }}>Litige en cours</span>
+                </div>
+                {!m.resolution_proposee && (
+                  <div style={{ marginTop:10, fontSize:12, color:C.textSub, lineHeight:1.6 }}>
+                    Le client a signalé un problème. ALANE examine le dossier et vous proposera une issue, à laquelle vous pourrez vous opposer. Le versement de cette prestation est suspendu jusque-là.
+                  </div>
+                )}
+                {/* Proposition de résolution — le prestataire a exactement le
+                    même droit d'opposition que le client (CGPS art. 17.1). */}
+                <BlocPropositionResolution mission={m} role="prestataire" onOppose={() => opposerResolution(m.id)} onAccepte={() => accepterResolution(m.id)} />
+              </div>
+            );
+          })}
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
           {/* Bandeau « Prestations urgentes activées — vous êtes prioritaire »
@@ -4017,8 +4064,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           ))}
         </>}
         {tab==="historique" && (()=>{
-          const statusLabels = { completed:"Terminée", cancelled:"Annulée", refused:"Refusée", disputed:"Litige en cours" };
-          const statusColors = { completed:C.success, cancelled:"#F25E5E", refused:C.textMuted, disputed:"#F2A65E" };
+          // `disputed` n'apparaît plus ici : un litige en cours vit dans
+          // l'onglet « Prestations ». `closed` est l'état d'une prestation
+          // dont le litige s'est dénoué par un remboursement — pour le
+          // prestataire, elle est terminée sans versement.
+          const statusLabels = { completed:"Terminée", closed:"Clôturée", cancelled:"Annulée", refused:"Refusée" };
+          const statusColors = { completed:C.success, closed:C.textSub, cancelled:"#F25E5E", refused:C.textMuted };
           const getAmtH = montantPrestataire;
           return historyMissions.length === 0 ? (
             <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:18, padding:"28px 16px", textAlign:"center" }}>
@@ -4049,9 +4100,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       <span style={{ background:`${statusColor}20`, border:`1px solid ${statusColor}44`, borderRadius:20, padding:"2px 8px", color:statusColor, fontSize:10, fontWeight:700 }}>{statusLabel}</span>
                     </div>
                   </div>
-                  {/* Proposition de résolution — le prestataire a exactement le
-                      même droit d'opposition que le client (CGPS art. 17.1). */}
-                  <BlocPropositionResolution mission={m} role="prestataire" onOppose={() => opposerResolution(m.id)} onAccepte={() => accepterResolution(m.id)} />
+                  {m.status === "closed" && (
+                    <div style={{ marginTop:8, color:C.textSub, fontSize:11, lineHeight:1.5 }}>
+                      ⚖️ Litige dénoué par un remboursement du client — cette prestation ne donne pas lieu à versement.
+                    </div>
+                  )}
 
                   {m.status === "completed" && (() => {
                     // Le versement n'est plus immédiat : il part à la fermeture du
