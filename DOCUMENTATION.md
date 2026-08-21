@@ -2189,6 +2189,42 @@ la prestation n'a pas eu lieu, l'avantage n'a pas été consommé.
 
 ---
 
+### Le vocabulaire des états, côté client
+
+**Unifié le 21/08/2026** dans `src/lib/statuts.js`. Le même état portait deux noms selon
+l'écran : `assigned` s'affichait « Confirmée » sur la fiche d'une prestation et « Assignée »
+dans l'historique.
+
+Deux principes :
+
+- **Un libellé décrit ce que le client vit, jamais l'état interne.** `completed` et `closed`
+  sont distincts en base — validé des deux côtés, puis clos après versement — mais pour lui
+  c'est la même chose : la prestation a eu lieu. Un seul mot, « Terminée ».
+- **Un état inconnu rend son nom brut**, jamais un libellé inventé. Mieux vaut un mot étrange
+  qu'un mot rassurant et faux.
+
+| État en base | Ce que lit le client |
+|---|---|
+| `open` | Recherche en cours |
+| `pending_acceptance` | Réponse attendue |
+| `assigned` | Confirmée |
+| `assigned`, fin dépassée, `validation_client` faux | **À valider** |
+| `needs_replacement` | Remplaçant recherché |
+| `completed`, `closed` | Terminée |
+| `cancelled` | Annulée |
+| `disputed` | Litige en cours |
+| `refused`, `rejected` | Refusée |
+
+**« À valider » n'existait pas.** Une prestation finie mais non validée reste `assigned` et
+s'affichait « Confirmée », comme une prestation à venir — alors que c'est le seul moment où une
+action est demandée au client, et que de cette action dépend le versement du prestataire. Elle
+est la seule à porter une couleur d'appel.
+
+La fin est calculée sur le pointage réel quand il existe, sinon sur l'horaire prévu : une
+prestation démarrée en retard tourne encore quand l'horaire prévu est dépassé.
+
+---
+
 ## 7. Navigation et URLs
 
 L'application n'utilise pas de bibliothèque de routage. L'écran affiché vient d'un état
