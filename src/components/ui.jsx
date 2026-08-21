@@ -570,14 +570,39 @@ export function fetchPrestaCount() {
 // du silence un accord. Il est partagé entre le client et le prestataire
 // parce que les deux ont exactement le même droit, et qu'un bloc recopié
 // finit par diverger — c'est déjà arrivé quatre fois sur les CGPS.
-export function BlocPropositionResolution({ mission, onOppose }) {
-  const [envoi, setEnvoi] = useState(false);
+export function BlocPropositionResolution({ mission, onOppose, onAccepte, role }) {
+  // ═══════════════════════════════════════════════════════════════════════
+  // DEUX BOUTONS, PAS UN SEUL
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Ce bloc ne proposait que « Je m'oppose à cette proposition ». Accepter
+  // consistait à ne rien faire pendant 48 heures. Trois défauts : celui qui est
+  // d'accord attend deux jours un dénouement que les deux parties souhaitent ;
+  // l'écran, avec son unique bouton rouge, pousse au conflit ; et l'accord de
+  // l'article 17.1 se déduit d'un silence, alors qu'un accord exprès est
+  // infiniment plus solide à produire.
+  //
+  // Une acceptation seule ne dénoue rien — l'article exige l'accord DES
+  // PARTIES. Quand les deux ont accepté, l'exécution est avancée.
+  const [envoi, setEnvoi] = useState(null);
   if (!mission?.resolution_proposee) return null;
 
+  const estClient = role !== "prestataire";
+  // Le texte disait « de vous rembourser / de rembourser le client » : les deux
+  // formulations à la fois, faute de savoir qui lisait. Le rôle est désormais
+  // transmis, et chacun lit une phrase qui le concerne.
+  const montant = mission.resolution_montant != null
+    ? `${Number(mission.resolution_montant).toFixed(2).replace(".", ",")} €`
+    : null;
   const quoi = mission.resolution_proposee === "rembourser_client"
-    ? "de vous rembourser / de rembourser le client"
-    : "de verser la rémunération au prestataire";
-  const opposee = !!mission.resolution_opposition_at;
+    ? (estClient
+        ? (montant ? `de vous rembourser ${montant}` : "de vous rembourser")
+        : (montant ? `de rembourser ${montant} au client` : "de rembourser le client"))
+    : (estClient ? "de verser la rémunération au prestataire" : "de vous verser la rémunération");
+
+  const opposee   = !!mission.resolution_opposition_at;
+  const jaiAccepte = !!(estClient ? mission.resolution_acceptation_client_at : mission.resolution_acceptation_prestataire_at);
+  const autreAccepte = !!(estClient ? mission.resolution_acceptation_prestataire_at : mission.resolution_acceptation_client_at);
   const echeance = mission.resolution_echeance_at ? new Date(mission.resolution_echeance_at) : null;
   const expire = echeance ? Date.now() >= echeance.getTime() : false;
 
@@ -585,8 +610,16 @@ export function BlocPropositionResolution({ mission, onOppose }) {
     if (!await showConfirm(
       "Vous opposer à cette proposition ?\n\nLes fonds resteront bloqués. ALANE ne pourra plus les débloquer sans un accord entre vous et l'autre partie, une décision de justice, ou une procédure de l'établissement de paiement."
     )) return;
-    setEnvoi(true);
-    try { await onOppose(); } finally { setEnvoi(false); }
+    setEnvoi("oppose");
+    try { await onOppose(); } finally { setEnvoi(null); }
+  };
+
+  const accepter = async () => {
+    if (!await showConfirm(
+      "Accepter cette proposition ?\n\nVotre acceptation est définitive : vous ne pourrez plus vous y opposer. Si l'autre partie accepte aussi, le litige sera dénoué sans attendre la fin du délai."
+    )) return;
+    setEnvoi("accepte");
+    try { await onAccepte?.(); } finally { setEnvoi(null); }
   };
 
   return (
@@ -595,7 +628,9 @@ export function BlocPropositionResolution({ mission, onOppose }) {
       <div>Après examen du litige, ALANE propose <strong style={{ color:C.text }}>{quoi}</strong>.</div>
       {mission.resolution_proposee === "rembourser_client" && (
         <div style={{ marginTop:6, color:C.textMuted }}>
-          Le remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS).
+          {montant
+            ? "Il s'agit d'un remboursement partiel : il tient compte de ce qui a été effectivement réalisé."
+            : "Le remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."}
         </div>
       )}
       {mission.resolution_motif && (
@@ -606,20 +641,38 @@ export function BlocPropositionResolution({ mission, onOppose }) {
         <div style={{ marginTop:10, color:C.danger, fontWeight:700 }}>
           ⛔ Une opposition a été enregistrée : les fonds restent bloqués. Le différend se poursuit entre les parties — médiation ou juridiction compétente (article 17 des CGPS).
         </div>
+      ) : jaiAccepte ? (
+        <div style={{ marginTop:10, padding:"10px 12px", borderRadius:10, background:`${C.success}12`, border:`1px solid ${C.success}33`, color:C.success, fontWeight:700 }}>
+          {autreAccepte
+            ? "✅ Vous avez tous les deux accepté. Le litige est dénoué : l'exécution part dans les prochaines heures."
+            : "✅ Vous avez accepté cette proposition. Elle sera exécutée dès que l'autre partie l'aura acceptée, ou à l'échéance si elle ne s'y oppose pas."}
+        </div>
       ) : expire ? (
         <div style={{ marginTop:10, color:C.textMuted }}>
           Le délai d'opposition est écoulé : la proposition est réputée acceptée et son exécution est en cours.
         </div>
       ) : (
         <>
+          {autreAccepte && (
+            <div style={{ marginTop:10, padding:"9px 12px", borderRadius:10, background:`${C.violet}14`, border:`1px solid ${C.violet}33`, color:C.text, fontSize:12 }}>
+              📩 L'autre partie a déjà accepté. Votre acceptation dénouera le litige immédiatement.
+            </div>
+          )}
           <div style={{ marginTop:10 }}>
             Cette proposition ne tranche pas le litige et ne vous est pas imposée. Sans opposition de votre part
             {echeance ? <> avant le <strong style={{ color:C.text }}>{echeance.toLocaleString("fr-FR", { dateStyle:"long", timeStyle:"short" })}</strong></> : null},
             elle sera considérée comme acceptée par les deux parties et exécutée.
           </div>
-          <button onClick={opposer} disabled={envoi}
-            style={{ marginTop:12, width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.danger}`, background:"transparent", color:C.danger, fontWeight:700, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.5:1 }}>
-            {envoi ? "Enregistrement…" : "Je m'oppose à cette proposition"}
+          <button onClick={accepter} disabled={!!envoi}
+            style={{ marginTop:12, width:"100%", padding:"12px", borderRadius:12, border:"none", background:C.success, color:"#04231A", fontWeight:800, fontSize:13.5, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.5:1 }}>
+            {envoi === "accepte" ? "Enregistrement…" : "✅ J'accepte cette proposition"}
+          </button>
+          <div style={{ marginTop:6, fontSize:11, color:C.textMuted, textAlign:"center" }}>
+            Accepter est définitif : vous ne pourrez plus vous y opposer ensuite.
+          </div>
+          <button onClick={opposer} disabled={!!envoi}
+            style={{ marginTop:10, width:"100%", padding:"11px", borderRadius:12, border:`1px solid ${C.danger}`, background:"transparent", color:C.danger, fontWeight:700, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.5:1 }}>
+            {envoi === "oppose" ? "Enregistrement…" : "Je m'oppose à cette proposition"}
           </button>
           <div style={{ marginTop:6, fontSize:11, color:C.textMuted, textAlign:"center" }}>
             Aucune justification n'est demandée. Vos droits restent entiers.

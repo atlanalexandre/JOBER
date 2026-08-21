@@ -489,7 +489,7 @@ export default async function handler(req, res) {
                 : "";
               for (const uid of [m.client_id, m.prestataire_id]) {
                 if (!uid) continue;
-                await notifier({ user_id: uid, type: "system", title: "Litige clôturé ✅",
+                await notifier({ user_id: uid, type: "mission", ref_id: m.id, title: "Litige clôturé ✅",
                     body: `Le délai d'opposition est écoulé sans opposition : la proposition de ${quoi} est réputée acceptée par les deux parties et a été exécutée.${precision}\n\nCette exécution ne préjuge d'aucun droit : chacune des parties conserve l'intégralité de ses recours contre l'autre.`}, SUPABASE_URL, headers).catch(e => console.error(`[resolution] notification non envoyée ${m.id} :`, e.message));
               }
             }

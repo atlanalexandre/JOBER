@@ -789,7 +789,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           {providers.map((p,i) => (
             <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
               <span style={{ fontSize:22 }}>{p.avatar}</span>
-              <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{p.name}</div><div style={{ color:C.textSub, fontSize:11 }}>{p.role} · {p.hourlyRate} HT</div></div>
+              <div style={{ flex:1 }}><div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{p.name}</div><div style={{ color:C.textSub, fontSize:11 }}>{p.role} · {p.hourlyRate}</div></div>
             </div>
           ))}
           {!providers.length && description && (

@@ -1005,7 +1005,13 @@ export default async function handler(req, res) {
       const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.${detailFrais}\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
-        await notifier({ user_id: uid, type: "system", title: "Proposition de résolution 📩", body: corps}, SUPABASE_URL, headers).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
+        // `type: "mission"` avec `ref_id`, et non `type: "system"` : c'est le
+        // routage des notifications. Une notification « système » sans
+        // référence renvoyait le client vers l'écran de RECHERCHE — il
+        // touchait « Proposition de résolution » et atterrissait sur la liste
+        // des prestataires. Avec le type et la référence justes, elle ouvre la
+        // prestation concernée, où vit le bloc de proposition.
+        await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Proposition de résolution 📩", body: corps}, SUPABASE_URL, headers).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
       }
 
       journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre, montant: montantPropose } });
@@ -1058,7 +1064,7 @@ export default async function handler(req, res) {
         : "";
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
-        await notifier({ user_id: uid, type: "system", title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
+        await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));
       }
 
       journaliser("executer_decision", { target_id: mission_id, details: { resolution, cause, justification: just } });
