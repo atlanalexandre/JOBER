@@ -500,7 +500,7 @@ export function ConfirmModal() {
       <div onClick={e => e.stopPropagation()} style={{ background:"#0D1B3E", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:380, border:"1px solid rgba(124,111,224,0.25)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
         <p style={{ color:"#F0F0F5", fontSize:15, lineHeight:1.6, margin:"0 0 24px", whiteSpace:"pre-wrap" }}>{state.msg}</p>
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={() => choose(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#8B8FA8", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+          <button onClick={() => choose(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#9BA0BA", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
           <button onClick={() => choose(true)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Confirmer</button>
         </div>
       </div>
@@ -536,7 +536,7 @@ export function PromptModal() {
           style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:"1px solid rgba(124,111,224,0.3)", background:"#162547", color:"#F0F0F5", fontSize:14, fontFamily:"inherit", boxSizing:"border-box", marginBottom:16, outline:"none" }}
         />
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={() => choose(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#8B8FA8", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+          <button onClick={() => choose(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#9BA0BA", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
           <button onClick={() => choose(val||null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Envoyer</button>
         </div>
       </div>
@@ -658,7 +658,7 @@ export async function ouvrirFacture(missionId, { getSession, apiFetch }) {
       onglet.document.write(
         "<!doctype html><meta charset='utf-8'><title>Facture</title>"
         + "<body style=\"margin:0;display:flex;align-items:center;justify-content:center;"
-        + "height:100vh;font-family:system-ui;background:#0A1628;color:#8B8FA8\">"
+        + "height:100vh;font-family:system-ui;background:#0A1628;color:#9BA0BA\">"
         + "Préparation de la facture…</body>"
       );
     } catch (e) {

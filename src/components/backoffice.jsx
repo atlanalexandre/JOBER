@@ -119,7 +119,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
 
       <div style={{ width:72, height:72, borderRadius:22, background:`${C.violet}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, marginBottom:20, border:`2px solid ${C.violet}66` }}>🔐</div>
       <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 6px", fontFamily:font.display }}>Backoffice ALANE</h2>
-      <p style={{ color:"rgba(255,255,255,0.5)", fontSize:14, margin:"0 0 36px" }}>Accès administrateur uniquement</p>
+      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:14, margin:"0 0 36px" }}>Accès administrateur uniquement</p>
 
       {locked && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>Accès bloqué — trop de tentatives</p>}
       {!locked && error && <p style={{ color:C.accent, fontSize:13, marginBottom:16, fontWeight:600 }}>{error}</p>}
@@ -137,7 +137,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
           </p>
         </div>
       )}
-      {!locked && !error && !needsSetup && <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
+      {!locked && !error && !needsSetup && <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginBottom:16 }}>{checking ? "Vérification…" : "Entrez votre mot de passe"}</p>}
 
       <div style={{ width:"100%", maxWidth:320, position:"relative", marginBottom:16 }}>
         <input
@@ -153,7 +153,7 @@ export function BackofficeLogin({ onLogin, onBack }) {
           spellCheck={false}
           style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,0.08)", border:`2px solid ${error ? C.danger : "rgba(255,255,255,0.15)"}`, borderRadius:14, padding:"15px 48px 15px 18px", color:C.white, fontSize:16, fontFamily:"inherit", outline:"none", transition:"border-color 0.2s" }}
         />
-        <button onClick={() => setShow(s => !s)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:18, lineHeight:1 }}>
+        <button onClick={() => setShow(s => !s)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:"rgba(255,255,255,0.6)", cursor:"pointer", fontSize:18, lineHeight:1 }}>
           {show ? "🙈" : "👁️"}
         </button>
       </div>
@@ -345,7 +345,7 @@ function DemoDocPreview({ type }) {
         👤
       </div>
       <div style={{ color:"#fff", fontWeight:700, fontSize:18, marginBottom:4 }}>Alexandre ATLAN</div>
-      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:13, marginBottom:16 }}>Prestataire · Plan Élite</div>
+      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:13, marginBottom:16 }}>Prestataire · Plan Élite</div>
       <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:10, padding:"8px 20px", display:"inline-block" }}>
         <span style={{ color:"#22C55E", fontWeight:700, fontSize:13 }}>✓ Photo validée</span>
       </div>
@@ -697,9 +697,9 @@ export function BOComptes() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0", fontSize:13 }}>Aucun compte dans cette catégorie</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Aucun compte dans cette catégorie</div>
       ) : filtered.map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
@@ -707,10 +707,10 @@ export function BOComptes() {
               <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>
                 {p.prenom||p.nom ? `${p.prenom||""} ${p.nom||""}`.trim() : "Nom non renseigné"}
               </div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>
                 {p.email || "Email non disponible"}
               </div>
-              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginTop:2 }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, marginTop:2 }}>
                 {p.role==="prestataire"?"👷 Prestataire":"🏢 Client"} · {new Date(p.created_at).toLocaleDateString("fr-FR")}
               </div>
               {p.role==="prestataire" && docs[p.id] && (() => {
@@ -740,7 +740,7 @@ export function BOComptes() {
                   🔒 Quota épuisé
                 </div>
               )}
-              <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} style={{ fontSize:10, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+              <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} style={{ fontSize:10, color:"rgba(255,255,255,0.6)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
                 {expanded===p.id?"▲ Masquer":"▼ Détails"}
               </button>
             </div>
@@ -752,10 +752,10 @@ export function BOComptes() {
 
               {/* ── Header section avec bouton modifier ── */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, paddingBottom:10, borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
-                <span style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>📋 Informations complètes</span>
+                <span style={{ color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>📋 Informations complètes</span>
                 {editMode === p.id ? (
                   <div style={{ display:"flex", gap:8 }}>
-                    <button onClick={()=>{ setEditMode(null); setEditResult(null); }} style={{ padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
+                    <button onClick={()=>{ setEditMode(null); setEditResult(null); }} style={{ padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"transparent", color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
                     <button onClick={()=>saveEdit(p.id)} disabled={editSaving} style={{ padding:"5px 14px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:editSaving?0.6:1 }}>
                       {editSaving ? "Sauvegarde…" : "💾 Sauvegarder"}
                     </button>
@@ -770,19 +770,19 @@ export function BOComptes() {
               {editMode === p.id ? (
                 /* ── MODE ÉDITION ── */
                 <div>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Identité</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Identité</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
                     <FI label="Prénom" field="prenom" />
                     <FI label="Nom" field="nom" />
                   </div>
 
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Contact & paiement</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Contact & paiement</div>
                   <div style={{ marginBottom:12 }}>
                     <FI label="Téléphone" field="telephone" />
                     <FI label="IBAN / RIB" field="rib" />
                   </div>
 
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Profil légal</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Profil légal</div>
                   <div style={{ marginBottom:12 }}>
                     <FI label="Type de compte" field="type_compte" options={[["","— Non renseigné —"],["particulier","Particulier"],["professionnel","Professionnel"]]} />
                     <FI label="Nom de la société" field="societe_nom" />
@@ -793,7 +793,7 @@ export function BOComptes() {
                   </div>
 
                   {p.role === "prestataire" && <>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Activité professionnelle</div>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Activité professionnelle</div>
                     <div style={{ marginBottom:12 }}>
                       <FI label="Secteur" field="secteur" options={[["","— Non renseigné —"],["logistique","Logistique"],["btp","BTP"],["restauration","Restauration"],["proprete","Propreté"],["commercial","Commercial"],["hotellerie","Hôtellerie"],["distribution","Distribution"],["divers","Divers"]]} />
                       <FI label="Métier / Poste" field="metier" />
@@ -803,14 +803,14 @@ export function BOComptes() {
                   </>}
 
                   {p.role === "client" && <>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Besoins</div>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Besoins</div>
                     <div style={{ marginBottom:12 }}>
                       <FI label="Fréquence des besoins" field="frequence_besoins" options={[["","— Non renseigné —"],["occasionnel","Occasionnel"],["regulier","Régulier"],["permanent","Permanent"]]} />
                       <FI label="Volume horaire (h/mois)" field="volume_horaire" type="number" />
                     </div>
                   </>}
 
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Adresse</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Adresse</div>
                   <div style={{ marginBottom:12 }}>
                     <FI label="Rue / Adresse" field="rue" />
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -819,7 +819,7 @@ export function BOComptes() {
                     </div>
                   </div>
 
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Abonnement</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Abonnement</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:4 }}>
                     <FI label="Plan" field="plan_abonnement" options={[["free","Gratuit"],["premium","Premium"],["elite","Elite"]]} />
                     <FI label="Date de fin" field="subscription_end_date" type="date" />
@@ -949,13 +949,13 @@ export function BOComptes() {
                   )}
                   {p.role === "prestataire" && p.bio && (
                     <div style={{ marginTop:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>BIO</div>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:600, marginBottom:4 }}>BIO</div>
                       <div style={{ color:"rgba(255,255,255,0.7)", lineHeight:1.6 }}>{p.bio}</div>
                     </div>
                   )}
                   {p.role === "prestataire" && Array.isArray(p.competences) && p.competences.length > 0 && (
                     <div style={{ marginTop:8 }}>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>COMPÉTENCES</div>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:600, marginBottom:4 }}>COMPÉTENCES</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                         {p.competences.map((c, i) => (
                           <span key={i} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:6, padding:"2px 8px", color:C.violet, fontSize:10, fontWeight:600 }}>{c}</span>
@@ -965,7 +965,7 @@ export function BOComptes() {
                   )}
                   {p.role === "client" && Array.isArray(p.secteurs_besoins) && p.secteurs_besoins.length > 0 && (
                     <div style={{ marginTop:8 }}>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>SECTEURS RECHERCHÉS</div>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:600, marginBottom:4 }}>SECTEURS RECHERCHÉS</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                         {p.secteurs_besoins.map((s, i) => (
                           <span key={i} style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:6, padding:"2px 8px", color:"#F0B429", fontSize:10, fontWeight:600 }}>{s}</span>
@@ -975,7 +975,7 @@ export function BOComptes() {
                   )}
                   {p.role === "client" && Array.isArray(p.metiers_besoins) && p.metiers_besoins.length > 0 && (
                     <div style={{ marginTop:8 }}>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>MÉTIERS RECHERCHÉS</div>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:600, marginBottom:4 }}>MÉTIERS RECHERCHÉS</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                         {p.metiers_besoins.map((m, i) => (
                           <span key={i} style={{ background:"rgba(124,111,224,0.12)", border:"1px solid rgba(124,111,224,0.3)", borderRadius:6, padding:"2px 8px", color:C.violet, fontSize:10, fontWeight:600 }}>{m}</span>
@@ -985,7 +985,7 @@ export function BOComptes() {
                   )}
                   {p.role === "client" && Array.isArray(p.lieux_intervention) && p.lieux_intervention.length > 0 && (
                     <div style={{ marginTop:8 }}>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, fontWeight:600, marginBottom:4 }}>LIEUX D'INTERVENTION</div>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, fontWeight:600, marginBottom:4 }}>LIEUX D'INTERVENTION</div>
                       {p.lieux_intervention.map((l, i) => (
                         <div key={i} style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginBottom:2 }}>
                           📍 {[l.adresse, l.codePostal, l.ville].filter(Boolean).join(", ")}
@@ -994,7 +994,7 @@ export function BOComptes() {
                     </div>
                   )}
                   {!p.telephone && !p.rib && !p.societe_nom && !p.kbis && !p.secteur && !p.adresse && !p.frequence_besoins && (
-                    <div style={{ color:"rgba(255,255,255,0.3)" }}>Aucune donnée supplémentaire</div>
+                    <div style={{ color:"rgba(255,255,255,0.6)" }}>Aucune donnée supplémentaire</div>
                   )}
                 </div>
               )}
@@ -1004,12 +1004,12 @@ export function BOComptes() {
                 <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
                   {/* En-tête section docs */}
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                    <span style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>
+                    <span style={{ color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>
                       📂 Documents
                       {docs[p.id] && ` (${docs[p.id].filter(d=>d.verified).length}/${docs[p.id].length} validés)`}
                     </span>
                     <div style={{ display:"flex", gap:6 }}>
-                      {docsLoading[p.id] && <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>Chargement…</span>}
+                      {docsLoading[p.id] && <span style={{ fontSize:10, color:"rgba(255,255,255,0.6)" }}>Chargement…</span>}
                       {/* La photo de profil vient de user_metadata, pas de la table
                           `documents` : elle n'est pas validable. Sans l'exclure ici, le
                           bouton s'affichait alors qu'il n'y avait rien à valider, et un
@@ -1019,7 +1019,7 @@ export function BOComptes() {
                           {validatingAll===p.id ? "Validation…" : "✓ Tout valider"}
                         </button>
                       )}
-                      {docs[p.id] && <button onClick={()=>{ setDocs(d=>({...d,[p.id]:undefined})); loadDocs(p.id); }} style={{ fontSize:10, color:"rgba(255,255,255,0.3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>🔄</button>}
+                      {docs[p.id] && <button onClick={()=>{ setDocs(d=>({...d,[p.id]:undefined})); loadDocs(p.id); }} style={{ fontSize:10, color:"rgba(255,255,255,0.6)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>🔄</button>}
                     </div>
                   </div>
 
@@ -1049,14 +1049,14 @@ export function BOComptes() {
                         <div style={{ color:C.accentGold, fontSize:10, fontWeight:700, marginBottom:6 }}>⚠️ Documents manquants</div>
                         <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                           {missing.map(r => (
-                            <span key={r.type} style={{ fontSize:10, color:"rgba(255,255,255,0.5)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"2px 8px" }}>{r.icon} {r.label}</span>
+                            <span key={r.type} style={{ fontSize:10, color:"rgba(255,255,255,0.6)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"2px 8px" }}>{r.icon} {r.label}</span>
                           ))}
                         </div>
                       </div>
                     );
                   })()}
 
-                  {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Aucun document uploadé</div>}
+                  {docs[p.id] && docs[p.id].length === 0 && <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginBottom:8 }}>Aucun document uploadé</div>}
                   {docs[p.id] && docs[p.id].map(doc => {
                     const DOC_ICON = DOC_ICONS;
                     const DOC_LABEL = DOC_LABELS;
@@ -1075,7 +1075,7 @@ export function BOComptes() {
                         </div>
                         <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5, flexShrink:0, marginLeft:"auto" }}>
                           {doc.signedUrl && (
-                            <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                            <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:10, color:"rgba(255,255,255,0.6)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, padding:"4px 8px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                           )}
                           {!doc.verified && !doc.isVirtual && (
                             <button onClick={()=>handleVerifyDoc(p.id, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
@@ -1135,8 +1135,8 @@ export function BOComptes() {
                           {verifs[p.id].siret.error && <span style={{ color:"#F25E5E", marginLeft:6 }}>{verifs[p.id].siret.error}</span>}
                           {verifs[p.id].siret.nom && <span style={{ color:C.success, marginLeft:6 }}>{verifs[p.id].siret.nom}</span>}
                           {verifs[p.id].siret.statut && <span style={{ color:verifs[p.id].siret.actif ? C.success : "#F25E5E", marginLeft:6 }}>— {verifs[p.id].siret.statut}</span>}
-                          {verifs[p.id].siret.siege && <span style={{ color:"rgba(255,255,255,0.4)", marginLeft:6 }}>({verifs[p.id].siret.siege})</span>}
-                          {verifs[p.id].siret.apiError && <span style={{ color:"rgba(255,255,255,0.3)", marginLeft:6 }}>{verifs[p.id].siret.apiError}</span>}
+                          {verifs[p.id].siret.siege && <span style={{ color:"rgba(255,255,255,0.6)", marginLeft:6 }}>({verifs[p.id].siret.siege})</span>}
+                          {verifs[p.id].siret.apiError && <span style={{ color:"rgba(255,255,255,0.6)", marginLeft:6 }}>{verifs[p.id].siret.apiError}</span>}
                         </div>
                       )}
                     </div>
@@ -1259,7 +1259,7 @@ export function BOComptes() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 18px", borderBottom:"1px solid rgba(255,255,255,0.08)", flexShrink:0 }}>
                 <div>
                   <div style={{ fontWeight:800, color:"#fff", fontSize:15 }}>📂 Documents</div>
-                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:12, marginTop:2 }}>{docModal.name}</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:2 }}>{docModal.name}</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <button onClick={async()=>{
@@ -1269,14 +1269,14 @@ export function BOComptes() {
                     if(j.ok){ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); showToast("7 documents de démo insérés ✅"); }
                     else showToast("Erreur : " + (j.error||"?"), "error");
                   }} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.3)", color:"rgba(124,111,224,0.9)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:11, fontFamily:"inherit", fontWeight:700 }}>🌱 Seed démo</button>
-                  <button onClick={()=>{ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); }} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>🔄</button>
+                  <button onClick={()=>{ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); }} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:"rgba(255,255,255,0.6)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>🔄</button>
                   <button onClick={()=>setDocModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:14, fontFamily:"inherit", fontWeight:700 }}>✕</button>
                 </div>
               </div>
               {/* Content */}
               <div style={{ flex:1, overflowY:"auto", padding:"16px 18px" }}>
-                {isLoading && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0" }}>Chargement…</div>}
-                {!isLoading && !userDocs && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0" }}>Aucun document</div>}
+                {isLoading && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0" }}>Chargement…</div>}
+                {!isLoading && !userDocs && <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0" }}>Aucun document</div>}
                 {!isLoading && userDocs && (() => {
                   const uploaded = userDocs.map(d=>d.type);
                   const missing = REQ.filter(r=>!uploaded.includes(r.type));
@@ -1287,17 +1287,17 @@ export function BOComptes() {
                           <div style={{ color:"#F0B429", fontSize:11, fontWeight:700, marginBottom:6 }}>⚠️ Documents manquants ({missing.length})</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                             {missing.map(r=>(
-                              <span key={r.type} style={{ fontSize:11, color:"rgba(255,255,255,0.5)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 9px" }}>{r.icon} {r.label}</span>
+                              <span key={r.type} style={{ fontSize:11, color:"rgba(255,255,255,0.6)", background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 9px" }}>{r.icon} {r.label}</span>
                             ))}
                           </div>
                         </div>
                       )}
                       {userDocs.length === 0 && (
-                        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"16px 0", fontSize:13 }}>Aucun document uploadé</div>
+                        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"16px 0", fontSize:13 }}>Aucun document uploadé</div>
                       )}
                       {userDocs.length > 0 && (
                         <div style={{ marginBottom:8 }}>
-                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>
+                          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:10 }}>
                             Documents uploadés ({userDocs.filter(d=>d.verified).length}/{userDocs.length} validés)
                           </div>
                           {userDocs.map(doc => {
@@ -1317,7 +1317,7 @@ export function BOComptes() {
                                 </div>
                                 <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:6 }}>
                                   {doc.signedUrl && !doc.isVirtual && (
-                                    <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
+                                    <a href={doc.signedUrl} download target="_blank" rel="noopener noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.6)", fontWeight:700, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 11px", cursor:"pointer", textDecoration:"none", display:"inline-block" }}>⬇</a>
                                   )}
                                   {!doc.verified && !doc.isVirtual && (
                                     <button onClick={()=>handleVerifyDoc(docModal.profileId, doc.id, doc.type)} disabled={docVerifying===doc.id||validatingAll===docModal.profileId} style={{ fontSize:11, color:C.success, fontWeight:700, background:`${C.success}15`, border:`1px solid ${C.success}44`, borderRadius:7, padding:"5px 11px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id)?0.5:1 }}>
@@ -1349,17 +1349,17 @@ export function BOComptes() {
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:20 }}>
           <div style={{ background:"#0D1B3E", borderRadius:16, padding:24, width:"100%", maxWidth:440, border:`1px solid ${C.violet}44` }}>
             <h3 style={{ color:C.text, fontSize:15, fontWeight:800, margin:"0 0 4px" }}>📧 Contacter</h3>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"0 0 16px" }}>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 16px" }}>
               À : <strong style={{ color:"rgba(255,255,255,0.8)" }}>{contactModal.name}</strong> · {contactModal.email}
             </p>
-            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>SUJET *</label>
+            <label style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>SUJET *</label>
             <input
               value={contactSubject}
               onChange={e=>setContactSubject(e.target.value)}
               placeholder="Ex : Votre inscription ALANE, Demande de documents..."
               style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:10, padding:"10px 12px", color:"#fff", fontSize:13, fontFamily:"inherit", boxSizing:"border-box", marginBottom:12 }}
             />
-            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>MESSAGE *</label>
+            <label style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>MESSAGE *</label>
             <textarea
               value={contactMessage}
               onChange={e=>setContactMessage(e.target.value)}
@@ -1385,7 +1385,7 @@ export function BOComptes() {
             <p style={{ color:"rgba(255,255,255,0.7)", fontSize:13, margin:"0 0 16px" }}>
               Vous allez supprimer définitivement le compte de <strong style={{ color:"#fff" }}>{deleteModal.name}</strong>. Un email sera envoyé à cette personne.
             </p>
-            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>RAISON (optionnelle)</label>
+            <label style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600, display:"block", marginBottom:6 }}>RAISON (optionnelle)</label>
             <textarea
               value={deleteReason}
               onChange={e=>setDeleteReason(e.target.value)}
@@ -1448,16 +1448,16 @@ export function BOSupport() {
         ))}
       </div>
       {loading ? (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", padding:"32px 0", fontSize:13 }}>Aucun ticket</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Aucun ticket</div>
       ) : filtered.map(t => (
         <div key={t.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
             <div>
               <div style={{ color:C.white, fontWeight:700, fontSize:13 }}>{t.subject}</div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>{t.user_name||"Anonyme"} · {t.user_email||""}</div>
-              <div style={{ color:"rgba(255,255,255,0.25)", fontSize:10, marginTop:2 }}>{new Date(t.created_at).toLocaleString("fr-FR")}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>{t.user_name||"Anonyme"} · {t.user_email||""}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10, marginTop:2 }}>{new Date(t.created_at).toLocaleString("fr-FR")}</div>
             </div>
             <div style={{ background:t.status==="open"?"rgba(242,94,94,0.15)":"rgba(34,197,94,0.1)", border:`1px solid ${t.status==="open"?"rgba(242,94,94,0.4)":"rgba(34,197,94,0.3)"}`, borderRadius:8, padding:"3px 10px", color:t.status==="open"?"#F25E5E":C.success, fontSize:10, fontWeight:700 }}>
               {t.status==="open"?"Ouvert":"Fermé"}
@@ -1877,11 +1877,11 @@ export function BOLitiges() {
     setProcessingId(null);
   };
 
-  if (loading) return <div style={{ padding:24, textAlign:"center", color:"rgba(255,255,255,0.4)" }}>Chargement…</div>;
+  if (loading) return <div style={{ padding:24, textAlign:"center", color:"rgba(255,255,255,0.6)" }}>Chargement…</div>;
   if (!disputes.length) return (
     <div style={{ padding:24, textAlign:"center" }}>
       <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
-      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:14 }}>Aucun litige en cours</div>
+      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:14 }}>Aucun litige en cours</div>
     </div>
   );
 
@@ -1893,9 +1893,9 @@ export function BOLitiges() {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
             <div>
               <div style={{ fontWeight:700, color:"#F25E5E", fontSize:14 }}>⚠️ {m.titre || m.metier || "Prestation"}</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {m.montant_total || 0} €</div>
-              {m.client_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Client : {m.client_email}</div>}
-              {m.presta_email && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:2 }}>Prestataire : {m.presta_email}</div>}
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {m.montant_total || 0} €</div>
+              {m.client_email && <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Client : {m.client_email}</div>}
+              {m.presta_email && <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Prestataire : {m.presta_email}</div>}
             </div>
           </div>
           {m.dispute_reason && <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 12px", fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:10 }}>"{m.dispute_reason}"</div>}
@@ -1905,16 +1905,16 @@ export function BOLitiges() {
           {m.resolution_proposee && (
             <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:8, padding:"10px 12px", fontSize:12, color:"rgba(255,255,255,0.7)", marginBottom:10, lineHeight:1.6 }}>
               📩 Proposition en cours : <strong>{m.resolution_proposee === "rembourser_client" ? "rembourser le client" : "verser au prestataire"}</strong>
-              {m.resolution_motif && <div style={{ color:"rgba(255,255,255,0.5)", marginTop:3 }}>Motif : {m.resolution_motif}</div>}
+              {m.resolution_motif && <div style={{ color:"rgba(255,255,255,0.6)", marginTop:3 }}>Motif : {m.resolution_motif}</div>}
               {m.resolution_opposition_at
                 ? <div style={{ color:"#F25E5E", marginTop:5, fontWeight:700 }}>⛔ Opposition enregistrée — les fonds restent bloqués. Seul un accord, une décision de justice ou une procédure de l'établissement de paiement peut les débloquer.</div>
-                : <div style={{ color:"rgba(255,255,255,0.5)", marginTop:5 }}>Sans opposition, exécutée le {m.resolution_echeance_at ? new Date(m.resolution_echeance_at).toLocaleString("fr-FR") : "—"}.</div>}
+                : <div style={{ color:"rgba(255,255,255,0.6)", marginTop:5 }}>Sans opposition, exécutée le {m.resolution_echeance_at ? new Date(m.resolution_echeance_at).toLocaleString("fr-FR") : "—"}.</div>}
             </div>
           )}
 
           {!m.resolution_proposee && (
             <>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:6, lineHeight:1.5 }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:6, lineHeight:1.5 }}>
                 ALANE propose, elle ne décide pas : la proposition est notifiée aux deux parties, qui ont 48 h pour s'y opposer.
               </div>
               <div style={{ display:"flex", gap:8 }}>
@@ -1936,11 +1936,11 @@ export function BOLitiges() {
           {m.resolution_opposition_at && (
             <div style={{ display:"flex", gap:8, marginTop:8, flexWrap:"wrap" }}>
               <button disabled={processingId === m.id} onClick={() => executer(m, "rembourser_client", "justice")}
-                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.55)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                 ⚖️ Rembourser sur décision
               </button>
               <button disabled={processingId === m.id} onClick={() => executer(m, "verser_prestataire", "justice")}
-                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.55)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+                style={{ flex:1, minWidth:150, padding:"8px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:600, fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
                 ⚖️ Verser sur décision
               </button>
             </div>
@@ -2383,10 +2383,10 @@ function StripeStatsCard() {
     <div style={{ background:"#0D1B3E", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"16px", marginBottom:16, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
       <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:12 }}>💳 Données Stripe en temps réel</div>
       {loading && (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.4)", padding:"20px 0", fontSize:13 }}>Chargement…</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"20px 0", fontSize:13 }}>Chargement…</div>
       )}
       {!loading && error && (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.35)", padding:"16px 0", fontSize:12 }}>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"16px 0", fontSize:12 }}>
           ⚠️ {error === "Stripe non configuré" ? "Stripe n'est pas configuré sur ce projet." : error}
         </div>
       )}
@@ -3533,9 +3533,9 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour app</button>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"0 0 2px" }}>Administration</p>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 2px" }}>Administration</p>
             <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 2px", fontFamily:font.display }}>⚙️ Backoffice ALANE</h2>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>Tableau de bord · Temps réel</p>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:0 }}>Tableau de bord · Temps réel</p>
           </div>
           <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>● Actif</div>
         </div>
@@ -3547,8 +3547,8 @@ export function BackofficeDashboard({ onBack, onNavigate }) {
           <span style={{ fontSize:16, flexShrink:0 }}>🔐</span>
           <div>
             <div style={{ color:"#F25E5E", fontWeight:700, fontSize:12, marginBottom:2 }}>Erreur d'authentification API — les données ne se chargent pas</div>
-            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, fontFamily:"monospace", wordBreak:"break-all" }}>{boAuthError}</div>
-            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:4 }}>Vérifiez que BO_SESSION_SECRET est bien configuré dans Vercel (ou supprimez-le pour utiliser la dérivation automatique).</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, fontFamily:"monospace", wordBreak:"break-all" }}>{boAuthError}</div>
+            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:4 }}>Vérifiez que BO_SESSION_SECRET est bien configuré dans Vercel (ou supprimez-le pour utiliser la dérivation automatique).</div>
           </div>
         </div>
       )}

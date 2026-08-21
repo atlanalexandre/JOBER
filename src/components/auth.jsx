@@ -89,7 +89,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!ribIban.trim()) return "L'IBAN est obligatoire pour recevoir vos paiements";
       const ibanClean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
       if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
-      if (!rcProConfirmed) return "Vous devez confirmer disposer d'une RC Pro en cours de validité";
+      if (!rcProConfirmed) return "Vous devez vous engager à souscrire une RC Pro avant votre première prestation";
     }
     if (step === 7) {
       if (!email || !password)  return "Email et mot de passe requis";
@@ -461,7 +461,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               </button>
             ))}
           </div>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:6, paddingLeft:2 }}>Le français est sélectionné par défaut</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:6, paddingLeft:2 }}>Le français est sélectionné par défaut</div>
         </>}
 
         {step === 4 && <>
@@ -524,7 +524,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             inputMode="numeric"
           />
           {siretChecking && (
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:-12, marginBottom:12, paddingLeft:4 }}>Vérification en cours…</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:-12, marginBottom:12, paddingLeft:4 }}>Vérification en cours…</div>
           )}
           {siretInfo && !siretInfo.error && (
             <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:10, padding:"10px 14px", marginTop:-12, marginBottom:14, display:"flex", gap:8, alignItems:"center" }}>
@@ -538,11 +538,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           {siretInfo?.error && (
             <div style={{ fontSize:12, color:"#F25E5E", marginTop:-12, marginBottom:14, paddingLeft:4 }}>Numéro introuvable — vérifiez votre SIRET</div>
           )}
-          <div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", marginTop:-10, marginBottom:14, paddingLeft:4, lineHeight:1.4 }}>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:14, paddingLeft:4, lineHeight:1.4 }}>
             Si vous venez de créer votre statut, vous pourrez fournir votre SIRET avec vos documents lors de la validation de votre compte.
           </div>
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 
           {/* Guichet unique — obligatoire depuis le 1er janvier 2023.
               L'ancien portail URSSAF informe encore mais n'immatricule plus :
@@ -552,17 +552,28 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             <div style={{ width:36, height:36, borderRadius:10, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏛️</div>
             <div style={{ flex:1 }}>
               <div style={{ color:"#FFD250", fontWeight:700, fontSize:12, marginBottom:2 }}>Pas encore d'auto-entreprise ?</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le Guichet unique de l'État →</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le Guichet unique de l'État →</div>
             </div>
           </a>
 
-          {/* RC Pro */}
+          {/* RC Pro — un ENGAGEMENT, pas une déclaration.
+              La case disait « Je certifie disposer d'une assurance en cours de
+              validité » et bloquait l'inscription : un auto-entrepreneur qui
+              vient de créer son entreprise deux écrans plus haut ne l'a pas
+              encore souscrite. Il ne lui restait qu'à mentir ou à abandonner.
+              L'assurance reste obligatoire — l'attestation figure dans les
+              documents requis, et sans elle l'accès aux prestations ne s'ouvre
+              pas (CGPS art. 19.1). Ce qui change, c'est le moment où on
+              l'exige : à la première prestation, pas à l'inscription. */}
           <div onClick={()=>setRcProConfirmed(v=>!v)} style={{ display:"flex", alignItems:"flex-start", gap:12, background:rcProConfirmed?"rgba(16,217,143,0.08)":"rgba(255,255,255,0.03)", border:`1.5px solid ${rcProConfirmed?"#10D98F":C.border}`, borderRadius:r, padding:"13px 14px", cursor:"pointer", marginBottom:16, transition:"all 0.2s" }}>
             <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${rcProConfirmed?"#10D98F":C.border}`, background:rcProConfirmed?"#10D98F":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
               {rcProConfirmed && <span style={{ color:"#fff", fontSize:12, fontWeight:800 }}>✓</span>}
             </div>
             <span style={{ fontSize:13, color:rcProConfirmed?C.text:C.textSub, lineHeight:1.5 }}>
-              Je certifie disposer d'une <strong style={{ color:rcProConfirmed?"#10D98F":C.text }}>assurance RC Professionnelle</strong> en cours de validité, couvrant mon activité de prestataire de services.
+              Je m'engage à disposer d'une <strong style={{ color:rcProConfirmed?"#10D98F":C.text }}>assurance RC Professionnelle</strong> couvrant mon activité, et à en déposer l'attestation avant ma première prestation.
+              <span style={{ display:"block", marginTop:5, fontSize:11, color:C.textSub, lineHeight:1.5 }}>
+                Pas encore souscrite ? Ce n'est pas bloquant pour créer votre compte : l'attestation fait partie des documents à déposer, et l'accès aux prestations s'ouvre une fois le dossier complet.
+              </span>
             </span>
           </div>
 
@@ -717,7 +728,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
             <div style={{ marginTop:16, textAlign:"center" }}>
               <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
-              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.45)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale ({CGPS.sections.length} articles) →</a></div>
+              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale ({CGPS.sections.length} articles) →</a></div>
             </div>
           </div>
         </div>
@@ -1079,7 +1090,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             ))}
             <div style={{ marginTop:16, textAlign:"center" }}>
               <button onClick={()=>{setCgpsAccepted(true);setShowCgpsModal(false);}} style={{ background:accentColor, border:"none", borderRadius:r, padding:"12px 24px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>✓ J'accepte les CGPS</button>
-              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.45)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale ({CGPS.sections.length} articles) →</a></div>
+              <div style={{ marginTop:10 }}><a href="/cgps.html" target="_blank" rel="noopener noreferrer" style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textDecoration:"underline" }}>Lire la version intégrale ({CGPS.sections.length} articles) →</a></div>
             </div>
           </div>
         </div>
@@ -1325,7 +1336,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <span style={{ fontSize:16, flexShrink:0 }}>🎉</span>
             <div style={{ flex:1 }}>
               <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement</span>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>
                 {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la prestation" : "8 prestations gratuites · Réservé aux 100 premiers prestataires inscrits"}
               </div>
             </div>
@@ -1452,7 +1463,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             )}
 
             <IbanInput label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des prestations</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des prestations</div>
 
             <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>

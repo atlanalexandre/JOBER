@@ -783,7 +783,7 @@ export function ClientTour({ onDone }) {
         {/* Progress dots */}
         <div style={{ display:"flex", gap:6, justifyContent:"center", padding:"18px 0 0" }}>
           {TOUR_STEPS.map((_,i) => (
-            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+            <div key={i} style={{ width:i===step?22:7, height:7, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.6)", transition:"all 0.3s" }} />
           ))}
         </div>
         {/* Icon */}
@@ -803,7 +803,7 @@ export function ClientTour({ onDone }) {
         </div>
         {/* Skip */}
         {!isLast && (
-          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.3)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
+          <button onClick={onDone} style={{ display:"block", width:"100%", padding:"0 0 18px", background:"none", border:"none", color:"rgba(255,255,255,0.6)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Passer</button>
         )}
       </div>
     </div>
@@ -1011,7 +1011,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                 <span style={{ color:"#10D98F", fontWeight:800, fontSize:13 }}>Prestation{missionsInProgress.length > 1 ? "s" : ""} en cours</span>
                 <span style={{ background:"rgba(16,217,143,0.15)", border:"1px solid rgba(16,217,143,0.3)", borderRadius:20, padding:"1px 8px", color:"#10D98F", fontSize:11, fontWeight:700 }}>{missionsInProgress.length}</span>
               </div>
-              <button onClick={() => setInProgressDismissed(true)} style={{ background:"rgba(255,255,255,0.07)", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"rgba(255,255,255,0.4)", fontSize:14, fontFamily:"inherit" }}>✕</button>
+              <button onClick={() => setInProgressDismissed(true)} style={{ background:"rgba(255,255,255,0.07)", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"rgba(255,255,255,0.6)", fontSize:14, fontFamily:"inherit" }}>✕</button>
             </div>
             {missionsInProgress.map((m, idx) => {
               const mStart = new Date(`${m.date}T${m.heure_debut || "00:00"}`).getTime();
@@ -1031,7 +1031,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                     <div style={{ width:38, height:38, borderRadius:11, background:`rgba(16,217,143,0.12)`, border:"1px solid rgba(16,217,143,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{sector?.icon || "🏢"}</div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ color:"#fff", fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.metier || sector?.label || "Prestation"}</div>
-                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11 }}>
                         {elapsedH > 0 ? `${elapsedH}h ${elapsedMin}min` : `${elapsedMin}min`} écoulées
                         {" · "}
                         {remH > 0 ? `${remH}h ${remMin}min` : `${remMin}min`} restantes
@@ -1053,8 +1053,8 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                     <div style={{ height:"100%", width:`${pct}%`, background:"linear-gradient(90deg,#10D98F,#0ABF7A)", borderRadius:10, transition:"width 1s linear" }} />
                   </div>
                   <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
-                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{m.heure_debut || "—"}</span>
-                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>
+                    <span style={{ color:"rgba(255,255,255,0.6)", fontSize:10 }}>{m.heure_debut || "—"}</span>
+                    <span style={{ color:"rgba(255,255,255,0.6)", fontSize:10 }}>
                       {(() => { const [h,min] = (m.heure_debut||"00:00").split(":").map(Number); const e=h*60+min+Math.round(Number(m.hours||1)*60); return `${String(Math.floor(e/60)%24).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`; })()}
                     </span>
                   </div>
@@ -1156,7 +1156,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
             <div style={{ fontWeight:700, color:"#fff", fontSize:13 }}>Installer l'app</div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Appuyez sur <strong style={{color:"#fff"}}>Partager</strong> puis "Sur l'écran d'accueil" pour activer les notifications.</div>
           </div>
-          <button onClick={()=>{ try { localStorage.setItem("alane_pwa_banner","1"); } catch(e) {} setShowPwaBanner(false); }} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"4px", flexShrink:0 }}>✕</button>
+          <button onClick={()=>{ try { localStorage.setItem("alane_pwa_banner","1"); } catch(e) {} setShowPwaBanner(false); }} style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.6)", fontSize:18, cursor:"pointer", padding:"4px", flexShrink:0 }}>✕</button>
         </div>
       )}
 
@@ -1191,7 +1191,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
           <div style={{ position:"absolute", right:18, top:18, fontSize:28 }}>💎</div>
 
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-            <span style={{ fontSize:10, letterSpacing:1.6, textTransform:"uppercase", color:"rgba(255,255,255,0.55)", fontWeight:600 }}>Cashback wallet</span>
+            <span style={{ fontSize:10, letterSpacing:1.6, textTransform:"uppercase", color:"rgba(255,255,255,0.6)", fontWeight:600 }}>Cashback wallet</span>
             <span style={{ padding:"2px 7px", borderRadius:999, background:`${C.accentGold}25`, color:C.accentGold, fontSize:9, fontWeight:700, letterSpacing:0.5 }}>{tier.icon} {tier.label.toUpperCase()}</span>
           </div>
 
@@ -1511,7 +1511,7 @@ export function CatalogueScreen({ onNavigate }) {
       {/* Header */}
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Tous les secteurs</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Trouvez le professionnel qu'il vous faut</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, margin:0 }}>Trouvez le professionnel qu'il vous faut</p>
       </div>
 
       {/* Sticky sector pills */}
@@ -2014,7 +2014,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 </div>
                 <div onClick={()=>setFilterDispo(!filterDispo)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, cursor:"pointer" }}>
                   <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>Disponible maintenant uniquement</span>
-                  <div style={{ width:40, height:22, borderRadius:11, background:filterDispo?s.color:"rgba(255,255,255,0.15)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                  <div style={{ width:40, height:22, borderRadius:11, background:filterDispo?s.color:"rgba(255,255,255,0.6)", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
                     <div style={{ position:"absolute", top:2, left:filterDispo?20:2, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                   </div>
                 </div>
@@ -2594,7 +2594,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
           ].map((s,i)=>(
             <div key={i} style={{ background:"rgba(255,255,255,0.14)", borderRadius:12, padding:"10px 8px", flex:1, textAlign:"center" }}>
               <div style={{ color: i===2 ? (p.available ? "#10D98F" : "rgba(255,255,255,0.5)") : C.white, fontWeight:800, fontSize:13 }}>{s.v}</div>
-              <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10 }}>{s.l}</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -2607,7 +2607,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             <span style={{ fontSize:20 }}>⛔</span>
             <div>
               <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:3 }}>Quota mensuel atteint</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, lineHeight:1.6 }}>Ce prestataire a utilisé toutes ses prestations gratuites ce mois-ci. Il redevient disponible le 1er du mois prochain, ou en passant sur un plan Premium.</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6 }}>Ce prestataire a utilisé toutes ses prestations gratuites ce mois-ci. Il redevient disponible le 1er du mois prochain, ou en passant sur un plan Premium.</div>
             </div>
           </div>
         )}
@@ -4753,7 +4753,7 @@ export function CalendarScreen() {
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 22px", borderRadius:"0 0 26px 26px" }}>
         <h2 style={{ color:C.white, fontSize:21, fontWeight:800, margin:"0 0 4px" }}>Planning</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Vos disponibilités et prestations</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, margin:0 }}>Vos disponibilités et prestations</p>
       </div>
 
       <div style={{ padding:"18px 18px 0" }}>
@@ -4907,7 +4907,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>👥 Réservation d'équipe</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>Réservez plusieurs prestataires en une fois</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, margin:0 }}>Réservez plusieurs prestataires en une fois</p>
       </div>
 
       <div style={{ padding:"20px 18px" }}>
@@ -5076,7 +5076,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 32px", borderRadius:"0 0 28px 28px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:16 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:22, fontWeight:800, margin:"0 0 4px", fontFamily:font.display }}>Comment ça marche ?</h2>
-        <p style={{ color:"rgba(255,255,255,0.55)", fontSize:13, margin:0 }}>{role==="prestataire" ? "Votre parcours prestataire" : "Votre parcours client"}</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:13, margin:0 }}>{role==="prestataire" ? "Votre parcours prestataire" : "Votre parcours client"}</p>
       </div>
 
       <div style={{ flex:1, padding:"28px 22px", display:"flex", flexDirection:"column" }}>
@@ -5436,12 +5436,12 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
           <div>
             <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>✍️ Contrat de prestation</h2>
-            <p style={{ color:"rgba(255,255,255,0.5)", fontSize:11, margin:0 }}>{contractNum} · Généré le {today}</p>
+            <p style={{ color:"rgba(255,255,255,0.6)", fontSize:11, margin:0 }}>{contractNum} · Généré le {today}</p>
           </div>
           <div style={{ textAlign:"right" }}>
             {bothSigned
               ? <div style={{ background:`${C.success}33`, borderRadius:8, padding:"4px 10px", color:C.success, fontSize:11, fontWeight:700 }}>✓ Signé</div>
-              : <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"4px 10px", color:"rgba(255,255,255,0.5)", fontSize:11 }}>En attente</div>
+              : <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"4px 10px", color:"rgba(255,255,255,0.6)", fontSize:11 }}>En attente</div>
             }
           </div>
         </div>
@@ -5730,7 +5730,7 @@ export function LegalScreen({ type, onBack }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <div style={{ fontSize:28, marginBottom:8 }}>{doc.icon}</div>
         <h2 style={{ color:C.white, fontSize:19, fontWeight:800, margin:0, lineHeight:1.3 }}>{doc.title}</h2>
-        {doc.maj && <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : {doc.maj}</p>}
+        {doc.maj && <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"6px 0 0" }}>Mise à jour : {doc.maj}</p>}
       </div>
       <div style={{ padding:"20px 18px" }}>
         {doc.sections.map((s,i)=>(
@@ -5777,7 +5777,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
       <div style={{ background:"linear-gradient(135deg, #0A1628, #162547)", padding:"48px 22px 24px", borderRadius:"0 0 26px 26px" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:10, padding:"7px 14px", color:C.white, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.white, fontSize:20, fontWeight:800, margin:"0 0 4px" }}>📄 Attestation de prestation</h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:12, margin:0 }}>{num}</p>
+        <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:0 }}>{num}</p>
       </div>
 
       <div style={{ padding:"20px 18px" }}>
@@ -6712,7 +6712,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                   <span style={{ color:"#10D98F", fontWeight:700, fontSize:13 }}>Localisation en direct</span>
                   {prestaPosition.updated_at && (() => {
                     const ago = Math.floor((Date.now() - new Date(prestaPosition.updated_at).getTime()) / 60000);
-                    return <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>· il y a {ago < 1 ? "< 1 min" : `${ago} min`}</span>;
+                    return <span style={{ color:"rgba(255,255,255,0.6)", fontSize:11 }}>· il y a {ago < 1 ? "< 1 min" : `${ago} min`}</span>;
                   })()}
                 </div>
                 {dist != null && (
@@ -6728,7 +6728,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             ) : (
               <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10 }}>
                 <span style={{ fontSize:16 }}>📍</span>
-                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Le prestataire n'a pas encore activé le partage de position</span>
+                <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>Le prestataire n'a pas encore activé le partage de position</span>
               </div>
             );
           })()}
@@ -7112,22 +7112,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
                     <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la prestation ?</div>
-                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, textAlign:"center", marginBottom:16 }}>La prestation est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, textAlign:"center", marginBottom:16 }}>La prestation est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
                     <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"16px", marginBottom:18 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Durée effectuée</span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Durée effectuée</span>
                         <span style={{ color:"#fff", fontWeight:700, fontSize:13 }}>{elapsedH.toFixed(1).replace(".",",")}h</span>
                       </div>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Heures facturées</span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Heures facturées</span>
                         <span style={{ color:"#7C6FE0", fontWeight:800, fontSize:15 }}>{billedH}h <span style={{ fontSize:11, fontWeight:400 }}>(arrondi supérieur)</span></span>
                       </div>
                       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
-                        <span style={{ color:"rgba(255,255,255,0.55)", fontSize:13 }}>Montant prestataire</span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Montant prestataire</span>
                         <span style={{ color:"#10D98F", fontWeight:800, fontSize:16 }}>{prorata.toFixed(2).replace(".",",")} € HT</span>
                       </div>
                     </div>
-                    <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textAlign:"center", marginBottom:18, lineHeight:1.5 }}>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textAlign:"center", marginBottom:18, lineHeight:1.5 }}>
                       Le prestataire sera averti par email et SMS. L'équipe ALANE traitera le remboursement partiel sous 48h.
                     </div>
                     <div style={{ display:"flex", gap:10 }}>
@@ -7259,7 +7259,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.08)", border:"none", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", color:C.white, cursor:"pointer", fontSize:16, flexShrink:0 }}>←</button>
         <div style={{ flex:1 }}>
           <div style={{ color:C.white, fontSize:18, fontWeight:800, lineHeight:1.2 }}>Mes prestations</div>
-          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
         </div>
       </div>
 
@@ -7382,7 +7382,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                   </div>
 
                   {/* Info condensée sur une ligne */}
-                  <div style={{ color:"rgba(255,255,255,0.38)", fontSize:12, lineHeight:1.4 }}>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.4 }}>
                     {infoParts.join(" · ")}
                   </div>
 
@@ -7401,7 +7401,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                   )}
                 </div>
 
-                <div style={{ color:"rgba(255,255,255,0.2)", fontSize:16, flexShrink:0 }}>›</div>
+                <div style={{ color:"rgba(255,255,255,0.6)", fontSize:16, flexShrink:0 }}>›</div>
               </div>
 
               {/* Signaler un problème — discret, en bas de carte */}
@@ -8933,7 +8933,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
       <div style={{ width:"100%", maxWidth:400 }}>
         <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:40 }}>
           {steps.map((_,i)=>(
-            <div key={i} style={{ width: i===step?24:8, height:8, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.15)", transition:"all 0.3s" }} />
+            <div key={i} style={{ width: i===step?24:8, height:8, borderRadius:4, background:i===step?s.color:"rgba(255,255,255,0.6)", transition:"all 0.3s" }} />
           ))}
         </div>
         <div style={{ textAlign:"center", marginBottom:40 }}>

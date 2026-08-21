@@ -21,9 +21,14 @@ export const C = {
 
   // Texte
   white:     "#FFFFFF",
-  text:      "#F0F0F5",
-  textSub:   "#8B8FA8",
-  textMuted: "#4A4E6A",
+  // Contraste vérifié sur les quatre fonds de l'application (#0A1628, #0D1B3E,
+  // #112240, #162547). `textMuted` valait #4A4E6A : 1,9:1 sur le fond des
+  // cartes, très en dessous des 4,5:1 exigés pour du texte — illisible en plein
+  // jour sur un téléphone. Les trois niveaux passent désormais AA partout, tout
+  // en restant distincts les uns des autres.
+  text:      "#F0F0F5",   // 13,3 à 16,0:1
+  textSub:   "#9BA0BA",   //  5,9 à  7,0:1
+  textMuted: "#8A90AD",   //  4,8 à  5,8:1
 
   // Bordures
   border:    "rgba(255,255,255,0.10)",
@@ -36,8 +41,8 @@ export const C = {
   indigo:    "#162547",
   offWhite:  "#F0F0F5",
   grayLight: "rgba(255,255,255,0.06)",
-  gray:      "#8B8FA8",
-  textLight: "#8B8FA8",
+  gray:      "#9BA0BA",
+  textLight: "#9BA0BA",
 };
 
 export const font = {

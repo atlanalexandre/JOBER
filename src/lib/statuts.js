@@ -83,7 +83,7 @@ export function couleurStatut(m, couleurs, nowMs = Date.now()) {
   if (libelle === "À valider")            return C.accentGold || "#F0B429";
   if (libelle === "Litige en cours")      return C.danger     || "#F25E5E";
   if (libelle === "Annulée")              return C.danger     || "#F25E5E";
-  if (libelle === "Refusée")              return C.textMuted  || "#4A4E6A";
+  if (libelle === "Refusée")              return C.textMuted  || "#8A90AD";
   if (libelle === "Terminée")             return C.success    || "#10D98F";
   if (libelle === "Remplaçant recherché") return "#F59E0B";
   if (libelle === "Recherche en cours")   return C.violet     || "#7C6FE0";
