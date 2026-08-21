@@ -6523,7 +6523,20 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // de l'autre, pour le même état.
   const statusLabel  = (m) => libelleStatut(m);
   const statusColor  = (m) => couleurStatut(m, C);
-  const filtered = tab === "all" ? prestations : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement") : prestations.filter(m => m.status === tab);
+  // `closed` manquait à l'onglet « Terminées » : c'est pourtant l'état d'une
+  // prestation dont le litige s'est dénoué par un remboursement, et celui d'une
+  // prestation clôturée depuis le back-office. Elle n'apparaissait que dans
+  // « Toutes », alors qu'elle est bel et bien terminée pour le client.
+  const filtered = tab === "all" ? prestations
+    : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement")
+    : tab === "completed" ? prestations.filter(m => m.status === "completed" || m.status === "closed")
+    : prestations.filter(m => m.status === tab);
+
+  // Les litiges en cours n'ont pas d'onglet, et n'en méritent pas : ce ne sont
+  // ni des recherches, ni des prestations à venir, ni des affaires classées.
+  // Ils sont épinglés en tête de liste, quel que soit l'onglet — un dossier
+  // ouvert dont le délai court ne doit pas dépendre du filtre choisi.
+  const litigesEnCours = prestations.filter(m => m.status === "disputed");
 
   // Règlement d'une prolongation. Le montant passé en `amount` n'est
   // qu'un affichage : le serveur le recalcule depuis la proposition enregistrée,
@@ -7315,7 +7328,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       <div style={{ padding:"14px 18px 0" }}>
         {loading && <div style={{ textAlign:"center", color:C.textSub, padding:40 }}>Chargement…</div>}
 
-        {!loading && tab !== "prestataires" && filtered.length === 0 && (
+        {!loading && tab !== "prestataires" && filtered.filter(m => m.status !== "disputed").length === 0 && litigesEnCours.length === 0 && (
           <div style={{ background:"rgba(255,255,255,0.04)", border:`1px solid ${C.border}`, borderRadius:16, padding:"40px 24px", textAlign:"center", marginTop:8 }}>
             <div style={{ fontSize:32, marginBottom:10 }}>📭</div>
             <div style={{ color:C.text, fontWeight:600, fontSize:13, marginBottom:4 }}>Aucune prestation</div>
@@ -7367,7 +7380,25 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         )}
 
         {/* ── Liste des prestations ── */}
-        {tab !== "prestataires" && filtered.map(m => {
+        {tab !== "prestataires" && litigesEnCours.map(m => (
+          <div key={`litige-${m.id}`} onClick={() => setSelected(m)}
+            style={{ background:"rgba(242,166,94,0.07)", border:"1px solid rgba(242,166,94,0.35)", borderRadius:16, padding:"13px 14px", marginBottom:10, cursor:"pointer" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{m.titre || m.metier || "Prestation"}</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{fmtDate(m.date)}{m.heure_debut ? ` · ${m.heure_debut}` : ""}{m.ville ? ` · ${m.ville}` : ""}</div>
+              </div>
+              <span style={{ background:"rgba(242,166,94,0.2)", border:"1px solid rgba(242,166,94,0.45)", borderRadius:20, padding:"3px 9px", color:"#F2A65E", fontSize:10, fontWeight:800, flexShrink:0 }}>Litige en cours</span>
+            </div>
+            <div style={{ marginTop:8, fontSize:12, color: m.resolution_proposee ? "#F2A65E" : C.textSub, fontWeight: m.resolution_proposee ? 700 : 400, lineHeight:1.5 }}>
+              {m.resolution_proposee
+                ? "📩 Une proposition de résolution vous attend — touchez pour la lire."
+                : "Votre signalement est en cours d'examen. Les fonds restent bloqués jusqu'au dénouement."}
+            </div>
+          </div>
+        ))}
+
+        {tab !== "prestataires" && filtered.filter(m => m.status !== "disputed").map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const pending = (m.candidatures||[]).filter(c=>c.status==="pending").length;
           const acceptedCandidature = m.candidatures?.find(c=>c.status==="accepted");
