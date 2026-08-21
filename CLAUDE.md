@@ -304,9 +304,12 @@ humaine n'est pas une lenteur administrative.
 
 Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En résumé :
 
-- **S-06** — l'insertion de notifications reste ouverte aux comptes connectés. Il faut router
-  trois appels du front vers `/api` avant de fermer la policy.
-- **S-06** est clos. Les six tables mortes (`prestataires`, `metiers`, `disponibilites`,
+- **S-06 est clos** (29/07/2026). Les trois insertions de notifications que le front faisait
+  pour autrui passent par `/api`, et la policy est fermée — vérifié le 21/08/2026 : `src/`
+  ne contient plus aucun `insert` sur `notifications`. Ce fichier annonçait encore le
+  contraire deux lignes plus haut, et attribuait par erreur le numéro S-06 à la suppression
+  des tables mortes ci-dessous.
+- **Les six tables mortes** (`prestataires`, `metiers`, `disponibilites`,
   `abonnements`, `bookings`, `mission_responses`) ont été **supprimées le 05/08/2026** après
   vérification : zéro ligne, aucune référence dans le code, aucune clé étrangère venue de
   l'extérieur. Elles portaient à elles seules **25 règles RLS que plus personne ne relisait**,
