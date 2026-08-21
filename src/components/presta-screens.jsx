@@ -2937,10 +2937,22 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       💬 Chat avec le client
                     </button>
                   )}
-                  <button onClick={() => toggleTracking(m.id)}
-                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
-                  </button>
+                  {/* Le partage de position n'a de sens que tant que le client
+                      attend quelqu'un. Le bouton restait affiché après la fin de
+                      la prestation, proposant d'envoyer sa position à un client
+                      qui n'attendait plus rien — et le serveur, lui, refuse
+                      passé sa fenêtre (`fenetrePartagePosition`).
+
+                      On réutilise `isPast`, déjà calculé plus haut, plutôt que
+                      de recopier ici une borne horaire : c'est exactement de
+                      cette façon que les quatre fenêtres de pointage avaient
+                      divergé. */}
+                  {!isPast && (
+                    <button onClick={() => toggleTracking(m.id)}
+                      style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
+                    </button>
+                  )}
                   {/* Se faire remplacer plutôt qu'annuler : la prestation reste
                       honorée, le client garde son créneau, et le droit prévu par
                       les CGPS devient réellement exerçable. */}

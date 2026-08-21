@@ -67,6 +67,13 @@ describe("ONGLETS_PRESTATIONS", () => {
     // Les onglets filtrent sur `m.status` : renommer un libellé ne doit jamais
     // changer l'identifiant, sous peine d'un onglet qui ne montre plus rien.
     expect(ONGLETS_PRESTATIONS.map(o => o.id))
-      .toEqual(["all", "open", "assigned", "completed", "prestataires"]);
+      .toEqual(["all", "open", "assigned", "completed"]);
+  });
+
+  it("ne contient que des filtres d'état", () => {
+    // « Prestataires » y figurait, alors qu'il n'est pas un état : c'est un
+    // carnet d'adresses, qui ne filtre rien et poussait les vrais onglets hors
+    // de l'écran. Il vit désormais dans l'en-tête.
+    expect(ONGLETS_PRESTATIONS.map(o => o.id)).not.toContain("prestataires");
   });
 });

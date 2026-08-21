@@ -7261,6 +7261,14 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           <div style={{ color:C.white, fontSize:18, fontWeight:800, lineHeight:1.2 }}>Mes prestations</div>
           <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
         </div>
+        {/* « Prestataires » n'est pas un statut de prestation : c'est un carnet
+            d'adresses. Il était rangé dans la barre des statuts, où il ne
+            filtrait rien et poussait les vrais onglets hors de l'écran. */}
+        <button onClick={() => setTab(t => t === "prestataires" ? "all" : "prestataires")}
+          title="Mes prestataires"
+          style={{ background: tab === "prestataires" ? "#fff" : "rgba(255,255,255,0.08)", border:"none", borderRadius:10, height:36, padding:"0 12px", display:"flex", alignItems:"center", gap:6, color: tab === "prestataires" ? "#0A1628" : C.white, cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit", flexShrink:0 }}>
+          👤 Prestataires
+        </button>
       </div>
 
       {/* Remplacements en attente de l'accord du client (CGPS art. 9) — placés

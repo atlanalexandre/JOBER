@@ -213,18 +213,28 @@ export default async function handler(req, res) {
     // comparaison, ces prestations n'étaient donc JAMAIS examinées — une
     // prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
     const todayStr = new Date().toISOString().slice(0, 10);
+    // On ratisse jusqu'à DEMAIN inclus : les prestations à venir servent au
+    // préavis ci-dessous. Le tri en JavaScript sépare ensuite ce qui est
+    // dépassé (à clôturer) de ce qui approche (à annoncer).
+    const demainStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     try {
       const pastRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)`
-        + `&or=(date.lte.${todayStr},and(date.is.null,date_debut.lte.${todayStr}))`
-        + `&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total,date,date_debut,heure_debut`
-        + `&limit=200`,
+        + `&or=(date.lte.${demainStr},and(date.is.null,date_debut.lte.${demainStr}))`
+        + `&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total,date,date_debut,heure_debut,alerte_sans_prestataire_at`
+        + `&order=created_at.asc&limit=200`,
         { headers }
       );
       const candidates = await pastRes.json().catch(() => []);
       if (!pastRes.ok) {
         console.error(`[cron] prestations sans prestataire illisibles (${pastRes.status}) — `
-          + "aucune clôture automatique ce passage.");
+          + "aucune clôture automatique ce passage. Vérifier que la migration "
+          + "2026-08-21_alerte_avant_annulation.sql est appliquée.");
+      }
+      // Une troncature silencieuse laisserait croire que tout a été examiné.
+      if (Array.isArray(candidates) && candidates.length === 200) {
+        console.error("[cron] 200 prestations sans prestataire examinées — limite atteinte, "
+          + "le reste attend le prochain passage.");
       }
       // Ne clôturer que celles dont l'heure de début est PASSÉE. Sans ce tri,
       // une prestation commandée pour 18 h serait annulée à 8 h du matin.
@@ -234,6 +244,55 @@ export default async function handler(req, res) {
         if (debut === null) return String(m.date || m.date_debut || "") < todayStr;
         return Date.now() > debut;
       });
+      // ── Prévenir le client AVANT l'échéance ───────────────────────
+      //
+      // Une prestation que personne n'accepte est annulée et remboursée à
+      // l'heure prévue. Le client l'apprenait au moment de l'annulation : il
+      // avait réservé, payé, organisé sa journée, et découvrait à 08 h 30 que
+      // personne ne viendrait. Un avertissement quelques heures avant ne change
+      // pas la règle, mais lui laisse le temps de s'organiser autrement.
+      //
+      // `alerte_sans_prestataire_at` garantit un seul envoi : ce traitement
+      // repasse toutes les deux heures.
+      const PREAVIS_MS = 6 * 3600000;
+      const aPrevenir = (Array.isArray(candidates) ? candidates : []).filter(m => {
+        if (m.alerte_sans_prestataire_at) return false;
+        const debut = debutPrestationMs(m.date || m.date_debut, m.heure_debut);
+        if (debut === null) return false;
+        const reste = debut - Date.now();
+        return reste > 0 && reste <= PREAVIS_MS;
+      });
+      for (const m of aPrevenir) {
+        if (!m.client_id) continue;
+        const debut = debutPrestationMs(m.date || m.date_debut, m.heure_debut);
+        const heure = new Date(debut).toLocaleTimeString("fr-FR",
+          { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+        const nom = m.titre || m.metier || "prestation";
+        const cause = m.status === "needs_replacement"
+          ? `Le prestataire de votre prestation "${nom}" s'est désisté et aucun remplaçant ne l'a encore reprise.`
+          : `Votre prestation "${nom}" n'a encore été acceptée par aucun prestataire.`;
+        // L'écriture d'abord : si elle échoue, on n'envoie pas — mieux vaut
+        // pas d'alerte qu'une alerte toutes les deux heures jusqu'à l'échéance.
+        const marque = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}&alerte_sans_prestataire_at=is.null`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ alerte_sans_prestataire_at: new Date().toISOString() }),
+        });
+        const lignes = await marque.json().catch(() => []);
+        if (!marque.ok || !Array.isArray(lignes) || lignes.length === 0) {
+          console.error(`[cron] alerte de préavis non marquée sur ${m.id} (${marque.status}) — non envoyée.`);
+          continue;
+        }
+        await notifier({
+          user_id: m.client_id,
+          type: "mission",
+          title: "Personne n'a encore accepté votre prestation ⏳",
+          body: `${cause} Elle commence à ${heure}. Si personne ne l'accepte d'ici là, `
+              + "elle sera annulée automatiquement et intégralement remboursée, frais de service compris.",
+        }, SUPABASE_URL, headers).catch(() => {});
+      }
+      if (aPrevenir.length) console.log(`[cron] ${aPrevenir.length} client(s) prévenu(s) avant échéance`);
+
       const differeesPersistantes = [];
       if (pastMissions.length) {
         let cloturees = 0, remboursees = 0, differees = 0;

@@ -91,11 +91,18 @@ export function couleurStatut(m, couleurs, nowMs = Date.now()) {
   return C.violet || "#7C6FE0";
 }
 
-/** Les onglets de l'historique, et ce que chacun retient. */
+/**
+ * Les onglets de l'historique, et ce que chacun retient.
+ *
+ * Ils filtrent tous sur un ÉTAT de prestation. « Prestataires » y figurait
+ * aussi, alors qu'il n'est pas un état : c'est un carnet d'adresses. Rangé
+ * dans la même barre, il laissait croire qu'il existe des prestations « au
+ * statut prestataire », et il déplaçait la barre vers la droite pour un onglet
+ * qui ne filtre rien. Il vit désormais à part, dans l'en-tête de l'écran.
+ */
 export const ONGLETS_PRESTATIONS = [
   { id: "all",           l: "Toutes" },
   { id: "open",          l: "En recherche" },
   { id: "assigned",      l: "Confirmées" },
   { id: "completed",     l: "Terminées" },
-  { id: "prestataires",  l: "Prestataires" },
 ];

@@ -55,6 +55,19 @@ export const METIERS_TARIFS = {
     "Chef de chantier propreté":            { min:16,   max:21,   default:18   },
     "Responsable de site propreté":         { min:17,   max:23,   default:19   },
     "Responsable qualité propreté":         { min:18,   max:25,   default:21   },
+    // Ajoutés le 21/08/2026 — le catalogue s'arrêtait au nettoyage de bureaux,
+    // alors que l'essentiel du marché de la propreté est ailleurs : santé,
+    // agroalimentaire, remise en état, travail en hauteur.
+    "Agent de bionettoyage (milieu de santé)": { min:13, max:17,   default:14   },
+    "Agent de service hospitalier (ASH)":   { min:12,   max:15,   default:13   },
+    "Agent de propreté en EHPAD":           { min:12,   max:15.5, default:13   },
+    "Agent de propreté en agroalimentaire": { min:12.5, max:16,   default:13.5 },
+    "Agent de remise en état après sinistre": { min:14, max:19,   default:16   },
+    "Agent de propreté urbaine":            { min:12,   max:15,   default:13   },
+    "Agent de collecte des déchets":        { min:12,   max:15,   default:13   },
+    "Laveur de vitres en hauteur (cordiste)": { min:18, max:28,   default:22   },
+    "Agent de blanchisserie / Repasseur":   { min:11.5, max:14,   default:12   },
+    "Agent d'entretien d'espaces verts":    { min:12,   max:15.5, default:13   },
   },
   // ROME N1101-N1303 - Logistique, manutention, magasinage
   logistique:{
@@ -82,6 +95,15 @@ export const METIERS_TARIFS = {
     "Cariste CACES 2":                      { min:13,   max:16,   default:14   },
     "Dispatcher logistique":                { min:15,   max:21,   default:17   },
     "Agent de transit":                     { min:14,   max:19,   default:16   },
+    // Ajoutés le 21/08/2026 — métiers logistiques à part entière, hors
+    // exécution en série (voir la note sur l'article 4.1 en tête de fichier).
+    "Approvisionneur":                      { min:14,   max:19,   default:16   },
+    "Contrôleur qualité logistique":        { min:14,   max:19,   default:16   },
+    "Inventoriste logistique":              { min:12,   max:15,   default:13   },
+    "Opérateur retours / SAV logistique":   { min:12.5, max:16,   default:13.5 },
+    "Planificateur transport":              { min:16,   max:22,   default:18   },
+    "Déclarant en douane":                  { min:17,   max:25,   default:20   },
+    "Responsable d'entrepôt":               { min:19,   max:28,   default:22   },
   },
   // ROME G1401-G1502 - Hôtellerie
   hotellerie:{
@@ -143,6 +165,18 @@ export const METIERS_TARIFS = {
     "Poissonnier-écailler":                 { min:14,   max:20,   default:16   },
     "Cuisinier de collectivité":            { min:13,   max:17,   default:14.5 },
     "Agent de restauration scolaire":       { min:11.5, max:13.5, default:12   },
+    // Ajoutés le 21/08/2026.
+    "Employé de cafétéria":                 { min:11.5, max:13.5, default:12   },
+    "Serveur banquet / extra":              { min:12,   max:16,   default:13.5 },
+    "Crêpier":                              { min:13,   max:17,   default:14.5 },
+    "Grillardin":                           { min:13,   max:17,   default:14.5 },
+    "Boulanger":                            { min:13,   max:18,   default:15   },
+    "Chocolatier":                          { min:14,   max:20,   default:16   },
+    "Chef pâtissier":                       { min:18,   max:28,   default:22   },
+    "Chef sommelier / Caviste":             { min:18,   max:26,   default:21   },
+    "Assistant maître d'hôtel":             { min:15,   max:20,   default:17   },
+    "Responsable de production culinaire":  { min:18,   max:26,   default:21   },
+    "Chef gérant en restauration collective": { min:17, max:25,   default:20   },
   },
   // ROME D1401-D1506 - Commerce, vente
   commercial:{
@@ -169,6 +203,16 @@ export const METIERS_TARIFS = {
     "Chef des ventes":                      { min:22,   max:35,   default:27   },
     "Délégué commercial":                   { min:14,   max:21,   default:17   },
     "Chargé d'affaires":                    { min:18,   max:30,   default:23   },
+    // Ajoutés le 21/08/2026.
+    "Assistant commercial":                 { min:13,   max:17,   default:14.5 },
+    "Conseiller clientèle particuliers":    { min:14,   max:19,   default:16   },
+    "Conseiller clientèle professionnels":  { min:16,   max:24,   default:19   },
+    "Démonstrateur / Animateur de stand":   { min:12,   max:16,   default:13.5 },
+    "Merchandiser terrain":                 { min:13,   max:17,   default:14.5 },
+    "Chargé de recouvrement":               { min:14,   max:19,   default:16   },
+    "Chargé de marketing opérationnel":     { min:16,   max:24,   default:19   },
+    "Chef de secteur GMS":                  { min:18,   max:27,   default:21   },
+    "Responsable e-commerce":               { min:18,   max:28,   default:22   },
   },
   // ROME D1507-D1513 - Grande distribution
   distribution:{
@@ -198,6 +242,17 @@ export const METIERS_TARIFS = {
     "Fleuriste en GMS":                     { min:12,   max:16,   default:13.5 },
     "Vendeur en parfumerie":                { min:12,   max:16,   default:13.5 },
     "Vendeur en sport":                     { min:12,   max:16,   default:13.5 },
+    // Ajoutés le 21/08/2026.
+    "Employé libre-service":                { min:11.5, max:13.5, default:12   },
+    "Réassortisseur":                       { min:11.5, max:13.5, default:12   },
+    "Chef de caisse":                       { min:14,   max:19,   default:16   },
+    "Hôte(sse) service client / SAV":       { min:12.5, max:16,   default:13.5 },
+    "Employé de station-service":           { min:11.5, max:14,   default:12.5 },
+    "Vendeur en boulangerie-pâtisserie":    { min:12,   max:15,   default:13   },
+    "Vendeur en librairie / papeterie":     { min:12,   max:15,   default:13   },
+    "Vendeur en téléphonie":                { min:12,   max:16,   default:13.5 },
+    "Vendeur en optique":                   { min:13,   max:18,   default:15   },
+    "Agent de prévention des pertes (magasin)": { min:13, max:17, default:14.5 },
   },
   // ROME K2503, G1203, M1601, M1607, N4101, N4105, K1303...
   divers:{
@@ -223,6 +278,26 @@ export const METIERS_TARIFS = {
     "Agent de médiation":                   { min:13,   max:18,   default:15   },
     "Photographe événementiel":             { min:16,   max:28,   default:21   },
     "Technicien son / lumière":             { min:15,   max:25,   default:19   },
+    // Ajoutés le 21/08/2026. Volontairement écartés : les métiers du bâtiment
+    // (électricien, plombier, couvreur), qui relèvent de la garantie décennale
+    // et d'assurances que la RC Pro demandée à l'inscription ne couvre pas, et
+    // les professions de santé réglementées (aide-soignant, auxiliaire de
+    // puériculture), dont l'exercice suppose un diplôme d'État que la
+    // plateforme ne vérifie pas.
+    "Agent de sécurité incendie SSIAP 1":   { min:13.5, max:17,   default:15   },
+    "Agent de sécurité incendie SSIAP 2":   { min:16,   max:21,   default:18   },
+    "Agent cynophile de sécurité":          { min:15,   max:20,   default:17   },
+    "Maître-nageur sauveteur (BNSSA)":      { min:14,   max:20,   default:16   },
+    "Animateur périscolaire (BAFA)":        { min:12,   max:15,   default:13   },
+    "Chauffeur poids lourd (permis C)":     { min:14,   max:19,   default:16   },
+    "Chauffeur de bus / autocar":           { min:14,   max:19,   default:16   },
+    "Déménageur":                           { min:12.5, max:16,   default:13.5 },
+    "Jardinier / Paysagiste":               { min:13,   max:18,   default:15   },
+    "Agent d'entretien du bâtiment":        { min:14,   max:19,   default:16   },
+    "Régisseur événementiel":               { min:17,   max:26,   default:21   },
+    "Hôte(sse) bilingue salon":             { min:13,   max:17,   default:14.5 },
+    "Community manager":                    { min:16,   max:26,   default:20   },
+    "Interprète / Traducteur":              { min:20,   max:35,   default:26   },
   },
 };
 

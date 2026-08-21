@@ -52,7 +52,7 @@ src/
     payment.jsx              tunnel de paiement Stripe
     ui.jsx                   composants partagés (boutons, badges, modales)
   constants/
-    data.js                  secteurs, métiers, tarifs, documents requis
+    data.js                  secteurs, métiers, tarifs, documents requis (226 métiers, 7 secteurs)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
 api/                         27 fonctions serverless
@@ -129,6 +129,11 @@ pendant lequel chacune des deux parties peut s'y opposer, et la cause qui a fina
 bouger les fonds — accord tacite, décision de justice, ou procédure de l'établissement de
 paiement. C'est la seule chose qu'on aura à produire si l'on demande un jour au titre de quoi
 l'argent a bougé. Voir « Dénouer un litige » au §6.
+
+`alerte_sans_prestataire_at` (timestamptz, nullable) marque l'envoi de l'avertissement adressé
+au client 6 h avant l'annulation automatique d'une prestation que personne n'a acceptée. Elle
+ne sert qu'à ne l'envoyer qu'une fois. Non modifiable depuis le navigateur : un client pourrait
+sinon l'effacer pour être alerté en boucle, ou la remplir pour ne jamais l'être.
 
 `resolution_montant` (numérique, nullable, `CHECK > 0`) porte le montant d'un remboursement
 PARTIEL. `NULL` — le cas courant — vaut remboursement du prix de la prestation, frais de
@@ -805,6 +810,13 @@ restait acquis à la plateforme. Un remboursement qui échoue **diffère la clô
 de la masquer : la prestation est reprise au passage suivant, et les prestations différées
 depuis plusieurs passages sont journalisées en erreur — sans quoi elles restent visibles à
 l'écran sans que personne ne sache pourquoi.
+
+**Le client est prévenu 6 h avant** (21/08/2026). Il apprenait l'annulation au moment où elle
+tombait : il avait réservé, payé, organisé sa journée, et découvrait à 08 h 30 que personne ne
+viendrait. Un avertissement quelques heures plus tôt ne change pas la règle mais lui laisse le
+temps de s'organiser. `missions.alerte_sans_prestataire_at` garantit un envoi unique — le
+traitement repasse toutes les deux heures. L'écriture précède l'envoi : si elle échoue, rien
+n'est envoyé, car mieux vaut pas d'alerte qu'une alerte toutes les deux heures.
 
 **Corrigé le 21/08/2026 — deux trous dans cette clôture automatique.** Le filtre portait sur
 `date < aujourd'hui` : une prestation qui commençait à 08 h 30 et n'avait toujours personne
