@@ -886,7 +886,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "list_disputes") {
-      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,stripe_payment_intent,resolution_proposee,resolution_motif,resolution_echeance_at,resolution_opposition_at,resolution_opposition_par&order=created_at.desc`, { headers });
+      const missionsRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?status=eq.disputed&select=id,metier,titre,date,montant_total,client_id,prestataire_id,stripe_payment_intent,resolution_proposee,resolution_motif,resolution_echeance_at,resolution_opposition_at,resolution_opposition_par,resolution_montant&order=created_at.desc`, { headers });
       const missions = await missionsRes.json();
       if (!Array.isArray(missions) || missions.length === 0) return res.status(200).json([]);
 
@@ -923,7 +923,7 @@ export default async function handler(req, res) {
     //
     // Rien ne bouge ici du côté de l'argent. C'est le point de tout ce bloc.
     if (action === "proposer_resolution") {
-      const { mission_id, resolution, motif } = body;
+      const { mission_id, resolution, motif, montant } = body;
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuidId(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
       if (!RESOLUTIONS.includes(resolution)) {
@@ -945,6 +945,32 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Une proposition court déjà sur cette prestation." });
       }
 
+      // Montant du remboursement. Facultatif : sans lui, la proposition porte
+      // sur le prix de la prestation, frais de service retenus — le
+      // comportement d'avant.
+      //
+      // La plupart des litiges réels sont partiels (deux heures sur trois
+      // faites, une partie du travail à refaire). Sans montant intermédiaire,
+      // l'arbitre n'avait que « tout » ou « rien » et devait choisir celui qui
+      // lésait le moins mal, ce qui n'est pas une décision.
+      //
+      // Sur un versement au prestataire, le montant n'a pas de sens : le
+      // prestataire touche sa rémunération, calculée à la clôture.
+      let montantPropose = null;
+      if (resolution === "rembourser_client" && montant !== undefined && montant !== null && montant !== "") {
+        const brut = Number(String(montant).replace(",", "."));
+        if (!Number.isFinite(brut) || brut <= 0) {
+          return res.status(400).json({ error: "Montant invalide — indiquez une somme supérieure à 0, ou laissez vide pour le remboursement par défaut." });
+        }
+        const plafond = Number(m.montant_total || 0);
+        montantPropose = Math.round(brut * 100) / 100;
+        // On ne peut pas rendre plus que ce que le client a payé : Stripe le
+        // refuserait, et le refus arriverait APRÈS la clôture du litige.
+        if (plafond > 0 && montantPropose > plafond + 0.001) {
+          return res.status(400).json({ error: `Montant supérieur à ce que le client a réglé (${plafond.toFixed(2)} €).` });
+        }
+      }
+
       const maintenant = Date.now();
       const echeance   = echeanceOppositionMs(maintenant);
       const up = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
@@ -953,6 +979,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           resolution_proposee:    resolution,
           resolution_motif:       motifPropre,
+          resolution_montant:     montantPropose,
           resolution_notifiee_at: new Date(maintenant).toISOString(),
           resolution_echeance_at: new Date(echeance).toISOString(),
         }),
@@ -966,18 +993,22 @@ export default async function handler(req, res) {
       // Les deux parties reçoivent le MÊME texte : la proposition, son motif,
       // la date limite et le moyen de s'y opposer. C'est cette notification
       // qui fait courir le délai — sans elle, le silence ne vaudrait rien.
-      const quoi  = libelleResolution(resolution);
+      const quoi  = montantPropose !== null
+        ? `rembourser ${montantPropose.toFixed(2).replace(".", ",")} € au client`
+        : libelleResolution(resolution);
       const limite = new Date(echeance).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
-      const detailFrais = resolution === "rembourser_client"
-        ? " Le remboursement porterait sur le prix de la prestation, les frais de service restant acquis à ALANE (article 17.1 des CGPS)."
-        : "";
+      const detailFrais = resolution !== "rembourser_client"
+        ? ""
+        : montantPropose !== null
+          ? " Ce montant est un remboursement partiel : il tient compte de ce qui a été effectivement réalisé."
+          : " Le remboursement porterait sur le prix de la prestation, les frais de service restant acquis à ALANE (article 17.1 des CGPS).";
       const corps = `Après examen du litige sur « ${m.titre || m.metier || "votre prestation"} », ALANE propose de ${quoi}.${detailFrais}\n\nMotif : ${motifPropre}\n\nCette proposition ne tranche pas le litige et ne vous est pas imposée. Si vous ne vous y opposez pas avant le ${limite}, elle sera considérée comme acceptée par les deux parties et exécutée. Vous pouvez vous y opposer en un clic depuis la prestation, sans avoir à vous justifier.`;
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
         await notifier({ user_id: uid, type: "system", title: "Proposition de résolution 📩", body: corps}, SUPABASE_URL, headers).catch(e => console.error("[proposer_resolution] notification non envoyée :", e.message));
       }
 
-      journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre } });
+      journaliser("proposer_resolution", { target_id: mission_id, details: { resolution, motif: motifPropre, montant: montantPropose } });
       return res.status(200).json({ success: true, echeance: new Date(echeance).toISOString() });
     }
 
@@ -1005,7 +1036,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Justification requise (10 caractères minimum) — référence de la décision ou du dossier." });
       }
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,stripe_payment_intent,montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,delay_status,arrival_delay_minutes,resolution_montant`, { headers });
       const rows = await mr.json();
       const m = Array.isArray(rows) && rows[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });

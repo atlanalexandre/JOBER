@@ -122,13 +122,21 @@ création de l'intention de paiement et sa confirmation, `cashback_applique` por
 PROMISE que rien n'a encore consommée — un panier abandonné ne doit rien coûter au client.
 
 `resolution_proposee` (`verser_prestataire` | `rembourser_client`, sous contrainte `CHECK`),
-`resolution_motif`, `resolution_notifiee_at`, `resolution_echeance_at`,
+`resolution_motif`, `resolution_montant`, `resolution_notifiee_at`, `resolution_echeance_at`,
 `resolution_opposition_par` / `resolution_opposition_at` et `resolution_executee_cause`
 portent le dénouement d'un litige : la proposition formulée par ALANE, le délai de 48 h
 pendant lequel chacune des deux parties peut s'y opposer, et la cause qui a finalement fait
 bouger les fonds — accord tacite, décision de justice, ou procédure de l'établissement de
 paiement. C'est la seule chose qu'on aura à produire si l'on demande un jour au titre de quoi
 l'argent a bougé. Voir « Dénouer un litige » au §6.
+
+`resolution_montant` (numérique, nullable, `CHECK > 0`) porte le montant d'un remboursement
+PARTIEL. `NULL` — le cas courant — vaut remboursement du prix de la prestation, frais de
+service retenus. Elle n'a de sens qu'avec `resolution_proposee = 'rembourser_client'` ; un
+versement au prestataire la laisse nulle. Elle a été ajoutée le 21/08/2026 : sans elle, un
+litige partiel — deux heures sur trois réalisées — n'avait que deux issues, tout rendre ou ne
+rien rendre, et l'arbitre devait choisir celle qui lésait le moins mal. Comme toutes les
+colonnes qui décident d'un montant, elle n'est pas modifiable depuis le navigateur.
 
 **`creances_prestataires`** — les sommes dues par un prestataire à ALANE (art. 8B.3), avec
 leur reste à recouvrer, leur notification et leur date d'exigibilité.
@@ -790,11 +798,23 @@ Chemins de sortie : `cancelled` (annulation), `disputed` (litige),
 
 **`needs_replacement` signifie « déjà payée ».** C'est ce qui la distingue d'une prestation
 réouverte en `open` : le prestataire s'est désisté après paiement, l'argent du client est
-conservé le temps de trouver un remplaçant. Si la date passe sans remplaçant, le cron
-mensuel **rembourse intégralement** puis passe la prestation en `cancelled` — le contrat le
-promet, et rien ne l'appliquait : la prestation était clôturée et l'argent restait acquis à
-la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que de la masquer :
-la prestation est reprise au passage suivant.
+conservé le temps de trouver un remplaçant. Si l'heure de début passe sans remplaçant, le
+traitement automatique **rembourse intégralement** puis passe la prestation en `cancelled` —
+le contrat le promet, et rien ne l'appliquait : la prestation était clôturée et l'argent
+restait acquis à la plateforme. Un remboursement qui échoue **diffère la clôture** plutôt que
+de la masquer : la prestation est reprise au passage suivant, et les prestations différées
+depuis plusieurs passages sont journalisées en erreur — sans quoi elles restent visibles à
+l'écran sans que personne ne sache pourquoi.
+
+**Corrigé le 21/08/2026 — deux trous dans cette clôture automatique.** Le filtre portait sur
+`date < aujourd'hui` : une prestation qui commençait à 08 h 30 et n'avait toujours personne
+restait « en recherche » toute la journée et n'était clôturée qu'après minuit — le client
+attendait quelqu'un qui ne viendrait pas, son argent bloqué. L'échéance est désormais l'HEURE
+DE DÉBUT, calculée en heure locale française par `debutPrestationMs()` (`api/_temps.js`).
+Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui portent
+`date_debut`, et PostgREST écarte les NULL d'une comparaison — ces prestations n'étaient donc
+**jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
+La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
 **`profiles_privileges_guard`** (migration `2026-07-30_secu_verrou_champs_profil.sql`) protège
 les champs privilégiés du profil. La ligne `profiles` est créée **et** modifiée par le
@@ -1065,6 +1085,15 @@ Deux boutons « Signaler un problème » existent, à deux moments différents. 
 |---|---|
 | Écran de validation (`ValidationScreen`) | Appelle l'action `dispute`. **Corrigé le 12/08** : il se contentait auparavant de créer un ticket de support |
 | Historique des prestations (`MissionHistoryScreen`) | Appelle l'action `dispute` — correct depuis toujours |
+| Carte d'une prestation terminée (bouton « Signaler un problème ») | Appelle l'action `dispute` **depuis le 21/08/2026** — elle appelait auparavant `raise_dispute` |
+
+**`raise_dispute` a été supprimée le 21/08/2026.** Deux actions faisaient la même chose et
+avaient divergé : `dispute` appliquait le délai de 48 h des CGPS et vérifiait le résultat de
+ses écritures ; `raise_dispute` appliquait un délai de 7 jours, n'en vérifiait aucune, et
+renvoyait `{ success: true }` là où le front teste `j.ok`. Conséquences constatées : le délai
+de contestation dépendait du bouton utilisé, et un signalement parfaitement abouti — litige
+enregistré, e-mail parti — affichait « Erreur lors de l'envoi du signalement ». L'alerte
+administrateur que portait `raise_dispute` a été reprise dans `dispute`.
 
 Le défaut : le bouton de l'écran de validation insérait une ligne dans `support_tickets` et
 envoyait un email. La prestation restait `assigned`, **l'auto-validation la clôturait 24 h plus
@@ -1956,6 +1985,19 @@ service.** Il portait auparavant sur l'intégralité du `payment_intent`, ce qui
 troisième règle, différente de celle des annulations et de celle des CGPS. `montantRemboursable()`
 (`api/_resolution.js`) déduit les frais de `montant_total` via `montantsDeCloture` — les frais
 ne sont donc jamais recalculés depuis la grille tarifaire, qui a déjà divergé par le passé.
+
+**Ajouté le 21/08/2026 — le remboursement peut être PARTIEL.** L'écran n'offrait que deux
+issues, tout rendre ou ne rien rendre, alors que la plupart des litiges réels sont partiels :
+deux heures sur trois faites, une partie du travail à refaire. `proposer_resolution` accepte
+donc un champ `montant` facultatif, enregistré dans `missions.resolution_montant` ; laissé
+vide, le comportement est inchangé. Le montant saisi est plafonné deux fois — à
+`montant_total` au moment de la proposition, puis à ce que la carte a réellement supporté par
+`plafonnerRemboursement()` au moment de l'exécution, cashback déduit. Il est repris dans la
+notification envoyée aux deux parties : sans lui, l'opposition se déciderait à l'aveugle.
+
+Le montant par défaut **n'est pas recalculé dans le navigateur** : les frais de service se
+calculent côté serveur, et une deuxième formule dans le front finirait par diverger. Le champ
+est donc laissé vide par défaut, et son absence signifie « remboursement par défaut ».
 
 Quand les frais ne sont pas établissables — `montant_total` absent, tarif ou durée manquants —
 la fonction renvoie `null` et l'appelant rembourse la **totalité**. À défaut de savoir ce qui

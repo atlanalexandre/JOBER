@@ -1,4 +1,4 @@
-import { resendBody } from "./_email.js";
+import { resendBody, sendEmail } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
@@ -1626,7 +1626,7 @@ export default async function handler(req, res) {
       // l'identifiant part directement dans une URL PostgREST.
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at,validation_prestataire`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,sector,date,heure_debut,hours,started_at,validation_prestataire,titre,montant_total`, { headers });
       const missions = await mr.json();
       const mission = Array.isArray(missions) && missions[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1723,6 +1723,47 @@ export default async function handler(req, res) {
             title: "Prestation contestée ⚠️",
             body: "Le client a signalé un problème sur votre prestation. ALANE examine le dossier sous 72h.",
           }, SUPABASE_URL, headers).catch(() => {});
+      }
+
+      // Alerte à l'administrateur. Elle n'existait que dans l'action jumelle
+      // `raise_dispute`, supprimée : sans elle, un litige n'était signalé que
+      // dans le back-office, qu'il faut penser à ouvrir. Un litige gèle l'argent
+      // des deux parties — personne ne doit avoir à le découvrir par hasard.
+      const adminLitige = (process.env.ADMIN_EMAIL || "").replace(/\s/g, "");
+      if (!adminLitige) {
+        console.error("[dispute] ADMIN_EMAIL absente — le litige n'est signalé nulle part hors du back-office.");
+      } else {
+        let emailClient = "";
+        let nomClient = "Client";
+        try {
+          const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+          const ud = await ur.json();
+          emailClient = ud.email || "";
+          nomClient = [ud.user_metadata?.prenom, ud.user_metadata?.nom].filter(Boolean).join(" ") || "Client";
+        } catch (e) { console.error("[dispute] coordonnées du client illisibles :", e.message); }
+
+        const libelle = mission.titre || mission.metier || "Prestation";
+        const corpsAlerte = [
+          `Client : ${nomClient} (${emailClient || caller.id})`,
+          `Prestation : ${mission_id}`,
+          `Prestataire : ${mission.prestataire_id || "inconnu"}`,
+          `Montant : ${mission.montant_total || 0} €`,
+          "",
+          `Motif : ${message || "(non précisé)"}`,
+          "",
+          "Les fonds sont gelés. Onglet « Litiges » du back-office pour proposer une résolution.",
+        ].join("\n");
+        try {
+          await sendEmail({
+            to: adminLitige,
+            subject: `⚠️ Litige — ${libelle} (${mission.date || ""})`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">`
+                + `<h2 style="color:#c0392b">⚠️ Litige client</h2>`
+                + `<pre style="font-size:14px;line-height:1.6;white-space:pre-wrap">${esc(corpsAlerte)}</pre></div>`,
+          });
+        } catch (e) {
+          console.error("[dispute] alerte administrateur non envoyée :", e.message);
+        }
       }
 
       return res.status(200).json({ ok: true });
@@ -5261,82 +5302,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ started_at: startedAt });
     }
 
-    if (action === "raise_dispute") {
-      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
-      if (!caller) return res.status(401).json({ error: "Non authentifié" });
-      const { mission_id, reason } = payload;
-      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
-
-      // Vérifier que le caller est bien le client de la mission et que le status est "completed"
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}&status=eq.completed&select=id,metier,titre,date,montant_total,prestataire_id`, { headers });
-      const mData = await mr.json();
-      const mission = Array.isArray(mData) && mData[0];
-      if (!mission) return res.status(404).json({ error: "Prestation introuvable ou non éligible au litige" });
-
-      // Vérifier délai de contestation (7 jours après date de mission)
-      if (mission.date) {
-        const missionDate = new Date(mission.date + "T23:59:59");
-        if (Date.now() - missionDate.getTime() > 7 * 86400000) {
-          return res.status(400).json({ error: "Le délai de contestation de 7 jours est dépassé" });
-        }
-      }
-
-      // Passer la mission en "disputed"
-      await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "disputed" }),
-      });
-
-      // Récupérer email du client
-      let clientEmail = null; let clientName = "";
-      try {
-        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
-        const uData = await uRes.json();
-        clientEmail = uData.email || null;
-        clientName = [uData.user_metadata?.prenom, uData.user_metadata?.nom].filter(Boolean).join(" ") || "Client";
-      } catch (e) { console.error("[missions] coordonnées du client illisibles :", e.message); }
-
-      const label = mission.titre || mission.metier || "prestation";
-      const ticketSubject = `⚠️ Litige — Prestation : ${label} (${mission.date || ""})`;
-      const ticketMessage = `Client : ${clientName} (${clientEmail || caller.id})\nMission ID : ${mission_id}\nPrestataire ID : ${mission.prestataire_id || "inconnu"}\nMontant : ${mission.montant_total || 0} €\n\nMotif : ${reason || "(non précisé)"}\n\nAction : Vérifier et décider du remboursement depuis le Backoffice.`;
-
-      // Créer ticket de support
-      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({
-          subject: ticketSubject,
-          message: ticketMessage,
-          user_email: clientEmail,
-          user_name: clientName,
-          user_id: caller.id,
-          status: "open",
-        }),
-      }).catch(e => console.error("[raise_dispute] ticket creation failed:", e.message));
-
-      // Notifier le client
-      await notifier({ user_id: caller.id, type: "system", title: "Litige enregistré ✅", body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 48h."}, SUPABASE_URL, headers).catch(() => {});
-
-      // Email admin
-      const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
-      const RESEND_FROM = process.env.RESEND_FROM || "ALANE <no-reply@alane.fr>";
-      const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-      if (RESEND_API_KEY && ADMIN_EMAIL) {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: resendBody({
-            from: RESEND_FROM,
-            to: ADMIN_EMAIL,
-            subject: ticketSubject,
-            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px"><h2 style="color:#c0392b">⚠️ Litige Client</h2><pre style="font-size:14px;line-height:1.6">${ticketMessage}</pre></div>`,
-          }),
-        }).catch(e => console.error("[raise_dispute] admin email failed:", e.message));
-      }
-
-      return res.status(200).json({ success: true });
-    }
+    // ── `raise_dispute` a été supprimée le 21/08/2026 ──────────────────
+    //
+    // Deux actions faisaient la même chose, et avaient divergé :
+    //
+    //   `dispute`       délai de 48 h (CGPS art. 17), résultat des écritures
+    //                   vérifié, notification au prestataire, renvoie { ok }.
+    //   `raise_dispute` délai de 7 jours, écritures non vérifiées, alerte
+    //                   administrateur, renvoyait { success }.
+    //
+    // Deux conséquences visibles. Le délai de contestation dépendait du bouton
+    // sur lequel le client avait cliqué, alors que le contrat n'en prévoit
+    // qu'un. Et le front testait `j.ok` : `raise_dispute` réussissait — litige
+    // enregistré, e-mail parti — puis affichait « Erreur lors de l'envoi du
+    // signalement », parce que la réponse ne portait pas ce nom-là.
+    //
+    // Il ne reste que `dispute`, à laquelle l'alerte administrateur a été
+    // ajoutée. Les deux boutons du front pointent dessus.
 
     // Notifie les deux parties quand le timer de mission atteint zéro, puis toutes les 2h
     if (action === "notify_end") {

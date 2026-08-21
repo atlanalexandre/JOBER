@@ -1,6 +1,6 @@
 import { resendBody } from "./_email.js";
 import { sendPushToUser, notifier } from "./_push.js";
-import { finPrestationMs, echeanceVersementMs } from "./_temps.js";
+import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
@@ -198,14 +198,44 @@ export default async function handler(req, res) {
   // Il tourne désormais à chaque passage, comme l'expiration des zombies au-dessus,
   // soit toutes les deux heures.
   {
+    // Le filtre portait sur `date=lt.aujourd'hui` : une prestation qui commençait
+    // à 08 h 30 et n'avait toujours personne restait « en recherche » toute la
+    // journée, et n'était clôturée qu'au premier passage après minuit. Le client
+    // attendait quelqu'un qui ne viendrait pas, et son argent restait bloqué.
+    //
+    // L'échéance raisonnable, c'est l'HEURE DE DÉBUT : passée cette heure, la
+    // prestation ne peut plus être rendue telle qu'elle a été commandée. On
+    // examine donc aussi le jour même, et on tranche prestation par prestation
+    // sur l'instant de début réel (heure locale française — `_temps.js`).
+    //
+    // Deuxième trou bouché : `date` est NULLE sur les prestations sur plusieurs
+    // jours, qui portent `date_debut`. PostgREST écarte les NULL d'une
+    // comparaison, ces prestations n'étaient donc JAMAIS examinées — une
+    // prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
     const todayStr = new Date().toISOString().slice(0, 10);
     try {
       const pastRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)&date=lt.${todayStr}&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total`,
+        `${SUPABASE_URL}/rest/v1/missions?status=in.(open,needs_replacement)`
+        + `&or=(date.lte.${todayStr},and(date.is.null,date_debut.lte.${todayStr}))`
+        + `&select=id,client_id,metier,titre,status,stripe_payment_intent,montant_total,date,date_debut,heure_debut`
+        + `&limit=200`,
         { headers }
       );
-      const pastMissions = await pastRes.json().catch(() => []);
-      if (Array.isArray(pastMissions) && pastMissions.length) {
+      const candidates = await pastRes.json().catch(() => []);
+      if (!pastRes.ok) {
+        console.error(`[cron] prestations sans prestataire illisibles (${pastRes.status}) — `
+          + "aucune clôture automatique ce passage.");
+      }
+      // Ne clôturer que celles dont l'heure de début est PASSÉE. Sans ce tri,
+      // une prestation commandée pour 18 h serait annulée à 8 h du matin.
+      const pastMissions = (Array.isArray(candidates) ? candidates : []).filter(m => {
+        const debut = debutPrestationMs(m.date || m.date_debut, m.heure_debut);
+        // Horaire illisible : on retombe sur l'ancienne règle — la veille au plus tard.
+        if (debut === null) return String(m.date || m.date_debut || "") < todayStr;
+        return Date.now() > debut;
+      });
+      const differeesPersistantes = [];
+      if (pastMissions.length) {
         let cloturees = 0, remboursees = 0, differees = 0;
         await Promise.all(pastMissions.map(async m => {
           // Une prestation en « needs_replacement » a DÉJÀ été payée : c'est
@@ -222,6 +252,7 @@ export default async function handler(req, res) {
             rembourse = await rembourserPrestation(m, SUPABASE_URL, headers);
             if (!rembourse) {
               differees++;
+              differeesPersistantes.push(m.id);
               console.error(`[cron] remboursement impossible pour la prestation ${m.id} — `
                 + `clôture différée, elle sera reprise au prochain passage.`);
               return; // ne pas clôturer : la prestation doit rester visible tant que l'argent n'est pas rendu
@@ -245,10 +276,15 @@ export default async function handler(req, res) {
                 user_id: m.client_id,
                 type: "mission",
                 title: rembourse ? "Prestation annulée — vous êtes remboursé 💶" : "Prestation clôturée automatiquement",
-                body: rembourse
-                  ? `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date. `
-                    + `L'intégralité de votre paiement vous est remboursée, frais de service compris — comptez 5 à 10 jours ouvrés selon votre banque.`
-                  : `Votre prestation "${m.titre || m.metier || "prestation"}" n'a pas trouvé de prestataire avant sa date — elle a été clôturée automatiquement.`,
+                body: (() => {
+                  const nom = m.titre || m.metier || "prestation";
+                  const cause = m.status === "needs_replacement"
+                    ? `Le prestataire de votre prestation "${nom}" s'est désisté et aucun remplaçant n'a été trouvé avant l'heure prévue.`
+                    : `Votre prestation "${nom}" n'a trouvé aucun prestataire avant l'heure prévue.`;
+                  return rembourse
+                    ? `${cause} L'intégralité de votre paiement vous est remboursée, frais de service compris — comptez 5 à 10 jours ouvrés selon votre banque.`
+                    : `${cause} Elle a été clôturée automatiquement.`;
+                })(),
               }, SUPABASE_URL, headers).catch(() => {});
           }
         }));
@@ -257,6 +293,11 @@ export default async function handler(req, res) {
         // réellement passé, remboursements et reports compris.
         console.log(`[cron] prestations dépassées : ${cloturees} clôturée(s) dont `
           + `${remboursees} remboursée(s), ${differees} différée(s) sur ${pastMissions.length} examinée(s)`);
+      }
+      if (differeesPersistantes.length) {
+        // Une prestation qu'on n'arrive pas à rembourser reste visible exprès —
+        // mais si elle le reste des semaines, personne ne le sait. On le dit.
+        console.error(`[cron] remboursement toujours impossible sur : ${differeesPersistantes.join(", ")}`);
       }
     } catch (e) { console.error("[cron] auto-close past missions error:", e); }
   }
@@ -327,7 +368,7 @@ export default async function handler(req, res) {
             + `&select=id,client_id,prestataire_id,metier,titre,stripe_payment_intent,`
             + `montant_total,tarif_horaire,hours,actual_hours,date_debut,date_fin,`
             + `delay_status,arrival_delay_minutes,`
-            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at`
+            + `resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_montant`
             + `&limit=100`,
             { headers }
           );

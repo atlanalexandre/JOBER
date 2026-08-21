@@ -7420,10 +7420,19 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                         const res = await fetch("/api/missions", {
                           method: "POST",
                           headers: { "Content-Type": "application/json", ...(tok ? { "Authorization": `Bearer ${tok}` } : {}) },
-                          body: JSON.stringify({ action: "raise_dispute", mission_id: m.id, reason: motif.trim() }),
+                          // `raise_dispute` a été supprimée : elle appliquait un délai de
+                          // contestation de 7 jours là où le contrat en prévoit 48 h, et
+                          // renvoyait { success } quand ce code attend { ok } — d'où le
+                          // « Erreur lors de l'envoi » affiché sur des signalements qui
+                          // avaient parfaitement abouti.
+                          body: JSON.stringify({ action: "dispute", mission_id: m.id, message: motif.trim() }),
                         });
                         const j = await res.json();
-                        if (j.ok) setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
+                        if (j.ok) {
+                          setDisputeSuccess(prev => ({ ...prev, [m.id]: true }));
+                          setMissions(ms => ms.map(x => x.id === m.id ? { ...x, status:"disputed" } : x));
+                          showToast("Votre signalement a été transmis. Nous vous répondons sous 72h ouvrées.", "success");
+                        }
                         else showToast(j.error || "Erreur lors de l'envoi du signalement.");
                       } catch { showToast("Erreur réseau, réessayez."); }
                       setDisputingId(null);

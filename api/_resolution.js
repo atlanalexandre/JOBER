@@ -135,8 +135,23 @@ export async function executerResolution({
       // Les frais de service restent acquis : on ne rembourse que la part
       // prestation. Sans montant établissable, on rembourse tout — mieux vaut
       // rendre trop que retenir une somme qu'on ne sait pas justifier.
-      const { centimes, fraisRetenus } = montantRemboursable(mission);
-      if (centimes === null) {
+      // Un montant PARTIEL a-t-il été proposé ? La plupart des litiges réels
+      // le sont : deux heures sur trois faites, une partie du travail à
+      // refaire. Sans ce montant, l'arbitre n'avait que « tout » ou « rien »,
+      // et devait choisir celui qui lésait le moins mal — ce qui n'est pas
+      // une décision.
+      //
+      // Le montant saisi fait foi ; il reste plafonné plus bas par ce que la
+      // carte a réellement supporté.
+      const partiel = Number(mission.resolution_montant);
+      const surMesure = Number.isFinite(partiel) && partiel > 0;
+      const { centimes, fraisRetenus } = surMesure
+        ? { centimes: Math.round(partiel * 100), fraisRetenus: 0 }
+        : montantRemboursable(mission);
+      if (surMesure) {
+        console.log(`[resolution] remboursement partiel de ${partiel.toFixed(2)} €`
+          + ` pour ${mission.id} — montant fixé lors de la proposition.`);
+      } else if (centimes === null) {
         console.error(`[resolution] frais de service non établissables pour ${mission.id}`
           + " — remboursement intégral par défaut.");
       } else {
