@@ -379,7 +379,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                               ))}
                               <div style={{ background:"rgba(240,180,41,0.1)", border:"1px solid rgba(240,180,41,0.3)", borderRadius:10, padding:"12px 14px", marginTop:14 }}>
                                 <div style={{ fontWeight:700, color:"#F0B429", fontSize:12, marginBottom:4 }}>⚠️ Important</div>
-                                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>La demande d'ACRE doit être faite dans les <strong style={{ color:C.text }}>45 jours</strong> suivant la création de l'auto-entreprise sur autoentrepreneur.urssaf.fr. Elle n'est pas automatique.</div>
+                                <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6 }}>La demande d'ACRE doit être faite dans les <strong style={{ color:C.text }}>45 jours</strong> suivant la création de l'auto-entreprise, auprès de l'URSSAF. Elle n'est pas automatique.</div>
                               </div>
                             </div>
                           </div>
@@ -544,12 +544,15 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
 
-          {/* URSSAF nudge */}
-          <a href="https://www.autoentrepreneur.urssaf.fr/portail/accueil/creer-mon-auto-entreprise.html" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:12, padding:"12px 14px", marginBottom:20, textDecoration:"none" }}>
+          {/* Guichet unique — obligatoire depuis le 1er janvier 2023.
+              L'ancien portail URSSAF informe encore mais n'immatricule plus :
+              il renvoie ici. C'est l'écran d'inscription, le moment où l'on peut
+              le moins se permettre d'envoyer quelqu'un faire un détour. */}
+          <a href="https://procedures.inpi.fr/" target="_blank" rel="noopener noreferrer" style={{ display:"flex", alignItems:"center", gap:12, background:"rgba(255,210,80,0.06)", border:"1px solid rgba(255,210,80,0.2)", borderRadius:12, padding:"12px 14px", marginBottom:20, textDecoration:"none" }}>
             <div style={{ width:36, height:36, borderRadius:10, background:"#FFD250", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏛️</div>
             <div style={{ flex:1 }}>
               <div style={{ color:"#FFD250", fontWeight:700, fontSize:12, marginBottom:2 }}>Pas encore d'auto-entreprise ?</div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le site officiel de l'URSSAF →</div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, lineHeight:1.4 }}>Crée ton auto-entreprise gratuitement sur le Guichet unique de l'État →</div>
             </div>
           </a>
 

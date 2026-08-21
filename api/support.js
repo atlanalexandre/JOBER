@@ -108,6 +108,42 @@ export default async function handler(req, res) {
       <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
     `);
     await sendEmail({ to: email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
+
+    // ── PRÉVENIR ALANE QU'UN DOSSIER ATTEND ───────────────────────────
+    //
+    // Seul le nouvel inscrit était prévenu. Un prestataire s'inscrivait, son
+    // compte passait « en attente », et personne ne le savait : il fallait
+    // ouvrir le backoffice par hasard pour le découvrir.
+    //
+    // Or son dossier ne peut pas avancer sans une décision humaine, et lui n'a
+    // aucun moyen de la réclamer. Trois comptes attendaient ainsi, dont un
+    // depuis le 5 août.
+    //
+    // Seuls les PRESTATAIRES déclenchent cet envoi : un client est approuvé
+    // d'office, il n'y a rien à décider. Une alerte pour un geste qui n'existe
+    // pas finirait par être ignorée, celle-ci comprise.
+    if (isPresta) {
+      const adminEmail = (process.env.ADMIN_EMAIL || "").replace(/\s/g, "");
+      if (!adminEmail) {
+        console.error("[welcome] ADMIN_EMAIL absente — personne n'est prévenu qu'un dossier prestataire attend.");
+      } else {
+        const corps = emailHtml("Nouveau prestataire à valider", `
+          <p><strong>${esc(prenom)} ${esc(nom || "")}</strong> vient de s'inscrire comme prestataire.</p>
+          <p style="color:#8B8FA8;font-size:13px">${esc(email)}</p>
+          <p>Son compte est <strong>en attente</strong> : il n'apparaîtra dans aucun catalogue
+             et ne recevra aucune proposition tant que son dossier n'aura pas été examiné.</p>
+          <p>Backoffice → <strong>Comptes</strong> → filtre « En attente ».</p>
+        `);
+        // Un échec ne fait pas rater l'inscription : le compte est créé, l'alerte
+        // est un confort d'exploitation. Mais il doit se voir.
+        try {
+          await sendEmail({ to: adminEmail, subject: `👤 Nouveau prestataire à valider — ${esc(prenom)} ${esc(nom || "")}`, html: corps });
+        } catch (e) {
+          console.error("[welcome] alerte administrateur non envoyée :", e.message);
+        }
+      }
+    }
+
     return res.status(200).json({ ok: true });
   }
 
