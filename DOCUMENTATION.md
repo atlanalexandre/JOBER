@@ -52,7 +52,7 @@ src/
     payment.jsx              tunnel de paiement Stripe
     ui.jsx                   composants partagés (boutons, badges, modales)
   constants/
-    data.js                  secteurs, métiers, tarifs, documents requis
+    data.js                  secteurs, métiers, tarifs, documents requis (226 métiers, 7 secteurs)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
 api/                         27 fonctions serverless
@@ -129,6 +129,20 @@ pendant lequel chacune des deux parties peut s'y opposer, et la cause qui a fina
 bouger les fonds — accord tacite, décision de justice, ou procédure de l'établissement de
 paiement. C'est la seule chose qu'on aura à produire si l'on demande un jour au titre de quoi
 l'argent a bougé. Voir « Dénouer un litige » au §6.
+
+`resolution_acceptation_client_at` et `resolution_acceptation_prestataire_at` (timestamptz,
+nullables) enregistrent l'acceptation EXPRESSE d'une proposition par chacune des parties.
+Ajoutées le 21/08/2026 : l'écran ne proposait que « Je m'oppose », et accepter consistait à ne
+rien faire pendant 48 h. Une acceptation seule ne dénoue rien — l'article 17.1 exige l'accord
+des parties. Lorsque les deux sont renseignées, `resolution_echeance_at` est ramenée à
+l'instant présent et le traitement automatique exécute la proposition à son passage suivant :
+c'est le MÊME chemin que l'accord tacite, aucune logique d'exécution n'est dupliquée. Non
+modifiables depuis le navigateur — une partie pourrait sinon inscrire l'acceptation de l'autre.
+
+`alerte_sans_prestataire_at` (timestamptz, nullable) marque l'envoi de l'avertissement adressé
+au client 6 h avant l'annulation automatique d'une prestation que personne n'a acceptée. Elle
+ne sert qu'à ne l'envoyer qu'une fois. Non modifiable depuis le navigateur : un client pourrait
+sinon l'effacer pour être alerté en boucle, ou la remplir pour ne jamais l'être.
 
 `resolution_montant` (numérique, nullable, `CHECK > 0`) porte le montant d'un remboursement
 PARTIEL. `NULL` — le cas courant — vaut remboursement du prix de la prestation, frais de
@@ -805,6 +819,13 @@ restait acquis à la plateforme. Un remboursement qui échoue **diffère la clô
 de la masquer : la prestation est reprise au passage suivant, et les prestations différées
 depuis plusieurs passages sont journalisées en erreur — sans quoi elles restent visibles à
 l'écran sans que personne ne sache pourquoi.
+
+**Le client est prévenu 6 h avant** (21/08/2026). Il apprenait l'annulation au moment où elle
+tombait : il avait réservé, payé, organisé sa journée, et découvrait à 08 h 30 que personne ne
+viendrait. Un avertissement quelques heures plus tôt ne change pas la règle mais lui laisse le
+temps de s'organiser. `missions.alerte_sans_prestataire_at` garantit un envoi unique — le
+traitement repasse toutes les deux heures. L'écriture précède l'envoi : si elle échoue, rien
+n'est envoyé, car mieux vaut pas d'alerte qu'une alerte toutes les deux heures.
 
 **Corrigé le 21/08/2026 — deux trous dans cette clôture automatique.** Le filtre portait sur
 `date < aujourd'hui` : une prestation qui commençait à 08 h 30 et n'avait toujours personne
@@ -1950,12 +1971,20 @@ Le parcours normal, celui de l'accord :
    la date de notification et l'échéance à +48 h. **Aucun euro ne bouge.** Le client et le
    prestataire reçoivent le *même* texte : la proposition, son motif, la date limite et le
    moyen de s'y opposer. C'est cette notification qui fait courir le délai.
-2. **`opposer_resolution`** (`api/missions.js`, client ou prestataire) enregistre une
+2. **`accepter_resolution`** (`api/missions.js`, client ou prestataire) enregistre une
+   acceptation expresse. Elle est **définitive** : on ne s'oppose pas à ce qu'on a accepté,
+   sans quoi l'acceptation ne vaudrait rien. Une seule acceptation ne dénoue rien ; quand les
+   deux parties ont accepté, l'échéance est ramenée à maintenant et l'exécution suit le chemin
+   ordinaire. Ajoutée le 21/08/2026 — jusque-là, celui qui était d'accord attendait deux jours
+   un dénouement que les deux parties souhaitaient, et l'écran, avec son unique bouton rouge,
+   poussait au conflit. Un accord exprès est en outre bien plus solide à produire qu'un
+   silence.
+3. **`opposer_resolution`** (`api/missions.js`, client ou prestataire) enregistre une
    opposition. Elle n'a pas à être motivée, et **l'opposition d'une seule des deux parties
    suffit** à faire obstacle au déblocage. L'écriture est atomique
    (`resolution_opposition_at=is.null` en filtre) : deux oppositions simultanées ne se
    marchent pas dessus.
-3. **À l'échéance, sans opposition**, le traitement des versements exécute la proposition —
+4. **À l'échéance, sans opposition**, le traitement des versements exécute la proposition —
    `verser_prestataire` remet `payout_status` à `pending`, `rembourser_client` rembourse via
    Stripe puis clôt. Le verrou d'exécution porte sur `resolution_executee_cause`, non sur
    `status` : inventer un statut intermédiaire aurait supposé de toucher à la contrainte de
@@ -1964,6 +1993,14 @@ Le parcours normal, celui de l'accord :
 
 En cas d'opposition, **rien ne se débloque**. Les fonds restent chez Stripe et le différend
 se poursuit entre les parties, par la médiation ou par les voies judiciaires.
+
+**Le routage des notifications de litige** (corrigé le 21/08/2026) : elles portaient
+`type: "system"` sans référence, et le routeur de l'écran des notifications envoyait alors le
+client vers l'écran de **recherche**. On touchait « Proposition de résolution » et on
+atterrissait sur la liste des prestataires. Elles portent désormais `type: "mission"` et
+`ref_id` = l'identifiant de la prestation, ce qui ouvre la prestation concernée — là où vit le
+bloc de proposition. `type: "system"` reste réservé au chat, où `ref_id` désigne un
+utilisateur ; une notification système sans référence ne déplace plus personne.
 
 **Le bouton d'opposition est la contrepartie indispensable du délai.** Sans moyen visible de
 s'y opposer, l'absence d'opposition ne vaudrait pas accord et la « proposition » resterait

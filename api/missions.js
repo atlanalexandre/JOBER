@@ -1558,7 +1558,7 @@ export default async function handler(req, res) {
       if (!mission_id) return res.status(400).json({ error: "mission_id requis" });
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,resolution_proposee,resolution_echeance_at,resolution_opposition_at`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,status,client_id,prestataire_id,metier,titre,resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at`, { headers });
       const rows = await mr.json();
       const mission = Array.isArray(rows) && rows[0];
       if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
@@ -1572,6 +1572,14 @@ export default async function handler(req, res) {
       }
       if (mission.resolution_opposition_at) {
         return res.status(409).json({ error: "Une opposition a déjà été enregistrée." });
+      }
+      // On ne s'oppose pas à ce qu'on a accepté : sans cela, l'acceptation ne
+      // vaudrait rien — elle serait révocable tant que le délai court.
+      const dejaAccepte = mission.client_id === caller.id
+        ? mission.resolution_acceptation_client_at
+        : mission.resolution_acceptation_prestataire_at;
+      if (dejaAccepte) {
+        return res.status(409).json({ error: "Vous avez accepté cette proposition : elle ne peut plus être contestée." });
       }
       const echeance = Date.parse(mission.resolution_echeance_at || "");
       if (Number.isNaN(echeance) || Date.now() >= echeance) {
@@ -1609,12 +1617,110 @@ export default async function handler(req, res) {
         ? "le remboursement du client" : "le versement de la rémunération au prestataire";
       if (autre) {
         await notifier({
-            user_id: autre, type: "system", title: "Opposition à la proposition ⛔",
+            user_id: autre, type: "mission", ref_id: mission_id, title: "Opposition à la proposition ⛔",
             body: `L'autre partie s'est opposée à la proposition de résolution portant sur « ${mission.titre || mission.metier || "la prestation"} » (${quoi}).\n\nLes fonds restent bloqués : ALANE ne peut plus les débloquer sans un accord entre vous, une décision de justice, ou une procédure de l'établissement de paiement. Vous pouvez poursuivre par la médiation ou par les voies judiciaires (article 17 des CGPS).`,
           }, SUPABASE_URL, headers).catch(e => console.error("[opposer_resolution] notification non envoyée :", e.message));
       }
 
       return res.status(200).json({ success: true });
+    }
+
+    // ── accepter_resolution : dire oui, plutôt que se taire ───────────
+    //
+    // L'écran ne proposait qu'un bouton : « Je m'oppose ». Accepter consistait
+    // à ne rien faire pendant 48 heures. Trois défauts : celui qui est d'accord
+    // attend deux jours un dénouement que les deux parties souhaitent ; l'écran
+    // est déséquilibré, un seul bouton et il pousse au conflit ; et l'accord de
+    // l'article 17.1 se déduit d'un silence, alors qu'un accord exprès est
+    // infiniment plus solide à produire.
+    //
+    // Une acceptation seule ne dénoue rien : l'article exige l'accord DES
+    // PARTIES. Quand les deux ont accepté, l'échéance est ramenée à maintenant
+    // et le traitement automatique exécute la proposition à son passage suivant
+    // — le MÊME chemin que l'accord tacite. Aucune logique d'exécution n'est
+    // dupliquée : deux façons de faire bouger l'argent, c'est deux façons de
+    // diverger.
+    if (action === "accepter_resolution") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=id,client_id,prestataire_id,metier,titre,resolution_proposee,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at`, { headers });
+      const rows = await mr.json();
+      const mission = Array.isArray(rows) && rows[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+
+      const estClient = mission.client_id === caller.id;
+      const estPresta = mission.prestataire_id === caller.id;
+      if (!estClient && !estPresta) return res.status(403).json({ error: "Non autorisé" });
+      if (!mission.resolution_proposee) {
+        return res.status(400).json({ error: "Aucune proposition en cours sur cette prestation." });
+      }
+      if (mission.resolution_opposition_at) {
+        return res.status(409).json({ error: "Une opposition a été enregistrée : la proposition ne peut plus être acceptée." });
+      }
+      const echeanceMs = Date.parse(mission.resolution_echeance_at || "");
+      if (Number.isNaN(echeanceMs) || Date.now() >= echeanceMs) {
+        return res.status(409).json({ error: "Le délai est expiré : la proposition est déjà réputée acceptée." });
+      }
+
+      const colonne = estClient ? "resolution_acceptation_client_at" : "resolution_acceptation_prestataire_at";
+      const autreColonne = estClient ? "resolution_acceptation_prestataire_at" : "resolution_acceptation_client_at";
+      if (mission[colonne]) {
+        return res.status(409).json({ error: "Vous avez déjà accepté cette proposition." });
+      }
+
+      // L'autre partie avait-elle déjà accepté ? Si oui, l'accord est formé :
+      // on ramène l'échéance à maintenant pour que le traitement automatique
+      // l'exécute. Le filtre sur l'absence d'opposition rend l'écriture
+      // atomique face à une opposition simultanée.
+      const accordComplet = !!mission[autreColonne];
+      const maintenant = new Date().toISOString();
+      const corps = { [colonne]: maintenant };
+      if (accordComplet) corps.resolution_echeance_at = maintenant;
+
+      const up = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&resolution_opposition_at=is.null&${colonne}=is.null`,
+        {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify(corps),
+        }
+      );
+      const majRows = await up.json().catch(() => []);
+      if (!up.ok) {
+        console.error(`[accepter_resolution] enregistrement refusé (${up.status}) : ${JSON.stringify(majRows).slice(0, 200)}`);
+        return res.status(500).json({ error: "Votre acceptation n'a pas pu être enregistrée. Réessayez, ou écrivez à direction@alane.fr." });
+      }
+      if (!Array.isArray(majRows) || majRows.length === 0) {
+        return res.status(409).json({ error: "L'état de la proposition a changé — rechargez la page." });
+      }
+
+      const libelle = mission.titre || mission.metier || "la prestation";
+      const autre = estClient ? mission.prestataire_id : mission.client_id;
+      if (autre) {
+        await notifier({
+            user_id: autre,
+            type: "mission",
+            ref_id: mission_id,
+            title: accordComplet ? "Accord trouvé ✅" : "L'autre partie a accepté 📩",
+            body: accordComplet
+              ? `Vous avez tous les deux accepté la proposition de résolution portant sur « ${libelle} ». L'accord est formé : elle sera exécutée dans les prochaines heures, sans attendre la fin du délai.`
+              : `L'autre partie a accepté la proposition de résolution portant sur « ${libelle} ». Vous pouvez l'accepter à votre tour pour dénouer le litige immédiatement, ou vous y opposer avant l'échéance — votre silence vaudra acceptation.`,
+          }, SUPABASE_URL, headers).catch(e => console.error("[accepter_resolution] notification non envoyée :", e.message));
+      }
+      if (accordComplet) {
+        await notifier({
+            user_id: caller.id,
+            type: "mission",
+            ref_id: mission_id,
+            title: "Accord trouvé ✅",
+            body: `Vous avez tous les deux accepté la proposition portant sur « ${libelle} ». Elle sera exécutée dans les prochaines heures.`,
+          }, SUPABASE_URL, headers).catch(() => {});
+      }
+
+      return res.status(200).json({ success: true, accord: accordComplet });
     }
 
     if (action === "dispute") {
@@ -1719,11 +1825,27 @@ export default async function handler(req, res) {
       if (mission.prestataire_id) {
         await notifier({
             user_id: mission.prestataire_id,
-            type: "system",
+            // `type: "mission"` avec `ref_id` : une notification « système » sans
+            // référence renvoyait vers un écran sans rapport. Ici, elle ouvre la
+            // prestation contestée.
+            type: "mission",
+            ref_id: mission_id,
             title: "Prestation contestée ⚠️",
             body: "Le client a signalé un problème sur votre prestation. ALANE examine le dossier sous 72h.",
           }, SUPABASE_URL, headers).catch(() => {});
       }
+
+      // Le client recevait cette confirmation par l'action jumelle supprimée le
+      // 21/08/2026. Sans elle, son signalement ne laissait aucune trace dans ses
+      // notifications : il ne lui restait qu'un message éphémère à l'écran.
+      await notifier({
+          user_id: caller.id,
+          type: "mission",
+          ref_id: mission_id,
+          title: "Litige enregistré ✅",
+          body: "Votre signalement a été transmis à notre équipe. Nous vous répondons sous 72h ouvrées. "
+              + "Les fonds restent bloqués tant que le litige n'est pas dénoué.",
+        }, SUPABASE_URL, headers).catch(() => {});
 
       // Alerte à l'administrateur. Elle n'existait que dans l'action jumelle
       // `raise_dispute`, supprimée : sans elle, un litige n'était signalé que

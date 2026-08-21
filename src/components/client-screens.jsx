@@ -2322,7 +2322,7 @@ export function SearchFiltersScreen({ onNavigate }) {
                     </div>
                     <div style={{ color:C.textSub, fontSize:12 }}>{p.role}</div>
                   </div>
-                  <div style={{ textAlign:"right" }}><div style={{ color:C.violet, fontWeight:800, fontSize:14 }}>{p.hourlyRate} HT</div><div style={{ fontSize:11, color:p.available?C.success:C.accent, fontWeight:600 }}>{p.available?"● Dispo":"○ Occupé"}</div></div>
+                  <div style={{ textAlign:"right" }}><div style={{ color:C.violet, fontWeight:800, fontSize:14 }}>{p.hourlyRate}</div><div style={{ fontSize:11, color:p.available?C.success:C.accent, fontWeight:600 }}>{p.available?"● Dispo":"○ Occupé"}</div></div>
                 </div>
                 <div style={{ marginTop:3, display:"flex", gap:6, alignItems:"center" }}><Stars rating={p.rating} /><span style={{ color:C.textSub, fontSize:11 }}>{p.rating} · {p.distance} · {p.responseTime}</span></div>
               </div>
@@ -4949,7 +4949,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
                     <div style={{ marginTop:3 }}><Stars rating={p.rating} size={12}/></div>
                   </div>
                   <div style={{ textAlign:"right" }}>
-                    <div style={{ color:C.violet, fontWeight:800, fontSize:13 }}>{p.hourlyRate} HT</div>
+                    <div style={{ color:C.violet, fontWeight:800, fontSize:13 }}>{p.hourlyRate}</div>
                     <button onClick={()=>toggleBasket(p)} style={{ marginTop:6, padding:"6px 12px", borderRadius:10, border:"none", cursor:"pointer", background:inBasket?C.violet:C.grayLight, color:inBasket?C.white:C.text, fontWeight:700, fontSize:12, fontFamily:"inherit", transition:"all 0.2s" }}>
                       {inBasket ? "✓ Ajouté" : "+ Ajouter"}
                     </button>
@@ -4985,7 +4985,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
               <div key={p.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ fontSize:18 }}>{p.avatar}</span>
                 <span style={{ flex:1, fontSize:13, fontWeight:600, color:C.text }}>{p.name}</span>
-                <span style={{ color:C.violet, fontWeight:700, fontSize:12 }}>{p.hourlyRate} HT</span>
+                <span style={{ color:C.violet, fontWeight:700, fontSize:12 }}>{p.hourlyRate}</span>
                 <button onClick={()=>toggleBasket(p)} style={{ background:"none", border:"none", color:C.accent, cursor:"pointer", fontSize:16 }}>×</button>
               </div>
             ))}
@@ -5997,6 +5997,33 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     }
   };
 
+  // Accepter, et pas seulement s'opposer. Même chemin serveur : l'acceptation
+  // engage le déblocage des fonds, elle ne s'écrit pas depuis le navigateur.
+  const accepterResolution = async (missionId) => {
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const res = await fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd?.session?.access_token}` },
+        body: JSON.stringify({ action:"accepter_resolution", mission_id: missionId }),
+      });
+      const j = await res.json();
+      if (j.success) {
+        const at = new Date().toISOString();
+        setMissions(ms => ms.map(m => m.id === missionId ? { ...m, resolution_acceptation_client_at: at } : m));
+        setSelected(sel => sel && sel.id === missionId ? { ...sel, resolution_acceptation_client_at: at } : sel);
+        showToast(j.accord
+          ? "Accord trouvé — le litige sera dénoué dans les prochaines heures."
+          : "Acceptation enregistrée. Elle sera exécutée dès que l'autre partie aura accepté.", "success");
+      } else {
+        showToast(j.error || "Votre acceptation n'a pas pu être enregistrée.");
+      }
+    } catch (e) {
+      console.error("[accepter_resolution] échec :", e.message);
+      showToast("Erreur réseau — votre acceptation n'a pas été enregistrée, réessayez.");
+    }
+  };
+
   const { providers } = useProviders();
   const [tab, setTab]             = useState("all");
   const [prestations, setMissions]   = useState([]);
@@ -6565,7 +6592,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           {/* Proposition de résolution — c'est ce bloc qui donne son sens au
               délai de 48 h de l'article 17.1 : sans moyen de s'y opposer,
               l'absence d'opposition ne vaudrait pas accord. */}
-          <BlocPropositionResolution mission={selected} onOppose={() => opposerResolution(selected.id)} />
+          <BlocPropositionResolution mission={selected} role="client" onOppose={() => opposerResolution(selected.id)} onAccepte={() => accepterResolution(selected.id)} />
 
           {/* Carte prestataire assigné */}
           {(["assigned","pending_acceptance","completed","closed"].includes(selected.status)) && selected.prestataire_id && prestaDetails && (() => {
@@ -7261,6 +7288,14 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           <div style={{ color:C.white, fontSize:18, fontWeight:800, lineHeight:1.2 }}>Mes prestations</div>
           <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:1 }}>{prestations.length} au total</div>
         </div>
+        {/* « Prestataires » n'est pas un statut de prestation : c'est un carnet
+            d'adresses. Il était rangé dans la barre des statuts, où il ne
+            filtrait rien et poussait les vrais onglets hors de l'écran. */}
+        <button onClick={() => setTab(t => t === "prestataires" ? "all" : "prestataires")}
+          title="Mes prestataires"
+          style={{ background: tab === "prestataires" ? "#fff" : "rgba(255,255,255,0.08)", border:"none", borderRadius:10, height:36, padding:"0 12px", display:"flex", alignItems:"center", gap:6, color: tab === "prestataires" ? "#0A1628" : C.white, cursor:"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit", flexShrink:0 }}>
+          👤 Prestataires
+        </button>
       </div>
 
       {/* Remplacements en attente de l'accord du client (CGPS art. 9) — placés
@@ -7725,7 +7760,13 @@ export function NotificationsScreen({ onBack, onNavigate, role }) {
     } else if (n.type === "prestation") {
       onNavigate(isPresta ? "p_missions" : "mission_history");
     } else if (n.type === "system") {
-      onNavigate(isPresta ? "p_missions" : "search_filters");
+      // Une notification « système » sans référence n'a pas de destination.
+      // Elle envoyait le client vers l'écran de RECHERCHE : on touchait
+      // « Proposition de résolution » et on atterrissait sur la liste des
+      // prestataires, sans rapport avec le litige. Les notifications de litige
+      // portent désormais `type: "mission"` et la référence de la prestation ;
+      // celles qui n'ont vraiment rien à ouvrir ne déplacent plus personne.
+      if (isPresta) onNavigate("p_missions");
     } else if (n.type === "cashback") {
       onNavigate(isPresta ? "p_home" : "cashback");
     }

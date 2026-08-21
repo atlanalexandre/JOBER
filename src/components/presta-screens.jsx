@@ -2937,10 +2937,22 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       💬 Chat avec le client
                     </button>
                   )}
-                  <button onClick={() => toggleTracking(m.id)}
-                    style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                    {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
-                  </button>
+                  {/* Le partage de position n'a de sens que tant que le client
+                      attend quelqu'un. Le bouton restait affiché après la fin de
+                      la prestation, proposant d'envoyer sa position à un client
+                      qui n'attendait plus rien — et le serveur, lui, refuse
+                      passé sa fenêtre (`fenetrePartagePosition`).
+
+                      On réutilise `isPast`, déjà calculé plus haut, plutôt que
+                      de recopier ici une borne horaire : c'est exactement de
+                      cette façon que les quatre fenêtres de pointage avaient
+                      divergé. */}
+                  {!isPast && (
+                    <button onClick={() => toggleTracking(m.id)}
+                      style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
+                    </button>
+                  )}
                   {/* Se faire remplacer plutôt qu'annuler : la prestation reste
                       honorée, le client garde son créneau, et le droit prévu par
                       les CGPS devient réellement exerçable. */}
@@ -3375,6 +3387,32 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     }
   };
 
+  // Accepter, et pas seulement s'opposer. Même chemin serveur : l'acceptation
+  // engage le déblocage des fonds, elle ne s'écrit pas depuis le navigateur.
+  const accepterResolution = async (missionId) => {
+    try {
+      const { data:sd } = await supabase.auth.getSession();
+      const res = await fetch("/api/missions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sd?.session?.access_token}` },
+        body: JSON.stringify({ action:"accepter_resolution", mission_id: missionId }),
+      });
+      const j = await res.json();
+      if (j.success) {
+        const at = new Date().toISOString();
+        setHistoryMissions(ms => ms.map(m => m.id === missionId ? { ...m, resolution_acceptation_prestataire_at: at } : m));
+        showToast(j.accord
+          ? "Accord trouvé — le litige sera dénoué dans les prochaines heures."
+          : "Acceptation enregistrée. Elle sera exécutée dès que l'autre partie aura accepté.", "success");
+      } else {
+        showToast(j.error || "Votre acceptation n'a pas pu être enregistrée.");
+      }
+    } catch (e) {
+      console.error("[accepter_resolution] échec :", e.message);
+      showToast("Erreur réseau — votre acceptation n'a pas été enregistrée, réessayez.");
+    }
+  };
+
   const [tab,setTab]=useState("prestations");
   const [_userRib,setUserRib]=useState(null);
   const [ribMissionError,_setRibMissionError]=useState(false);
@@ -3542,7 +3580,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_echeance_at,resolution_opposition_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled","disputed"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_montant,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at").eq("prestataire_id",u.id).in("status",["assigned","completed","refused","cancelled","disputed"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
@@ -4013,7 +4051,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                   </div>
                   {/* Proposition de résolution — le prestataire a exactement le
                       même droit d'opposition que le client (CGPS art. 17.1). */}
-                  <BlocPropositionResolution mission={m} onOppose={() => opposerResolution(m.id)} />
+                  <BlocPropositionResolution mission={m} role="prestataire" onOppose={() => opposerResolution(m.id)} onAccepte={() => accepterResolution(m.id)} />
 
                   {m.status === "completed" && (() => {
                     // Le versement n'est plus immédiat : il part à la fermeture du
