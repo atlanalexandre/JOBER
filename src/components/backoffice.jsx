@@ -1827,27 +1827,24 @@ export function BOLitiges() {
 
   useEffect(() => { load(); }, []);
 
+  // La proposition en cours de rédaction : quelle issue, quel montant, quel
+  // motif. Un seul litige à la fois — on ne rédige pas deux propositions.
+  const [brouillon, setBrouillon] = useState(null);
+
   // ALANE propose, elle ne décide pas (CGPS art. 17.1).
   //
   // Ces deux boutons remboursaient ou validaient dans la seconde. Ils ne font
   // plus que formuler une proposition, notifiée aux deux parties, exécutée par
   // le traitement automatique 48 heures plus tard si personne ne s'y oppose.
   // Aucun euro ne bouge ici.
-  const proposer = async (m, resolution) => {
-    const quoi = resolution === "rembourser_client"
-      ? `rembourser ${m.montant_total || 0} € au client`
-      : "verser la rémunération au prestataire";
-    const motif = await showPrompt(
-      `Proposer de ${quoi} pour "${m.titre || m.metier}" ?\n\nLe motif est communiqué au client ET au prestataire. Chacun pourra s'y opposer pendant 48 h ; sans opposition, la proposition sera exécutée.`,
-      "Motif de la proposition (10 caractères minimum)…"
-    );
-    if (motif === null) return;
+  const proposer = async (m, resolution, motif, montant) => {
     setProcessingId(m.id);
     try {
-      const r = await boFetch({ action: "proposer_resolution", mission_id: m.id, resolution, motif });
+      const r = await boFetch({ action: "proposer_resolution", mission_id: m.id, resolution, motif, montant });
       const d = await r.json();
       if (d.success) {
         showToast("Proposition notifiée aux deux parties 📩", "success");
+        setBrouillon(null);
         load();
       } else {
         showToast(d.error || "La proposition n'a pas pu être enregistrée");
@@ -1904,7 +1901,11 @@ export function BOLitiges() {
               deuxième par-dessus, ou on croirait qu'il ne s'est rien passé. */}
           {m.resolution_proposee && (
             <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:8, padding:"10px 12px", fontSize:12, color:"rgba(255,255,255,0.7)", marginBottom:10, lineHeight:1.6 }}>
-              📩 Proposition en cours : <strong>{m.resolution_proposee === "rembourser_client" ? "rembourser le client" : "verser au prestataire"}</strong>
+              📩 Proposition en cours : <strong>{m.resolution_proposee === "rembourser_client"
+                ? (m.resolution_montant != null
+                    ? `rembourser ${Number(m.resolution_montant).toFixed(2).replace(".", ",")} € au client`
+                    : "rembourser le client")
+                : "payer le prestataire"}</strong>
               {m.resolution_motif && <div style={{ color:"rgba(255,255,255,0.6)", marginTop:3 }}>Motif : {m.resolution_motif}</div>}
               {m.resolution_opposition_at
                 ? <div style={{ color:"#F25E5E", marginTop:5, fontWeight:700 }}>⛔ Opposition enregistrée — les fonds restent bloqués. Seul un accord, une décision de justice ou une procédure de l'établissement de paiement peut les débloquer.</div>
@@ -1912,23 +1913,88 @@ export function BOLitiges() {
             </div>
           )}
 
-          {!m.resolution_proposee && (
-            <>
-              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:6, lineHeight:1.5 }}>
-                ALANE propose, elle ne décide pas : la proposition est notifiée aux deux parties, qui ont 48 h pour s'y opposer.
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button disabled={processingId === m.id} onClick={() => proposer(m, "rembourser_client")}
-                  style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
-                  {processingId === m.id ? "…" : "📩 Proposer le remboursement"}
-                </button>
-                <button disabled={processingId === m.id} onClick={() => proposer(m, "verser_prestataire")}
-                  style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: processingId === m.id ? 0.5 : 1 }}>
-                  {processingId === m.id ? "…" : "📩 Proposer le versement"}
-                </button>
-              </div>
-            </>
-          )}
+          {/* ── Que faire de l'argent ? ────────────────────────────────
+              L'écran disait « ALANE propose, elle ne décide pas : la
+              proposition est notifiée aux deux parties, qui ont 48 h pour s'y
+              opposer », suivi de deux boutons « Proposer le remboursement » /
+              « Proposer le versement ». Exact juridiquement, illisible pour
+              qui doit décider : la phrase énonce un principe sans dire ce qui
+              va se passer, et « versement » ne dit pas à qui.
+
+              Et il n'y avait aucun montant intermédiaire. Or la plupart des
+              litiges réels sont partiels — deux heures sur trois faites, une
+              partie du travail à refaire. Sans montant, il fallait choisir
+              entre tout rendre et ne rien rendre. */}
+          {!m.resolution_proposee && (() => {
+            const b = brouillon?.id === m.id ? brouillon : null;
+            const enCours = processingId === m.id;
+            return (
+              <>
+                <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"10px 12px", marginBottom:10, fontSize:11.5, color:"rgba(255,255,255,0.7)", lineHeight:1.65 }}>
+                  Le client a payé <strong style={{ color:C.white }}>{Number(m.montant_total || 0).toFixed(2).replace(".", ",")} €</strong>. Cet argent est bloqué : ni chez lui, ni chez le prestataire.<br />
+                  ALANE ne tranche pas le litige, elle <strong style={{ color:C.white }}>propose une issue</strong>. Les deux parties sont prévenues et ont 48 h pour dire non. Sans refus de l'une d'elles, l'issue s'applique automatiquement.
+                </div>
+
+                {!b && (
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button disabled={enCours} onClick={() => setBrouillon({ id:m.id, resolution:"rembourser_client", montant:"", motif:"" })}
+                      style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:"#10D98F", color:"#04231A", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      💶 Rembourser le client
+                    </button>
+                    <button disabled={enCours} onClick={() => setBrouillon({ id:m.id, resolution:"verser_prestataire", montant:"", motif:"" })}
+                      style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"transparent", color:"#F25E5E", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      🤝 Payer le prestataire
+                    </button>
+                  </div>
+                )}
+
+                {b && (
+                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:10, padding:"12px", border:"1px solid rgba(255,255,255,0.1)" }}>
+                    <div style={{ fontWeight:800, color:C.white, fontSize:12.5, marginBottom:8 }}>
+                      {b.resolution === "rembourser_client" ? "💶 Rembourser le client" : "🤝 Payer le prestataire"}
+                    </div>
+
+                    {b.resolution === "rembourser_client" && (
+                      <>
+                        <label style={{ display:"block", color:"rgba(255,255,255,0.7)", fontSize:11, marginBottom:4 }}>Montant à rembourser (€)</label>
+                        <input value={b.montant} inputMode="decimal"
+                          onChange={e => setBrouillon(v => ({ ...v, montant:e.target.value }))}
+                          placeholder="Laisser vide = remboursement complet"
+                          style={{ width:"100%", padding:"9px 11px", borderRadius:8, border:"1px solid rgba(255,255,255,0.15)", background:"#0A1628", color:C.white, fontSize:13, fontFamily:"inherit", boxSizing:"border-box" }} />
+                        {/* Le montant par défaut n'est pas recalculé ici : les frais
+                            de service se calculent côté serveur, et une deuxième
+                            formule dans le navigateur finirait par diverger. */}
+                        <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10.5, margin:"5px 0 10px", lineHeight:1.5 }}>
+                          Vide = le prix de la prestation est rendu, les frais de service restant acquis à ALANE. Indiquez une somme pour un remboursement partiel — par exemple si une partie du travail a bien été faite.
+                        </div>
+                      </>
+                    )}
+
+                    <label style={{ display:"block", color:"rgba(255,255,255,0.7)", fontSize:11, marginBottom:4 }}>Motif (lu par le client ET par le prestataire)</label>
+                    <textarea value={b.motif} rows={3}
+                      onChange={e => setBrouillon(v => ({ ...v, motif:e.target.value }))}
+                      placeholder="Ex : seule la première heure a été réalisée, le client a confirmé le départ anticipé du prestataire."
+                      style={{ width:"100%", padding:"9px 11px", borderRadius:8, border:"1px solid rgba(255,255,255,0.15)", background:"#0A1628", color:C.white, fontSize:12.5, fontFamily:"inherit", boxSizing:"border-box", resize:"vertical" }} />
+                    <div style={{ color: b.motif.trim().length >= 10 ? "rgba(255,255,255,0.6)" : "#F0B429", fontSize:10.5, margin:"4px 0 10px" }}>
+                      {b.motif.trim().length >= 10 ? "Chacun pourra s'y opposer sans avoir à se justifier." : "10 caractères minimum — c'est sur ce texte que les parties décident de s'opposer ou non."}
+                    </div>
+
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button disabled={enCours} onClick={() => setBrouillon(null)}
+                        style={{ flex:1, padding:"9px", borderRadius:9, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.7)", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                        Annuler
+                      </button>
+                      <button disabled={enCours || b.motif.trim().length < 10}
+                        onClick={() => proposer(m, b.resolution, b.motif.trim(), b.resolution === "rembourser_client" ? b.montant.trim() : undefined)}
+                        style={{ flex:2, padding:"9px", borderRadius:9, border:"none", background: b.resolution === "rembourser_client" ? "#10D98F" : "#F25E5E", color:"#fff", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity: (enCours || b.motif.trim().length < 10) ? 0.5 : 1 }}>
+                        {enCours ? "…" : "📩 Envoyer la proposition"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Les deux autres causes de l'article 17.1. Volontairement discrètes :
               elles débloquent sans accord, et ne servent qu'adossées à une
