@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
+import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
@@ -4743,8 +4744,10 @@ export function CalendarScreen() {
 
   const selectedMissions = selected ? (missionsByDay[selected] || []) : [];
 
-  const statusColor = { assigned:C.violet, open:C.accentGold, completed:C.success };
-  const statusLabel = { assigned:"Confirmée", open:"En attente", completed:"Terminée" };
+  // Table retirée : les couleurs viennent de `couleurStatut`, comme les libellés.
+  // Même source que l'historique : deux tables de libellés, c'était deux mots
+  // pour un même état selon l'écran d'où l'on venait.
+  const statusLabel = (m) => libelleStatut(m);
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -4821,12 +4824,12 @@ export function CalendarScreen() {
             </div>
             {selectedMissions.length > 0 ? selectedMissions.map((m,i) => (
               <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderTop:i>0?`1px solid ${C.border}`:"none" }}>
-                <div style={{ width:4, height:36, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
+                <div style={{ width:4, height:36, borderRadius:2, background:couleurStatut(m, C), flexShrink:0 }} />
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:600, color:C.text, fontSize:12 }}>{m.titre || "Prestation"}</div>
                   <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                 </div>
-                <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
+                <Badge color={couleurStatut(m, C)} small>{statusLabel(m)}</Badge>
               </div>
             )) : (
               <div style={{ color:C.textMuted, fontSize:12 }}>
@@ -4845,14 +4848,14 @@ export function CalendarScreen() {
               const label = `${DAYS_FULL[(d.getDay()+6)%7]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
               return (
                 <div key={i} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, boxShadow:"0 2px 12px rgba(0,0,0,0.4)", display:"flex", gap:12, alignItems:"center" }}>
-                  <div style={{ width:4, height:44, borderRadius:2, background:statusColor[m.status]||C.violet, flexShrink:0 }} />
+                  <div style={{ width:4, height:44, borderRadius:2, background:couleurStatut(m, C), flexShrink:0 }} />
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.titre || "Prestation"}</div>
                     <div style={{ color:C.textSub, fontSize:11 }}>{m.client_nom || "Client"}</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:12 }}>{label}</div>
-                    <Badge color={statusColor[m.status]||C.violet} small>{statusLabel[m.status]||m.status}</Badge>
+                    <Badge color={couleurStatut(m, C)} small>{statusLabel(m)}</Badge>
                   </div>
                 </div>
               );
@@ -6488,8 +6491,11 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     setStopping(false);
   };
 
-  const statusLabel  = { open:"Ouverte", assigned:"Assignée", completed:"Terminée", closed:"Fermée", needs_replacement:"Remplaçant cherché", cancelled:"Annulée" };
-  const statusColor  = { open:C.success, assigned:C.violet, completed:C.accentGold, closed:C.textMuted, needs_replacement:"#F59E0B", cancelled:"#F25E5E" };
+  // Les libellés viennent de `src/lib/statuts.js`, partagé avec la fiche d'une
+  // prestation : `assigned` s'affichait « Confirmée » d'un côté et « Assignée »
+  // de l'autre, pour le même état.
+  const statusLabel  = (m) => libelleStatut(m);
+  const statusColor  = (m) => couleurStatut(m, C);
   const filtered = tab === "all" ? prestations : tab === "open" ? prestations.filter(m => m.status === "open" || m.status === "needs_replacement") : prestations.filter(m => m.status === tab);
 
   // Règlement d'une prolongation. Le montant passé en `amount` n'est
@@ -7263,7 +7269,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
       {/* ── Onglets scrollables ── */}
       <div style={{ overflowX:"auto", display:"flex", gap:8, padding:"14px 18px 0", scrollbarWidth:"none" }}>
-        {[{id:"all",l:"Toutes"},{id:"open",l:"Ouvertes"},{id:"assigned",l:"Assignées"},{id:"completed",l:"Terminées"},{id:"prestataires",l:"Prestataires"}].map(t => {
+        {ONGLETS_PRESTATIONS.map(t => {
           const active = tab === t.id;
           return (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flexShrink:0, padding:"7px 16px", border:"none", borderRadius:20, cursor:"pointer", background:active?"#fff":"rgba(255,255,255,0.07)", color:active?"#0A1628":"rgba(255,255,255,0.5)", fontWeight:active?700:500, fontSize:13, fontFamily:"inherit", transition:"all 0.15s" }}>{t.l}</button>
@@ -7339,8 +7345,8 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           })();
 
           // Couleur et libellé du badge statut
-          const badgeColor = pending>0 ? C.violet : statusColor[m.status] || C.textMuted;
-          const badgeLabel = pending>0 ? `${pending} proposition${pending>1?"s":""}` : statusLabel[m.status] || m.status;
+          const badgeColor = pending>0 ? C.violet : statusColor(m);
+          const badgeLabel = pending>0 ? `${pending} proposition${pending>1?"s":""}` : statusLabel(m);
 
           // Ligne info condensée : "3 juil. · 08:00–09:00 · Paris"
           const infoParts = [
