@@ -286,9 +286,22 @@ export default async function handler(req, res) {
   const ttc = Math.round((ht + tvaAmount) * 100) / 100;
   const tvaFormatted = tvaAmount.toFixed(2).replace(".", ",");
   const ttcFormatted = ttc.toFixed(2).replace(".", ",");
-  const tvaLabel = isAutoEntrepreneur
-    ? "TVA (0 % — auto-entrepreneur, art. 293 B CGI)"
-    : "TVA (20 %)";
+  // En franchise en base de TVA, la taxe n'est pas « à 0 % » : elle n'est PAS
+  // APPLICABLE. La distinction n'est pas de la pédanterie — une facture portant
+  // « TVA 0 % » et un « Total TTC » laisse entendre que le prestataire est
+  // assujetti au taux zéro, ce qui n'existe pas en droit français et expose la
+  // facture à un rejet en cas de contrôle (art. 242 nonies A, ann. II du CGI :
+  // la mention exigée est le renvoi à l'article 293 B).
+  //
+  // Conséquence sur les libellés : sans TVA, il n'y a ni « HT » ni « TTC ».
+  // Il y a un montant, et c'est le même des deux côtés.
+  const tvaLabel = isAutoEntrepreneur ? "TVA" : "TVA (20 %)";
+  const tvaValeur = isAutoEntrepreneur
+    ? "Non applicable — art. 293 B du CGI"
+    : `${tvaFormatted} €`;
+  const libMontant   = isAutoEntrepreneur ? "Montant"       : "Montant HT";
+  const libSousTotal = isAutoEntrepreneur ? "Sous-total"    : "Sous-total HT";
+  const libTotal     = isAutoEntrepreneur ? "Total à payer" : "Total TTC";
   const legalTvaNote = isAutoEntrepreneur
     ? "TVA non applicable — article 293 B du CGI (auto-entrepreneur)."
     : `TVA de 20 % applicable. SIRET : ${escHtml(prestaSiret || "—")}. En cas de retard de paiement, des pénalités de retard sont dues selon les articles L.441-6 et D.441-5 du Code de commerce.`;
@@ -353,6 +366,16 @@ export default async function handler(req, res) {
   // cette prestation : on n'affiche alors aucun récapitulatif plutôt qu'un chiffre faux.
   const fraisService = (fraisServiceCalc > 0 && fraisServiceCalc < ttc) ? fraisServiceCalc : 0;
   const fraisFormatted = fraisService.toFixed(2).replace(".", ",");
+  // Les frais de service sont réglés par le CLIENT et perçus par ALANE. Ils ne
+  // regardent pas le prestataire : il ne les encaisse pas, ne les déclare pas et
+  // ne les facture pas. Les lui montrer sur sa propre facture l'invitait à croire
+  // que le client lui devait 20,20 € quand il en a facturé 15,00 — et à porter le
+  // mauvais chiffre dans sa déclaration de chiffre d'affaires.
+  //
+  // Le document reste unique : même facture, même numéro, mêmes montants
+  // facturés. Seul le récapitulatif de ce que le CLIENT a réglé est réservé à
+  // celui qui l'a réglé.
+  const estClient = mission.client_id === userId;
   const totalPayeFormatted = totalPayeClient.toFixed(2).replace(".", ",");
   if (totalPayeClient > 0 && fraisService === 0 && Math.abs(totalPayeClient - ttc) > 0.01) {
     console.error(`[invoice] frais de service non déductibles sur ${mission_id} : `
@@ -704,7 +727,7 @@ export default async function handler(req, res) {
       <div class="section-title">Détail de la prestation</div>
       <div class="line-header">
         <span>Description</span>
-        <span>Montant HT</span>
+        <span>${escHtml(libMontant)}</span>
       </div>
       <div class="line-item">
         <div class="line-desc">
@@ -719,21 +742,21 @@ export default async function handler(req, res) {
       </div>
       <div class="totals">
         <div class="total-row">
-          <span class="total-row-label">Sous-total HT</span>
+          <span class="total-row-label">${escHtml(libSousTotal)}</span>
           <span class="total-row-value">${escHtml(htFormatted)} €</span>
         </div>
         <div class="total-row">
           <span class="total-row-label">${escHtml(tvaLabel)}</span>
-          <span class="total-row-value">${escHtml(tvaFormatted)} €</span>
+          <span class="total-row-value">${escHtml(tvaValeur)}</span>
         </div>
         <div class="total-row total-ttc">
-          <span class="total-row-label">Total TTC</span>
+          <span class="total-row-label">${escHtml(libTotal)}</span>
           <span class="total-row-value">${escHtml(ttcFormatted)} €</span>
         </div>
       </div>
     </div>
 
-    ${fraisService > 0 ? `
+    ${(fraisService > 0 && estClient) ? `
     <div class="card">
       <div class="section-title">Récapitulatif de votre paiement</div>
       <div class="totals">
