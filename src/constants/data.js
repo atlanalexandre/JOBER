@@ -37,6 +37,35 @@ export const SECTORS = [
 
 // Fourchettes tarifaires nettes par métier (ce que le prestataire encaisse)
 // Le client voit toujours prixClient(tarifNet, sector)
+// ═══════════════════════════════════════════════════════════════════════════
+// LE CATALOGUE N'EXCLUT AUCUN MÉTIER — L'ARTICLE 4.1 DES CGPS EXCLUT DES
+// MODALITÉS D'EXÉCUTION
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// L'article 4.1 interdisait nommément « opérateur de production,
+// manutentionnaire, préparateur de commandes, cariste, conditionneur » — que ce
+// fichier proposait pourtant. Les conditions générales interdisaient donc ce que
+// la plateforme vendait, et personne ne s'en était aperçu.
+//
+// L'article a été réécrit le 21/08/2026 : ce qui est exclu, ce sont les
+// modalités qui font une mise à disposition de personnel (intégration à une
+// équipe du client, poste permanent, cadences imposées, fourniture de
+// main-d'œuvre sans travail déterminé), et non l'intitulé du métier. C'est le
+// critère que retient le juge, et une liste de noms de métiers n'aurait de toute
+// façon rien empêché : elle laisse passer une mise à disposition déguisée sous
+// un autre nom et interdit des prestations régulières.
+//
+// Conséquence pour ce fichier : ajouter un métier ne pose pas de question de
+// principe. Ce qui doit rester vrai, c'est qu'une prestation ait un OBJET
+// DÉTERMINÉ et une DURÉE DÉFINIE, ce que garantit le parcours de commande.
+//
+// Deux familles restent volontairement absentes, pour des raisons qui ne
+// tiennent pas au droit du travail :
+//   • le bâtiment (électricien, plombier, couvreur) — garantie décennale, non
+//     couverte par la RC Pro demandée à l'inscription ;
+//   • les professions de santé réglementées (aide-soignant, auxiliaire de
+//     puériculture) — diplôme d'État que la plateforme ne vérifie pas.
+// ═══════════════════════════════════════════════════════════════════════════
 export const METIERS_TARIFS = {
   // ROME K2204 - Nettoyage de locaux | K2202 - Lavage de vitres
   proprete:{
@@ -95,8 +124,7 @@ export const METIERS_TARIFS = {
     "Cariste CACES 2":                      { min:13,   max:16,   default:14   },
     "Dispatcher logistique":                { min:15,   max:21,   default:17   },
     "Agent de transit":                     { min:14,   max:19,   default:16   },
-    // Ajoutés le 21/08/2026 — métiers logistiques à part entière, hors
-    // exécution en série (voir la note sur l'article 4.1 en tête de fichier).
+    // Ajoutés le 21/08/2026.
     "Approvisionneur":                      { min:14,   max:19,   default:16   },
     "Contrôleur qualité logistique":        { min:14,   max:19,   default:16   },
     "Inventoriste logistique":              { min:12,   max:15,   default:13   },
