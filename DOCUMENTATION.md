@@ -838,20 +838,32 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
-**`api/stripe-connect.js`** (24/08/2026) — le prestataire configure ses virements lui-même,
-autant de fois qu'il le faut. Le compte Connect était créé à la validation du dossier et le
-lien de configuration partait dans l'e-mail de bienvenue ; ce lien **expire en 24 h**, décision
-de Stripe. Passé ce délai, le prestataire n'avait plus aucun moyen d'y revenir : pas de bouton,
-pas de renvoi, et rien à l'écran pour lui dire que ses virements n'étaient pas configurés. Il
-voyait ses prestations validées, ses factures émises, et aucun argent arriver.
+**Le compte de virement (Stripe Connect)** — `api/_connect.js` est la source unique :
+`assurerCompteConnect()` crée le compte au besoin, `lienConfiguration()` produit un lien frais.
+Les deux appelants sont l'ouverture de l'accès aux prestations (`bo-action.js`,
+`enable_missions`) et le bouton du prestataire (`api/stripe-connect.js`). Les paramètres Stripe
+— pays, capacités, type de compte — n'existent qu'à un seul endroit ; ils étaient recopiés dans
+deux fichiers.
 
-La fonction crée le compte s'il n'existe pas — dossier validé avant Connect, ou création qui
-avait échoué — et régénère un lien à chaque appel plutôt que d'en stocker un, qui serait périmé
-le jour où l'on en a besoin. L'identité vient du jeton : chacun ne configure que son propre
-compte. Le bloc `CarteVirements` l'affiche en tête de l'onglet « Prestations » tant que le
-compte n'est pas actif, et « Compte de virement configuré » rejoint la liste des premiers pas —
-l'IBAN qui y figurait déjà sert à la FACTURE, pas au virement, et la liste pouvait être
-entièrement cochée sans qu'un euro puisse partir.
+**Le lien part à l'ouverture de l'accès aux prestations, pas à la validation du compte**
+(24/08/2026). Il partait auparavant dans l'e-mail de bienvenue. Trop tôt : le lien de Stripe
+**expire en 24 h**, et valider un compte ne dit rien de l'état du dossier. Entre la validation
+et le moment où le prestataire est réellement prêt, il peut s'écouler des jours — le lien
+mourait avant d'avoir servi, et rien ne le remplaçait. Ouvrir l'accès aux prestations signifie
+au contraire que le dossier est complet et vérifié : le prestataire va travailler, donc il doit
+pouvoir être payé.
+
+Aucune de ces étapes ne bloque l'ouverture de l'accès : un e-mail qui ne part pas ne doit pas
+empêcher quelqu'un de travailler. Les échecs sont journalisés, et un prestataire dont le compte
+est déjà actif ne reçoit rien — le renvoyer sur un formulaire qu'il a rempli lui ferait croire
+qu'il a raté quelque chose.
+
+**Le rattrapage quand les 24 h passent quand même :** `api/stripe-connect.js` régénère un lien
+à la demande, autant de fois qu'il le faut. L'identité vient du jeton — chacun ne configure que
+son propre compte. Le bloc `CarteVirements` l'affiche en tête de l'onglet « Prestations » tant
+que le compte n'est pas actif, et « Compte de virement configuré » figure dans la liste des
+premiers pas : l'IBAN qui y était déjà sert à la FACTURE, pas au virement, et la liste pouvait
+être entièrement cochée sans qu'un euro puisse partir.
 
 **Un virement sans destinataire n'est pas un traitement en panne** (24/08/2026). Le versement
 exige un compte **Stripe Connect actif** chez le prestataire (`profiles.stripe_account_id` +

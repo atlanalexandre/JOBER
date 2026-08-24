@@ -10,6 +10,7 @@ import { montantsDeCloture } from "./_cloture.js";
 import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
 import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
+import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -325,52 +326,17 @@ export default async function handler(req, res) {
         }
       }
 
-      // Stripe Connect — créer un compte Express pour les prestataires
-      let connectOnboardingUrl = null;
+      // ── Le compte de virement n'est PLUS créé ici ────────────────────
+      //
+      // Il l'était, et le lien de configuration partait dans l'e-mail de
+      // bienvenue. Trop tôt : ce lien expire en vingt-quatre heures, et valider
+      // un compte ne dit rien de l'état du dossier. Entre la validation et le
+      // moment où le prestataire est réellement prêt, il peut s'écouler des
+      // jours — le lien mourait avant d'avoir servi, et rien ne le remplaçait.
+      //
+      // Il part désormais à l'ouverture de l'accès aux prestations
+      // (`enable_missions`), qui signifie que le dossier est complet.
       const role = userData.user_metadata?.role;
-      const STRIPE_SK = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-      const APP_URL_CONNECT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
-      if (action === "approve" && role === "prestataire" && STRIPE_SK) {
-        try {
-          const meta = userData.user_metadata || {};
-          const acctParams = new URLSearchParams({
-            type: "express",
-            country: "FR",
-            email: userEmail || "",
-            "capabilities[transfers][requested]": "true",
-            business_type: "individual",
-            "individual[first_name]": meta.prenom || "",
-            "individual[last_name]": meta.nom || "",
-          });
-          const acctRes = await fetch("https://api.stripe.com/v1/accounts", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
-            body: acctParams.toString(),
-          });
-          if (acctRes.ok) {
-            const acctData = await acctRes.json();
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
-              method: "PATCH",
-              headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ stripe_account_id: acctData.id, stripe_account_status: "pending" }),
-            });
-            const linkParams = new URLSearchParams({
-              account: acctData.id,
-              refresh_url: APP_URL_CONNECT,
-              return_url: APP_URL_CONNECT,
-              type: "account_onboarding",
-            });
-            const linkRes = await fetch("https://api.stripe.com/v1/account_links", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${STRIPE_SK}`, "Content-Type": "application/x-www-form-urlencoded" },
-              body: linkParams.toString(),
-            });
-            if (linkRes.ok) { const ld = await linkRes.json(); connectOnboardingUrl = ld.url; }
-          } else {
-            console.error("[approve] Stripe Connect failed:", (await acctRes.json().catch(()=>({}))).error?.message);
-          }
-        } catch (ce) { console.error("[approve] Stripe Connect error:", ce.message); }
-      }
 
       if (userEmail) {
         if (status === "approved") {
@@ -381,10 +347,8 @@ export default async function handler(req, res) {
             html: emailHtml(`
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
-              ${connectOnboardingUrl ? `
-              <p style="margin-top:20px;">Pour recevoir vos paiements automatiquement après chaque prestation validée, configurez votre compte de virement en 2 minutes :</p>
-              <p style="text-align:center;margin:24px 0;"><a href='${connectOnboardingUrl}' style="background:#10D98F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Configurer mes virements →</a></p>
-              <p style="color:#888;font-size:13px;margin-bottom:20px;">Ce lien est valable 24h. Il vous suffit de renseigner votre IBAN et signer les conditions générales Stripe (2 min). Sans cette étape, vos paiements ne pourront pas être versés automatiquement.</p>
+              ${role === "prestataire" ? `
+              <p style="margin-top:20px;">Prochaine étape : déposez vos documents justificatifs depuis votre espace. Une fois votre dossier vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
@@ -424,7 +388,80 @@ export default async function handler(req, res) {
         headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ action, target_id: profileId, details: { enabled } }),
       }).catch(() => {});
-      return res.status(200).json({ success: true });
+
+      // ── Le compte de virement se prépare ICI ────────────────────────
+      //
+      // Le lien de configuration partait à la VALIDATION DU COMPTE. C'était
+      // trop tôt : celui de Stripe expire en vingt-quatre heures, et valider un
+      // compte ne dit rien de l'état du dossier. Entre la validation et le
+      // moment où le prestataire est réellement prêt, il peut s'écouler des
+      // jours — le lien était mort avant d'avoir servi.
+      //
+      // Ouvrir l'accès aux prestations, au contraire, signifie que le dossier
+      // est complet et vérifié : le prestataire va travailler, donc il doit
+      // pouvoir être payé. C'est là que le lien a le plus de chances d'être
+      // utilisé dans sa fenêtre de validité.
+      //
+      // Rien de tout cela ne bloque l'ouverture de l'accès : un e-mail qui
+      // n'part pas ne doit pas empêcher quelqu'un de travailler. Les échecs
+      // sont journalisés, et le prestataire garde le bouton de son espace.
+      let virementsPretsAConfigurer = false;
+      if (enabled) {
+        const STRIPE_SK_M = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+        try {
+          const pRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=id,prenom,nom,stripe_account_id,stripe_account_status`,
+            { headers }
+          );
+          const pRows = await pRes.json().catch(() => []);
+          const profilPresta = Array.isArray(pRows) && pRows[0];
+          if (!profilPresta) {
+            console.error(`[connect] profil ${profileId} illisible — lien de virement non envoyé.`);
+          } else if (profilPresta.stripe_account_status === "enabled") {
+            // Déjà opérationnel : ne pas le renvoyer sur un formulaire qu'il a
+            // rempli, ce serait lui faire croire qu'il a raté quelque chose.
+            console.log(`[connect] ${profileId} a déjà un compte de virement actif — aucun lien envoyé.`);
+          } else {
+            const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+            const uData = await uRes.json().catch(() => ({}));
+            const compte = await assurerCompteConnect({
+              profil: profilPresta, email: uData?.email,
+              supabaseUrl: SUPABASE_URL, headers, stripeKey: STRIPE_SK_M,
+            });
+            if (!compte.ok) {
+              console.error(`[connect] compte non préparé pour ${profileId} : ${compte.detail}`);
+            } else {
+              const lien = await lienConfiguration({
+                compteId: compte.compteId, stripeKey: STRIPE_SK_M,
+                appUrl: (process.env.APP_URL || "").replace(/\s/g, ""),
+              });
+              if (!lien.ok) {
+                console.error(`[connect] lien non généré pour ${profileId} : ${lien.detail}`);
+              } else if (uData?.email) {
+                virementsPretsAConfigurer = true;
+                await sendEmail({
+                  to: uData.email,
+                  subject: "Votre accès aux prestations est ouvert — configurez vos virements 🏦",
+                  html: emailHtml(`
+                    <p>Bonjour${uData.user_metadata?.prenom ? ` <strong>${esc(uData.user_metadata.prenom)}</strong>` : ""},</p>
+                    <p>Votre dossier est complet : <strong>vous avez désormais accès aux prestations</strong> et pouvez recevoir vos premières propositions.</p>
+                    <p style="margin-top:20px;">Dernière étape, et elle conditionne vos paiements : configurer votre compte de virement. Comptez deux minutes — votre IBAN, et les conditions de Stripe à signer.</p>
+                    <p style="text-align:center;margin:24px 0;"><a href='${lien.url}' style="background:#10D98F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Configurer mes virements →</a></p>
+                    <p style="color:#888;font-size:13px;">Ce lien est valable 24 h. Passé ce délai, vous le retrouverez dans votre espace, onglet « Prestations » — vous pouvez le redemander autant de fois que nécessaire.</p>
+                    <p style="color:#888;font-size:13px;">Sans cette configuration, vous pouvez accepter des prestations et les réaliser, mais aucun virement ne pourra vous être envoyé.</p>
+                  `),
+                });
+              } else {
+                console.error(`[connect] adresse e-mail introuvable pour ${profileId} — lien non envoyé.`);
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`[connect] préparation des virements interrompue pour ${profileId} :`, e.message);
+        }
+      }
+
+      return res.status(200).json({ success: true, virementsPretsAConfigurer });
     }
 
     if (action === "delete") {
