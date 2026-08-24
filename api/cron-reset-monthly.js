@@ -130,9 +130,28 @@ export default async function handler(req, res) {
   if (!cronSecret) {
     console.error("[cron] CRITIQUE: CRON_SECRET non configuré — accès non authentifié bloqué. Configurez CRON_SECRET dans Vercel.");
   }
-  const isCron = cronSecret ? authHeader === `Bearer ${cronSecret}` : false;
+  // Le jeton reçu est comparé DÉPOUILLÉ de ses espaces, comme l'est celui lu
+  // dans l'environnement.
+  //
+  // Sans cela, une seule espace invisible dans CRON_SECRET — le piège documenté
+  // de ce projet, les variables Vercel ayant été collées depuis un iPad — suffit
+  // à faire échouer la comparaison : Vercel envoie la valeur BRUTE dans l'en-tête,
+  // le code la compare à la valeur NETTOYÉE. Le traitement automatique répond
+  // alors 401 à chaque passage, et plus rien ne tourne : ni les virements, ni
+  // l'auto-validation, ni la clôture des prestations, ni les litiges.
+  //
+  // Le refus était en outre muet. Il ne l'est plus : c'est la seule trace qui
+  // permette de distinguer « le cron ne s'exécute pas » de « le cron est refusé ».
+  const jetonRecu = token.replace(/\s/g, "");
+  const isCron = cronSecret ? jetonRecu === cronSecret : false;
   const isBo   = boSecret ? verifyBoToken(token, boSecret) : false;
-  if (!isCron && !isBo) return res.status(401).json({ error: "Unauthorized" });
+  if (!isCron && !isBo) {
+    console.error(`[cron] appel REFUSÉ (401) — en-tête ${authHeader ? "présent" : "absent"}, `
+      + `CRON_SECRET ${cronSecret ? "configuré" : "ABSENT"}. `
+      + "Si l'appel vient de Vercel, comparer la variable CRON_SECRET du projet "
+      + "au jeton envoyé : une espace ou un retour à la ligne invisible suffit.");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   // Valider le paramètre ?action — seule la valeur "reminders" est acceptée
   const queryAction = req.query?.action;
@@ -149,6 +168,34 @@ export default async function handler(req, res) {
     "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
     "Content-Type":  "application/json",
   };
+
+  // ── Témoin de vie ─────────────────────────────────────────────────
+  //
+  // Rien ne disait si le traitement automatique tournait encore. Le backoffice
+  // en était réduit à conseiller « vérifiez les journaux Vercel » quand un
+  // virement traînait — c'est-à-dire à demander à un non-développeur d'aller
+  // lire des journaux serveur pour savoir si une horloge bat.
+  //
+  // Chaque passage inscrit donc son horodatage et son mode. Le backoffice
+  // l'affiche : un traitement mort se voit à l'écran, en une phrase.
+  //
+  // Écrit AVANT le reste : c'est un témoin de passage, pas de succès. Un
+  // traitement qui démarre et échoue en cours de route doit quand même prouver
+  // qu'il a démarré, sinon on cherche une panne d'horloge là où il y a une
+  // panne de traitement.
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/platform_settings`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        key: "cron_dernier_passage",
+        value: { at: new Date().toISOString(), mode: queryAction === "reminders" ? "reminders" : "mensuel" },
+      }),
+    });
+  } catch (e) {
+    // Sans conséquence sur le traitement lui-même : on perd le témoin, pas le travail.
+    console.error("[cron] témoin de passage non enregistré :", e.message);
+  }
 
   // ── Expiry des pending_acceptance zombies (toutes routes) ───────
   {
