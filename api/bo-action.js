@@ -1543,7 +1543,7 @@ export default async function handler(req, res) {
     if (action === "list_versements") {
       const vRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions`
-        + `?payout_status=in.(pending,processing,held,failed)`
+        + `?payout_status=in.(pending,processing,held,failed,annule)`
         + `&select=id,prestataire_id,client_id,metier,sector,date,payout_status,payout_amount,`
         + `payout_due_at,payout_hold_reason,payout_hold_at,payout_hold_until,payout_compensation,status`
         + `&order=payout_due_at&limit=300`,
@@ -1571,24 +1571,36 @@ export default async function handler(req, res) {
         ...(Array.isArray(creances) ? creances : []).map(c => c.prestataire_id),
       ].filter(Boolean))];
       const noms = {};
+      // Qui peut effectivement recevoir un virement, et qui ne le peut pas.
+      const versable = {};
       const idsOrphelins = new Set();
       if (ids.length) {
         const nRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom`,
+          `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})&select=id,prenom,nom,stripe_account_id,stripe_account_status`,
           { headers }
         ).catch(() => null);
         const nRows = nRes?.ok ? await nRes.json().catch(() => []) : [];
         for (const p of (Array.isArray(nRows) ? nRows : [])) {
           noms[p.id] = [p.prenom, p.nom].filter(Boolean).join(" ") || null;
+          // Sans compte Stripe Connect actif, AUCUN virement ne peut partir vers
+          // ce prestataire. Le back-office affichait « en retard » et accusait le
+          // traitement automatique, qui n'y était pour rien : il manquait un
+          // destinataire, pas une horloge.
+          versable[p.id] = Boolean(p.stripe_account_id) && p.stripe_account_status === "enabled";
         }
       }
 
       // Alerte : un versement échu depuis plus de six heures signale un
       // traitement qui ne tourne plus. Sans ce compteur, personne ne le voit.
       const seuil = Date.now() - 6 * 3600000;
-      const enRetard = (Array.isArray(versements) ? versements : []).filter(v =>
+      const tardifs = (Array.isArray(versements) ? versements : []).filter(v =>
         v.payout_status === "pending" && v.payout_due_at && new Date(v.payout_due_at).getTime() < seuil
-      ).length;
+      );
+      // Un retard dû à un prestataire sans compte de paiement n'est PAS un
+      // traitement en panne, et le dire ainsi envoyait chercher la panne au
+      // mauvais endroit — pendant des heures, dans les journaux Vercel.
+      const bloques  = tardifs.filter(v => versable[v.prestataire_id] === false).length;
+      const enRetard = tardifs.length - bloques;
 
       // Prestations clôturées dont AUCUN versement n'a été programmé.
       //
@@ -1628,7 +1640,7 @@ export default async function handler(req, res) {
         versements: Array.isArray(versements) ? versements : [],
         creances: Array.isArray(creances) ? creances : [],
         sansVersement: Array.isArray(sansVersement) ? sansVersement : [],
-        noms, enRetard,
+        noms, versable, enRetard, bloques,
       });
     }
 

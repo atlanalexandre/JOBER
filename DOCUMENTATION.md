@@ -838,6 +838,19 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**Un virement sans destinataire n'est pas un traitement en panne** (24/08/2026). Le versement
+exige un compte **Stripe Connect actif** chez le prestataire (`profiles.stripe_account_id` +
+`stripe_account_status = 'enabled'`). Faute de quoi le traitement repasse la prestation en
+`pending` et continue — ce qu'il faisait **sans une ligne de journal**. Le versement retombait
+en attente à chaque passage, indéfiniment, et le back-office affichait « en retard » en
+accusant le traitement automatique, qui tournait très bien.
+
+Connect n'étant pas encore en place, c'est aujourd'hui le cas de TOUS les versements. Le
+traitement journalise désormais chaque blocage et son bilan, et le back-office les compte à
+part : bannière « virements impossibles — compte de paiement manquant », distincte du retard
+de traitement, et mention sur la ligne concernée. Le versement partira seul à l'activation du
+compte, par le webhook `account.updated`.
+
 **`missions.payout_status = 'annule'`** (24/08/2026) — le versement n'aura pas lieu. Ce n'est
 ni un échec technique (`failed`, qu'on réessaie) ni une retenue (`held`, qui se lève d'office
 au bout de 90 jours selon l'art. 7.4).
