@@ -849,9 +849,29 @@ au prestataire un argent déjà rendu au client — ALANE payant deux fois, sur 
 Le hold ne protégeait que par accident, la levée d'office filtrant sur `payout_hold_until`,
 qui était nul.
 
-**Reste à décider :** après un remboursement PARTIEL, le prestataire ne touche rien, alors
-qu'une partie de la prestation a été exécutée et payée. La somme reste chez ALANE. C'est une
-décision commerciale, pas un défaut technique.
+**Tranché le 24/08/2026 — ce qui n'est pas remboursé revient au prestataire.** Sur ce que le
+client a payé et qui ne lui est pas rendu, ALANE ne garde que ses frais de service :
+
+    prestataire = montant payé − remboursé au client − frais de service
+
+Le prestataire ne touchait auparavant RIEN dès qu'un remboursement était prononcé, même de
+30 % : sur une prestation à 20,20 € remboursée de 6,06 €, 8,94 € ne revenaient ni au client ni
+au prestataire et restaient chez ALANE sans que personne l'ait décidé.
+
+La règle englobe l'ancien comportement — sur un remboursement total du prix, frais retenus, le
+reste tombe à zéro tout seul — ce qui évite deux règles à maintenir. Deux bornes, parce qu'il
+s'agit d'argent : jamais plus que ce que le prestataire aurait touché sans litige, et rien
+en dessous d'un euro, seuil sous lequel Stripe refuse un virement (le versement est alors
+`annule` plutôt que programmé pour échouer).
+
+Le montant retenu est celui que **Stripe a réellement rendu** (`refund.amount`), et non le
+montant demandé : le remboursement est plafonné à ce que la carte a supporté, cashback déduit.
+
+La prestation repasse alors en `completed` avec un versement `pending` — le traitement des
+versements ne lit que ce statut, un `closed` portant un versement en attente ne serait jamais
+payé. Les deux parties sont informées du montant reversé : sans cela, le prestataire découvre
+un virement qu'il n'attendait pas et le client croit qu'il n'a rien touché.
+Éprouvé par `src/tests/api/resolution-partage.test.js`.
 
 **`platform_settings.cron_dernier_passage`** — l'horodatage et le mode du dernier passage du
 traitement automatique, inscrits **au début** de chaque exécution : c'est un témoin de passage,
