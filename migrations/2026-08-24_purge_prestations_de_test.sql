@@ -32,7 +32,8 @@
 --
 -- 1. Exécuter d'abord le SELECT de contrôle (§1) et LIRE le résultat.
 -- 2. N'exécuter le bloc de suppression (§2) que si cette liste est exactement
---    ce que l'on veut perdre.
+--    ce que l'on veut perdre. Il tient en une seule instruction : le coller
+--    entier, et le lancer d'un coup.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── §1. CONTRÔLE — à lire avant toute chose ────────────────────────────────
@@ -56,21 +57,43 @@ SELECT m.id, m.date, m.metier, m.status, m.payout_status,
 -- Une purge à moitié faite laisserait des candidatures sans prestation et des
 -- écrans qui plantent sur une référence morte.
 
-BEGIN;
+-- Tout tient dans UN SEUL bloc `DO`, et c'est délibéré.
+--
+-- La première version passait par une table temporaire (`CREATE TEMP TABLE …
+-- ON COMMIT DROP`) encadrée d'un BEGIN/COMMIT. L'éditeur SQL de Supabase ne
+-- conserve pas la session d'une instruction à l'autre — les connexions sont
+-- mutualisées — et la table avait disparu avant d'être lue :
+--
+--     ERROR 42P01: relation "cibles_purge" does not exist
+--
+-- Un bloc `DO` est UNE instruction : il s'exécute d'un coup, dans sa propre
+-- transaction. Soit tout part, soit rien ne bouge, sans dépendre de ce que
+-- l'éditeur fait entre deux lignes. Le périmètre est répété en sous-requête
+-- plutôt que stocké, ce qui coûte trois lectures d'index et supprime le
+-- problème.
 
-CREATE TEMP TABLE cibles_purge ON COMMIT DROP AS
-  SELECT id FROM public.missions
-   WHERE date IN ('2026-08-17', '2026-08-18', '2026-08-21');
-
--- Les tables dépendantes sont nettoyées par un bloc dynamique : `contracts` et
--- `tracking_positions` ne sont décrites que dans les vieux fichiers de schéma à
--- la racine, dont aucun ne fait autorité. Si l'une n'existe pas, un DELETE en
--- dur ferait échouer TOUTE la transaction, et la purge n'aurait pas lieu — sans
--- qu'on comprenne pourquoi. On ne touche donc qu'aux tables réellement là.
 DO $$
 DECLARE
   t record;
+  cibles uuid[];
+  n integer;
 BEGIN
+  -- Le périmètre, lu une fois et gardé en mémoire du bloc.
+  SELECT array_agg(id) INTO cibles
+    FROM public.missions
+   WHERE date IN ('2026-08-17', '2026-08-18', '2026-08-21');
+
+  IF cibles IS NULL OR array_length(cibles, 1) IS NULL THEN
+    RAISE NOTICE 'Aucune prestation ne correspond — rien à faire.';
+    RETURN;
+  END IF;
+  RAISE NOTICE '% prestation(s) à supprimer.', array_length(cibles, 1);
+
+  -- Les tables dépendantes. `contracts` et `tracking_positions` ne sont
+  -- décrites que dans les vieux fichiers de schéma à la racine, dont aucun ne
+  -- fait autorité : on vérifie leur existence plutôt que de la supposer. Un
+  -- DELETE sur une table absente ferait échouer TOUT le bloc, et la purge
+  -- n'aurait pas lieu sans qu'on comprenne pourquoi.
   FOR t IN
     SELECT * FROM (VALUES
       ('notifications',         'ref_id',     'uuid'),
@@ -97,22 +120,22 @@ BEGIN
     -- alors par une conversion, sinon PostgreSQL refuse l'égalité.
     IF t.genre = 'texte' THEN
       EXECUTE format(
-        'DELETE FROM public.%I WHERE %I::text IN (SELECT id::text FROM cibles_purge)',
-        t.nom, t.colonne);
+        'DELETE FROM public.%I WHERE %I::text = ANY($1::text[])', t.nom, t.colonne)
+        USING cibles;
     ELSE
       EXECUTE format(
-        'DELETE FROM public.%I WHERE %I IN (SELECT id FROM cibles_purge)',
-        t.nom, t.colonne);
+        'DELETE FROM public.%I WHERE %I = ANY($1)', t.nom, t.colonne)
+        USING cibles;
     END IF;
-    RAISE NOTICE 'nettoyé : %', t.nom;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    RAISE NOTICE 'nettoyé : % (% ligne(s))', t.nom, n;
   END LOOP;
+
+  -- Et enfin les prestations elles-mêmes.
+  DELETE FROM public.missions WHERE id = ANY(cibles);
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RAISE NOTICE 'supprimé : % prestation(s).', n;
 END $$;
-
--- Et enfin les prestations elles-mêmes.
-DELETE FROM public.missions
- WHERE id IN (SELECT id FROM cibles_purge);
-
-COMMIT;
 
 
 -- ── §3. VÉRIFICATION ───────────────────────────────────────────────────────
