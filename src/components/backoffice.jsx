@@ -1564,6 +1564,22 @@ export function BOVersements() {
   };
   useEffect(() => { load(); }, []);
 
+  // Le témoin de vie du traitement automatique. Il répond à la seule question
+  // qui compte quand un virement traîne : l'horloge bat-elle encore ?
+  const [dernierPassage, setDernierPassage] = useState(undefined);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await boFetch({ action: "get_settings" });
+        const d = await r.json();
+        setDernierPassage(d?.cron_dernier_passage?.at || null);
+      } catch (e) {
+        console.error("[BO] témoin du traitement automatique illisible :", e.message);
+        setDernierPassage(null);
+      }
+    })();
+  }, []);
+
   const nom = (id) => data.noms[id] || (id ? `${id.slice(0,8)}…` : "—");
   const euro = (v) => `${Number(v||0).toFixed(2).replace(".", ",")} €`;
   const jour = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day:"numeric", month:"short", year:"numeric" }) : "—";
@@ -1692,11 +1708,42 @@ export function BOVersements() {
           <div style={{ color:"#E74C3C", fontWeight:800, fontSize:14 }}>
             ⚠️ {data.enRetard} versement{data.enRetard>1?"s":""} en retard de plus de 6 h
           </div>
+          {/* La bannière renvoyait aux journaux Vercel — c'est-à-dire qu'elle
+              demandait à un non-développeur d'aller lire des journaux serveur
+              pour savoir si une horloge battait. Elle le dit maintenant
+              elle-même, à partir du témoin que chaque passage inscrit. */}
           <div style={{ color:C.gray, fontSize:12, marginTop:6, lineHeight:1.6 }}>
-            L'échéance est passée mais le virement n'est pas parti. Le traitement automatique tourne
-            toutes les deux heures : s'il ne rattrape pas, c'est qu'il ne s'exécute plus.
-            Vérifiez les journaux Vercel du cron <code>cron-reset-monthly?action=reminders</code>.
+            L'échéance est passée mais le virement n'est pas parti. Le traitement automatique
+            tourne toutes les deux heures et rattrape ce genre de retard.
           </div>
+          {(() => {
+            if (dernierPassage === undefined) return null;
+            if (!dernierPassage) {
+              return (
+                <div style={{ marginTop:8, padding:"10px 12px", borderRadius:8, background:"rgba(231,76,60,0.12)", border:"1px solid rgba(231,76,60,0.35)", color:"#E74C3C", fontSize:12, lineHeight:1.6 }}>
+                  <strong>Le traitement automatique n'a jamais signalé de passage.</strong> C'est lui
+                  qui déclenche les virements, l'auto-validation, la clôture des prestations et le
+                  dénouement des litiges. Vérifiez la variable <code>CRON_SECRET</code> dans Vercel :
+                  une espace invisible suffit à faire refuser chaque appel.
+                </div>
+              );
+            }
+            const ecoule = Date.now() - new Date(dernierPassage).getTime();
+            const heures = Math.floor(ecoule / 3600000);
+            const enPanne = ecoule > 3 * 3600000;
+            return (
+              <div style={{ marginTop:8, padding:"10px 12px", borderRadius:8,
+                background: enPanne ? "rgba(231,76,60,0.12)" : "rgba(16,217,143,0.1)",
+                border: `1px solid ${enPanne ? "rgba(231,76,60,0.35)" : "rgba(16,217,143,0.3)"}`,
+                color: enPanne ? "#E74C3C" : "#10D98F", fontSize:12, lineHeight:1.6 }}>
+                Dernier passage : <strong>{new Date(dernierPassage).toLocaleString("fr-FR", { dateStyle:"long", timeStyle:"short" })}</strong>
+                {heures >= 1 ? ` — il y a ${heures} h.` : " — il y a moins d'une heure."}
+                {enPanne && <> Il devrait passer toutes les deux heures : <strong>il ne s'exécute plus</strong>.
+                  Vérifiez la variable <code>CRON_SECRET</code> dans Vercel, puis l'onglet Test pour un
+                  déclenchement manuel.</>}
+              </div>
+            );
+          })()}
         </Card>
       )}
 

@@ -838,6 +838,23 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**`platform_settings.cron_dernier_passage`** — l'horodatage et le mode du dernier passage du
+traitement automatique, inscrits **au début** de chaque exécution : c'est un témoin de passage,
+pas de succès. Un traitement qui démarre puis échoue doit quand même prouver qu'il a démarré,
+sinon on cherche une panne d'horloge là où il y a une panne de traitement.
+
+Il répond à la seule question qui compte quand un virement traîne : l'horloge bat-elle encore ?
+L'écran « Versements » l'affiche — jusqu'au 24/08/2026 il conseillait « vérifiez les journaux
+Vercel », c'est-à-dire qu'il demandait à un non-développeur d'aller lire des journaux serveur.
+
+**L'authentification du traitement automatique compare des jetons dépouillés de leurs espaces.**
+Vercel envoie la valeur BRUTE de `CRON_SECRET` dans l'en-tête, que le code lisait nettoyée : une
+seule espace invisible dans la variable — le piège documenté de ce projet — suffisait à faire
+répondre 401 à chaque passage. Plus rien ne tournait alors : ni les virements, ni
+l'auto-validation, ni la clôture des prestations sans prestataire, ni le dénouement des litiges.
+Le refus était en outre muet ; il est désormais journalisé, seule façon de distinguer « le cron
+ne s'exécute pas » de « le cron est refusé ».
+
 **`profiles.alerte_inscription_at`** (timestamptz, nullable, ajoutée le 24/08/2026) marque
 l'instant où l'administration a été prévenue qu'un dossier prestataire attend sa validation.
 

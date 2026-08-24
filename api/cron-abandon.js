@@ -23,7 +23,14 @@ export default async function handler(req, res) {
 
   if (CRON_SECRET) {
     const auth = req.headers.authorization || "";
-    if (auth !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: "Non autorisé" });
+    // Comparaison sur les jetons DÉPOUILLÉS : Vercel envoie la valeur brute de
+    // CRON_SECRET, que ce fichier lit nettoyée. Une espace invisible dans la
+    // variable — le piège documenté de ce projet — suffirait à refuser tous les
+    // passages, en silence.
+    if (String(auth).replace("Bearer ", "").replace(/\s/g, "") !== CRON_SECRET) {
+      console.error("[cron-abandon] appel REFUSÉ (401) — vérifier CRON_SECRET côté Vercel.");
+      return res.status(401).json({ error: "Non autorisé" });
+    }
   }
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).end();
 
