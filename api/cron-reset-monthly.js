@@ -580,6 +580,9 @@ export default async function handler(req, res) {
           const lots = await aVerser.json().catch(() => []);
           const COMMISSION_V = parseFloat(process.env.PLATFORM_COMMISSION_RATE || "0");
           let emis = 0;
+          // Combien de versements ne peuvent pas partir faute de compte de
+          // paiement en face. Compté pour être dit : voir plus bas.
+          let bloquesSansConnect = 0;
 
           for (const m of (Array.isArray(lots) ? lots : [])) {
             // Verrou atomique : on passe en `processing` AVANT d'appeler Stripe.
@@ -603,6 +606,19 @@ export default async function handler(req, res) {
               if (!pp?.stripe_account_id || pp.stripe_account_status !== "enabled") {
                 // Compte Connect pas encore actif : on repasse en attente. Le
                 // webhook `account.updated` rattrapera le versement à l'activation.
+                //
+                // CE `continue` ÉTAIT MUET, et c'est le pire défaut de ce fichier :
+                // le versement retombait en attente à chaque passage, indéfiniment,
+                // sans une ligne de journal. Le back-office affichait « en retard »
+                // et accusait le traitement automatique, qui tournait très bien —
+                // il ne pouvait simplement pas verser, faute de compte de paiement
+                // en face. On cherchait une panne d'horloge là où il manquait un
+                // destinataire.
+                bloquesSansConnect++;
+                console.error(`[versements] prestation ${m.id} NON VERSÉE : le prestataire `
+                  + `${m.prestataire_id} n'a pas de compte Stripe Connect actif `
+                  + `(compte ${pp?.stripe_account_id ? `« ${pp.stripe_account_status || "sans statut"} »` : "absent"}). `
+                  + "Le versement restera en attente tant que ce compte n'est pas activé.");
                 await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${m.id}`, {
                   method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
                   body: JSON.stringify({ payout_status: "pending" }),
@@ -690,6 +706,14 @@ export default async function handler(req, res) {
             }
           }
           if (emis) console.log(`[versements] ${emis} virement(s) émis`);
+          // Un bilan qui ne compte que les succès laisse croire qu'il n'y avait
+          // rien à faire.
+          if (bloquesSansConnect) {
+            console.error(`[versements] ${bloquesSansConnect} virement(s) IMPOSSIBLES : `
+              + "prestataire sans compte Stripe Connect actif. Ils resteront en retard "
+              + "à chaque passage tant que Connect n'est pas en place — ce n'est pas une "
+              + "panne du traitement automatique.");
+          }
         }
       } catch (e) {
         console.error("[versements] traitement interrompu :", e.message);

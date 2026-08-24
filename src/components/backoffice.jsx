@@ -1508,7 +1508,7 @@ const ETAT_VERSEMENT = {
 };
 
 export function BOVersements() {
-  const [data, setData] = useState({ versements:[], creances:[], sansVersement:[], noms:{}, enRetard:0 });
+  const [data, setData] = useState({ versements:[], creances:[], sansVersement:[], noms:{}, versable:{}, enRetard:0, bloques:0 });
   const [programme, setProgramme] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -1558,7 +1558,7 @@ export function BOVersements() {
     try {
       const r = await boFetch({ action:"list_versements" });
       const d = await r.json();
-      if (r.ok) setData({ versements:d.versements||[], creances:d.creances||[], sansVersement:d.sansVersement||[], noms:d.noms||{}, enRetard:d.enRetard||0 });
+      if (r.ok) setData({ versements:d.versements||[], creances:d.creances||[], sansVersement:d.sansVersement||[], noms:d.noms||{}, versable:d.versable||{}, enRetard:d.enRetard||0, bloques:d.bloques||0 });
       // Une liste vide et une lecture impossible se ressemblent à l'écran : on
       // le dit, sinon l'administrateur conclut qu'il n'y a rien à traiter.
       else showToast(d.error || `Versements illisibles (${r.status})`, "error");
@@ -1709,6 +1709,26 @@ export function BOVersements() {
         </Card>
       )}
 
+      {/* ── Virements impossibles, faute de destinataire ──────────────
+          Ce cas était rangé avec les retards du traitement automatique, et la
+          bannière conseillait d'aller lire les journaux Vercel. Or le
+          traitement tourne parfaitement : il ne peut simplement pas verser,
+          faute de compte de paiement en face. On envoyait chercher une panne
+          d'horloge là où il manque un destinataire. */}
+      {data.bloques > 0 && (
+        <Card style={{ borderLeft:"4px solid #E67E22", marginBottom:14 }}>
+          <div style={{ fontWeight:800, color:"#E67E22", fontSize:14, marginBottom:6 }}>
+            ⛔ {data.bloques} virement{data.bloques>1?"s":""} impossible{data.bloques>1?"s":""} — compte de paiement manquant
+          </div>
+          <div style={{ color:C.gray, fontSize:12, lineHeight:1.6 }}>
+            Ces prestataires n'ont pas de compte Stripe Connect actif. Tant qu'ils n'en ont pas,
+            aucun virement ne peut leur être envoyé : ce n'est pas une panne du traitement
+            automatique, qui repasse et échoue à chaque fois. Le versement partira tout seul
+            à l'activation du compte.
+          </div>
+        </Card>
+      )}
+
       {data.enRetard > 0 && (
         <Card style={{ borderLeft:`3px solid #E74C3C`, marginBottom:14 }}>
           <div style={{ color:"#E74C3C", fontWeight:800, fontSize:14 }}>
@@ -1810,7 +1830,9 @@ export function BOVersements() {
                       n'avoir ni motif ni échéance, ce qui était pourtant le cas
                       de toutes celles posées par le dénouement d'un litige.
                       Un écran ne montre jamais « null » à un lecteur. */}
-                  {m.payout_status === "annule"
+                  {m.payout_status === "pending" && data.versable[m.prestataire_id] === false
+                    ? "⛔ Aucun compte Stripe Connect actif pour ce prestataire — le virement ne peut pas partir. Il se déclenchera seul à l'activation du compte."
+                    : m.payout_status === "annule"
                     ? "Versement annulé — le client a été remboursé au titre du litige."
                     : m.payout_status === "held"
                       ? [
