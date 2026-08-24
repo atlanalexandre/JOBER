@@ -838,6 +838,41 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**`missions.payout_status = 'annule'`** (24/08/2026) — le versement n'aura pas lieu. Ce n'est
+ni un échec technique (`failed`, qu'on réessaie) ni une retenue (`held`, qui se lève d'office
+au bout de 90 jours selon l'art. 7.4).
+
+Il naît du dénouement d'un litige par un remboursement du client. `executerResolution()`
+posait jusque-là un `held` **sans motif ni échéance** : l'écran affichait « Retenu pour
+« null » — fin au plus tard le — », et surtout le bouton « Lever » du back-office aurait versé
+au prestataire un argent déjà rendu au client — ALANE payant deux fois, sur ses fonds propres.
+Le hold ne protégeait que par accident, la levée d'office filtrant sur `payout_hold_until`,
+qui était nul.
+
+**Tranché le 24/08/2026 — ce qui n'est pas remboursé revient au prestataire.** Sur ce que le
+client a payé et qui ne lui est pas rendu, ALANE ne garde que ses frais de service :
+
+    prestataire = montant payé − remboursé au client − frais de service
+
+Le prestataire ne touchait auparavant RIEN dès qu'un remboursement était prononcé, même de
+30 % : sur une prestation à 20,20 € remboursée de 6,06 €, 8,94 € ne revenaient ni au client ni
+au prestataire et restaient chez ALANE sans que personne l'ait décidé.
+
+La règle englobe l'ancien comportement — sur un remboursement total du prix, frais retenus, le
+reste tombe à zéro tout seul — ce qui évite deux règles à maintenir. Deux bornes, parce qu'il
+s'agit d'argent : jamais plus que ce que le prestataire aurait touché sans litige, et rien
+en dessous d'un euro, seuil sous lequel Stripe refuse un virement (le versement est alors
+`annule` plutôt que programmé pour échouer).
+
+Le montant retenu est celui que **Stripe a réellement rendu** (`refund.amount`), et non le
+montant demandé : le remboursement est plafonné à ce que la carte a supporté, cashback déduit.
+
+La prestation repasse alors en `completed` avec un versement `pending` — le traitement des
+versements ne lit que ce statut, un `closed` portant un versement en attente ne serait jamais
+payé. Les deux parties sont informées du montant reversé : sans cela, le prestataire découvre
+un virement qu'il n'attendait pas et le client croit qu'il n'a rien touché.
+Éprouvé par `src/tests/api/resolution-partage.test.js`.
+
 **`platform_settings.cron_dernier_passage`** — l'horodatage et le mode du dernier passage du
 traitement automatique, inscrits **au début** de chaque exécution : c'est un témoin de passage,
 pas de succès. Un traitement qui démarre puis échoue doit quand même prouver qu'il a démarré,

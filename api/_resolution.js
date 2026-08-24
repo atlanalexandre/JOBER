@@ -126,6 +126,13 @@ export async function executerResolution({
   }
 
   // rembourser_client
+  //
+  // Ce que Stripe a RÉELLEMENT rendu, en euros. Renseigné par la réponse de
+  // Stripe et non par le montant demandé : le remboursement est plafonné à ce
+  // que la carte a supporté, et c'est le montant rendu — pas le montant voulu —
+  // qui décide de ce qu'il reste à répartir.
+  let rembourseEuros = null;
+
   if (mission.stripe_payment_intent) {
     if (!stripeKey) {
       console.error(`[resolution] STRIPE_SECRET_KEY absente — remboursement impossible pour ${mission.id}`);
@@ -184,6 +191,7 @@ export async function executerResolution({
         return { ok: false, detail: `Remboursement Stripe échoué : ${data?.error?.message || "erreur inconnue"}` };
       }
       console.log(`[resolution] remboursement ${data.id} pour la prestation ${mission.id}`);
+      rembourseEuros = Math.round(Number(data.amount || 0)) / 100;
       // Le cashback consommé revient au client : la prestation lui est
       // remboursée, l'avantage n'a donc pas été consommé.
       await restituerCashback(mission, supabaseUrl, headers, "resolution");
@@ -193,7 +201,73 @@ export async function executerResolution({
     }
   }
 
-  const r = await patch({ status: "closed", payout_status: "held", resolution_executee_cause: cause || null });
+  // `annule`, et non `held`.
+  //
+  // « Retenu » est un état TEMPORAIRE : l'article 7.4 borne la retenue à
+  // quatre-vingt-dix jours, après quoi elle se lève d'elle-même et le versement
+  // part — et le back-office offre un bouton « Lever ». Or le client vient
+  // d'être remboursé : verser au prestataire reviendrait à payer deux fois, sur
+  // les fonds d'ALANE.
+  //
+  // Le hold posé ici n'avait par ailleurs ni motif ni échéance, ce qui
+  // l'affichait « Retenu pour « null » » et le rendait éternel. Il ne
+  // protégeait que par accident : la levée d'office filtre sur
+  // `payout_hold_until`, qui était nul.
+  // ═══════════════════════════════════════════════════════════════════════
+  // CE QUI RESTE APRÈS UN REMBOURSEMENT PARTIEL VA AU PRESTATAIRE
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Règle fixée par Alexandre le 24/08/2026 : sur ce que le client a payé et
+  // qui ne lui est pas rendu, ALANE ne garde que ses frais de service ; le
+  // reste revient au prestataire.
+  //
+  //     prestataire = montant payé − remboursé au client − frais de service
+  //
+  // Auparavant le prestataire ne touchait RIEN dès qu'un remboursement était
+  // prononcé, même de 30 %. Sur une prestation à 20,20 € remboursée de 6,06 €,
+  // 8,94 € ne revenaient ni au client ni au prestataire : ils restaient chez
+  // ALANE sans que personne l'ait décidé.
+  //
+  // La règle englobe l'ancien comportement : sur un remboursement TOTAL — le
+  // prix de la prestation, frais retenus — le reste tombe à zéro tout seul.
+  // Rien n'est ajouté pour ce cas, ce qui évite deux règles à maintenir.
+  //
+  // Deux bornes, parce qu'il s'agit d'argent :
+  //   • jamais plus que ce que le prestataire aurait touché sans litige — un
+  //     calcul faux ne peut pas le sur-payer ;
+  //   • en dessous d'un euro, le virement est refusé par Stripe : on annule
+  //     plutôt que de programmer un versement qui échouera.
+  const { partPrestataire, fraisService } = montantsDeCloture(mission);
+  const paye  = Number(mission.montant_total || 0);
+  const rendu = rembourseEuros === null ? paye : rembourseEuros;
+  const brut  = Math.round((paye - rendu - fraisService) * 100) / 100;
+  const reste = Math.max(0, Math.min(brut, Math.round(partPrestataire * 100) / 100));
+  const aVerser = reste >= 1;
+
+  if (aVerser) {
+    console.log(`[resolution] ${mission.id} : ${rendu.toFixed(2)} € rendus au client, `
+      + `${fraisService.toFixed(2)} € de frais retenus, ${reste.toFixed(2)} € dus au prestataire.`);
+  } else if (brut > 0) {
+    console.log(`[resolution] ${mission.id} : reliquat de ${brut.toFixed(2)} € inférieur au minimum `
+      + "d'un virement — versement annulé.");
+  }
+
+  // `completed` quand il reste quelque chose à verser : le traitement des
+  // versements ne lit que ce statut, et un `closed` portant un versement en
+  // attente ne serait jamais payé.
+  const r = await patch(aVerser
+    ? {
+        status: "completed",
+        payout_status: "pending",
+        payout_amount: reste,
+        payout_due_at: new Date().toISOString(),
+        resolution_executee_cause: cause || null,
+      }
+    : {
+        status: "closed",
+        payout_status: "annule",
+        resolution_executee_cause: cause || null,
+      });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");
     console.error(`[resolution] clôture non enregistrée (${r.status}) pour ${mission.id} : ${detail.slice(0, 200)}`);
@@ -201,5 +275,5 @@ export async function executerResolution({
     // laisser croire que rien ne s'est passé.
     return { ok: false, detail: "Le client a été remboursé mais la prestation n'a pas pu être close — à reprendre à la main." };
   }
-  return { ok: true, statut: "closed" };
+  return { ok: true, statut: aVerser ? "completed" : "closed", versementPrestataire: aVerser ? reste : 0 };
 }

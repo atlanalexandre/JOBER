@@ -1502,6 +1502,9 @@ const ETAT_VERSEMENT = {
   processing: { l:"En cours",    c:"#3498DB" },
   held:       { l:"Retenu",      c:"#E67E22" },
   failed:     { l:"Échoué",      c:"#E74C3C" },
+  // `annule` : le versement n'aura pas lieu. Ce n'est ni un échec technique
+  // qu'on réessaie, ni une retenue qui se lève au bout de 90 jours.
+  annule:     { l:"Annulé",      c:"#8A90AD" },
 };
 
 export function BOVersements() {
@@ -1646,7 +1649,9 @@ export function BOVersements() {
   };
 
   const listee = data.versements.filter(v => filtre === "tous" || v.payout_status === filtre);
-  const total  = listee.reduce((t,v) => t + Number(v.payout_amount||0), 0);
+  // Un versement annulé ne sera jamais payé : l'inclure dans le total annoncerait
+  // une somme à sortir qui n'existe pas.
+  const total  = listee.reduce((t,v) => t + (v.payout_status === "annule" ? 0 : Number(v.payout_amount||0)), 0);
 
   if (loading) return <div style={{ color:C.gray, padding:20 }}>Chargement…</div>;
 
@@ -1764,7 +1769,7 @@ export function BOVersements() {
       )}
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-        {["tous","pending","held","failed","processing"].map(f => (
+        {["tous","pending","held","failed","processing","annule"].map(f => (
           <button key={f} onClick={()=>setFiltre(f)} style={{
             padding:"6px 12px", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:700,
             border:`1px solid ${filtre===f?C.violet:"#E5E7EB"}`,
@@ -1800,9 +1805,21 @@ export function BOVersements() {
                   {SECTOR_LABELS[m.sector] || m.metier || "Prestation"} du {jour(m.date)}
                 </div>
                 <div style={{ color: echu ? "#E74C3C" : C.gray, fontSize:12, marginTop:3, fontWeight: echu ? 700 : 400 }}>
-                  {m.payout_status === "held"
-                    ? `Retenu pour « ${LIBELLE_MOTIF[m.payout_hold_reason] || m.payout_hold_reason} » — fin au plus tard le ${jour(m.payout_hold_until)}`
-                    : `Échéance ${jour(m.payout_due_at)}${echu ? " — dépassée" : ""}`}
+                  {/* Cette ligne affichait « Retenu pour « null » — fin au plus
+                      tard le — » : elle n'envisageait pas qu'une retenue puisse
+                      n'avoir ni motif ni échéance, ce qui était pourtant le cas
+                      de toutes celles posées par le dénouement d'un litige.
+                      Un écran ne montre jamais « null » à un lecteur. */}
+                  {m.payout_status === "annule"
+                    ? "Versement annulé — le client a été remboursé au titre du litige."
+                    : m.payout_status === "held"
+                      ? [
+                          LIBELLE_MOTIF[m.payout_hold_reason] || m.payout_hold_reason
+                            ? `Retenu pour « ${LIBELLE_MOTIF[m.payout_hold_reason] || m.payout_hold_reason} »`
+                            : "Retenu, sans motif enregistré",
+                          m.payout_hold_until ? `fin au plus tard le ${jour(m.payout_hold_until)}` : "sans échéance",
+                        ].join(" — ")
+                      : `Échéance ${jour(m.payout_due_at)}${echu ? " — dépassée" : ""}`}
                 </div>
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>

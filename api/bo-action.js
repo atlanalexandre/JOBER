@@ -1059,9 +1059,12 @@ export default async function handler(req, res) {
       const origine = cause === "justice" ? "d'une décision de justice" : "d'une procédure de l'établissement de paiement";
       // Cf. cron : l'écart entre le montant payé et le montant remboursé doit
       // être annoncé, pas découvert sur le relevé bancaire.
-      const precision = resolution === "rembourser_client"
-        ? "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
-        : "";
+      const reliquat = Number(out.versementPrestataire || 0);
+      const precision = resolution !== "rembourser_client" ? "" :
+        "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
+        + (reliquat > 0
+            ? `\n\nLa part de la prestation qui n'a pas été remboursée, soit ${reliquat.toFixed(2).replace(".", ",")} €, est versée au prestataire.`
+            : "");
       for (const uid of [m.client_id, m.prestataire_id]) {
         if (!uid) continue;
         await notifier({ user_id: uid, type: "mission", ref_id: mission_id, title: "Litige dénoué ⚖️", body: `Le litige sur « ${m.titre || m.metier || "votre prestation"} » a été dénoué en application ${origine} : ALANE a transmis l'instruction de ${quoi}.${precision}\n\nRéférence : ${just}`}, SUPABASE_URL, headers).catch(e => console.error("[executer_decision] notification non envoyée :", e.message));

@@ -537,9 +537,16 @@ export default async function handler(req, res) {
               // Le remboursement porte sur le prix de la prestation, pas sur
               // les frais de service (CGPS art. 17.1). Le taire ferait découvrir
               // l'écart sur le relevé bancaire, ce qui rouvre le litige.
-              const precision = m.resolution_proposee === "rembourser_client"
-                ? "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
-                : "";
+              // Le reliquat versé au prestataire doit être ANNONCÉ. Il est
+              // calculé après coup à partir du remboursement réel : sans cette
+              // ligne, il découvre un virement d'un montant qu'il n'attendait
+              // pas, et le client croit que le prestataire n'a rien touché.
+              const reliquat = Number(out.versementPrestataire || 0);
+              const precision = m.resolution_proposee !== "rembourser_client" ? "" :
+                "\n\nLe remboursement porte sur le prix de la prestation ; les frais de service restent acquis à ALANE (article 17.1 des CGPS)."
+                + (reliquat > 0
+                    ? `\n\nLa part de la prestation qui n'a pas été remboursée, soit ${reliquat.toFixed(2).replace(".", ",")} €, est versée au prestataire.`
+                    : "");
               for (const uid of [m.client_id, m.prestataire_id]) {
                 if (!uid) continue;
                 await notifier({ user_id: uid, type: "mission", ref_id: m.id, title: "Litige clôturé ✅",
