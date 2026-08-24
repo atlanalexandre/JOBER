@@ -838,6 +838,21 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**`missions.payout_status = 'annule'`** (24/08/2026) — le versement n'aura pas lieu. Ce n'est
+ni un échec technique (`failed`, qu'on réessaie) ni une retenue (`held`, qui se lève d'office
+au bout de 90 jours selon l'art. 7.4).
+
+Il naît du dénouement d'un litige par un remboursement du client. `executerResolution()`
+posait jusque-là un `held` **sans motif ni échéance** : l'écran affichait « Retenu pour
+« null » — fin au plus tard le — », et surtout le bouton « Lever » du back-office aurait versé
+au prestataire un argent déjà rendu au client — ALANE payant deux fois, sur ses fonds propres.
+Le hold ne protégeait que par accident, la levée d'office filtrant sur `payout_hold_until`,
+qui était nul.
+
+**Reste à décider :** après un remboursement PARTIEL, le prestataire ne touche rien, alors
+qu'une partie de la prestation a été exécutée et payée. La somme reste chez ALANE. C'est une
+décision commerciale, pas un défaut technique.
+
 **`platform_settings.cron_dernier_passage`** — l'horodatage et le mode du dernier passage du
 traitement automatique, inscrits **au début** de chaque exécution : c'est un témoin de passage,
 pas de succès. Un traitement qui démarre puis échoue doit quand même prouver qu'il a démarré,

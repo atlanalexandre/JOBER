@@ -193,7 +193,19 @@ export async function executerResolution({
     }
   }
 
-  const r = await patch({ status: "closed", payout_status: "held", resolution_executee_cause: cause || null });
+  // `annule`, et non `held`.
+  //
+  // « Retenu » est un état TEMPORAIRE : l'article 7.4 borne la retenue à
+  // quatre-vingt-dix jours, après quoi elle se lève d'elle-même et le versement
+  // part — et le back-office offre un bouton « Lever ». Or le client vient
+  // d'être remboursé : verser au prestataire reviendrait à payer deux fois, sur
+  // les fonds d'ALANE.
+  //
+  // Le hold posé ici n'avait par ailleurs ni motif ni échéance, ce qui
+  // l'affichait « Retenu pour « null » » et le rendait éternel. Il ne
+  // protégeait que par accident : la levée d'office filtre sur
+  // `payout_hold_until`, qui était nul.
+  const r = await patch({ status: "closed", payout_status: "annule", resolution_executee_cause: cause || null });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");
     console.error(`[resolution] clôture non enregistrée (${r.status}) pour ${mission.id} : ${detail.slice(0, 200)}`);
