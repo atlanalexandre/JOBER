@@ -838,6 +838,25 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**`profiles.alerte_inscription_at`** (timestamptz, nullable, ajoutée le 24/08/2026) marque
+l'instant où l'administration a été prévenue qu'un dossier prestataire attend sa validation.
+
+L'alerte partait auparavant d'un appel lancé par le **navigateur** juste après la création du
+compte (`notify_signup`), en `.catch(() => {})`. Or un `.catch()` n'attrape que les erreurs
+réseau : un 401 se résout normalement et disparaît sans trace — et l'appel exige un jeton que
+`signUp()` ne renvoie pas toujours, notamment lorsque la confirmation par e-mail est active.
+Une alerte dont l'envoi dépend d'un navigateur n'est pas une alerte : huit comptes attendaient
+une validation que personne ne savait en attente, dont un depuis le 5 août.
+
+Le traitement automatique relève donc toutes les deux heures les comptes prestataires
+`status = 'pending'` dont `alerte_inscription_at` est nul, envoie **un** courriel qui les liste
+tous, et les marque — mais **seulement si l'envoi a été accepté**, sans quoi le dossier serait
+perdu en silence. `notify_signup` renseigne la colonne lui aussi quand il réussit : l'alerte
+immédiate est conservée quand elle fonctionne, et le balayage ne la redouble pas.
+
+Colonne non modifiable depuis le navigateur : un compte qui l'inscrirait lui-même ne serait
+jamais signalé, donc jamais validé.
+
 **`profiles_privileges_guard`** (migration `2026-07-30_secu_verrou_champs_profil.sql`) protège
 les champs privilégiés du profil. La ligne `profiles` est créée **et** modifiée par le
 navigateur — quatre `upsert` dans `auth.jsx`, des `update` dans les écrans de profil — qui y

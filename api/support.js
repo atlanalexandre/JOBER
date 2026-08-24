@@ -109,40 +109,17 @@ export default async function handler(req, res) {
     `);
     await sendEmail({ to: email, subject: `Bienvenue sur ALANE, ${esc(prenom)} !`, html: welcomeHtml });
 
-    // ── PRÉVENIR ALANE QU'UN DOSSIER ATTEND ───────────────────────────
+    // L'alerte à l'administration n'est PAS envoyée ici.
     //
-    // Seul le nouvel inscrit était prévenu. Un prestataire s'inscrivait, son
-    // compte passait « en attente », et personne ne le savait : il fallait
-    // ouvrir le backoffice par hasard pour le découvrir.
+    // Elle l'a été un moment, en doublon de l'action `notify_signup` que le
+    // même écran appelle deux lignes plus haut — et elle ne partait jamais :
+    // j'y appliquais `.replace(/\s/g,"")` à ADMIN_EMAIL, qui est l'exception
+    // documentée de la règle 1.4. « ALANE <direction@alane.fr> » devenait
+    // « ALANE<direction@alane.fr> », que Resend refuse.
     //
-    // Or son dossier ne peut pas avancer sans une décision humaine, et lui n'a
-    // aucun moyen de la réclamer. Trois comptes attendaient ainsi, dont un
-    // depuis le 5 août.
-    //
-    // Seuls les PRESTATAIRES déclenchent cet envoi : un client est approuvé
-    // d'office, il n'y a rien à décider. Une alerte pour un geste qui n'existe
-    // pas finirait par être ignorée, celle-ci comprise.
-    if (isPresta) {
-      const adminEmail = (process.env.ADMIN_EMAIL || "").replace(/\s/g, "");
-      if (!adminEmail) {
-        console.error("[welcome] ADMIN_EMAIL absente — personne n'est prévenu qu'un dossier prestataire attend.");
-      } else {
-        const corps = emailHtml("Nouveau prestataire à valider", `
-          <p><strong>${esc(prenom)} ${esc(nom || "")}</strong> vient de s'inscrire comme prestataire.</p>
-          <p style="color:#8B8FA8;font-size:13px">${esc(email)}</p>
-          <p>Son compte est <strong>en attente</strong> : il n'apparaîtra dans aucun catalogue
-             et ne recevra aucune proposition tant que son dossier n'aura pas été examiné.</p>
-          <p>Backoffice → <strong>Comptes</strong> → filtre « En attente ».</p>
-        `);
-        // Un échec ne fait pas rater l'inscription : le compte est créé, l'alerte
-        // est un confort d'exploitation. Mais il doit se voir.
-        try {
-          await sendEmail({ to: adminEmail, subject: `👤 Nouveau prestataire à valider — ${esc(prenom)} ${esc(nom || "")}`, html: corps });
-        } catch (e) {
-          console.error("[welcome] alerte administrateur non envoyée :", e.message);
-        }
-      }
-    }
+    // Elle vit maintenant à deux endroits, et deux seulement : `notify_signup`
+    // pour l'envoi immédiat, et le balayage du traitement automatique qui
+    // rattrape tout ce que le navigateur n'a pas réussi à déclencher.
 
     return res.status(200).json({ ok: true });
   }
@@ -202,8 +179,36 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
     `);
 
     const cleanSubject = `Nouvelle inscription ${roleLabel} — ${String(prenom||"").replace(/[\r\n]/g," ")} ${String(nom||"").replace(/[\r\n]/g," ")}`;
-    await sendEmail({ to: notifDest, subject: cleanSubject, html });
-    return res.status(200).json({ ok: true });
+    const envoye = await sendEmail({ to: notifDest, subject: cleanSubject, html });
+
+    // Marquer le compte comme signalé, pour que le balayage du traitement
+    // automatique ne redouble pas cette alerte. On ne marque QUE si l'envoi a
+    // été accepté : sinon le balayage doit reprendre le dossier, c'est
+    // précisément son rôle. Le résultat de sendEmail était ignoré, ce qui
+    // rendait un refus de Resend invisible de bout en bout.
+    if (envoye === true && role === "prestataire") {
+      const SB  = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
+      const KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
+      if (SB && KEY) {
+        try {
+          const maj = await fetch(`${SB}/rest/v1/profiles?id=eq.${_signupCaller.id}`, {
+            method: "PATCH",
+            headers: { "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+            body: JSON.stringify({ alerte_inscription_at: new Date().toISOString() }),
+          });
+          if (!maj.ok) {
+            const detail = await maj.text().catch(() => "");
+            console.error(`[notify_signup] marquage refusé (${maj.status}) : ${detail.slice(0, 160)}`
+              + " — le balayage automatique renverra une alerte, sans conséquence.");
+          }
+        } catch (e) {
+          console.error("[notify_signup] marquage impossible :", e.message);
+        }
+      }
+    } else if (envoye !== true) {
+      console.error(`[notify_signup] alerte NON envoyée pour ${esc(email)} — le balayage automatique la reprendra.`);
+    }
+    return res.status(200).json({ ok: true, envoye: envoye === true });
   }
 
   // ── track_referral: link new user to referrer ────────────────────
