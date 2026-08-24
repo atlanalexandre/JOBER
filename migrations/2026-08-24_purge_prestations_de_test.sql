@@ -62,27 +62,51 @@ CREATE TEMP TABLE cibles_purge ON COMMIT DROP AS
   SELECT id FROM public.missions
    WHERE date IN ('2026-08-17', '2026-08-18', '2026-08-21');
 
--- Les tables sans clé étrangère, ou en SET NULL : à traiter à la main, sinon
--- elles gardent une référence vers une prestation qui n'existe plus.
-DELETE FROM public.notifications
- WHERE ref_id IN (SELECT id FROM cibles_purge);
+-- Les tables dépendantes sont nettoyées par un bloc dynamique : `contracts` et
+-- `tracking_positions` ne sont décrites que dans les vieux fichiers de schéma à
+-- la racine, dont aucun ne fait autorité. Si l'une n'existe pas, un DELETE en
+-- dur ferait échouer TOUTE la transaction, et la purge n'aurait pas lieu — sans
+-- qu'on comprenne pourquoi. On ne touche donc qu'aux tables réellement là.
+DO $$
+DECLARE
+  t record;
+BEGIN
+  FOR t IN
+    SELECT * FROM (VALUES
+      ('notifications',         'ref_id',     'uuid'),
+      ('ratings',               'mission_id', 'uuid'),
+      ('candidatures',          'mission_id', 'uuid'),
+      ('mission_remplacements', 'mission_id', 'uuid'),
+      ('contracts',             'mission_id', 'texte'),
+      ('tracking_positions',    'mission_id', 'texte')
+    ) AS v(nom, colonne, genre)
+  LOOP
+    IF to_regclass('public.' || t.nom) IS NULL THEN
+      RAISE NOTICE 'table % absente — ignorée', t.nom;
+      CONTINUE;
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = t.nom AND column_name = t.colonne
+    ) THEN
+      RAISE NOTICE 'colonne %.% absente — ignorée', t.nom, t.colonne;
+      CONTINUE;
+    END IF;
 
-DELETE FROM public.ratings
- WHERE mission_id IN (SELECT id FROM cibles_purge);
-
-DELETE FROM public.candidatures
- WHERE mission_id IN (SELECT id FROM cibles_purge);
-
-DELETE FROM public.mission_remplacements
- WHERE mission_id IN (SELECT id FROM cibles_purge);
-
--- `contracts` et `tracking_positions` portent l'identifiant en TEXTE, sans clé
--- étrangère : la comparaison passe donc par une conversion.
-DELETE FROM public.contracts
- WHERE mission_id::text IN (SELECT id::text FROM cibles_purge);
-
-DELETE FROM public.tracking_positions
- WHERE mission_id::text IN (SELECT id::text FROM cibles_purge);
+    -- Certaines tables portent l'identifiant en TEXTE : la comparaison passe
+    -- alors par une conversion, sinon PostgreSQL refuse l'égalité.
+    IF t.genre = 'texte' THEN
+      EXECUTE format(
+        'DELETE FROM public.%I WHERE %I::text IN (SELECT id::text FROM cibles_purge)',
+        t.nom, t.colonne);
+    ELSE
+      EXECUTE format(
+        'DELETE FROM public.%I WHERE %I IN (SELECT id FROM cibles_purge)',
+        t.nom, t.colonne);
+    END IF;
+    RAISE NOTICE 'nettoyé : %', t.nom;
+  END LOOP;
+END $$;
 
 -- Et enfin les prestations elles-mêmes.
 DELETE FROM public.missions
