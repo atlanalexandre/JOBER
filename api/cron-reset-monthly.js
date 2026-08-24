@@ -1,4 +1,4 @@
-import { resendBody } from "./_email.js";
+import { resendBody, sendEmail, emailHtml, esc as escEmail } from "./_email.js";
 import { sendPushToUser, notifier } from "./_push.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
 import { montantsDeCloture } from "./_cloture.js";
@@ -996,6 +996,135 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("[recapitulatif] traitement interrompu :", e.message);
       }
+    }
+  }
+
+  // ── Dossiers prestataires en attente : prévenir ALANE ─────────────
+  //
+  // POURQUOI CE BALAYAGE EXISTE
+  //
+  // L'alerte partait d'un appel lancé par le NAVIGATEUR juste après la création
+  // du compte (`notify_signup` dans api/support.js). Deux défauts la rendaient
+  // muette :
+  //
+  //   • l'appel est en `.catch(() => {})` côté front, et un `.catch()` n'attrape
+  //     que les erreurs réseau. Un 401 se résout normalement et disparaît sans
+  //     laisser de trace. Or l'appel exige un jeton, et `signUp()` ne renvoie
+  //     pas toujours de session — quand la confirmation par e-mail est active,
+  //     il n'y en a aucune ;
+  //   • le navigateur peut être fermé ou perdre le réseau avant la fin.
+  //
+  // Une alerte dont l'envoi dépend d'un navigateur n'est pas une alerte. Huit
+  // comptes attendaient une validation que personne ne savait en attente, dont
+  // un depuis le 5 août.
+  //
+  // Ce balayage ne dépend de rien : il relève les comptes prestataires en
+  // attente jamais signalés, envoie UN courriel qui les liste, et les marque.
+  // `notify_signup` marque lui aussi quand il réussit — l'alerte immédiate est
+  // conservée quand elle fonctionne, et n'est pas redoublée.
+  {
+    try {
+      const enAttenteRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending`
+        + `&alerte_inscription_at=is.null&select=id,prenom,nom,created_at`
+        + `&order=created_at.asc&limit=100`,
+        { headers }
+      );
+      if (!enAttenteRes.ok) {
+        const detail = await enAttenteRes.text().catch(() => "");
+        console.error(`[inscriptions] relevé impossible (${enAttenteRes.status}) : ${detail.slice(0, 200)}`
+          + " — vérifier que la migration 2026-08-24_alerte_inscription_prestataire.sql est appliquée.");
+      } else {
+        const aSignaler = await enAttenteRes.json().catch(() => []);
+        if (Array.isArray(aSignaler) && aSignaler.length) {
+          // Le total en attente, y compris les comptes déjà signalés : un dossier
+          // signalé une fois puis oublié reste un dossier oublié.
+          let totalEnAttente = aSignaler.length;
+          try {
+            const cnt = await fetch(
+              `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.pending&select=id`,
+              { headers: { ...headers, "Prefer": "count=exact", "Range": "0-0" } }
+            );
+            const plage = cnt.headers.get("content-range") || "";
+            const n = Number(String(plage).split("/")[1]);
+            if (Number.isFinite(n)) totalEnAttente = n;
+          } catch { /* le total exact n'est qu'un confort : la liste, elle, est juste */ }
+
+          // Les adresses e-mail vivent dans `auth.users`, pas dans `profiles`.
+          const emails = {};
+          try {
+            const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers });
+            const ud = await ur.json();
+            for (const u of (ud.users || [])) emails[u.id] = u.email || "";
+          } catch (e) {
+            console.error("[inscriptions] adresses illisibles :", e.message);
+          }
+
+          const lignes = aSignaler.map(p => {
+            const nom = [p.prenom, p.nom].filter(Boolean).join(" ") || "(sans nom)";
+            const depuis = p.created_at ? new Date(p.created_at).toLocaleDateString("fr-FR") : "—";
+            return `<tr>`
+              + `<td style="padding:8px 0;border-bottom:1px solid #eee;font-weight:600">${escEmail(nom)}</td>`
+              + `<td style="padding:8px 0;border-bottom:1px solid #eee">${escEmail(emails[p.id] || "")}</td>`
+              + `<td style="padding:8px 0;border-bottom:1px solid #eee;color:#888;white-space:nowrap">${escEmail(depuis)}</td>`
+              + `</tr>`;
+          }).join("");
+
+          const lien = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+          const html = emailHtml(`
+            <p><strong>${aSignaler.length} dossier${aSignaler.length > 1 ? "s" : ""} prestataire${aSignaler.length > 1 ? "s" : ""}</strong>
+               attend${aSignaler.length > 1 ? "ent" : ""} votre validation.</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0">
+              <tr><th style="text-align:left;padding:6px 0;color:#888;font-weight:600;font-size:13px">Nom</th>
+                  <th style="text-align:left;padding:6px 0;color:#888;font-weight:600;font-size:13px">Email</th>
+                  <th style="text-align:left;padding:6px 0;color:#888;font-weight:600;font-size:13px">Inscrit le</th></tr>
+              ${lignes}
+            </table>
+            <p>Tant que leur dossier n'est pas examiné, ces comptes n'apparaissent dans aucun
+               catalogue et ne reçoivent aucune proposition.</p>
+            <p style="color:#888;font-size:13px">${totalEnAttente} compte${totalEnAttente > 1 ? "s" : ""} prestataire${totalEnAttente > 1 ? "s" : ""} en attente au total.</p>
+            <p style="text-align:center;margin:24px 0"><a href="${lien}?bo=1"
+               style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">Ouvrir le backoffice</a></p>
+          `);
+
+          // ADMIN_EMAIL n'est PAS dépouillé de ses espaces : c'est l'exception
+          // documentée de la règle 1.4, elle vaut couramment « ALANE <adresse> ».
+          const destinataire = (process.env.ADMIN_EMAIL || "").trim() || "direction@alane.fr";
+          const envoye = await sendEmail({
+            to: destinataire,
+            subject: `👤 ${aSignaler.length} dossier${aSignaler.length > 1 ? "s" : ""} prestataire${aSignaler.length > 1 ? "s" : ""} à valider`,
+            html,
+          });
+
+          // On ne marque QUE si l'envoi a été accepté : marquer un envoi qui a
+          // échoué revient à perdre définitivement ces comptes, sans que rien
+          // ne le signale. `sendEmail` renvoie `true` sur acceptation, et a déjà
+          // journalisé le refus le cas échéant.
+          if (envoye === true) {
+            const maintenant = new Date().toISOString();
+            const ids = aSignaler.map(p => p.id);
+            const maj = await fetch(
+              `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(",")})`,
+              {
+                method: "PATCH",
+                headers: { ...headers, "Prefer": "return=minimal" },
+                body: JSON.stringify({ alerte_inscription_at: maintenant }),
+              }
+            );
+            if (!maj.ok) {
+              const detail = await maj.text().catch(() => "");
+              console.error(`[inscriptions] marquage refusé (${maj.status}) : ${detail.slice(0, 200)}`
+                + " — l'alerte repartira au prochain passage.");
+            } else {
+              console.log(`[inscriptions] ${ids.length} dossier(s) signalé(s) à ${destinataire}.`);
+            }
+          } else {
+            console.error("[inscriptions] alerte NON envoyée — les dossiers restent à signaler.");
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[inscriptions] balayage interrompu :", e.message);
     }
   }
 

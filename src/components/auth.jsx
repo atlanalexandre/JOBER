@@ -4,6 +4,31 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST } from "../constants/data.js";
 import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Badge, AddressAutocomplete, formatPhone, checkIban } from "./ui.jsx";
+
+// Un appel d'inscription qui échoue doit se voir.
+//
+// Les trois parcours postaient `notify_signup` et `welcome` en
+// `.catch(() => {})`. Or un `.catch()` n'attrape que les erreurs réseau : un
+// 401 — le cas courant, `signUp()` ne renvoyant pas toujours de session — se
+// résout normalement et disparaît sans laisser de trace. Personne n'était
+// prévenu des inscriptions, et rien ne le disait (règle 1.2).
+//
+// L'échec ne bloque plus rien : le compte est créé, et le balayage du
+// traitement automatique rattrape l'alerte. Mais il est journalisé.
+async function posterInscription(action, headers, corps) {
+  try {
+    const r = await fetch("/api/support", { method: "POST", headers, body: JSON.stringify({ action, ...corps }) });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      console.error(`[inscription] ${action} refusé (${r.status}) : ${detail.slice(0, 160)}`);
+    }
+    return r.ok;
+  } catch (e) {
+    console.error(`[inscription] ${action} injoignable :`, e.message);
+    return false;
+  }
+}
+
 import { CGPS } from "../constants/cgps.js";
 
 export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
@@ -154,12 +179,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
-      await fetch("/api/support", {
-        method: "POST",
-        headers: _authH,
-        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" }),
-      }).catch(() => {});
-      await fetch("/api/support", { method:"POST", headers: _authH, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"prestataire" }) }).catch(()=>{});
+      await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" });
+      await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "prestataire" });
       let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
@@ -869,12 +890,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
-      await fetch("/api/support", {
-        method: "POST",
-        headers: _authH,
-        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role: "client" }),
-      }).catch(() => {});
-      await fetch("/api/support", { method:"POST", headers: _authH, body: JSON.stringify({ action:"welcome", email, prenom: prenom.trim(), nom: nom.trim(), role:"client" }) }).catch(()=>{});
+      await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "client" });
+      await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "client" });
       let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
       if (referrerUUID && referrerUUID !== data.user.id) {
         await fetch("/api/support", {
@@ -1265,16 +1282,8 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       });
       const _simpleToken = data.session?.access_token || "";
       const _simpleAuthH = { "Content-Type": "application/json", "Authorization": `Bearer ${_simpleToken}` };
-      await fetch("/api/support", {
-        method: "POST",
-        headers: _simpleAuthH,
-        body: JSON.stringify({ action: "notify_signup", prenom: prenom.trim(), nom: nom.trim(), email, role }),
-      }).catch(() => {});
-      await fetch("/api/support", {
-        method: "POST",
-        headers: _simpleAuthH,
-        body: JSON.stringify({ action: "welcome", email, prenom: prenom.trim(), nom: nom.trim(), role }),
-      }).catch(() => {});
+      await posterInscription("notify_signup", _simpleAuthH, { prenom: prenom.trim(), nom: nom.trim(), email, role });
+      await posterInscription("welcome", _simpleAuthH, { email, prenom: prenom.trim(), nom: nom.trim(), role });
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
     setLoading(false);

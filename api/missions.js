@@ -1851,7 +1851,12 @@ export default async function handler(req, res) {
       // `raise_dispute`, supprimée : sans elle, un litige n'était signalé que
       // dans le back-office, qu'il faut penser à ouvrir. Un litige gèle l'argent
       // des deux parties — personne ne doit avoir à le découvrir par hasard.
-      const adminLitige = (process.env.ADMIN_EMAIL || "").replace(/\s/g, "");
+      // PAS de `.replace(/\s/g,"")` ici : ADMIN_EMAIL est l'exception documentée
+      // de la règle 1.4, au même titre que RESEND_FROM. Elle vaut couramment
+      // « ALANE <direction@alane.fr> », et lui retirer ses espaces produit
+      // « ALANE<direction@alane.fr> », que Resend refuse. Le contrôle de
+      // cohérence l'exclut d'ailleurs explicitement.
+      const adminLitige = (process.env.ADMIN_EMAIL || "").trim();
       if (!adminLitige) {
         console.error("[dispute] ADMIN_EMAIL absente — le litige n'est signalé nulle part hors du back-office.");
       } else {

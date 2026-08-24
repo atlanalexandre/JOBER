@@ -1,0 +1,81 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Prévenir ALANE qu'un dossier prestataire attend — de façon fiable
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI
+--
+-- L'alerte d'inscription partait d'un appel lancé par le NAVIGATEUR juste après
+-- la création du compte (`notify_signup`), avec deux défauts qui la rendaient
+-- muette :
+--
+--   • l'appel est en `.catch(() => {})` côté front. Un `.catch()` n'attrape que
+--     les erreurs réseau : un 401 se résout normalement et disparaît sans
+--     laisser de trace. Or l'appel exige un jeton, et `signUp()` ne renvoie pas
+--     toujours de session — quand la confirmation par e-mail est active, il n'y
+--     en a aucune. L'alerte était alors refusée en silence ;
+--   • le navigateur peut être fermé, perdre le réseau, ou l'onglet être tué
+--     avant la fin de la requête.
+--
+-- Une alerte dont l'envoi dépend d'un navigateur n'est pas une alerte. Huit
+-- comptes attendaient une validation que personne ne savait en attente, dont un
+-- depuis le 5 août.
+--
+-- CE QUE PORTE LA COLONNE
+--
+-- `alerte_inscription_at` — l'instant où l'administration a été prévenue de
+-- cette inscription. `NULL` = personne n'a encore été prévenu.
+--
+-- Elle sert de file d'attente : le traitement automatique relève toutes les
+-- deux heures les comptes prestataires en attente qui n'ont pas encore été
+-- signalés, envoie UN courriel qui les liste tous, et les marque. L'envoi ne
+-- dépend plus de rien qui vive dans un navigateur.
+--
+-- `notify_signup` la renseigne aussi lorsqu'il réussit : l'alerte immédiate est
+-- conservée quand elle fonctionne, et le balayage ne la redouble pas.
+--
+-- POURQUOI ELLE N'EST PAS MODIFIABLE DEPUIS LE NAVIGATEUR
+--
+-- Un compte qui l'inscrirait lui-même ne serait jamais signalé : il resterait
+-- invisible à la validation, donc éternellement en attente. C'est une donnée
+-- d'exploitation, elle appartient au serveur.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS alerte_inscription_at timestamptz;
+
+-- Les comptes déjà en attente n'ont jamais été signalés : on les laisse à NULL
+-- pour que le premier balayage les remonte. C'est voulu — ce sont précisément
+-- ceux qu'on a perdus de vue.
+
+-- Le déclencheur `profiles_privileges_guard` protège déjà `role` et `status`.
+-- Cette colonne rejoint les champs que le navigateur ne peut pas écrire.
+REVOKE UPDATE (alerte_inscription_at) ON public.profiles FROM anon, authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VÉRIFICATION
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- 1. La colonne existe :
+--
+--    SELECT column_name, data_type FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='profiles'
+--      AND column_name='alerte_inscription_at';
+--
+-- 2. Elle n'est pas modifiable depuis le navigateur :
+--
+--    SELECT column_name FROM information_schema.column_privileges
+--    WHERE table_schema='public' AND table_name='profiles'
+--      AND privilege_type='UPDATE' AND grantee='authenticated'
+--      AND column_name='alerte_inscription_at';
+--    -- attendu : 0 ligne
+--
+-- 3. Ce que le prochain balayage va signaler :
+--
+--    SELECT id, prenom, nom, created_at FROM public.profiles
+--    WHERE role='prestataire' AND status='pending' AND alerte_inscription_at IS NULL
+--    ORDER BY created_at;
+--
+-- RETOUR ARRIÈRE :
+--    ALTER TABLE public.profiles DROP COLUMN IF EXISTS alerte_inscription_at;
+-- ═══════════════════════════════════════════════════════════════════════════
