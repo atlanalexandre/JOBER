@@ -169,6 +169,12 @@ export default async function handler(req, res) {
     "Content-Type":  "application/json",
   };
 
+  // Ce que ce passage a réellement fait, remonté dans la réponse HTTP.
+  // Le déclenchement manuel du backoffice n'annonçait que les rappels J-1 :
+  // on lançait le traitement pour débloquer des virements, et il répondait
+  // « Aucun email à envoyer ». On ne savait pas s'il avait travaillé.
+  const bilan = { versements: 0, inscriptions: 0 };
+
   // ── Témoin de vie ─────────────────────────────────────────────────
   //
   // Rien ne disait si le traitement automatique tournait encore. Le backoffice
@@ -656,6 +662,7 @@ export default async function handler(req, res) {
                 }).catch(e => console.error(`[versements] statut non écrit ${m.id} :`, e.message));
 
                 emis++;
+                bilan.versements++;
                 console.log(`[versements] ${td.id} → ${pp.stripe_account_id} (${(cents/100).toFixed(2)} €`
                   + `) — prestation ${m.id}`);
               } else {
@@ -1163,6 +1170,7 @@ export default async function handler(req, res) {
               console.error(`[inscriptions] marquage refusé (${maj.status}) : ${detail.slice(0, 200)}`
                 + " — l'alerte repartira au prochain passage.");
             } else {
+              bilan.inscriptions = ids.length;
               console.log(`[inscriptions] ${ids.length} dossier(s) signalé(s) à ${destinataire}.`);
             }
           } else {
@@ -1668,7 +1676,7 @@ ${(() => {
         }
       } catch(e) { console.error("end-notif in reminders error:", e); }
 
-      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length });
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length, versements: bilan.versements, inscriptions: bilan.inscriptions });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });

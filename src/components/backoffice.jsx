@@ -1567,6 +1567,7 @@ export function BOVersements() {
   // Le témoin de vie du traitement automatique. Il répond à la seule question
   // qui compte quand un virement traîne : l'horloge bat-elle encore ?
   const [dernierPassage, setDernierPassage] = useState(undefined);
+  const [relance, setRelance] = useState(false);
   useEffect(() => {
     (async () => {
       try {
@@ -1739,11 +1740,26 @@ export function BOVersements() {
                 Dernier passage : <strong>{new Date(dernierPassage).toLocaleString("fr-FR", { dateStyle:"long", timeStyle:"short" })}</strong>
                 {heures >= 1 ? ` — il y a ${heures} h.` : " — il y a moins d'une heure."}
                 {enPanne && <> Il devrait passer toutes les deux heures : <strong>il ne s'exécute plus</strong>.
-                  Vérifiez la variable <code>CRON_SECRET</code> dans Vercel, puis l'onglet Test pour un
-                  déclenchement manuel.</>}
+                  Vérifiez la variable <code>CRON_SECRET</code> dans les réglages Vercel du projet.</>}
               </div>
             );
           })()}
+          {/* Le bouton est ici, et pas seulement sur l'écran KPIs : c'est ici
+              qu'on constate le retard, et un remède qu'il faut aller chercher
+              ailleurs n'est pas un remède. */}
+          <button disabled={relance} onClick={async () => {
+            setRelance(true);
+            try {
+              let jeton = ""; try { jeton = sessionStorage.getItem("bo_token") || ""; } catch { /* session illisible */ }
+              const r = await fetch("/api/cron-reset-monthly?action=reminders", { headers: { "Authorization": `Bearer ${jeton}` } });
+              const d = await r.json();
+              if (d.success) { showToast("Traitement lancé — les virements dus sont partis.", "success"); load(); }
+              else showToast(d.error || `Le traitement a échoué (${r.status})`, "error");
+            } catch (e) { showToast(`Traitement injoignable : ${e.message}`, "error"); }
+            setRelance(false);
+          }} style={{ marginTop:10, width:"100%", padding:"10px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:800, fontSize:12.5, cursor:relance?"default":"pointer", fontFamily:"inherit", opacity:relance?0.6:1 }}>
+            {relance ? "Traitement en cours…" : "🔄 Lancer le traitement maintenant"}
+          </button>
         </Card>
       )}
 
@@ -3303,10 +3319,15 @@ export function BOReminders() {
       const j = await r.json();
       if (j.success) {
         const parts = [];
+        if (j.versements)          parts.push(`${j.versements} virement(s) envoyé(s)`);
+        if (j.inscriptions)        parts.push(`${j.inscriptions} inscription(s) signalée(s)`);
         if (j.reminders)           parts.push(`${j.reminders} rappel(s) J-1`);
         if (j.validationReminders) parts.push(`${j.validationReminders} relance(s) validation`);
         if (j.autoValidated)       parts.push(`${j.autoValidated} auto-validée(s)`);
-        setResult(`✅ ${parts.join(" · ") || "Aucun email à envoyer"}`);
+        // « Aucun email à envoyer » laissait croire que le traitement ne fait
+        // que des emails : on le lançait pour débloquer un virement et il
+        // répondait à côté.
+        setResult(`✅ ${parts.join(" · ") || "Rien à traiter — tout est à jour"}`);
       } else {
         setResult(`❌ Erreur : ${j.error||"inconnue"}`);
       }
@@ -3316,13 +3337,22 @@ export function BOReminders() {
 
   return (
     <div style={{ background:"#0D1B3E", borderRadius:12, padding:"12px 16px", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, border:`1px solid ${C.border}` }}>
+      {/* Ce bouton s'appelait « Envoyer les relances » et disait ne faire que
+          des rappels J-1. Il lance en réalité TOUT le traitement automatique —
+          celui-là même qui passe toutes les deux heures. Le jour où le cron
+          s'est arrêté, c'était le seul moyen de débloquer les virements, et
+          personne ne pouvait le deviner sous ce nom. */}
       <div>
-        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>📧 Envoyer les relances</div>
-        <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Rappels J-1 + relances de validation ciblées (prestataire ou client selon qui bloque)</div>
+        <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>🔄 Lancer le traitement automatique</div>
+        <div style={{ color:C.textSub, fontSize:11, marginTop:2, lineHeight:1.5 }}>
+          Le même passage que celui programmé toutes les deux heures : virements arrivés à
+          échéance, auto-validation, clôture et remboursement des prestations sans prestataire,
+          dénouement des litiges, alerte des inscriptions en attente, rappels J-1.
+        </div>
         {result && <div style={{ fontSize:12, marginTop:4, color: result.startsWith("✅") ? C.success : C.danger }}>{result}</div>}
       </div>
       <button onClick={handleTrigger} disabled={loading} style={{ background:"rgba(240,180,41,0.15)", border:"1px solid rgba(240,180,41,0.5)", color:"#F0B429", borderRadius:8, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-        {loading ? "…" : "Envoyer"}
+        {loading ? "…" : "Lancer"}
       </button>
     </div>
   );
