@@ -1796,6 +1796,85 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Configurer ses virements (Stripe Connect)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Un virement ne part que vers un compte Stripe actif. Ce compte est créé à la
+// validation du dossier, et un lien de configuration part dans l'e-mail de
+// bienvenue — un lien qui EXPIRE EN 24 HEURES, décision de Stripe.
+//
+// Passé ce délai, le prestataire n'avait plus aucun moyen d'y revenir : pas de
+// bouton, pas de renvoi, et rien à l'écran pour lui dire que ses virements
+// n'étaient pas configurés. Il voyait ses prestations validées, ses factures
+// émises, et aucun argent arriver.
+//
+// Ce bloc redemande un lien à la demande, autant de fois qu'il le faut.
+export function CarteVirements({ compact = false }) {
+  const [etat, setEtat] = useState(null);   // null = en cours de lecture
+  const [envoi, setEnvoi] = useState(false);
+
+  const lire = async () => {
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const tok = sd?.session?.access_token; if (!tok) return;
+      const r = await fetch("/api/stripe-connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+        body: JSON.stringify({ action: "statut" }),
+      });
+      const j = await r.json();
+      if (r.ok) setEtat(j);
+      // Un échec de lecture ne doit pas afficher « tout va bien » : sans
+      // réponse, on n'affiche rien plutôt que de rassurer à tort.
+      else console.error("[virements] statut illisible :", j?.error);
+    } catch (e) { console.error("[virements] statut injoignable :", e.message); }
+  };
+  useEffect(() => { lire(); }, []);
+
+  const configurer = async () => {
+    setEnvoi(true);
+    // L'onglet est ouvert DANS le clic : appelé après un `await`, Safari le
+    // bloque en silence. Même parade que pour les factures.
+    const onglet = window.open("", "_blank");
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const tok = sd?.session?.access_token;
+      const r = await fetch("/api/stripe-connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tok}` },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json();
+      if (r.ok && j.url) { if (onglet) onglet.location = j.url; else window.location.href = j.url; }
+      else { onglet?.close(); showToast(j?.error || "La configuration n'a pas pu être ouverte."); }
+    } catch (e) {
+      onglet?.close();
+      showToast(`Configuration injoignable : ${e.message}`);
+    }
+    setEnvoi(false);
+  };
+
+  if (!etat || etat.versable) return null;   // rien à dire quand tout est en place
+
+  return (
+    <div style={{ background:"rgba(240,180,41,0.08)", border:`1px solid ${C.accentGold}55`, borderRadius:14, padding:compact ? "12px 14px" : "16px", marginBottom:14 }}>
+      <div style={{ fontWeight:800, color:C.accentGold, fontSize:13, marginBottom:6 }}>
+        🏦 Vos virements ne sont pas encore configurés
+      </div>
+      <div style={{ color:C.textSub, fontSize:12, lineHeight:1.6, marginBottom:10 }}>
+        {etat.compte
+          ? "Votre compte de paiement est créé mais la configuration n'est pas terminée. Tant qu'elle ne l'est pas, aucun virement ne peut vous être envoyé — vos prestations restent payées, l'argent attend."
+          : "Il vous faut un compte de paiement pour recevoir vos virements. Comptez deux minutes : votre IBAN, et les conditions de Stripe à signer."}
+      </div>
+      <button onClick={configurer} disabled={envoi}
+        style={{ width:"100%", padding:"11px", borderRadius:12, border:"none", background:C.accentGold, color:"#231A04", fontWeight:800, fontSize:13, cursor:envoi?"default":"pointer", fontFamily:"inherit", opacity:envoi?0.6:1 }}>
+        {envoi ? "Ouverture…" : etat.compte ? "Terminer la configuration →" : "Configurer mes virements →"}
+      </button>
+    </div>
+  );
+}
+
 export function PrestaOnboardingChecklist({ onNavigate }) {
   // ═══════════════════════════════════════════════════════════════════════
   // CE QUI RESTE À FAIRE, ET RIEN D'AUTRE
@@ -1827,7 +1906,7 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
       // dans le jeton : c'est le serveur qui les accorde.
       const { data: p, error } = await supabase
         .from("profiles")
-        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib")
+        .select("mandat_facturation_at,mandat_encaissement_at,missions_enabled,status,rib,stripe_account_id,stripe_account_status")
         .eq("id", u.id).single();
       if (error) console.error("[premiers pas] profil illisible :", error.message);
       setProfil(p || {});
@@ -1851,6 +1930,12 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
     { id:"mandats", label:"Mandats de facturation et d'encaissement acceptés",
       aide:"Onglet Revenus — sans eux, pas de facture à votre nom",
       done:!!(profil.mandat_facturation_at && profil.mandat_encaissement_at), action:"p_dashboard" },
+    // L'IBAN au-dessus sert à la facture ; celui-ci sert au virement. Ce sont
+    // deux choses différentes, et la liste n'en montrait qu'une : un
+    // prestataire pouvait avoir tout coché et ne jamais être payé.
+    { id:"virements", label:"Compte de virement configuré",
+      aide:"Deux minutes chez Stripe — sans lui, aucun virement ne peut partir",
+      done:!!(profil.stripe_account_id && profil.stripe_account_status === "enabled"), action:"p_home" },
   ];
 
   const doneCount = items.filter(i => i.done).length;
@@ -3989,6 +4074,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               </div>
             );
           })}
+          <CarteVirements />
           <PrestaOnboardingChecklist onNavigate={onNavigate} />
           {planLoaded && <UpgradeNudge onNavigate={onNavigate} plan={planActuel} />}
           {/* Bandeau « Prestations urgentes activées — vous êtes prioritaire »

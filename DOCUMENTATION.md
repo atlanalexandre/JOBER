@@ -56,7 +56,7 @@ src/
                              (226 métiers, 7 secteurs, 210 codes ROME renseignés)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
-api/                         27 fonctions serverless
+api/                         28 fonctions serverless
 ```
 
 Les fichiers d'écrans sont volumineux (8000 lignes pour l'espace client). C'est un choix
@@ -837,6 +837,21 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 `date_debut`, et PostgREST écarte les NULL d'une comparaison — ces prestations n'étaient donc
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
+
+**`api/stripe-connect.js`** (24/08/2026) — le prestataire configure ses virements lui-même,
+autant de fois qu'il le faut. Le compte Connect était créé à la validation du dossier et le
+lien de configuration partait dans l'e-mail de bienvenue ; ce lien **expire en 24 h**, décision
+de Stripe. Passé ce délai, le prestataire n'avait plus aucun moyen d'y revenir : pas de bouton,
+pas de renvoi, et rien à l'écran pour lui dire que ses virements n'étaient pas configurés. Il
+voyait ses prestations validées, ses factures émises, et aucun argent arriver.
+
+La fonction crée le compte s'il n'existe pas — dossier validé avant Connect, ou création qui
+avait échoué — et régénère un lien à chaque appel plutôt que d'en stocker un, qui serait périmé
+le jour où l'on en a besoin. L'identité vient du jeton : chacun ne configure que son propre
+compte. Le bloc `CarteVirements` l'affiche en tête de l'onglet « Prestations » tant que le
+compte n'est pas actif, et « Compte de virement configuré » rejoint la liste des premiers pas —
+l'IBAN qui y figurait déjà sert à la FACTURE, pas au virement, et la liste pouvait être
+entièrement cochée sans qu'un euro puisse partir.
 
 **Un virement sans destinataire n'est pas un traitement en panne** (24/08/2026). Le versement
 exige un compte **Stripe Connect actif** chez le prestataire (`profiles.stripe_account_id` +
