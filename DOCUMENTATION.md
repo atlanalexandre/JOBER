@@ -52,7 +52,8 @@ src/
     payment.jsx              tunnel de paiement Stripe
     ui.jsx                   composants partagés (boutons, badges, modales)
   constants/
-    data.js                  secteurs, métiers, tarifs, documents requis (226 métiers, 7 secteurs)
+    data.js                  secteurs, métiers, tarifs, codes ROME, documents requis
+                             (226 métiers, 7 secteurs, 210 codes ROME renseignés)
     plans.js                 abonnements, frais, paliers de cashback
     colors.js                charte graphique
 api/                         27 fonctions serverless
