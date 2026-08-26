@@ -4,7 +4,7 @@ import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
-import { fenetrePointage, finPrestationMs } from "../../api/_temps.js";
+import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
@@ -3040,7 +3040,21 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       de recopier ici une borne horaire : c'est exactement de
                       cette façon que les quatre fenêtres de pointage avaient
                       divergé. */}
-                  {!isPast && (
+                  {/* Le partage de position n'a de sens QUE pendant la fenêtre où
+                      le client attend quelqu'un — une heure avant le début, une
+                      heure après la fin. C'est exactement ce que le serveur
+                      applique (`fenetrePartagePosition`).
+
+                      Le bouton s'affichait pourtant sur une prestation prévue le
+                      lendemain : le prestataire l'aurait touché et le serveur
+                      l'aurait refusé, sans qu'il comprenne pourquoi. Le même
+                      défaut avait été corrigé le 24/08 pour l'APRÈS ; il restait
+                      l'AVANT.
+
+                      La fenêtre est lue par la fonction partagée, jamais
+                      recopiée : c'est ainsi que les quatre bornes de pointage
+                      avaient divergé. */}
+                  {fenetrePartagePosition({ date:m.date, heure_debut:m.heure_debut, hours:m.hours, actual_hours:m.actual_hours, started_at:startedAtMap[m.id] }).ouverte && (
                     <button onClick={() => toggleTracking(m.id)}
                       style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                       {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
