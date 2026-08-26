@@ -198,21 +198,17 @@ supprimer les deux archives, donc de renoncer à la trace des documents émis.
 
 ---
 
-## 10. Les faux documents du back-office — à retirer avant toute démonstration
+## 10. ~~Les faux documents du back-office~~ — **fait le 24/08/2026**
 
-`DemoDocPreview` dans `src/components/backoffice.jsx` affiche un **faux extrait
-Kbis** au nom de « ATLAN SERVICES SAS », SIRET « 823 456 789 00015 », siège
-« 12 Rue de la Paix, 75002 Paris ». C'est un écran de démonstration, sans effet
-sur les données réelles.
+`DemoDocPreview` fabriquait sept documents officiels à l'écran pour les comptes
+de démonstration : extrait Kbis sous en-tête « Tribunal de commerce de Paris »,
+attestation URSSAF avec son numéro, relevé d'identité bancaire « Crédit
+Agricole », carte d'identité « République française », attestation d'assurance,
+justificatif de domicile, photo. Le Kbis portait le code APE **7820Z — Activité
+des agences de travail temporaire**, soit la qualification même que l'article
+4.1 des CGPS s'emploie à écarter, et une identité de société inventée.
 
-Deux raisons de s'en occuper malgré tout :
-
-- Le code APE qu'il affiche est **7820Z — Activité des agences de travail
-  temporaire**. C'est précisément la qualification que l'article 4.1 des CGPS
-  s'emploie à écarter. Montrer cet écran à un investisseur, un assureur ou un
-  contrôleur serait très inconfortable.
-- Une fois la vraie société créée, ces données inventées n'ont plus aucune
-  raison d'exister.
+Ils sont remplacés par un encart qui dit ce qu'il est. Rien à faire de plus.
 
 ---
 
