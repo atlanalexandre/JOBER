@@ -3678,7 +3678,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
           if(r.status===404){await supabase.auth.signOut();return "__deleted__";}
           return r.ok?r.json():null;
         }).catch(()=>null),
-        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_montant,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at").eq("prestataire_id",u.id).in("status",["assigned","completed","closed","refused","cancelled","disputed"]),
+        supabase.from("missions").select("id,client_id,montant_total,tarif_horaire,hours,actual_hours,date,date_debut,date_fin,heure_debut,sector,metier,titre,status,payout_status,payout_amount,payout_due_at,resolution_proposee,resolution_motif,resolution_montant,resolution_echeance_at,resolution_opposition_at,resolution_acceptation_client_at,resolution_acceptation_prestataire_at,resolution_executee_cause").eq("prestataire_id",u.id).in("status",["assigned","completed","closed","refused","cancelled","disputed"]),
         supabase.from("ratings").select("rating").eq("reviewee_provider_id",u.id),
         fetch("/api/missions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"refresh_plan"})}).then(r=>r.json()).catch(()=>null),
       ]);
@@ -4203,9 +4203,20 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                       <span style={{ background:`${statusColor}20`, border:`1px solid ${statusColor}44`, borderRadius:20, padding:"2px 8px", color:statusColor, fontSize:10, fontWeight:700 }}>{statusLabel}</span>
                     </div>
                   </div>
+                  {/* `closed` a PLUSIEURS causes, et cette ligne n'en annonçait
+                      qu'une : « Litige dénoué par un remboursement du client ».
+                      Elle s'affichait donc sur des prestations qui n'ont jamais
+                      connu de litige — clôturées par le traitement automatique
+                      faute de prestataire, ou à la main depuis le back-office.
+                      Constaté le 26/08/2026 sur une prestation du 30/07 dont
+                      `resolution_executee_cause` et `payout_status` étaient nuls.
+
+                      On ne dit désormais la cause QUE lorsqu'elle est établie. */}
                   {m.status === "closed" && (
                     <div style={{ marginTop:8, color:C.textSub, fontSize:11, lineHeight:1.5 }}>
-                      ⚖️ Litige dénoué par un remboursement du client — cette prestation ne donne pas lieu à versement.
+                      {m.resolution_executee_cause || m.payout_status === "annule"
+                        ? "⚖️ Litige dénoué par un remboursement du client — cette prestation ne donne pas lieu à versement."
+                        : "Prestation clôturée — aucun versement n'est attendu. Écrivez à direction@alane.fr si vous pensez qu'une somme vous est due."}
                     </div>
                   )}
 
