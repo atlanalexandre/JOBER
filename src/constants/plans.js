@@ -76,4 +76,24 @@ export const CASHBACK_TIERS = [
   { id:"platinum", min:10, max:999, rate:0.015,  label:"Platinum", icon:"💎", color:"#A89DF5" },
 ];
 export const getCashbackTier = (missions) => CASHBACK_TIERS.slice().reverse().find(t => missions >= t.min) || CASHBACK_TIERS[0];
+
+// Le taux d'un palier, tel qu'il s'affiche.
+//
+// Six écrans faisaient `(tier.rate * 100).toFixed(0)`, qui arrondit à l'entier :
+// trois paliers sur quatre étaient donc annoncés FAUX, et toujours en trop.
+//
+//     Standard  0,5 %  → affiché « 1 % »   (le double)
+//     Silver   0,75 %  → affiché « 1 % »
+//     Gold        1 %  → affiché « 1 % »   (le seul juste)
+//     Platinum  1,5 %  → affiché « 2 % »
+//
+// Un client qui lit « 1 % » et touche 0,50 € pour 100 € dépensés a été trompé
+// sur une promesse commerciale chiffrée (art. L121-2 du Code de la
+// consommation). Le montant versé, lui, a toujours été exact : c'est
+// l'affichage qui mentait.
+export const tauxCashback = (tier) => {
+  const pct = (Number(tier?.rate) || 0) * 100;
+  // Pas de décimale inutile : « 1 % » et non « 1,0 % ».
+  return (Number.isInteger(pct) ? String(pct) : pct.toFixed(2).replace(/0+$/, "").replace(".", ",")) + " %";
+};
 export const calcCashback = (amount, missions) => amount * getCashbackTier(missions).rate;

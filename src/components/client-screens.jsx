@@ -4,7 +4,7 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
-import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
+import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
@@ -2881,7 +2881,10 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     isUrgent ? "urgent" : missionType === "range" ? "range" : "single",
     totalHT, nbJours, fraisSettings
   );
-  const totalGlobal = (Math.round((totalHT + fraisMission) * 100) / 100).toFixed(2);
+  // `toFixed(2)` produit « 20.20 », avec un POINT. Le tunnel de commande
+  // affichait donc « + 5.20 € frais = 20.20 € total » là où un prix français
+  // s'écrit avec une virgule — sur l'écran même où le client décide de payer.
+  const totalGlobal = formatMontant(Math.round((totalHT + fraisMission) * 100) / 100).replace(" €", "");
 
   // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
   const _urgentMs = Date.now() + 45 * 60 * 1000;
@@ -3155,7 +3158,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
-                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {`${fraisMission.toFixed(2)} €`} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
+                <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {formatMontant(fraisMission)} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
                 )}
@@ -3360,7 +3363,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     <span style={{ fontSize:15 }}>💰</span>
                     <div>
                       <div style={{ fontSize:12, fontWeight:700, color:C.success }}>Cashback gagné</div>
-                      <div style={{ fontSize:10, color:C.textMuted }}>Palier {tier.icon} {tier.label} · {(tier.rate*100).toFixed(0)}% du total</div>
+                      <div style={{ fontSize:10, color:C.textMuted }}>Palier {tier.icon} {tier.label} · {tauxCashback(tier)} du total</div>
                     </div>
                   </div>
                   <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>+{earned.toFixed(2)} €</span>
@@ -3548,7 +3551,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                   <div style={{ width:44, height:44, borderRadius:12, background:`${C.success}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💰</div>
                   <div style={{ flex:1, textAlign:"left" }}>
                     <div style={{ fontWeight:700, color:C.success, fontSize:14, marginBottom:2 }}>+{earned.toFixed(2)} € de cashback gagné !</div>
-                    <div style={{ color:C.textSub, fontSize:12 }}>Crédit dans 24h · Palier {tier.icon} {tier.label} ({(tier.rate*100).toFixed(0)}%)</div>
+                    <div style={{ color:C.textSub, fontSize:12 }}>Crédit dans 24h · Palier {tier.icon} {tier.label} ({tauxCashback(tier)})</div>
                   </div>
                 </div>
               );
@@ -7673,7 +7676,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginBottom:16 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Votre statut fidélité</div>
-            <Badge color={tier.color} small>{tier.icon} {tier.label} — {(tier.rate*100).toFixed(0)}%</Badge>
+            <Badge color={tier.color} small>{tier.icon} {tier.label} — {tauxCashback(tier)}</Badge>
           </div>
 
           {/* Barre de progression */}
@@ -7684,7 +7687,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
           {nextTier ? (
             <p style={{ color:C.textSub, fontSize:12 }}>
               Encore <strong style={{ color:C.text }}>{missionsToNext} prestation{missionsToNext>1?"s":""}</strong> ce mois pour atteindre le palier{" "}
-              <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({(nextTier.rate*100).toFixed(0)}%)</strong>
+              <strong style={{ color:nextTier.color }}>{nextTier.icon} {nextTier.label} ({tauxCashback(nextTier)})</strong>
             </p>
           ) : (
             <p style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>💎 Vous êtes au palier maximum — félicitations !</p>
@@ -7700,7 +7703,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
               }}>
                 <div style={{ fontSize:16, marginBottom:2 }}>{t.icon}</div>
                 <div style={{ fontSize:9, fontWeight:700, color:t.id===tier.id?t.color:C.textMuted, textTransform:"uppercase", letterSpacing:0.3 }}>{t.label}</div>
-                <div style={{ fontSize:11, fontWeight:800, color:t.id===tier.id?t.color:C.textMuted, marginTop:1 }}>{(t.rate*100).toFixed(0)}%</div>
+                <div style={{ fontSize:11, fontWeight:800, color:t.id===tier.id?t.color:C.textMuted, marginTop:1 }}>{tauxCashback(t)}</div>
               </div>
             ))}
           </div>
