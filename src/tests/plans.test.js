@@ -9,7 +9,7 @@
 // vérifie qu'ils ne bougent pas SANS QU'ON LE VEUILLE, et qu'un seul endroit
 // les porte.
 import { describe, it, expect } from "vitest";
-import { ABONNEMENTS_PRESTA, prixPlan, formatE, formatMontant } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, prixPlan, formatE, formatMontant, CASHBACK_TIERS, tauxCashback } from "../constants/plans.js";
 
 describe("les formules d'abonnement", () => {
   it("porte les trois formules, dans l'ordre croissant", () => {
@@ -53,5 +53,31 @@ describe("les formules d'abonnement", () => {
       expect(p.features.length, p.id).toBeGreaterThan(0);
       expect(typeof p.missions, p.id).toBe("number");
     }
+  });
+});
+
+describe("le taux de cashback affiché", () => {
+  it("dit le taux réel, pas un arrondi à l'entier", () => {
+    // Six écrans faisaient `(rate * 100).toFixed(0)` : trois paliers sur quatre
+    // étaient annoncés faux, et toujours EN TROP. Un client qui lit « 1 % » et
+    // touche 0,50 € pour 100 € dépensés a été trompé sur une promesse chiffrée.
+    const par = Object.fromEntries(CASHBACK_TIERS.map(t => [t.id, tauxCashback(t)]));
+    expect(par.standard).toBe("0,5 %");
+    expect(par.silver).toBe("0,75 %");
+    expect(par.gold).toBe("1 %");
+    expect(par.platinum).toBe("1,5 %");
+  });
+
+  it("n'annonce jamais plus que ce qui sera versé", () => {
+    // La borne qui compte : l'affiché ne doit pas dépasser le réel.
+    for (const t of CASHBACK_TIERS) {
+      const affiche = parseFloat(tauxCashback(t).replace(",", ".").replace(" %", ""));
+      expect(affiche).toBeLessThanOrEqual(t.rate * 100 + 1e-9);
+    }
+  });
+
+  it("les paliers montent avec le nombre de prestations", () => {
+    const taux = CASHBACK_TIERS.map(t => t.rate);
+    expect(taux).toEqual([...taux].sort((a, b) => a - b));
   });
 });

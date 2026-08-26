@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
 import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
-import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
+import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
 import { SECTORS } from "./constants/data.js";
 import { useResponsive } from "./hooks/useResponsive.js";
@@ -1949,7 +1949,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {(getCashbackTier(clientCashback?.missions_completed_month||0).rate*100).toFixed(0)}% sur chaque prestation
+                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {tauxCashback(getCashbackTier(clientCashback?.missions_completed_month||0))} sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
