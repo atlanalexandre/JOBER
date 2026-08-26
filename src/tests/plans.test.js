@@ -9,7 +9,7 @@
 // vérifie qu'ils ne bougent pas SANS QU'ON LE VEUILLE, et qu'un seul endroit
 // les porte.
 import { describe, it, expect } from "vitest";
-import { ABONNEMENTS_PRESTA, prixPlan } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, prixPlan, formatE, formatMontant } from "../constants/plans.js";
 
 describe("les formules d'abonnement", () => {
   it("porte les trois formules, dans l'ordre croissant", () => {
@@ -33,6 +33,17 @@ describe("les formules d'abonnement", () => {
 
   it("rend une chaîne vide sur une formule inconnue, pas « undefined € »", () => {
     expect(prixPlan("platine")).toBe("");
+  });
+
+  it("distingue un taux horaire d'un montant", () => {
+    // Le simulateur de charges affichait « Prestation 4h — 39,00 €/h » : le
+    // total de quatre heures présenté comme un tarif horaire. Et « 9,75 €/h/h »,
+    // parce que `formatE` porte déjà le « /h » et qu'on le rajoutait.
+    expect(formatE(9.75)).toBe("9,75 €/h");
+    expect(formatMontant(39)).toBe("39,00 €");
+    expect(formatMontant(312)).toBe("312,00 €");
+    // Un montant ne porte JAMAIS de « /h ».
+    expect(formatMontant(39)).not.toContain("/h");
   });
 
   it("donne à chaque formule de quoi s'afficher", () => {

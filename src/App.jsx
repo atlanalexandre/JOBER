@@ -196,7 +196,9 @@ function SplashScreen({ onNext }) {
           {[
             // Tant que le nombre réel n'est pas connu, la pastille est omise :
             // mieux vaut deux chiffres que trois dont un faux.
-            ...(prestaCount != null ? [{ v:String(prestaCount), l:"Prestataires" }] : []),
+            // « 1 Prestataires » sur la page d'accueil : le pluriel doit suivre
+            // le nombre, surtout quand ce nombre vaut un.
+            ...(prestaCount != null ? [{ v:String(prestaCount), l:prestaCount > 1 ? "Prestataires" : "Prestataire" }] : []),
             { v:String(SECTORS.length), l:"Secteurs" },
             { v:"0 €", l:"Inscription" },
           ].map(s=>(
