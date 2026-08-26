@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, finPrestationMs } from "../../api/_temps.js";
@@ -932,7 +932,9 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                   <div style={{ width:40, height:40, borderRadius:11, background:plan.color+"20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{plan.icon}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{plan.label}</div>
-                    <div style={{ fontWeight:800, color:plan.color, fontSize:17 }}>{plan.price===0?"Gratuit":plan.price+" €/mois"}</div>
+                    {/* `plan.price + " €/mois"` affichait « 29.99 €/mois », avec
+                        un point décimal. En français, c'est la virgule. */}
+                    <div style={{ fontWeight:800, color:plan.color, fontSize:17 }}>{plan.price===0?"Gratuit":`${formatMontant(plan.price)}/mois`}</div>
                   </div>
                   <div style={{ width:22, height:22, borderRadius:"50%", border:`2px solid ${active?plan.color:C.border}`, background:active?plan.color:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                     {active&&<div style={{ width:8, height:8, borderRadius:"50%", background:"#fff" }}/>}
@@ -998,7 +1000,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             {title:"📎 Documents",items:[`${Object.values(docs).filter(Boolean).length}/${docsAttendus.length} chargés`]},
             {title:"💼 Métiers & taux nets",items:metiers.map(m=>m.tarifNet?`${m.metier} — ${formatE(m.tarifNet)} net`:m.metier)},
             {title:"📅 Disponibilités",items:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j} : ${(dispos[j]||[]).map(p=>p.split(" ")[0]).join(", ")}`)},
-            ...[{title:"💎 Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"Gratuit":(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price)+" €/mois")]}],
+            ...[{title:"💎 Abonnement",items:[(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)||ABONNEMENTS_PRESTA[0]).label+" — "+prixPlan(abonnement)+(ABONNEMENTS_PRESTA.find(p=>p.id===abonnement)?.price===0?"":"/mois")]}],
           ].map(section=>(
             <div key={section.title} style={{ background:"#0D1B3E", borderRadius:r, padding:"14px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
               <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:8 }}>{section.title}</div>

@@ -650,7 +650,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                       <span style={{ fontSize:22 }}>{plan.icon}</span>
                       <div>
                         <div style={{ fontWeight:800, color: active ? plan.color : C.text, fontSize:15 }}>{plan.label}</div>
-                        <div style={{ color:C.textSub, fontSize:12 }}>{plan.price === 0 ? "Gratuit" : `${plan.price} €/mois`}</div>
+                        {/* `${plan.price}` affichait « 29.99 €/mois », avec un point
+                            décimal, sur l'écran où le prestataire choisit sa formule.
+                            En français le séparateur est la virgule. */}
+                        <div style={{ color:C.textSub, fontSize:12 }}>{plan.price === 0 ? "Gratuit" : `${formatMontant(price)}/mois`}</div>
                       </div>
                     </div>
                     <div style={{ width:22, height:22, borderRadius:"50%", border:`2px solid ${active ? plan.color : C.border}`, background: active ? plan.color : "transparent", display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.2s" }}>
@@ -686,7 +689,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               { l:"Téléphone",     v:telephone },
               { l:"Adresse",       v:`${adresseRue.trim()}, ${codePostal.trim()} ${villeBase.trim()}`.replace(/^, /,"") || "—" },
               { l:"Rayon",         v:`${rayonKm} km autour de ${villeBase || "votre ville"}` },
-              { l:"Métiers",       v:metiers.map(m=>`${m.metier} (${formatE(m.tarifNet)}/h)`).join(", ") || "—" },
+              // `formatE` porte déjà « €/h » : le « /h » ajouté ici donnait
+              // « Femme/Valet de chambre (12,50 €/h/h) » sur le récapitulatif
+              // final, juste avant la création du compte.
+              { l:"Métiers",       v:metiers.map(m=>`${m.metier} (${formatE(m.tarifNet)})`).join(", ") || "—" },
               { l:"Niveau",        v:niveau },
               { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
               { l:"Disponibilités",v:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j.slice(0,3)}: ${(dispos[j]||[]).map(c=>c.split(" ")[0]).join(", ")}`).join(" · ") || "—" },
@@ -702,7 +708,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           </div>
           <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
           <div style={{ position:"relative" }}>
-            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 8 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
@@ -1073,7 +1079,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
           </div>
           <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
           <div style={{ position:"relative" }}>
-            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+            <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 8 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
@@ -1480,7 +1486,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
 
             <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
-              <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 6 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
+              <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 8 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
               <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>
                 {showPass?"Cacher":"Voir"}
               </button>
