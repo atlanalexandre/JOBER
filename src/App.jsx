@@ -148,24 +148,35 @@ function SplashScreen({ onNext }) {
       }}>
         {/* Tag */}
         <div style={{ marginBottom:20 }}>
-          <Badge color={C.violet}>Plateforme de services à la demande</Badge>
+          <Badge color={C.violet}>Plateforme de mise en relation</Badge>
         </div>
 
-        {/* Headline */}
+        {/* ── Le titre principal de la page ─────────────────────────────
+            « Le bon pro, au bon moment. » était le H1. C'est un bon slogan
+            et un mauvais titre : il ne dit ni le métier, ni le service, ni
+            pour qui. Google n'y lisait qu'un nom de marque, et le site ne
+            ressortait que sur des recherches contenant « alane ».
+
+            Le H1 dit maintenant ce qu'on vient chercher ; le slogan reste,
+            juste en dessous, à la place qui est la sienne. */}
         <h1 style={{
-          color:C.text, fontSize:42, fontWeight:800,
-          margin:"0 0 16px", lineHeight:1.1,
-          fontFamily:font.display, letterSpacing:-1,
+          color:C.text, fontSize:32, fontWeight:800,
+          margin:"0 0 12px", lineHeight:1.15,
+          fontFamily:font.display, letterSpacing:-0.5,
         }}>
-          Le bon pro,<br/>
-          <span style={{
+          Trouvez un <span style={{
             background:`linear-gradient(135deg, ${C.violet}, ${C.violetLight})`,
             WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-          }}>au bon moment.</span>
+          }}>prestataire indépendant</span> pour votre entreprise
         </h1>
 
-        <p style={{ color:C.textSub, fontSize:15, lineHeight:1.7, marginBottom:48, maxWidth:300 }}>
-          Trouvez des prestataires qualifiés et vérifiés pour vos prestations ponctuelles — en quelques minutes.
+        <p style={{ color:C.accentGold, fontSize:15, fontWeight:700, margin:"0 0 14px", fontFamily:font.display }}>
+          Le bon pro, au bon moment.
+        </p>
+
+        <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, marginBottom:44, maxWidth:340 }}>
+          ALANE est la plateforme française qui met en relation les entreprises avec des prestataires
+          indépendants vérifiés, pour des prestations ponctuelles ou récurrentes partout en France.
         </p>
 
         {/* Stats pills */}
