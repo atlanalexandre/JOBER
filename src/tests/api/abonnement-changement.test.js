@@ -16,11 +16,11 @@ function decision({ planVise, planActuel, abonnement, statut }) {
   const vivant = abonnement && ["active", "trialing", "past_due"].includes(statut);
   if (!vivant) return planVise === "free" ? "refus" : "souscription";
   if (planVise === "free") return "resiliation_fin_de_periode";
-  return (RANG[planVise] ?? 0) > (RANG[planActuel] ?? 0) ? "montee" : "descente";
+  return (RANG[planVise] ?? 0) > (RANG[planActuel] ?? 0) ? "montee" : "descente_fin_de_periode";
 }
 
 /** Le prorata appliqué par Stripe selon le sens du changement. */
-const prorata = (d) => d === "montee" ? "always_invoice" : "create_prorations";
+const prorata = (d) => d === "montee" ? "always_invoice" : "none";
 
 /** La décision prise par le webhook sur `customer.subscription.deleted`. */
 const doitDegrader = (idEvenement, abonnementDuProfil) =>
@@ -34,17 +34,21 @@ describe("changer de formule", () => {
       .toBe("montee");
   });
 
-  it("une montée se facture tout de suite, une descente porte un avoir", () => {
+  it("une montée se facture tout de suite, une descente ne déduit rien", () => {
     // Le nouveau quota est disponible dans la seconde : il se paie dans la
-    // seconde. À l'inverse, rembourser une différence sur une carte pour la
-    // reprélever le mois suivant n'a aucun intérêt.
+    // seconde. À l'inverse — décision d'Alexandre du 24/08/2026 — une
+    // rétrogradation ne donne lieu à AUCUNE déduction : elle ne s'applique
+    // qu'au terme de la période payée, donc il n'y a rien à répartir.
     expect(prorata("montee")).toBe("always_invoice");
-    expect(prorata("descente")).toBe("create_prorations");
+    expect(prorata("descente_fin_de_periode")).toBe("none");
   });
 
-  it("Elite → Premium est une descente", () => {
+  it("Elite → Premium ne prend effet qu'au terme de la période payée", () => {
+    // Appliquer la formule inférieure tout de suite SANS déduction reviendrait
+    // à encaisser le prix d'Elite en fournissant Premium — ce qu'un client
+    // conteste et obtient. Le prestataire garde donc ce qu'il a payé.
     expect(decision({ planVise:"premium", planActuel:"elite", abonnement:"sub_A", statut:"active" }))
-      .toBe("descente");
+      .toBe("descente_fin_de_periode");
   });
 
   it("le retour au gratuit résilie en FIN de période", () => {
@@ -72,7 +76,7 @@ describe("changer de formule", () => {
     // pour régulariser. Le renvoyer sur une souscription neuve lui en créerait
     // une deuxième, ce qu'on vient précisément de supprimer.
     expect(decision({ planVise:"premium", planActuel:"elite", abonnement:"sub_A", statut:"past_due" }))
-      .toBe("descente");
+      .toBe("descente_fin_de_periode");
   });
 });
 
