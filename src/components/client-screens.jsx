@@ -9,7 +9,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CA
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -835,10 +835,14 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const sectorStatus = useSectorStatus();
   const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
   const [prestaCount, setPrestaCount] = useState(null);
+  // Les places de l'offre, comptées comme la règle serveur les compte : à
+  // l'ouverture de l'accès aux prestations, pas au nombre d'approuvés.
+  const [placesHome, setPlacesHome] = useState(null);
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
     fetchPrestaCount().then(c => { if (c != null) setPrestaCount(c); });
+    fetchPlacesLancement().then(n => { if (n != null) setPlacesHome(n); });
   }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -1147,7 +1151,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={prestaCount != null ? Math.max(0, 100 - prestaCount) : null} /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={placesHome} /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -5036,6 +5040,8 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
 export function HowItWorksScreen({ role, onNext, onBack }) {
   const [step, setStep] = useState(0);
   const [planSettings, setPlanSettings] = useState({ limits: null, prices: null, launchPhase: true });
+  // Le nom garde son « Count » d'origine mais porte désormais les PLACES
+  // RESTANTES, comptées à l'ouverture de l'accès aux prestations.
   const [prestaCountHIW, setPrestaCountHIW] = useState(null);
   useEffect(() => {
     Promise.all([
@@ -5045,7 +5051,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     ]).then(([l, p, lp]) => {
       setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
     });
-    fetchPrestaCount().then(c => { if (c != null) setPrestaCountHIW(c); });
+    fetchPlacesLancement().then(n => { if (n != null) setPrestaCountHIW(n); });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;
@@ -5092,7 +5098,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:C.textSub, fontSize:11, lineHeight:1.5 }}>
                 {role==="prestataire"
-                  ? `8 prestations gratuites · ${prestaCountHIW != null ? (Math.max(0, 100 - prestaCountHIW) > 0 ? `Plus que ${Math.max(0, 100 - prestaCountHIW)} place${Math.max(0, 100 - prestaCountHIW) > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers inscrits"}`
+                  ? `8 prestations gratuites · ${prestaCountHIW != null ? (prestaCountHIW > 0 ? `Plus que ${prestaCountHIW} place${prestaCountHIW > 1 ? "s" : ""} sur 100` : "100/100 — offre terminée") : "Réservé aux 100 premiers prestataires validés"}`
                   : "Tarif transparent · le prix affiché est le vrai prix de la prestation"}
               </div>
             </div>
@@ -8598,7 +8604,7 @@ export function AbonnementPrestaScreen({ onBack }) {
               <span style={{ fontSize:20 }}>🚀</span>
               <div>
                 <div style={{ fontWeight:700, color:C.violetLight, fontSize:13 }}>Offre de lancement exclusive</div>
-                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires inscrits</strong> bénéficient de <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong>.<br/>Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
+                <div style={{ color:C.textSub, fontSize:12, marginTop:3, lineHeight:1.5 }}>Les <strong style={{ color:C.white }}>100 premiers prestataires validés</strong> bénéficient de <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong>.<br/>La place est attribuée à l'ouverture de l'accès aux prestations, une fois le dossier vérifié. Plan Gratuit : 2 prestations/mois ensuite pour tous.</div>
               </div>
             </div>
           </div>

@@ -433,12 +433,15 @@ export const DonutChart = ({ sectors, size=120 }) => {
 
 export function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
+  // « inscrits » est devenu « validés » le 24/08/2026 : la place s'attribue à
+  // l'ouverture de l'accès aux prestations, pas au remplissage du formulaire.
+  // Annoncer l'inverse promettrait une offre à des gens qui ne l'auraient pas.
   const spotsText = spotsLeft !== null
     ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
-    : "Réservé aux 100 premiers prestataires inscrits";
+    : "Réservé aux 100 premiers prestataires validés";
   const msgs = {
     home:    { icon:"🎉", title:"Offre de lancement", sub:`8 prestations gratuites · ${spotsText}` },
-    presta:  { icon:"🚀", title:"8 prestations offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires inscrits" },
+    presta:  { icon:"🚀", title:"8 prestations offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires validés" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;
@@ -542,6 +545,28 @@ export function PromptModal() {
       </div>
     </div>
   );
+}
+
+// ── Les places de l'offre de lancement ───────────────────────────────
+//
+// À ne pas confondre avec `fetchPrestaCount()` juste en dessous, qui compte les
+// prestataires APPROUVÉS et sert à la vitrine (« 88+ prestataires »).
+//
+// Le compteur de l'offre se calculait sur ce même nombre, alors que la règle
+// serveur retenait les 100 premiers INSCRITS : les deux ne comptaient pas la
+// même chose, et l'écran pouvait annoncer des places qui n'existaient plus.
+// Depuis le 24/08/2026 la place s'attribue à l'ouverture de l'accès aux
+// prestations, et c'est ce que cette fonction compte — une seule vérité.
+let _placesCache = null;
+let _placesPending = null;
+export function fetchPlacesLancement() {
+  if (_placesCache !== null) return Promise.resolve(_placesCache);
+  if (_placesPending) return _placesPending;
+  _placesPending = fetch("/api/prestataires?action=places")
+    .then(r => r.json())
+    .then(d => { _placesCache = d?.restantes ?? null; _placesPending = null; return _placesCache; })
+    .catch(() => { _placesPending = null; return null; });
+  return _placesPending;
 }
 
 // ── prestaCount singleton ────────────────────────────────────────────

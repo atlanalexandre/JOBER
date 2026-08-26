@@ -27,7 +27,7 @@ export const ABONNEMENTS_PRESTA = [
   { id:"free",    label:"Gratuit", price:0,  color:"#8B8FA8", icon:"🆓", missions:2,  popular:false,
     features:["2 prestations/mois","Profil visible par les clients"],
     locked:["8 prestations/mois","Badge ✓ Certifié — les clients te font davantage confiance","Priorité dans les résultats de recherche"],
-    note:"🎁 Offre de lancement : 8 prestations/mois offertes aux 100 premiers inscrits." },
+    note:"🎁 Offre de lancement : 8 prestations/mois offertes aux 100 premiers prestataires validés." },
   { id:"premium", label:"Premium", price:29.99, color:"#7C6FE0", icon:"💎", missions:8, popular:true,
     features:["8 prestations/mois","Badge ✓ Certifié affiché sur ton profil — visible par tous les clients"],
     locked:["Badge 👑 Elite et position #1 garantie dans les résultats"] },

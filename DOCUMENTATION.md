@@ -838,6 +838,30 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**L'offre de lancement s'attribue à l'ouverture de l'accès aux prestations** (24/08/2026).
+Les 8 prestations mensuelles revenaient aux 100 profils prestataires les plus anciens **par
+date d'inscription**, sans regarder le statut du compte ni l'accès aux prestations : la place
+était prise en remplissant le formulaire, avant toute vérification. Un compte refusé la gardait,
+un compte sans documents aussi, et cinquante inscriptions fantômes auraient consommé la moitié
+de l'offre.
+
+S'y ajoutait une incohérence d'affichage : le compteur « Plus que X places sur 100 » se
+calculait sur les prestataires **approuvés**. Avec 150 inscrits et 40 validés, l'écran annonçait
+60 places restantes quand il n'y en avait plus une seule — une promesse faite à des gens qui ne
+l'auraient jamais eue (art. L121-2 du Code de la consommation).
+
+`profiles.missions_enabled_at` marque l'entrée dans les 100 places. Le tri porte sur elle et non
+sur `created_at` : trier les ouverts par leur date d'inscription rendrait le classement
+instable, puisqu'ouvrir l'accès à quelqu'un inscrit de longue date le ferait entrer dans les 100
+en poussant dehors un autre, qui perdrait une offre déjà accordée. Elle n'est écrite que si elle
+est vide — une suspension suivie d'une réouverture ne coûte pas sa place. Elle n'est pas
+modifiable depuis le navigateur : un prestataire s'y antidaterait.
+
+`/api/prestataires?action=places` compte les places prises et restantes, et remplace partout le
+décompte des approuvés : le compteur et la règle disent enfin la même chose. Les textes annoncent
+« 100 premiers prestataires validés », et la mention « 10 missions/mois » de l'écran
+d'abonnement — divergente depuis toujours — devient « 8 prestations/mois ».
+
 **Le compte de virement (Stripe Connect)** — `api/_connect.js` est la source unique :
 `assurerCompteConnect()` crée le compte au besoin, `lienConfiguration()` produit un lien frais.
 Les deux appelants sont l'ouverture de l'accès aux prestations (`bo-action.js`,

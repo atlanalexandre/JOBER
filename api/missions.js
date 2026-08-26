@@ -333,7 +333,8 @@ function suffixeRemboursement({ rembourse }) {
 // gratuites ». Cette promesse n'était appliquée nulle part : le quota retombait
 // systématiquement sur `plan_limits.free` (2), et un prestataire du lancement se
 // voyait refuser sa 3ᵉ prestation avec un message parlant de « limite de son plan ».
-// L'offre s'applique tant que le réglage `launch_phase` n'a pas été fermé.
+// L'offre s'applique tant que le réglage `launch_phase` n'a pas été fermé, et
+// aux 100 premiers prestataires dont l'accès aux prestations a été ouvert.
 async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
   let limites = { free: 2, premium: 8, elite: 999 };
   try {
@@ -364,8 +365,36 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
       return limite;
     }
 
-    // Les 100 premiers prestataires inscrits, dans l'ordre de création du profil.
-    const cr = await fetch(`${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&select=id&order=created_at.asc&limit=100`, { headers });
+    // Les 100 premiers prestataires dont l'ACCÈS AUX PRESTATIONS a été ouvert.
+    //
+    // Le classement portait sur la date d'INSCRIPTION, tous profils confondus :
+    // la place était prise en remplissant le formulaire, avant toute
+    // vérification. Un compte refusé la gardait, un compte sans documents
+    // aussi, et cinquante inscriptions fantômes auraient consommé la moitié de
+    // l'offre.
+    //
+    // Décision d'Alexandre du 24/08/2026 : elle s'attribue à l'ouverture de
+    // l'accès aux prestations, seul moment qui atteste d'un dossier complet et
+    // vérifié — et que l'intéressé ne peut pas provoquer lui-même.
+    //
+    // Le tri porte sur `missions_enabled_at` et non sur `created_at` : trier
+    // les ouverts par leur date d'inscription rendrait le classement instable,
+    // puisqu'ouvrir l'accès à quelqu'un inscrit de longue date le ferait entrer
+    // dans les 100 en poussant dehors un autre, qui perdrait une offre déjà
+    // accordée.
+    const cr = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&missions_enabled=is.true`
+      + `&select=id&order=missions_enabled_at.asc.nullslast&limit=100`,
+      { headers }
+    );
+    if (!cr.ok) {
+      // Colonne inconnue → migration non appliquée. Sans elle, personne ne
+      // bénéficie de l'offre et personne ne sait pourquoi.
+      const detail = await cr.text().catch(() => "");
+      console.error(`[quota] classement de l'offre illisible (${cr.status}) : ${detail.slice(0, 200)}`
+        + " — vérifier que la migration 2026-08-24_offre_lancement_a_la_validation.sql est appliquée.");
+      return limite;
+    }
     const cd = await cr.json();
     if (Array.isArray(cd) && cd.some(p => p.id === prestataireId)) {
       return Math.max(limite, Number(limites.premium) || 8);

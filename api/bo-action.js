@@ -377,12 +377,31 @@ export default async function handler(req, res) {
     if (action === "enable_missions" || action === "disable_missions") {
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const enabled = action === "enable_missions";
+      // `missions_enabled_at` marque l'entrée dans les 100 places de l'offre de
+      // lancement. On ne l'écrit QUE si elle est vide : une suspension suivie
+      // d'une réouverture ne doit pas coûter sa place à quelqu'un qui l'avait,
+      // ni le replacer derrière ceux arrivés entre-temps.
+      const majProfil = { missions_enabled: enabled };
+      if (enabled) {
+        const dRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_enabled_at`,
+          { headers }
+        );
+        const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
+        if (!(Array.isArray(dRows) && dRows[0]?.missions_enabled_at)) {
+          majProfil.missions_enabled_at = new Date().toISOString();
+        }
+      }
       const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ missions_enabled: enabled }),
+        body: JSON.stringify(majProfil),
       });
-      if (!r.ok) return res.status(500).json({ error: "Erreur mise à jour missions_enabled" });
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        console.error(`[enable_missions] écriture refusée (${r.status}) : ${detail.slice(0, 200)}`);
+        return res.status(500).json({ error: "Erreur mise à jour missions_enabled" });
+      }
       await fetch(`${SUPABASE_URL}/rest/v1/bo_logs`, {
         method: "POST",
         headers: { ...headers, "Prefer": "return=minimal" },

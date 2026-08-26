@@ -16,6 +16,34 @@ export default async function handler(req, res) {
     "Content-Type":  "application/json",
   };
 
+  // Route légère : les PLACES de l'offre de lancement.
+  //
+  // Le compteur affiché — « Plus que X places sur 100 » — se calculait sur les
+  // prestataires APPROUVÉS, alors que l'offre revenait aux 100 premiers
+  // INSCRITS. Les deux ne comptaient pas la même chose : avec 150 inscrits et
+  // 40 validés, l'écran annonçait 60 places restantes quand il n'y en avait
+  // plus une seule. Depuis le 24/08/2026 la place s'attribue à l'ouverture de
+  // l'accès aux prestations, et c'est cela qu'on compte ici — le compteur et
+  // la règle disent enfin la même chose.
+  if (req.query.action === "places") {
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&missions_enabled=is.true&select=id`,
+        { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
+      );
+      const entete = r.headers.get("content-range");
+      const prises = entete ? parseInt(entete.split("/")[1], 10) : null;
+      if (prises === null || isNaN(prises)) {
+        console.error("[places] décompte illisible — le compteur de l'offre restera muet.");
+        return res.status(200).json({ prises: null, restantes: null });
+      }
+      return res.status(200).json({ prises, restantes: Math.max(0, 100 - prises) });
+    } catch (e) {
+      console.error("[places] décompte impossible :", e.message);
+      return res.status(200).json({ prises: null, restantes: null });
+    }
+  }
+
   // Route légère : juste le count des prestataires approuvés
   if (req.query.action === "count") {
     try {
