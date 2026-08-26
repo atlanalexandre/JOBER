@@ -370,217 +370,28 @@ export const METIERS = Object.fromEntries(
 // tarifNet = ce que le prestataire encaisse
 // hourlyRate = prix affiché au CLIENT (tarifNet × (1+marge)) — jamais montré au prestataire
 
-// CV simulés pour quelques prestataires (les autres n'en ont pas)
-export const CV_DATA = {
-  1: { // Thomas Saumur
-    titre:"Logisticien Senior — Cariste CACES 1/3/5",
-    accroche:"Expert en gestion d'entrepôt avec 8 ans d'expérience dans la logistique industrielle. Spécialisé dans les opérations de manutention lourde et la gestion de stocks.",
-    experiences:[
-      { poste:"Cariste Polyvalent", entreprise:"Amazon Logistique France", periode:"2021 – 2025", desc:"Conduite chariots CACES 1,3,5 · Gestion zone stockage · Préparation 400+ commandes/jour" },
-      { poste:"Agent Logistique", entreprise:"DHL Supply Chain", periode:"2018 – 2021", desc:"Réception marchandises · Contrôle qualité · Formation nouveaux agents" },
-      { poste:"Préparateur de commandes", entreprise:"Carrefour Supply", periode:"2017 – 2018", desc:"Picking vocal · Gestion retours · Inventaires tournants" },
-    ],
-    formations:[
-      { diplome:"CACES R489 cat.1/3/5", etablissement:"AFTRAL Paris", annee:"2021" },
-      { diplome:"CAP Magasinier Cariste", etablissement:"CFA Île-de-France", annee:"2017" },
-      { diplome:"Brevet de Secouriste SST", etablissement:"Croix Rouge", annee:"2020" },
-    ],
-    langues:["Français (natif)","Arabe (courant)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-  23: { // Mariam Dubois
-    titre:"Chef de rang — Service gastronomique",
-    accroche:"Passionnée de gastronomie française, j'ai évolué dans les plus grands établissements parisiens. Mon expertise couvre le service en salle, la sommellerie de base et l'accueil VIP.",
-    experiences:[
-      { poste:"Chef de rang", entreprise:"Restaurant Le Grand Véfour ***", periode:"2022 – 2025", desc:"Service gastronomique étoilé · Gestion d'une équipe de 4 serveurs · Accueil clientèle internationale" },
-      { poste:"Cheffe de rang", entreprise:"Hôtel Bristol Paris", periode:"2019 – 2022", desc:"Room service · Petit-déjeuner VIP · Coordination cuisine-salle" },
-      { poste:"Serveuse", entreprise:"Brasserie Lipp", periode:"2017 – 2019", desc:"Service brasserie haut de gamme · Gestion 30 couverts/service" },
-    ],
-    formations:[
-      { diplome:"BTS Hôtellerie-Restauration", etablissement:"Lycée Hôtelier de Paris", annee:"2017" },
-      { diplome:"Formation Sommellerie niveau 1", etablissement:"CIVB Bordeaux", annee:"2020" },
-    ],
-    langues:["Français (natif)","Anglais (courant)","Espagnol (notions)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  33: { // Julie Evan
-    titre:"Réceptionniste Hôtelière — Bilingue",
-    accroche:"Réceptionniste expérimentée en hôtellerie 4 et 5 étoiles, bilingue français-anglais. Maîtrise des logiciels Opera, Fidelio et des standards de qualité hôtelière internationale.",
-    experiences:[
-      { poste:"Réceptionniste", entreprise:"Hôtel Mandarin Oriental Paris", periode:"2022 – 2025", desc:"Accueil clientèle internationale · Check-in/out VIP · Gestion réclamations · Conciergerie" },
-      { poste:"Night Auditor", entreprise:"Novotel Paris Centre", periode:"2020 – 2022", desc:"Clôture caisse · Rapport nuit · Supervision équipe nuit" },
-      { poste:"Réceptionniste", entreprise:"Ibis Paris Gare du Nord", periode:"2019 – 2020", desc:"Accueil et renseignements · Gestion réservations · Standard téléphonique" },
-    ],
-    formations:[
-      { diplome:"BTS Tourisme", etablissement:"IUT Paris Descartes", annee:"2019" },
-      { diplome:"Certification Opera PMS", etablissement:"Oracle Hospitality", annee:"2021" },
-    ],
-    langues:["Français (natif)","Anglais (courant C1)","Arabe (intermédiaire)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  60: { // Marc Durand
-    titre:"Commercial Terrain B2B — Spécialiste grands comptes",
-    accroche:"Commercial expérimenté en développement commercial B2B. 4 ans de terrain avec un track record éprouvé en prospection, négociation et closing. Habitué aux cycles de vente courts.",
-    experiences:[
-      { poste:"Commercial terrain", entreprise:"Salesforce France", periode:"2023 – 2025", desc:"Prospection grands comptes IDF · Négociation contrats 50k€+ · Taux de transformation 34%" },
-      { poste:"Chargé de développement commercial", entreprise:"Doctolib", periode:"2021 – 2023", desc:"Acquisition nouveaux cabinets médicaux · Formation clients · Gestion portefeuille 200 comptes" },
-    ],
-    formations:[
-      { diplome:"Bachelor Commerce International", etablissement:"EFAP Paris", annee:"2021" },
-      { diplome:"Certification Salesforce CRM", etablissement:"Salesforce Trailhead", annee:"2022" },
-    ],
-    langues:["Français (natif)","Anglais (B2)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-  // ── Extras ──────────────────────────────────────────────────────
-  13: { // Inès Moreau
-    titre:"Serveuse — Service en salle & Brasseries",
-    accroche:"Serveuse dynamique avec 3 ans d'expérience en brasseries parisiennes. Sens du service irréprochable, sourire naturel et aisance avec une clientèle variée.",
-    experiences:[
-      { poste:"Serveuse", entreprise:"Brasserie Bouillon Chartier", periode:"2023 – 2025", desc:"Service en salle · 80+ couverts/service · Encaissement · Accueil clients" },
-      { poste:"Serveuse", entreprise:"Café de Flore", periode:"2022 – 2023", desc:"Service rapide brasserie · Gestion des tables · Formation nouveaux serveurs" },
-    ],
-    formations:[
-      { diplome:"CAP Service en Salle", etablissement:"CFA Hôtelier Paris", annee:"2022" },
-      { diplome:"Hygiène alimentaire (HACCP)", etablissement:"Chambre de Commerce Paris", annee:"2022" },
-    ],
-    langues:["Français (natif)","Anglais (B1)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  15: { // Camille Dupont
-    titre:"Serveuse Gastronomique — Service VIP & Anglophone",
-    accroche:"5 ans en restauration haut de gamme, bilingue français-anglais. Expérience service VIP et sommellerie de base. Reconnue pour son professionnalisme et sa discrétion.",
-    experiences:[
-      { poste:"Serveuse VIP", entreprise:"Hôtel Le Meurice", periode:"2022 – 2025", desc:"Service en salle gastronomique · Clientèle internationale · Sommellerie de base · Upselling" },
-      { poste:"Chef de rang", entreprise:"Restaurant Guy Savoy", periode:"2020 – 2022", desc:"Service étoilé Michelin · Coordination salle · Gestion des alliances mets-vins" },
-      { poste:"Serveuse", entreprise:"Brasserie Terminus Nord", periode:"2019 – 2020", desc:"Service brasserie volume · 100+ couverts · Travail en équipe" },
-    ],
-    formations:[
-      { diplome:"BTS Hôtellerie-Restauration", etablissement:"Lycée Hôtelier Jean Drouant", annee:"2019" },
-      { diplome:"Formation Sommellerie Niveau 1", etablissement:"CIVB Bordeaux", annee:"2021" },
-    ],
-    langues:["Français (natif)","Anglais (courant C1)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  34: { // Mathilde Perrin
-    titre:"Réceptionniste Trilingue — Hôtellerie 4 & 5 étoiles",
-    accroche:"7 ans en hôtellerie haut de gamme. Trilingue français-anglais-espagnol, maîtrise Opera PMS et Fidelio. Passionnée par l'accueil et le service personnalisé.",
-    experiences:[
-      { poste:"Réceptionniste Senior", entreprise:"Four Seasons Hotel George V Paris", periode:"2022 – 2025", desc:"Check-in/out VIP · Conciergerie · Gestion réclamations · Supervision stagiaires" },
-      { poste:"Réceptionniste", entreprise:"Hôtel de Crillon", periode:"2019 – 2022", desc:"Accueil clientèle internationale · Facturation · Opera PMS · Standard" },
-      { poste:"Agent de réservation", entreprise:"Marriott Paris", periode:"2018 – 2019", desc:"Gestion réservations · Yield management · Upselling suites" },
-    ],
-    formations:[
-      { diplome:"BTS Tourisme option Hôtellerie", etablissement:"Institut Paul Bocuse Lyon", annee:"2018" },
-      { diplome:"Certification Opera PMS avancé", etablissement:"Oracle Hospitality", annee:"2020" },
-    ],
-    langues:["Français (natif)","Anglais (C1)","Espagnol (B2)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  47: { // Houda Saidi
-    titre:"Agente de Propreté — Bureaux & Surfaces Commerciales",
-    accroche:"3 ans d'expérience en entretien de bureaux et surfaces commerciales. Consciencieuse et discrète, maîtrise des techniques de nettoyage et des produits professionnels.",
-    experiences:[
-      { poste:"Agente de propreté", entreprise:"ISS Facility Services", periode:"2023 – 2025", desc:"Nettoyage bureaux · Désinfection surfaces · Gestion produits chimiques · Traçabilité" },
-      { poste:"Agente de surface", entreprise:"Onet Propreté", periode:"2022 – 2023", desc:"Entretien centres commerciaux · Nettoyage vitres · Tri sélectif" },
-    ],
-    formations:[
-      { diplome:"CAP Maintenance et Hygiène des Locaux", etablissement:"AFPA Île-de-France", annee:"2022" },
-      { diplome:"Formation produits chimiques (INRS)", etablissement:"INRS Paris", annee:"2023" },
-    ],
-    langues:["Français (courant)","Arabe (natif)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  61: { // Sophie Renard
-    titre:"Commercial(e) B2B Senior — Grands Comptes & Closing",
-    accroche:"Top performer commerciale avec 8 ans d'expérience B2B. Spécialiste grands comptes et cycles de vente complexes. Track record : +2M€ CA généré sur les 3 dernières années.",
-    experiences:[
-      { poste:"Account Executive Senior", entreprise:"HubSpot France", periode:"2022 – 2025", desc:"Portefeuille 80 comptes ETI · CA généré 750k€/an · Taux de rétention 91% · Mentoring juniors" },
-      { poste:"Business Developer", entreprise:"Dassault Systèmes", periode:"2019 – 2022", desc:"Prospection secteur industrie · Closing cycles 6-18 mois · Négociation contrats 200k€+" },
-      { poste:"Commerciale terrain", entreprise:"Oracle", periode:"2017 – 2019", desc:"Prospection terrain IDF · 45 RDV/mois · Taux transformation 38%" },
-    ],
-    formations:[
-      { diplome:"Master Commerce & Négociation", etablissement:"ESSEC Business School", annee:"2017" },
-      { diplome:"Certification Salesforce Sales Cloud", etablissement:"Salesforce", annee:"2019" },
-    ],
-    langues:["Français (natif)","Anglais (C2)","Allemand (B1)"],
-    permis:"Permis B — véhiculée",
-    hasCV: true,
-  },
-  71: { // Stéphanie Collin
-    titre:"Hôtesse de Caisse — Grande Distribution",
-    accroche:"4 ans en grande distribution, spécialiste encaissement et relation client. Rapide, fiable et habituée aux environnements à fort flux. Connaissance SAV et fidélité.",
-    experiences:[
-      { poste:"Hôtesse de caisse principale", entreprise:"Carrefour Market Paris 15e", periode:"2022 – 2025", desc:"Encaissement flux élevé · Formation nouveaux caissiers · Gestion coffre · SAV caisse" },
-      { poste:"Caissière", entreprise:"Monoprix République", periode:"2021 – 2022", desc:"Encaissement · Accueil · Programme fidélité · Échanges et remboursements" },
-    ],
-    formations:[
-      { diplome:"CAP Employé de Commerce", etablissement:"CFA Paris Commerce", annee:"2021" },
-      { diplome:"Formation Geste & Posture Caisse", etablissement:"CARREFOUR Academy", annee:"2022" },
-    ],
-    langues:["Français (natif)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  81: { // Stéphane Veron
-    titre:"Agent de Sécurité — CQP APS · Sûreté Aéroportuaire",
-    accroche:"8 ans d'expérience en sécurité privée, habilitation sûreté aéroportuaire. Calme, réactif et professionnel. Spécialiste surveillance vidéo et gestion de crise.",
-    experiences:[
-      { poste:"Agent de sécurité APS", entreprise:"Prosegur France", periode:"2021 – 2025", desc:"Rondes sécurité · Surveillance vidéo · Gestion accès · Rédaction mains courantes" },
-      { poste:"Agent de sûreté aéroportuaire", entreprise:"Securitas Airport Services", periode:"2018 – 2021", desc:"Contrôle sûreté passagers · Détection d'objets interdits · Protocoles DGAC" },
-      { poste:"Vigile", entreprise:"G4S France", periode:"2017 – 2018", desc:"Gardiennage entrepôt · Rondes nocturnes · Accueil visiteurs" },
-    ],
-    formations:[
-      { diplome:"CQP APS (Agent de Prévention et Sécurité)", etablissement:"CNPP Vernon", annee:"2017" },
-      { diplome:"SST (Secouriste du Travail)", etablissement:"INRS", annee:"2019" },
-      { diplome:"Habilitation Sûreté Aéroportuaire (DGAC)", etablissement:"Aéroports de Paris", annee:"2018" },
-    ],
-    langues:["Français (natif)","Anglais (B1)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-  99: { // Laura Schmitt
-    titre:"Cuisinière Confirmée — Brigade étoilée & Cuisine française",
-    accroche:"9 ans en cuisine professionnelle, de la brasserie au restaurant étoilé. Créative, rigoureuse HACCP et à l'aise sur tous les postes de brigade. Disponible en renfort ou remplacement.",
-    experiences:[
-      { poste:"Cuisinière (Chef de partie froid)", entreprise:"Restaurant Taillevent **", periode:"2022 – 2025", desc:"Garde-manger · Entrées froides · Pâtisserie salée · Respect HACCP strict" },
-      { poste:"Commis puis demi-chef", entreprise:"Hôtel Lutetia — Restaurant Paris", periode:"2019 – 2022", desc:"Poste chaud et froid · Préparations en amont · Aide chef de partie" },
-      { poste:"Cuisinière", entreprise:"Brasserie Flo Paris", periode:"2016 – 2019", desc:"Production volume · Cuissons vapeur/four · Fiches techniques" },
-    ],
-    formations:[
-      { diplome:"CAP Cuisine", etablissement:"École Ferrandi Paris", annee:"2016" },
-      { diplome:"Mention Complémentaire Cuisine Gastronomique", etablissement:"École Ferrandi Paris", annee:"2017" },
-      { diplome:"Formation Hygiène HACCP", etablissement:"UMIH Formation", annee:"2018" },
-    ],
-    langues:["Français (natif)","Anglais (B1)"],
-    permis:"Permis B",
-    hasCV: true,
-  },
-  103: { // Nicolas Faure
-    titre:"Concierge 5 Étoiles — Multilingue & Conciergerie Haut de Gamme",
-    accroche:"11 ans en conciergerie de luxe, trilingue français-anglais-arabe. Réseau solide de prestataires premium. Reconnu pour sa discrétion, sa réactivité et son sens du service.",
-    experiences:[
-      { poste:"Chef Concierge", entreprise:"Hôtel Ritz Paris", periode:"2020 – 2025", desc:"Conciergerie VIP · Réseau prestataires · Organisation événements privés · Management équipe 5 personnes" },
-      { poste:"Concierge", entreprise:"Hôtel Plaza Athénée", periode:"2016 – 2020", desc:"Réservations gastronomiques · Transferts privés · Visites privées musées · Clientèle UHNWI" },
-      { poste:"Groom / Agent d'accueil", entreprise:"Hôtel Le Bristol Paris", periode:"2014 – 2016", desc:"Accueil clientèle · Bagagerie · Service voiturier · Orientation" },
-    ],
-    formations:[
-      { diplome:"Bac Pro Hôtellerie", etablissement:"Lycée Hôtelier de Nice", annee:"2014" },
-      { diplome:"Clefs d'Or — Membre Association des Concierges de Palace", etablissement:"Les Clefs d'Or France", annee:"2019" },
-    ],
-    langues:["Français (natif)","Anglais (C2)","Arabe (B2)"],
-    permis:"Permis B — véhiculé",
-    hasCV: true,
-  },
-};
+// ═══════════════════════════════════════════════════════════════════════════
+// LES FAUX PARCOURS PROFESSIONNELS ONT ÉTÉ SUPPRIMÉS — 24/08/2026
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `CV_DATA` contenait treize parcours entièrement inventés — « Thomas Saumur,
+// Cariste Polyvalent chez Amazon Logistique France 2021-2025 », « Agent
+// Logistique chez DHL Supply Chain », « Préparateur de commandes chez Carrefour
+// Supply » — attribués à des personnes nommées, chez des entreprises réelles,
+// avec des périodes et des responsabilités précises.
+//
+// Ils ne s'affichaient plus : la table était indexée par des identifiants
+// NUMÉRIQUES (1, 61…) alors que les prestataires portent des UUID, si bien que
+// `CV_DATA[p.id]` valait toujours `undefined`. Du code mort, donc — mais du
+// code mort qui fabriquait des références professionnelles vérifiables et
+// fausses, à un clic d'une remise en service accidentelle.
+//
+// Sur une plateforme dont l'argument est « profils vérifiés », c'est
+// exactement ce qu'il ne faut pas avoir dans le dépôt.
+//
+// Les parcours réels vivent dans `profiles.cv`, renseigné par le prestataire
+// lui-même. Les écrans lisent désormais `p.cv` et rien d'autre : sans parcours
+// saisi, ils n'en affichent aucun.
 
 export const DOCS_REQUIS = [
   { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Photo professionnelle de face, fond neutre (JPG ou PNG uniquement)" },

@@ -4,6 +4,7 @@ import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS 
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
+import { SECTORS } from "./constants/data.js";
 import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount, fetchPlacesLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
@@ -180,11 +181,24 @@ function SplashScreen({ onNext }) {
         </p>
 
         {/* Stats pills */}
+          {/* Trois chiffres, et ils doivent être VRAIS.
+              « 88+ prestataires » était un nombre inventé, affiché dès que le
+              décompte réel n'arrivait pas — c'est-à-dire aujourd'hui, où la
+              plateforme n'en compte que quelques-uns. Annoncer une taille qu'on
+              n'a pas est une allégation trompeuse (art. L121-2 du Code de la
+              consommation), et c'est la première chose qu'un prestataire déçu
+              produira.
+              « <10min de réponse » n'était mesuré par rien : aucun traitement
+              n'enregistre ce délai. Remplacé par un fait vérifiable.
+              Le nombre de secteurs est désormais dérivé de la liste elle-même,
+              pour qu'il suive si elle change. */}
         <div style={{ display:"flex", gap:8, marginBottom:36, flexWrap:"wrap" }}>
           {[
-            { v: prestaCount != null ? `${prestaCount}+` : "88+", l:"Prestataires" },
-            { v:"7", l:"Secteurs" },
-            { v:"<10min", l:"Réponse" },
+            // Tant que le nombre réel n'est pas connu, la pastille est omise :
+            // mieux vaut deux chiffres que trois dont un faux.
+            ...(prestaCount != null ? [{ v:String(prestaCount), l:"Prestataires" }] : []),
+            { v:String(SECTORS.length), l:"Secteurs" },
+            { v:"0 €", l:"Inscription" },
           ].map(s=>(
             <div key={s.l} style={{
               background:"rgba(255,255,255,0.04)",
@@ -920,9 +934,10 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
             ))}
           </div>
 
-          {/* Stats */}
+          {/* Stats — mêmes chiffres, mêmes exigences que sur l'écran d'accueil :
+              ils étaient ici entièrement écrits en dur, donc toujours faux. */}
           <div style={{ display:"flex", gap:24 }}>
-            {[["88+","Prestataires"],["7","Secteurs"],["<10min","Réponse"]].map(([v,l])=>(
+            {[[String(SECTORS.length),"Secteurs"],["0 €","Inscription"],["48 h","Pour signaler"]].map(([v,l])=>(
               <div key={l}>
                 <div style={{ color:C.white, fontWeight:900, fontSize:22 }}>{v}</div>
                 <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>{l}</div>

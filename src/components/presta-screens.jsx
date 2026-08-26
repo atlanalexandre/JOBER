@@ -1731,7 +1731,13 @@ export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
       <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
         <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
         <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>{isIn ? "📍 Pointer mon arrivée" : "🏁 Pointer mon départ"}</h2>
-        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>{p.name} · Cariste CACES 1 · Entrepôt XYZ</p>
+        {/* Cette ligne annonçait « Cariste CACES 1 · Entrepôt XYZ » EN DUR, quelle
+            que soit la prestation : une femme de chambre pointant son arrivée
+            dans un hôtel lisait qu'elle était cariste dans un entrepôt. Elle ne
+            montre plus que ce qui est réellement connu, et rien sinon. */}
+        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>
+          {[p.name, p.metier || p.titre, p.ville || p.adresse].filter(Boolean).join(" · ") || "Prestation en cours"}
+        </p>
       </div>
 
       <div style={{ padding:"22px 18px" }}>
