@@ -37,6 +37,24 @@ export const ABONNEMENTS_PRESTA = [
     note:"La position #1 est attribuée parmi les membres Elite selon la note moyenne et les avis clients." },
 ];
 
+// Le prix d'une formule, formaté, depuis la seule liste qui fasse foi.
+//
+// Quatre écrans l'écrivaient en dur : « Premium 29€ » alors qu'il est à 29,99,
+// et « Elite 59€ » alors qu'il est à 79,99. Annoncer moins cher que ce qui sera
+// prélevé, c'est une pratique commerciale trompeuse (art. L121-2 du Code de la
+// consommation) — et c'est le genre d'écart qu'on ne découvre que dans une
+// réclamation.
+//
+// Le back-office peut par ailleurs surcharger ces prix (`platform_settings`) :
+// un montant recopié dans un libellé ne suivra jamais ce réglage. Quand le prix
+// surchargé est disponible à l'écran, c'est lui qu'il faut afficher ; sinon
+// cette fonction donne la valeur de référence.
+export const prixPlan = (id) => {
+  const p = ABONNEMENTS_PRESTA.find(x => x.id === id);
+  if (!p) return "";
+  return p.price === 0 ? "Gratuit" : `${p.price.toFixed(2).replace(".", ",")} €`;
+};
+
 export const prixClient = (tarifNet) => tarifNet;
 export const tarifInterim = (t) => Math.round(t * 2.2 * 100) / 100;
 export const economiePct  = (t) => Math.round(((tarifInterim(t) - t) / tarifInterim(t)) * 100);
