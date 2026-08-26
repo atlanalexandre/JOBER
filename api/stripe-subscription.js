@@ -2,12 +2,19 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { plan, billing = "monthly" } = req.body || {};
+
+  // Le rang sert à distinguer une montée en gamme d'une descente : les deux se
+  // règlent au prorata, mais pas dans le même sens.
+  const RANG = { free: 0, premium: 1, elite: 2 };
   const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
   const SUPABASE_URL      = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY  = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
 
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: "Stripe non configuré" });
-  if (!["premium","elite"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+  // `free` est accepté : résilier passe désormais par ici. L'écran se contentait
+  // d'écrire « free » dans le profil sans rien dire à Stripe — le prestataire
+  // était affiché gratuit et prélevé tous les mois, indéfiniment.
+  if (!["premium","elite","free"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
 
   // Verify JWT to get user — requis pour lier le checkout à un compte
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: "Configuration serveur manquante" });
@@ -48,7 +55,9 @@ export default async function handler(req, res) {
   const nomTrouve = nomsPossibles.find(n => (process.env[n] || "").trim());
   const priceId = nomTrouve ? process.env[nomTrouve].replace(/\s/g, "") : null;
 
-  if (!priceId) {
+  // Résilier ne consulte aucun tarif : exiger un `priceId` ici refuserait la
+  // résiliation avec « Tarif elite indisponible », ce qui n'a aucun sens.
+  if (!priceId && plan !== "free") {
     console.error(`[abonnement] tarif introuvable pour ${plan}/${billing} — `
       + `ni ${nomsPossibles[0]} ni ${nomsPossibles[1]} ne sont renseignées.`);
     return res.status(500).json({
@@ -64,15 +73,116 @@ export default async function handler(req, res) {
 
   // Reuse existing Stripe Customer to avoid duplicates
   let existingCustomerId = null;
+  let abonnementActuel   = null;
+  let planActuel         = "free";
   if (userId && SUPABASE_URL && SERVICE_ROLE_KEY) {
     try {
       const hdrs = { "apikey": SERVICE_ROLE_KEY, "Authorization": `Bearer ${SERVICE_ROLE_KEY}` };
-      const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=stripe_customer_id`, { headers: hdrs });
+      const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=stripe_customer_id,stripe_subscription_id,plan_abonnement`, { headers: hdrs });
       if (profR.ok) {
         const profData = await profR.json();
-        existingCustomerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
+        const prof = Array.isArray(profData) && profData[0];
+        existingCustomerId = prof?.stripe_customer_id     || null;
+        abonnementActuel   = prof?.stripe_subscription_id || null;
+        planActuel         = prof?.plan_abonnement        || "free";
       }
-    } catch (e) { console.error("[stripe-subscription] stripe_customer_id illisible — un nouveau client Stripe sera créé :", e.message); }
+    } catch (e) { console.error("[stripe-subscription] profil illisible — un nouveau client Stripe sera créé :", e.message); }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHANGER D'ABONNEMENT : ON MODIFIE, ON N'EN CRÉE PAS UN SECOND
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Un prestataire en Premium qui passait Elite repartait dans un tunnel de
+  // paiement neuf, et se retrouvait avec DEUX abonnements actifs : 29 € + 59 €
+  // prélevés chaque mois. Le profil ne gardait que le dernier identifiant, si
+  // bien que le premier n'était plus surveillé par personne.
+  //
+  // Pire : le jour où cet abonnement fantôme finissait par être résilié, le
+  // webhook `customer.subscription.deleted` retrouvait le client par son
+  // identifiant Stripe et le repassait en gratuit — un abonné Elite dégradé
+  // alors qu'il payait toujours.
+  //
+  // Un changement de formule modifie donc l'abonnement EXISTANT. Stripe calcule
+  // le prorata : ce qui reste du mois déjà payé vient en déduction.
+  if (abonnementActuel) {
+    const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${abonnementActuel}`, {
+      headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+    });
+    const sub = await subRes.json().catch(() => ({}));
+    const vivant = subRes.ok && ["active", "trialing", "past_due"].includes(sub?.status);
+
+    if (!vivant) {
+      // Abonnement mort côté Stripe : la référence en base est périmée. On la
+      // laisse au tunnel de paiement normal plus bas, et on le signale.
+      console.log(`[abonnement] ${abonnementActuel} est ${sub?.status || "introuvable"} — souscription neuve pour ${userId}.`);
+    } else if (plan === "free") {
+      // ── Résiliation ────────────────────────────────────────────────
+      //
+      // À la FIN DE LA PÉRIODE, jamais dans la seconde : le mois est payé, il
+      // est dû. Couper l'accès immédiatement reviendrait à garder l'argent sans
+      // fournir le service.
+      const annul = await fetch(`https://api.stripe.com/v1/subscriptions/${abonnementActuel}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ cancel_at_period_end: "true" }).toString(),
+      });
+      const d = await annul.json().catch(() => ({}));
+      if (!annul.ok) {
+        console.error(`[abonnement] résiliation refusée pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
+        return res.status(502).json({ error: `Stripe a refusé la résiliation : ${d?.error?.message || "erreur inconnue"}` });
+      }
+      const fin = d.current_period_end ? new Date(d.current_period_end * 1000) : null;
+      console.log(`[abonnement] ${abonnementActuel} résilié en fin de période pour ${userId}.`);
+      return res.status(200).json({
+        change: true,
+        message: fin
+          ? `Votre abonnement prendra fin le ${fin.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}. Vous en gardez tous les avantages jusque-là.`
+          : "Votre abonnement prendra fin à l'échéance de la période en cours. Vous en gardez tous les avantages jusque-là.",
+      });
+    } else {
+      // ── Montée ou descente en gamme ────────────────────────────────
+      const ligne = sub.items?.data?.[0];
+      if (!ligne?.id) {
+        console.error(`[abonnement] ${abonnementActuel} sans ligne exploitable — changement impossible.`);
+        return res.status(502).json({ error: "Votre abonnement n'a pas pu être lu. Écrivez à direction@alane.fr." });
+      }
+      const monte = (RANG[plan] ?? 0) > (RANG[planActuel] ?? 0);
+      const maj = await fetch(`https://api.stripe.com/v1/subscriptions/${abonnementActuel}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          "items[0][id]":    ligne.id,
+          "items[0][price]": priceId,
+          // Une montée en gamme se facture TOUT DE SUITE : le nouveau quota est
+          // disponible dans la seconde, il doit être payé dans la seconde.
+          // Une descente porte au contraire un avoir sur la facture suivante —
+          // rembourser une différence sur une carte pour la reprélever le mois
+          // d'après n'a aucun intérêt, et multiplie les écritures.
+          proration_behavior: monte ? "always_invoice" : "create_prorations",
+          "metadata[plan]":    plan,
+          "metadata[user_id]": userId || "",
+          cancel_at_period_end: "false",
+        }).toString(),
+      });
+      const d = await maj.json().catch(() => ({}));
+      if (!maj.ok) {
+        console.error(`[abonnement] changement refusé pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
+        return res.status(502).json({ error: `Stripe a refusé le changement : ${d?.error?.message || "erreur inconnue"}` });
+      }
+      console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (${monte ? "montée" : "descente"}), abonnement ${abonnementActuel} modifié.`);
+      return res.status(200).json({
+        change: true,
+        message: monte
+          ? "Votre nouvelle formule est active. Seule la différence vous est facturée pour les jours restants du mois en cours."
+          : "Votre nouvelle formule est active. La différence des jours déjà payés vient en déduction de votre prochaine facture.",
+      });
+    }
+  }
+
+  // Aucun abonnement à modifier : résilier n'a pas de sens.
+  if (plan === "free") {
+    return res.status(400).json({ error: "Vous n'avez aucun abonnement en cours." });
   }
 
   try {

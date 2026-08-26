@@ -8514,13 +8514,10 @@ export function AbonnementPrestaScreen({ onBack }) {
 
   const handleChangePlan = async (planId) => {
     if(planId === current) return;
-    const plan = effectivePlans.find(p=>p.id===planId);
-    if(plan?.price === 0) {
-      // Downgrade to free: direct update
-      await supabase.auth.updateUser({ data: { plan_abonnement: planId, subscription_end_date: null } });
-      setCurrent(planId);
-      return;
-    }
+    // Le retour au gratuit passait par une simple écriture dans le profil, sans
+    // rien dire à Stripe : le prestataire s'affichait « Gratuit » et restait
+    // prélevé tous les mois, indéfiniment. Il suit désormais le même chemin que
+    // les autres changements, qui résilie réellement l'abonnement.
     setPendingPlan(planId);
   };
   const confirmChangePlan = async () => {
@@ -8539,6 +8536,16 @@ export function AbonnementPrestaScreen({ onBack }) {
         window.location.href = d.url;
         return;
       }
+      // Changement sur un abonnement existant : pas de tunnel de paiement, tout
+      // s'est joué côté Stripe. On dit ce qui a été fait — un prestataire qui
+      // ne voit rien se passer recommence, et on ne sait plus où on en est.
+      if(d.change) {
+        setCurrent(pendingPlan);
+        setPendingPlan(null);
+        setSaving(false);
+        showToast(d.message || "Votre formule a été modifiée.", "success");
+        return;
+      }
       showToast(d.error || "Erreur Stripe");
     } catch(e) {
       showToast("Erreur lors de la redirection vers Stripe");
@@ -8554,7 +8561,20 @@ export function AbonnementPrestaScreen({ onBack }) {
           <div style={{ background:"#0D1B3E", borderRadius:20, padding:28, maxWidth:320, width:"100%", textAlign:"center" }}>
             <div style={{ fontSize:36, marginBottom:12 }}>🔄</div>
             <div style={{ fontWeight:800, color:C.text, fontSize:16, marginBottom:8 }}>Changer de plan ?</div>
-            <div style={{ color:C.textSub, fontSize:13, marginBottom:20 }}>Passer au plan <strong style={{ color:C.violet }}>{effectivePlans.find(p=>p.id===pendingPlan)?.label}</strong> ?</div>
+            <div style={{ color:C.textSub, fontSize:13, marginBottom:20, lineHeight:1.6 }}>
+              Passer au plan <strong style={{ color:C.violet }}>{effectivePlans.find(p=>p.id===pendingPlan)?.label}</strong> ?
+              {/* Dire le sort de l'argent AVANT de confirmer : c'est la
+                  question que se pose tout le monde à cet instant. */}
+              {(effectivePlans.find(p=>p.id===pendingPlan)?.price === 0) ? (
+                <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
+                  Votre abonnement prendra fin à l'échéance de la période déjà réglée. Vous en gardez tous les avantages jusque-là, et rien ne vous sera prélevé ensuite.
+                </span>
+              ) : current !== "free" ? (
+                <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
+                  Votre abonnement actuel est modifié, pas doublé. Stripe calcule le prorata : les jours déjà payés viennent en déduction.
+                </span>
+              ) : null}
+            </div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={()=>setPendingPlan(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Annuler</button>
               <Btn onClick={confirmChangePlan} disabled={saving} style={{ flex:2 }}>{saving?"…":"Confirmer"}</Btn>

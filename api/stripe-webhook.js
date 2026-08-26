@@ -522,17 +522,40 @@ export default async function handler(req, res) {
 
       // Find user by stripe_customer_id stored in profiles
       let userId = null;
+      // L'abonnement dont on parle est-il bien CELUI DU PROFIL ?
+      //
+      // Un même client Stripe peut porter plusieurs abonnements — c'est ce que
+      // produisait le changement de formule avant le 24/08/2026, qui en créait
+      // un second au lieu de modifier le premier. Le profil ne retient que le
+      // dernier.
+      //
+      // Or ce bloc retrouvait le client par son seul identifiant Stripe et le
+      // repassait en gratuit dès QU'UN de ses abonnements mourait. Un abonné
+      // Elite était donc dégradé le jour où son vieil abonnement Premium était
+      // enfin résilié — alors qu'il payait toujours.
+      let abonnementDuProfil = null;
       try {
-        const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_customer_id=eq.${customerId}&select=id`, { headers: hdrs });
+        const profR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?stripe_customer_id=eq.${customerId}&select=id,stripe_subscription_id`, { headers: hdrs });
         if (profR.ok) {
           const profData = await profR.json().catch(() => []);
           userId = Array.isArray(profData) && profData[0]?.id || null;
+          abonnementDuProfil = Array.isArray(profData) && profData[0]?.stripe_subscription_id || null;
         }
       } catch (e) { console.error("[stripe-webhook] compte introuvable pour ce client Stripe :", e.message); }
 
       if (!userId) {
         console.warn("[subscription] user not found for customer:", customerId);
         return res.status(200).json({ received: true });
+      }
+
+      // Un abonnement qui n'est PLUS celui du profil ne décide plus de rien.
+      // Il ne s'agit pas d'ignorer l'événement en silence : on le dit, parce
+      // qu'un abonnement fantôme encore facturé est un problème en soi.
+      if (abonnementDuProfil && sub.id && sub.id !== abonnementDuProfil) {
+        console.warn(`[subscription] ${event.type} sur ${sub.id}, qui n'est pas l'abonnement `
+          + `courant de ${userId} (${abonnementDuProfil}) — ignoré. `
+          + "Si cet abonnement est encore facturé, il faut le résilier dans Stripe.");
+        return res.status(200).json({ received: true, ignore: "abonnement non courant" });
       }
 
       // Fetch existing plan as fallback when subscription metadata has no plan set
