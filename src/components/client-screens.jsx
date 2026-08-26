@@ -5,7 +5,7 @@ import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
 import { CASHBACK_TIERS, getCashbackTier, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, CV_DATA, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
@@ -2161,7 +2161,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   <div style={{ color:C.textSub, fontSize:13 }}>Revenez plus tard ou activez le mode urgence</div>
                 </div>
               ) : filteredProviders.map(p => {
-                const hasCv = !!(p.cv || CV_DATA[p.id]);
+                const hasCv = !!p.cv;
                 return (
                   <div key={p.id} style={{
                     background:"#0D1B3E", borderRadius:r, marginBottom:11,
@@ -2348,7 +2348,7 @@ export function SearchFiltersScreen({ onNavigate }) {
 export function CVScreen({ provider, onBack, onNavigate }) {
   const p = provider;
   if (!p) return null;
-  const cvBrut = p.cv || CV_DATA[p.id];
+  const cvBrut = p.cv;
   // Un CV jamais rempli est enregistré comme objet vide (presta-screens.jsx:1163),
   // et un objet vide est « vrai » en JavaScript : le garde-fou ci-dessous le
   // laissait passer, puis l'affichage plantait sur cv.experiences.map.
@@ -2506,7 +2506,7 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
     ...provider,
     ...(enriched || {}),
   };
-  const cv = p.cv || CV_DATA[p.id];
+  const cv = p.cv;
 
   useEffect(()=>{
     if (!provider?.id) return;
@@ -2943,7 +2943,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
       {/* Overlay CV */}
       {cvOpen && (() => {
-        const cv = p.cv || CV_DATA[p.id];
+        const cv = p.cv;
         return (
           <div style={{ position:"fixed", inset:0, zIndex:9000, background:"rgba(5,14,32,0.96)", overflowY:"auto", paddingBottom:40, WebkitOverflowScrolling:"touch" }}>
             <div style={{ background:`linear-gradient(135deg,${p.color}55,${p.color}22)`, padding:"52px 22px 28px", position:"relative", overflow:"hidden" }}>
@@ -5756,7 +5756,21 @@ export function LegalScreen({ type, onBack }) {
 export function PayslipScreen({ provider, prestation, onBack }) {
   const p = provider;
   if (!p) return null;
-  const m = prestation || { role:"Cariste CACES 1", client:"Entrepôt XYZ", date:"12/05/2025", hours:8, tarifNet:14 };
+  // Sans prestation, cet écran se repliait sur une prestation INVENTÉE —
+  // « Cariste CACES 1 · Entrepôt XYZ · 12/05/2025 · 8 h · 14 €/h » — et
+  // affichait donc un document comptable entièrement faux, indiscernable d'un
+  // vrai. Mieux vaut ne rien montrer que montrer une facture qui n'existe pas.
+  const m = prestation;
+  if (!m) return (
+    <div style={{ minHeight:"100%", background:C.bg, padding:"64px 24px", textAlign:"center" }}>
+      <div style={{ fontSize:40, marginBottom:14 }}>🧾</div>
+      <div style={{ color:C.text, fontWeight:700, fontSize:15, marginBottom:8 }}>Aucune prestation sélectionnée</div>
+      <div style={{ color:C.textSub, fontSize:13, lineHeight:1.7, marginBottom:24 }}>
+        Ouvrez une prestation terminée depuis votre historique pour consulter sa facture.
+      </div>
+      <button onClick={onBack} style={{ padding:"11px 22px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>← Retour</button>
+    </div>
+  );
   const billedHours = m.actual_hours ?? m.hours ?? 0;
   const brut = m.tarifNet * billedHours;
   const num = `FP-2025-${Math.floor(Math.random()*90000+10000)}`;
