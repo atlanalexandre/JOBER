@@ -3370,7 +3370,12 @@ export function PrestaClientsTab() {
     setBlocked(blockedList);
     supabase.auth.getUser().then(async ({data})=>{
       const uid = data?.user?.id; if(!uid){ setLoading(false); return; }
-      const {data:prestations} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total").eq("prestataire_id",uid).in("status",["completed","assigned"]).order("date",{ascending:false});
+      // `closed` figure dans la liste : c'est l'état d'une prestation dont le
+      // litige s'est dénoué par un remboursement. Le travail a bien eu lieu et
+      // le client existe bien — l'exclure le faisait disparaître du carnet
+      // d'adresses, alors que c'est précisément le client qu'on veut retrouver
+      // avant d'en accepter une seconde prestation.
+      const {data:prestations} = await supabase.from("missions").select("client_id,date,sector,metier,montant_total,status").eq("prestataire_id",uid).in("status",["completed","assigned","closed"]).order("date",{ascending:false});
       if(!prestations){ setLoading(false); return; }
       const seen = new Map();
       for(const m of prestations){
