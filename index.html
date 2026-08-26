@@ -7,25 +7,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- SEO primary -->
-    <title>ALANE – Plateforme de prestations pour auto-entrepreneurs en France</title>
-    <meta name="description" content="ALANE connecte les entreprises avec des prestataires indépendants qualifiés. Trouvez des prestations en propreté, logistique, restauration, hôtellerie et commerce partout en France." />
-    <meta name="keywords" content="plateforme freelance, auto-entrepreneur, prestations courtes, propreté, logistique, restauration, hôtellerie, commerce, France, ALANE" />
+    <!--
+      Le titre disait « prestations pour auto-entrepreneurs », ce qui décrit le
+      PUBLIC et non l'activité : Google n'y lisait qu'un nom de marque, et le
+      site ne ressortait que sur « alane ». Il dit désormais ce que la
+      plateforme fait, en des termes qui sont ceux des recherches réelles.
+
+      La balise `keywords` a été retirée : Google ne l'utilise pas — il l'a
+      confirmé publiquement — et une liste de mots-clés empilés est au mieux
+      inerte, au pire un signal de sur-optimisation. Les mots-clés se placent
+      dans les vrais contenus, pas dans une case.
+    -->
+    <title>ALANE – Plateforme de mise en relation entre entreprises et prestataires</title>
+    <meta name="description" content="ALANE met en relation les entreprises avec des prestataires indépendants vérifiés pour des missions de nettoyage, hôtellerie, restauration, logistique, transport, commerce et événementiel partout en France." />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://www.alane.fr/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.alane.fr/" />
-    <meta property="og:title" content="ALANE – Prestations pour auto-entrepreneurs en France" />
-    <meta property="og:description" content="Trouvez des prestations ou faites appel à des prestataires indépendants qualifiés dans votre secteur. Propreté, logistique, restauration, hôtellerie, commerce." />
+    <meta property="og:title" content="ALANE – Plateforme de mise en relation entre entreprises et prestataires" />
+    <meta property="og:description" content="ALANE met en relation les entreprises avec des prestataires indépendants vérifiés pour des missions de nettoyage, hôtellerie, restauration, logistique, transport, commerce et événementiel partout en France." />
     <meta property="og:image" content="https://www.alane.fr/og-image.png" />
     <meta property="og:locale" content="fr_FR" />
     <meta property="og:site_name" content="ALANE" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="ALANE – Prestations pour auto-entrepreneurs en France" />
-    <meta name="twitter:description" content="Connectez-vous avec des prestataires indépendants qualifiés ou trouvez des prestations adaptées à votre activité." />
+    <meta name="twitter:title" content="ALANE – Plateforme de mise en relation entre entreprises et prestataires" />
+    <meta name="twitter:description" content="ALANE met en relation les entreprises avec des prestataires indépendants vérifiés pour des missions de nettoyage, hôtellerie, restauration, logistique, transport, commerce et événementiel partout en France." />
     <meta name="twitter:image" content="https://www.alane.fr/og-image.png" />
 
     <!-- Structured Data: Organization -->
@@ -36,7 +46,7 @@
       "name": "ALANE",
       "url": "https://www.alane.fr",
       "logo": "https://www.alane.fr/icon-512.png",
-      "description": "Plateforme française mettant en relation entreprises et auto-entrepreneurs pour des prestations en propreté, logistique, restauration, hôtellerie et commerce.",
+      "description": "Plateforme française de mise en relation entre les entreprises et des prestataires indépendants vérifiés, pour des prestations ponctuelles ou récurrentes en nettoyage, hôtellerie, restauration, logistique, transport, commerce et événementiel.",
       "address": {
         "@type": "PostalAddress",
         "addressCountry": "FR"
@@ -65,12 +75,12 @@
     {
       "@context": "https://schema.org",
       "@type": "Service",
-      "name": "Mise en relation prestations auto-entrepreneurs",
+      "name": "Mise en relation entre entreprises et prestataires indépendants",
       "provider": {
         "@type": "Organization",
         "name": "ALANE"
       },
-      "description": "ALANE connecte des entreprises avec des prestataires indépendants (auto-entrepreneurs) pour des prestations courtes ou longues en France dans les secteurs de la propreté, de la logistique, de la restauration, de l'hôtellerie et du commerce.",
+      "description": "ALANE met en relation les entreprises avec des prestataires indépendants vérifiés pour des missions de nettoyage, hôtellerie, restauration, logistique, transport, commerce et événementiel partout en France.",
       "areaServed": {
         "@type": "Country",
         "name": "France"
@@ -93,45 +103,68 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet"/>
   </head>
   <body>
-    <!-- Static content for SEO (hidden visually, visible aux robots Google) -->
-    <div id="seo-static" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true">
-      <h1>ALANE – Plateforme de prestations pour auto-entrepreneurs en France</h1>
-      <p>ALANE est une plateforme française qui connecte les entreprises avec des prestataires indépendants (auto-entrepreneurs, micro-entrepreneurs) pour des prestations ponctuelles ou récurrentes dans toute la France.</p>
-      <h2>Secteurs disponibles</h2>
-      <ul>
-        <li>Propreté et nettoyage – agents d'entretien, laveurs de vitres, techniciens de surface</li>
-        <li>Logistique et transport – préparateurs de commandes, chauffeurs livreurs, magasiniers, caristes</li>
-        <li>Restauration – serveurs, cuisiniers, plongeurs, barmen, extras restauration</li>
-        <li>Hôtellerie – réceptionnistes, femmes de chambre, veilleurs de nuit, voituriers</li>
-        <li>Commerce et grande distribution – vendeurs, hôtes de caisse, merchandisers, chefs de rayon</li>
-        <li>Événementiel et divers – agents de sécurité, manutentionnaires, agents logistiques événementiels</li>
-      </ul>
-      <h2>Comment ça marche ?</h2>
-      <ol>
-        <li>Créez votre compte entreprise ou auto-entrepreneur gratuitement</li>
-        <li>Publiez une prestation ou consultez les offres disponibles</li>
-        <li>Choisissez votre prestataire et confirmez la prestation</li>
-        <li>Le paiement est sécurisé en escrow et libéré après validation mutuelle</li>
-      </ol>
-      <h2>Avantages ALANE</h2>
-      <ul>
-        <li>Paiement sécurisé par escrow Stripe – argent bloqué jusqu'à validation</li>
-        <li>Profils vérifiés – documents KBIS, IBAN et identité contrôlés</li>
-        <li>Cashback pour les clients réguliers</li>
-        <li>Notation des prestataires après chaque prestation</li>
-        <li>Disponible partout en France</li>
-      </ul>
-      <h2>Pourquoi choisir ALANE pour vos prestations ?</h2>
-      <p>Que vous soyez une entreprise cherchant un extra en restauration à Paris, un prestataire de nettoyage à Lyon, ou un livreur indépendant à Marseille, ALANE simplifie la mise en relation et sécurise le paiement de A à Z.</p>
-      <address>
-        <a href="https://www.alane.fr">www.alane.fr</a>
-      </address>
-    </div>
-
     <!-- Skip link accessibilité clavier -->
     <a href="#root" class="skip-link">Aller au contenu principal</a>
 
-    <div id="root" role="main"></div>
+    <div id="root" role="main">
+      <!-- ═══════════════════════════════════════════════════════════════
+           CONTENU DE REPLI — visible, et c'est tout l'intérêt
+           ═══════════════════════════════════════════════════════════════
+
+           Ce texte vivait dans un <div id="seo-static"> poussé hors de
+           l'écran (`left:-9999px`) et marqué `aria-hidden`. Autrement dit :
+           un contenu écrit pour les robots et invisible pour les humains.
+
+           C'est l'exemple que Google donne lui-même de ce qu'il sanctionne —
+           le texte caché figure explicitement dans ses règles anti-spam. Le
+           bloc ne servait par ailleurs à personne d'autre : `aria-hidden` le
+           retirait aussi aux lecteurs d'écran.
+
+           Il est donc replacé DANS #root, sans être caché. React le remplace
+           au montage : les visiteurs voient l'application, ceux dont le
+           JavaScript n'a pas encore chargé — ou pas du tout — lisent un vrai
+           contenu. C'est de l'amélioration progressive, pas de la
+           dissimulation, et le contenu est le même pour tout le monde.
+
+           Le style est volontairement minimal et repris du fond de
+           l'application : ce qu'on aperçoit une fraction de seconde avant le
+           montage doit ressembler à un écran de chargement, pas à une autre
+           page. -->
+      <div style="max-width:680px;margin:0 auto;padding:48px 22px;color:#9BA0BA;font-family:Inter,system-ui,sans-serif;line-height:1.7">
+        <h1 style="color:#F0F0F5;font-size:26px;line-height:1.25;margin:0 0 14px">Trouvez un prestataire indépendant pour votre entreprise</h1>
+        <p style="margin:0 0 24px">ALANE est la plateforme française qui met en relation les entreprises avec des prestataires indépendants vérifiés, pour des prestations ponctuelles ou récurrentes partout en France.</p>
+
+        <h2 style="color:#F0F0F5;font-size:17px;margin:0 0 8px">Les secteurs couverts</h2>
+        <ul style="margin:0 0 24px;padding-left:20px">
+          <li>Propreté et nettoyage — agents d'entretien, laveurs de vitres, techniciens de surface</li>
+          <li>Hôtellerie — réceptionnistes, femmes et valets de chambre, veilleurs de nuit, gouvernantes</li>
+          <li>Restauration — serveurs, cuisiniers, plongeurs, barmen, extras</li>
+          <li>Logistique et transport — préparateurs de commandes, magasiniers, caristes, chauffeurs livreurs</li>
+          <li>Commerce et grande distribution — vendeurs, hôtes de caisse, chefs de rayon</li>
+          <li>Événementiel et services — agents de sécurité, hôtes d'accueil, régisseurs</li>
+        </ul>
+
+        <h2 style="color:#F0F0F5;font-size:17px;margin:0 0 8px">Comment ça fonctionne</h2>
+        <ol style="margin:0 0 24px;padding-left:20px">
+          <li>L'entreprise publie sa prestation : métier, date, durée, lieu.</li>
+          <li>Un prestataire indépendant vérifié l'accepte.</li>
+          <li>Le paiement est bloqué chez Stripe jusqu'à la fin de la prestation.</li>
+          <li>Le prestataire est réglé après validation, et facture en son nom.</li>
+        </ol>
+
+        <h2 style="color:#F0F0F5;font-size:17px;margin:0 0 8px">Pour les prestataires indépendants</h2>
+        <p style="margin:0 0 24px">Auto-entrepreneurs et micro-entrepreneurs trouvent sur ALANE des missions près de chez eux, fixent librement leur tarif horaire, acceptent ou refusent sans avoir à se justifier, et sont payés par virement après chaque prestation validée.</p>
+
+        <h2 style="color:#F0F0F5;font-size:17px;margin:0 0 8px">Ce que garantit la plateforme</h2>
+        <ul style="margin:0 0 24px;padding-left:20px">
+          <li>Documents vérifiés : identité, immatriculation, attestation URSSAF, assurance RC professionnelle.</li>
+          <li>Paiement sécurisé : les fonds sont bloqués jusqu'à la validation de la prestation.</li>
+          <li>Prix affiché égal au prix réel : aucun frais découvert au moment de payer.</li>
+        </ul>
+
+        <p style="font-size:13px;color:#8A90AD;margin:0">Chargement de l'application…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
