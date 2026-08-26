@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
 import crypto from "crypto";
+import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -11,7 +12,7 @@ export default async function handler(req, res) {
   const RESET_SECRET    = ((process.env.BO_SESSION_SECRET || "").replace(/\s/g, "") || "alane-reset-fallback").replace(/\s/g, "");
   const RESEND_KEY      = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM     = process.env.RESEND_FROM || "onboarding@resend.dev";
-  const APP_URL         = ((process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr").replace(/\/$/, "");
+  const APP_URL         = appUrl();
 
   // Vérifier que l'email existe dans Supabase (sécurité silencieuse)
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");

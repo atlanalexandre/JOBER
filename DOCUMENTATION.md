@@ -2562,6 +2562,23 @@ fichier `/api` doit les nettoyer (CLAUDE.md §1.4).
 | `APP_URL` | URL publique |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Limitation de débit (optionnel) |
 
+**`APP_URL` doit porter son schéma.** Le 26/08/2026, un prestataire lit « Stripe a refusé le
+lien de configuration : Redirect urls must begin with HTTP or HTTPS » : la variable contenait
+`www.alane.fr` au lieu de `https://www.alane.fr`. Les dix-huit endroits qui la lisaient
+portaient pourtant un repli sur l'adresse par défaut — mais ce repli ne joue que si la variable
+est **vide** ; renseignée et mal formée, elle passait telle quelle.
+
+Stripe, au moins, refuse et le dit. Les e-mails ne disaient rien : un `href` sans schéma est lu
+comme un chemin **relatif** par les clients de messagerie. Étaient donc cassés le lien « Accéder
+à ALANE » de l'e-mail de bienvenue, la réinitialisation de mot de passe, le rappel de panier
+abandonné, et surtout **les boutons Accepter et Refuser** envoyés au prestataire à chaque
+proposition de prestation.
+
+`api/_url.js` — `appUrl()` est désormais la seule lecture de cette variable : elle nettoie,
+ajoute le schéma s'il manque, retire la barre finale, et **journalise quand elle corrige**,
+parce qu'une variable mal renseignée doit être réparée à la source. Éprouvée par
+`src/tests/api/url.test.js`.
+
 Les variables préfixées `VITE_` sont **embarquées dans le code envoyé au navigateur** : elles
 sont publiques par construction. N'y mettre aucun secret. Les autres ne sont lisibles que
 depuis `/api`.

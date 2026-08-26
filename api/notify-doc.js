@@ -1,5 +1,6 @@
 import { resendBody } from "./_email.js";
 import { verifyUser } from "./_auth.js";
+import { appUrl } from "./_url.js";
 
 const DOC_LABELS = {
   kbis:     "KBIS / Extrait Kbis",
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
   const esc        = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const docLabel   = DOC_LABELS[docType] || esc(docType);
   const actionWord = isRenewal ? "renouvelé" : "chargé";
-  const boUrl      = ((process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr") + "/bo";
+  const boUrl      = (appUrl()) + "/bo";
 
   try {
     await fetch("https://api.resend.com/emails", {

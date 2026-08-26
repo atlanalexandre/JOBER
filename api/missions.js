@@ -55,6 +55,7 @@ async function appelantMajeur(userId, supabaseUrl, headers) {
 }
 import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache } from "./_secteurs.js";
 import crypto from "crypto";
+import { appUrl } from "./_url.js";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -547,7 +548,7 @@ async function affecterCandidatSuivant(mission, supabaseUrl, headers) {
 }
 
 // ── Email one-click action (GET) ────────────────────────────────────────────
-const APP_URL_DEFAULT = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+const APP_URL_DEFAULT = appUrl();
 
 function emailActionHtml(title, message, color, icon) {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title} — ALANE</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0A1628;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#162547;border-radius:20px;padding:40px 32px;max-width:420px;width:100%;text-align:center;border:1px solid rgba(255,255,255,0.08)}.icon{font-size:52px;margin-bottom:20px}h1{font-size:22px;font-weight:700;color:${color};margin-bottom:12px}p{color:rgba(255,255,255,0.7);font-size:15px;line-height:1.5;margin-bottom:24px}a{display:inline-block;background:${color};color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:15px}</style></head><body><div class="card"><div class="icon">${icon}</div><h1>${title}</h1><p>${message}</p><a href="${APP_URL_DEFAULT}">Ouvrir l'application</a></div></body></html>`;
@@ -1981,7 +1982,7 @@ export default async function handler(req, res) {
         const metier = esc(mission.metier || mission.sector || "Prestation");
         const missionDate = esc(mission.date || "");
         const ville = esc(mission.ville || "");
-        const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+        const appUrl = appUrl();
         const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         if (clientEmail && RESEND_API_KEY) {
           await fetch("https://api.resend.com/emails", {
@@ -4323,8 +4324,8 @@ export default async function handler(req, res) {
       if (RESEND_KEY && prestaEmail) {
         // Generate one-click action tokens (valid 24h)
         const EMAIL_SECRET = (process.env.BO_SESSION_SECRET || "").replace(/\s/g, "");
-        let acceptUrl = `${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
-        let refuseUrl = `${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
+        let acceptUrl = `${appUrl()}/api/missions?action=accept&m=${missionId}&p=${prestataire_id}`;
+        let refuseUrl = `${appUrl()}/api/missions?action=refuse&m=${missionId}&p=${prestataire_id}`;
         if (EMAIL_SECRET && missionId) {
           const { createHmac } = await import("crypto");
           const exp = Math.floor(Date.now() / 1000) + 86400;
@@ -4476,7 +4477,7 @@ export default async function handler(req, res) {
                   <h2 style="color:#A29BFE;margin:0 0 12px">⏱ Heures supplémentaires demandées</h2>
                   <p>Le client souhaite prolonger la prestation de <strong style="color:#fff">${eh}h supplémentaire${eh > 1 ? "s" : ""}</strong>.</p>
                   <p style="margin-top:12px">Ouvrez l'application pour accepter ou refuser cette demande :</p>
-                  <p style="margin-top:16px"><a href="${(process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr"}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px">Ouvrir ALANE</a></p>
+                  <p style="margin-top:16px"><a href="${appUrl()}" style="display:inline-block;background:#10D98F;color:#fff;text-decoration:none;padding:13px 24px;border-radius:10px;font-weight:700;font-size:15px">Ouvrir ALANE</a></p>
                   <p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
                 </div>`,
               }),
@@ -5279,7 +5280,7 @@ export default async function handler(req, res) {
           // la réputation du domaine d'envoi et fait basculer les suivants en spam.
           const RESEND_KEY_R = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
           const RESEND_FROM_R = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-          const APP_URL_R = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+          const APP_URL_R = appUrl();
           if (RESEND_KEY_R) {
             const avecEmail = eligibles.filter(c => metaMap[c.id]?.email);
             const htmlMail = `<div style="font-family:sans-serif;max-width:520px;margin:auto;background:#0A1628;color:#fff;padding:28px;border-radius:16px">

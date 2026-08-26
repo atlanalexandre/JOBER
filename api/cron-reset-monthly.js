@@ -6,6 +6,7 @@ import { accordRepute, executerResolution, libelleResolution } from "./_resoluti
 import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
+import { appUrl } from "./_url.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -1155,7 +1156,7 @@ export default async function handler(req, res) {
               + `</tr>`;
           }).join("");
 
-          const lien = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+          const lien = appUrl();
           const html = emailHtml(`
             <p><strong>${aSignaler.length} dossier${aSignaler.length > 1 ? "s" : ""} prestataire${aSignaler.length > 1 ? "s" : ""}</strong>
                attend${aSignaler.length > 1 ? "ent" : ""} votre validation.</p>
@@ -1287,7 +1288,7 @@ ${toRole === "prestataire" ? `
   ${(() => { const addr = [m.adresse, m.ville].filter(Boolean).join(", "); return addr ? `<a href="https://www.google.com/maps/dir/?api=1&amp;destination=${encodeURIComponent(addr)}" style="display:inline-block;padding:9px 18px;background:#F0B429;color:#050E20;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px;">📍 Calculer mon itinéraire →</a>` : ""; })()}
 </div>` : ""}
 ${(() => {
-  const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+  const appUrl = appUrl();
   const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
   const titleEnc = encodeURIComponent(`Mission ALANE — ${m.metier||"Mission"}`);
   const descEnc  = encodeURIComponent(`Prestation via ALANE. Voir détails : ${appUrl}`);
@@ -1305,9 +1306,9 @@ ${(() => {
 <a href="${icsUrl}" style="display:inline-block;background:#555;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">🗓 Apple / Outlook</a>
 </div>`;
 })()}
-<div style="text-align:center;margin-top:16px;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma prestation →</a></div>
+<div style="text-align:center;margin-top:16px;"><a href='${appUrl()}' style="display:inline-block;background:linear-gradient(135deg,#7C6FE0,#5B4FCF);color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Voir ma prestation →</a></div>
 </td></tr>
-<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href='${appUrl()}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
           const sends = [];
@@ -1425,7 +1426,7 @@ ${(() => {
             const prestaEmail  = userMap[m.prestataire_id]?.email;
             const clientName   = nameMap[m.client_id]  || "Client";
             const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
-            const appUrl       = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+            const appUrl       = appUrl();
             const missionLabel = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.date}`;
 
             // Email prestataire : uniquement s'il n'a pas encore confirmé la fin de mission
@@ -1551,7 +1552,7 @@ ${(() => {
                 continue;
               }
               const mLabel = esc(m.metier || m.sector || "Prestation");
-              const appUrl = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+              const appUrl = appUrl();
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
               const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
@@ -1657,7 +1658,7 @@ ${(() => {
           for (const m of ended) {
             try {
               const mLabel = esc(m.metier || m.sector || "Prestation");
-              const appUrl2 = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+              const appUrl2 = appUrl();
               const prestaEmail2 = userMap[m.prestataire_id]?.email;
               const clientEmail2 = userMap[m.client_id]?.email;
               const prestaName2  = nameMap[m.prestataire_id] || "Prestataire";

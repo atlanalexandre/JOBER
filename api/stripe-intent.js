@@ -4,6 +4,7 @@ import { secteurOuvert, messageSecteurFerme } from "./_secteurs.js";
 import { prixHeuresSupp } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
 import { reductionCashback } from "./_cashback.js";
+import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -273,7 +274,7 @@ export default async function handler(req, res) {
       const profData = profR.ok ? await profR.json().catch(() => []) : [];
       const customerId = Array.isArray(profData) && profData[0]?.stripe_customer_id || null;
       if (!customerId) return res.status(400).json({ error: "Aucun abonnement Stripe trouvé" });
-      const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+      const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || appUrl();
       const portalR = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },

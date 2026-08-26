@@ -29,6 +29,7 @@
 
 import { verifyUser } from "./_auth.js";
 import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
+import { appUrl } from "./_url.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Méthode non autorisée" });
@@ -36,7 +37,7 @@ export default async function handler(req, res) {
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   const STRIPE_SK        = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
-  const APP_URL          = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+  const APP_URL          = appUrl();
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return res.status(500).json({ error: "Configuration serveur manquante" });

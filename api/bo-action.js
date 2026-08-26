@@ -11,6 +11,7 @@ import { dateExigibilite } from "./_creances.js";
 import { echeanceVersementMs } from "./_temps.js";
 import { RESOLUTIONS, libelleResolution, echeanceOppositionMs, executerResolution } from "./_resolution.js";
 import { assurerCompteConnect, lienConfiguration } from "./_connect.js";
+import { appUrl } from "./_url.js";
 
 // BO_SESSION_SECRET optionnel : dérivé de SUPABASE_SERVICE_ROLE_KEY si absent
 function getBoSecret() {
@@ -351,7 +352,7 @@ export default async function handler(req, res) {
               <p style="margin-top:20px;">Prochaine étape : déposez vos documents justificatifs depuis votre espace. Une fois votre dossier vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
-              <p style="text-align:center;margin:28px 0;"><a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
+              <p style="text-align:center;margin:28px 0;"><a href='${appUrl()}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>
               <p style="color:#888;font-size:13px;">À très vite sur la plateforme,<br/>L'équipe ALANE</p>
             `),
           });
@@ -452,7 +453,7 @@ export default async function handler(req, res) {
             } else {
               const lien = await lienConfiguration({
                 compteId: compte.compteId, stripeKey: STRIPE_SK_M,
-                appUrl: (process.env.APP_URL || "").replace(/\s/g, ""),
+                appUrl: appUrl(),
               });
               if (!lien.ok) {
                 console.error(`[connect] lien non généré pour ${profileId} : ${lien.detail}`);
