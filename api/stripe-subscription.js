@@ -1,3 +1,4 @@
+import { appUrl } from "./_url.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
       + `${nomsPossibles[0]} est la forme de référence.`);
   }
 
-  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+  const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, "") || appUrl();
 
   // Reuse existing Stripe Customer to avoid duplicates
   let existingCustomerId = null;

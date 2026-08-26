@@ -1,6 +1,7 @@
 import { resendBody } from "./_email.js";
 import { sendWebPush, notifier } from "./_push.js";
 import { retardMinutes, frenchOffsetMs } from "./_temps.js";
+import { appUrl } from "./_url.js";
 // Cron — relance des réservations abandonnées
 // Déclenché toutes les 30 min par Vercel (vercel.json)
 // Pour chaque brouillon > 30 min non encore notifié :
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
   const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\s/g, "");
   const RESEND_API_KEY   = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
   const RESEND_FROM      = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
-  const APP_URL          = (process.env.APP_URL || "").replace(/\s/g, "") || "https://www.alane.fr";
+  const APP_URL          = appUrl();
 
   if (CRON_SECRET) {
     const auth = req.headers.authorization || "";

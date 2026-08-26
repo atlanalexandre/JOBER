@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { appUrl } from "./_url.js";
 
 export function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
 
@@ -28,7 +29,7 @@ export function emailHtml(content) {
         </tr>
         <tr>
           <td style="background:#f4f4f7;padding:20px 36px;text-align:center;border-top:1px solid #e8e8f0;">
-            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${(process.env.APP_URL || "").replace(/\s/g, "")||"https://www.alane.fr"}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+            <p style="margin:0;font-size:13px;color:#888;">L'équipe <strong>ALANE</strong> · <a href='${appUrl()}' style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
           </td>
         </tr>
       </table>
