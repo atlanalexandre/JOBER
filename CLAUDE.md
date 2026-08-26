@@ -315,6 +315,11 @@ Voir [AUDIT-2026-07-28.md](AUDIT-2026-07-28.md) pour l'état détaillé. En rés
   l'extérieur. Elles portaient à elles seules **25 règles RLS que plus personne ne relisait**,
   dont une, sur `prestataires`, ouverte au rôle `public`. Une table oubliée avec une policy
   permissive n'encombre pas : elle expose.
+- **L'immatriculation de la société** conditionne une dizaine de points du produit —
+  mentions légales, identification dans les CGPS, médiateur de la consommation, TVA sur les
+  frais de service, facture des frais, bascule du compte Stripe. Ils sont inventoriés dans
+  [IMMATRICULATION.md](IMMATRICULATION.md), établi par relecture du code : **le lire avant d'y
+  toucher**, plusieurs de ces points ne se découvrent pas autrement.
 - **`messages`** n'a pas de vrai modèle de conversation : les participants sont extraits d'une
   chaîne de caractères, y compris dans les règles de sécurité. À refondre avant montée en charge.
 - **Trois fichiers de schéma SQL** divergents à la racine (`supabase-schema.sql`,
