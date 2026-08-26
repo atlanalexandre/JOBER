@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, finPrestationMs } from "../../api/_temps.js";
@@ -1160,7 +1160,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"💎",label:"Mon abonnement",sub:"100 premiers validés → 8 prestations/mois gratuites · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"💎",label:"Mon abonnement",sub:`100 premiers validés → 8 prestations/mois gratuites · Premium ${prixPlan("premium")} · Elite ${prixPlan("elite")}`,action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -2067,7 +2067,7 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
           <div style={{ fontWeight:700, color:"#F25E5E", fontSize:13 }}>⛔ Prestations gratuites épuisées</div>
           <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Votre quota gratuit a déjà été utilisé. Passez Premium pour accéder aux prestations.</div>
         </div>
-        <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
+        <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>{prixPlan("premium")}/mois ›</span>
       </div>
     );
   }
@@ -2077,7 +2077,7 @@ export function UpgradeNudge({ onNavigate, plan: planProp }) {
         <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>💎 Passez Premium</div>
         <div style={{ color:C.textSub, fontSize:11, marginTop:2 }}>Prestations illimitées · Badge vérifié · Urgences</div>
       </div>
-      <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>29€/mois ›</span>
+      <span style={{ color:C.violet, fontWeight:700, fontSize:13 }}>{prixPlan("premium")}/mois ›</span>
     </div>
   );
 }
@@ -2644,7 +2644,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                             <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>⛔ Quota épuisé — acceptation impossible</div>
                             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginBottom:10 }}>Passez Premium pour accepter des prestations illimitées</div>
                             <button onClick={()=>onNavigate&&onNavigate("abonnement_presta")} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:C.violet, color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                              💎 Passer Premium — 29€/mois
+                              💎 Passer Premium — {prixPlan("premium")}/mois
                             </button>
                           </div>
                         ) : (
