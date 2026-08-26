@@ -852,12 +852,31 @@ Trois défauts se tenaient :
 | Le retour au gratuit écrivait `plan_abonnement` sans rien dire à Stripe | Affiché « Gratuit », prélevé tous les mois |
 
 `api/stripe-subscription.js` modifie désormais l'abonnement existant (`items[0][price]`), et
-n'ouvre un tunnel que s'il n'y en a aucun de vivant — `active`, `trialing` ou `past_due`. Une
-**montée** en gamme se facture immédiatement (`always_invoice`) : le quota est disponible dans
-la seconde, il se paie dans la seconde. Une **descente** porte un avoir sur la facture suivante
-(`create_prorations`) : rembourser une différence sur une carte pour la reprélever le mois
-d'après n'a aucun intérêt. Le **retour au gratuit** résilie en fin de période
-(`cancel_at_period_end`) — le mois est payé, il est dû.
+n'ouvre un tunnel que s'il n'y en a aucun de vivant — `active`, `trialing` ou `past_due`.
+
+| Sens | Effet | Mécanisme |
+|---|---|---|
+| **Montée** (Premium → Elite) | immédiat, différence facturée | `always_invoice` |
+| **Descente** (Elite → Premium) | **au terme de la période payée**, aucune déduction | calendrier d'abonnement, `proration_behavior: none` |
+| **Retour au gratuit** | au terme de la période payée | `cancel_at_period_end` |
+
+Une montée se facture dans la seconde parce que le quota l'est aussi ; la laisser courir
+offrirait une formule supérieure à qui sait cliquer au bon moment.
+
+**Aucune déduction pour une rétrogradation** — décision d'Alexandre du 24/08/2026. Cela ne peut
+pas vouloir dire « formule inférieure tout de suite et le trop-payé reste chez ALANE » : ce
+serait encaisser le prix d'Elite en fournissant Premium, ce qu'un client conteste et obtient.
+La seule lecture qui tienne est l'inverse — le prestataire **garde sa formule jusqu'au terme
+qu'il a payé**, et la nouvelle prend effet ensuite. Rien n'est déduit parce que rien n'est dû.
+
+C'est ce que Stripe appelle un *subscription schedule* : la phase en cours va à son terme, la
+suivante applique le nouveau tarif. Un simple changement de prix, même sans prorata, ne saurait
+pas le faire. Un calendrier déjà posé est **remplacé** et non empilé : c'est la dernière volonté
+du prestataire qui compte. La métadonnée `plan` est portée par la phase suivante, sans quoi le
+webhook ne saurait pas quel plan appliquer au renouvellement.
+
+La réponse porte `differe: true` dans ce cas : l'écran ne doit pas afficher la nouvelle formule
+comme active, sans quoi le prestataire croit avoir déjà perdu la sienne.
 
 Le webhook n'agit plus que sur l'abonnement **courant** du profil ; un événement portant sur un
 autre est ignoré et journalisé en avertissement, parce qu'un abonnement fantôme encore facturé

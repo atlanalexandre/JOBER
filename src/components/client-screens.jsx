@@ -8512,6 +8512,10 @@ export function AbonnementPrestaScreen({ onBack }) {
     };
   });
 
+  // Le rang des formules, pour distinguer une montée d'une descente. Miroir de
+  // `RANG` dans api/stripe-subscription.js.
+  const RANG_PLANS = { free: 0, premium: 1, elite: 2 };
+
   const handleChangePlan = async (planId) => {
     if(planId === current) return;
     // Le retour au gratuit passait par une simple écriture dans le profil, sans
@@ -8540,7 +8544,10 @@ export function AbonnementPrestaScreen({ onBack }) {
       // s'est joué côté Stripe. On dit ce qui a été fait — un prestataire qui
       // ne voit rien se passer recommence, et on ne sait plus où on en est.
       if(d.change) {
-        setCurrent(pendingPlan);
+        // `differe` : le changement est PROGRAMMÉ, pas appliqué. Afficher la
+        // nouvelle formule comme active ferait croire au prestataire qu'il a
+        // déjà perdu la sienne — alors qu'il la garde jusqu'au terme payé.
+        if(!d.differe) setCurrent(pendingPlan);
         setPendingPlan(null);
         setSaving(false);
         showToast(d.message || "Votre formule a été modifiée.", "success");
@@ -8570,9 +8577,17 @@ export function AbonnementPrestaScreen({ onBack }) {
                   Votre abonnement prendra fin à l'échéance de la période déjà réglée. Vous en gardez tous les avantages jusque-là, et rien ne vous sera prélevé ensuite.
                 </span>
               ) : current !== "free" ? (
-                <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
-                  Votre abonnement actuel est modifié, pas doublé. Stripe calcule le prorata : les jours déjà payés viennent en déduction.
-                </span>
+                // Monter et descendre ne se règlent pas pareil : le dire avant,
+                // pas après. C'est la question que tout le monde se pose ici.
+                (RANG_PLANS[pendingPlan] ?? 0) > (RANG_PLANS[current] ?? 0) ? (
+                  <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
+                    Votre abonnement actuel est modifié, pas doublé. Seule la différence vous est facturée pour les jours restants du mois.
+                  </span>
+                ) : (
+                  <span style={{ display:"block", marginTop:8, fontSize:12, color:C.textMuted }}>
+                    Vous gardez votre formule actuelle jusqu'au terme de la période déjà réglée : la nouvelle prendra effet à ce moment-là, et rien ne vous sera prélevé d'ici là.
+                  </span>
+                )
               ) : null}
             </div>
             <div style={{ display:"flex", gap:10 }}>

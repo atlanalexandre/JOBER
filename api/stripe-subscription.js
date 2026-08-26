@@ -141,41 +141,131 @@ export default async function handler(req, res) {
           : "Votre abonnement prendra fin à l'échéance de la période en cours. Vous en gardez tous les avantages jusque-là.",
       });
     } else {
-      // ── Montée ou descente en gamme ────────────────────────────────
       const ligne = sub.items?.data?.[0];
       if (!ligne?.id) {
         console.error(`[abonnement] ${abonnementActuel} sans ligne exploitable — changement impossible.`);
         return res.status(502).json({ error: "Votre abonnement n'a pas pu être lu. Écrivez à direction@alane.fr." });
       }
       const monte = (RANG[plan] ?? 0) > (RANG[planActuel] ?? 0);
-      const maj = await fetch(`https://api.stripe.com/v1/subscriptions/${abonnementActuel}`, {
+
+      if (monte) {
+        // ── Montée en gamme : tout de suite ──────────────────────────
+        //
+        // Le nouveau quota est disponible dans la seconde, il se paie dans la
+        // seconde. Le laisser courir jusqu'au mois suivant offrirait une
+        // formule supérieure à qui sait cliquer au bon moment.
+        const maj = await fetch(`https://api.stripe.com/v1/subscriptions/${abonnementActuel}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            "items[0][id]":    ligne.id,
+            "items[0][price]": priceId,
+            proration_behavior: "always_invoice",
+            "metadata[plan]":    plan,
+            "metadata[user_id]": userId || "",
+            cancel_at_period_end: "false",
+          }).toString(),
+        });
+        const d = await maj.json().catch(() => ({}));
+        if (!maj.ok) {
+          console.error(`[abonnement] montée refusée pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
+          return res.status(502).json({ error: `Stripe a refusé le changement : ${d?.error?.message || "erreur inconnue"}` });
+        }
+        console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (montée), abonnement ${abonnementActuel} modifié.`);
+        return res.status(200).json({
+          change: true,
+          message: "Votre nouvelle formule est active. Seule la différence vous est facturée pour les jours restants du mois en cours.",
+        });
+      }
+
+      // ── Descente en gamme : à la fin de la période payée ────────────
+      //
+      // Décision d'Alexandre du 24/08/2026 : AUCUNE DÉDUCTION pour une
+      // rétrogradation en cours de mois.
+      //
+      // Cela ne peut pas vouloir dire « formule inférieure tout de suite, et le
+      // trop-payé reste chez ALANE » : ce serait encaisser le prix d'Elite en
+      // fournissant Premium, ce qu'un client conteste et obtient. La seule
+      // lecture qui tienne est l'inverse : le prestataire GARDE sa formule
+      // jusqu'au terme qu'il a payé, et la nouvelle prend effet ensuite. Rien
+      // n'est déduit parce que rien n'est dû — il a consommé ce qu'il a réglé.
+      //
+      // Stripe appelle cela un « calendrier d'abonnement » : la phase en cours
+      // va jusqu'à son terme, la suivante applique le nouveau tarif. Un
+      // changement de prix immédiat, même sans prorata, ne saurait pas faire ça.
+      let calendrierId = sub.schedule || null;
+      let phaseEnCours = null;
+
+      if (!calendrierId) {
+        const cr = await fetch("https://api.stripe.com/v1/subscription_schedules", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ from_subscription: abonnementActuel }).toString(),
+        });
+        const cd = await cr.json().catch(() => ({}));
+        if (!cr.ok || !cd.id) {
+          console.error(`[abonnement] calendrier non créé pour ${abonnementActuel} :`, JSON.stringify(cd).slice(0, 300));
+          return res.status(502).json({ error: `Stripe a refusé la programmation : ${cd?.error?.message || "erreur inconnue"}` });
+        }
+        calendrierId = cd.id;
+        phaseEnCours = cd.phases?.[0] || null;
+      } else {
+        const lr = await fetch(`https://api.stripe.com/v1/subscription_schedules/${calendrierId}`, {
+          headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
+        });
+        const ld = await lr.json().catch(() => ({}));
+        // Un calendrier déjà posé signifie qu'un changement est en attente. On
+        // le REMPLACE plutôt que d'en empiler un second : c'est la dernière
+        // volonté du prestataire qui compte.
+        phaseEnCours = ld.phases?.[0] || null;
+        console.log(`[abonnement] calendrier ${calendrierId} déjà en place pour ${userId} — remplacé.`);
+      }
+
+      const prixActuel = phaseEnCours?.items?.[0]?.price;
+      if (!phaseEnCours || !prixActuel || !phaseEnCours.start_date || !phaseEnCours.end_date) {
+        console.error(`[abonnement] phase en cours illisible sur ${calendrierId} — programmation abandonnée.`);
+        return res.status(502).json({ error: "Le changement n'a pas pu être programmé. Écrivez à direction@alane.fr." });
+      }
+
+      const prog = await fetch(`https://api.stripe.com/v1/subscription_schedules/${calendrierId}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          "items[0][id]":    ligne.id,
-          "items[0][price]": priceId,
-          // Une montée en gamme se facture TOUT DE SUITE : le nouveau quota est
-          // disponible dans la seconde, il doit être payé dans la seconde.
-          // Une descente porte au contraire un avoir sur la facture suivante —
-          // rembourser une différence sur une carte pour la reprélever le mois
-          // d'après n'a aucun intérêt, et multiplie les écritures.
-          proration_behavior: monte ? "always_invoice" : "create_prorations",
-          "metadata[plan]":    plan,
-          "metadata[user_id]": userId || "",
-          cancel_at_period_end: "false",
+          // La phase en cours est répétée à l'identique : Stripe exige qu'on la
+          // redonne, et la moindre différence la réécrirait.
+          "phases[0][items][0][price]":    typeof prixActuel === "string" ? prixActuel : prixActuel.id,
+          "phases[0][items][0][quantity]": "1",
+          "phases[0][start_date]":         String(phaseEnCours.start_date),
+          "phases[0][end_date]":           String(phaseEnCours.end_date),
+          // Puis la nouvelle formule, sans prorata : il n'y a rien à répartir,
+          // le changement tombe pile à l'échéance.
+          "phases[1][items][0][price]":    priceId,
+          "phases[1][items][0][quantity]": "1",
+          "phases[1][proration_behavior]": "none",
+          // La métadonnée suit la phase : sans elle, le webhook qui applique le
+          // nouveau plan au renouvellement ne saurait pas lequel appliquer.
+          "phases[1][metadata][plan]":     plan,
+          "phases[1][metadata][user_id]":  userId || "",
+          end_behavior: "release",
         }).toString(),
       });
-      const d = await maj.json().catch(() => ({}));
-      if (!maj.ok) {
-        console.error(`[abonnement] changement refusé pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
-        return res.status(502).json({ error: `Stripe a refusé le changement : ${d?.error?.message || "erreur inconnue"}` });
+      const pd = await prog.json().catch(() => ({}));
+      if (!prog.ok) {
+        console.error(`[abonnement] programmation refusée sur ${calendrierId} :`, JSON.stringify(pd).slice(0, 300));
+        return res.status(502).json({ error: `Stripe a refusé la programmation : ${pd?.error?.message || "erreur inconnue"}` });
       }
-      console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (${monte ? "montée" : "descente"}), abonnement ${abonnementActuel} modifié.`);
+
+      const bascule = phaseEnCours.end_date ? new Date(phaseEnCours.end_date * 1000) : null;
+      console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (descente) programmée `
+        + `au ${bascule ? bascule.toISOString().slice(0, 10) : "terme de la période"} — calendrier ${calendrierId}.`);
       return res.status(200).json({
         change: true,
-        message: monte
-          ? "Votre nouvelle formule est active. Seule la différence vous est facturée pour les jours restants du mois en cours."
-          : "Votre nouvelle formule est active. La différence des jours déjà payés vient en déduction de votre prochaine facture.",
+        // Le plan N'A PAS changé aujourd'hui : l'écran ne doit pas l'afficher
+        // comme tel, sans quoi le prestataire croit avoir perdu sa formule.
+        differe: true,
+        message: bascule
+          ? `Vous gardez votre formule actuelle jusqu'au ${bascule.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, terme de la période déjà réglée. La nouvelle formule prendra effet ce jour-là, sans rien vous prélever d'ici là.`
+          : "Vous gardez votre formule actuelle jusqu'au terme de la période déjà réglée. La nouvelle formule prendra effet à ce moment-là.",
       });
     }
   }
