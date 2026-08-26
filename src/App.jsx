@@ -5,7 +5,7 @@ import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount } from "./components/ui.jsx";
+import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount, fetchPlacesLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
@@ -107,12 +107,17 @@ function AlaneIcon({ size = 18 }) {
 function SplashScreen({ onNext }) {
   const [v,setV]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
+  const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
     fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
+    fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
   },[]);
-  const MAX_LAUNCH = 100;
-  const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
+  // Les places de l'offre ne se déduisent PLUS du nombre de prestataires
+  // approuvés : elles se comptent à l'ouverture de l'accès aux prestations,
+  // comme la règle serveur. Le même nombre servait aux deux, et l'écran
+  // annonçait des places qui n'existaient plus.
+  const spotsLeft = placesLeft;
   const offerActive = isLaunchPhase() && (spotsLeft == null || spotsLeft > 0);
   return (
     <div style={{
@@ -193,7 +198,7 @@ function SplashScreen({ onNext }) {
             <div>
               <div style={{ fontWeight:700, color:"#10D98F", fontSize:13, marginBottom:2 }}>Offre de lancement</div>
               <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.5 }}>
-                8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires"}
+                8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} sur 100` : "Réservé aux 100 premiers prestataires validés"}
               </div>
             </div>
           </div>
@@ -214,11 +219,16 @@ function RoleScreen({ onSelect, onBack, notice }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
   const [prestaCount,setPrestaCount]=useState(null);
+  const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{
     fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
+    fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
   },[]);
-  const MAX_LAUNCH = 100;
-  const spotsLeft = prestaCount != null ? Math.max(0, MAX_LAUNCH - prestaCount) : null;
+  // Les places de l'offre ne se déduisent PLUS du nombre de prestataires
+  // approuvés : elles se comptent à l'ouverture de l'accès aux prestations,
+  // comme la règle serveur. Le même nombre servait aux deux, et l'écran
+  // annonçait des places qui n'existaient plus.
+  const spotsLeft = placesLeft;
   const offerActive = isLaunchPhase() && (spotsLeft == null || spotsLeft > 0);
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg, #050E20 0%, #0A1628 50%, #162547 100%)`, display:"flex", flexDirection:"column", padding:"60px 24px 48px", position:"relative", overflow:"hidden" }}>
@@ -292,7 +302,7 @@ function RoleScreen({ onSelect, onBack, notice }) {
           <div>
             <div style={{ fontWeight:700, color:"#10D98F", fontSize:12, marginBottom:2 }}>Offre de lancement</div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, lineHeight:1.5 }}>
-              8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires"}
+              8 prestations gratuites · {spotsLeft != null ? `Plus que ${spotsLeft} place${spotsLeft>1?"s":""} disponible${spotsLeft>1?"s":""}` : "Réservé aux 100 premiers prestataires validés"}
             </div>
           </div>
         </div>

@@ -1160,7 +1160,7 @@ export function PrestaProfilTab({ onNavigate }) {
       {[
         {icon:"📂",label:"Mes documents",sub:"Uploader & renouveler mes docs", action:()=>onNavigate("doc_upload")},
         {icon:"👤",label:"Informations personnelles",sub:"Nom, email, téléphone", action:()=>onNavigate("settings")},
-        {icon:"💎",label:"Mon abonnement",sub:"100 premiers → 10 missions/mois gratuit · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
+        {icon:"💎",label:"Mon abonnement",sub:"100 premiers validés → 8 prestations/mois gratuites · Premium 29€ · Elite 59€",action:()=>onNavigate("abonnement_presta")},
         {icon:"🔔",label:"Notifications",sub:"Gérer mes alertes", action:()=>onNavigate("notifications")},
       ].map((item,i)=>(
         <div key={i} onClick={item.action} style={{ background:"#0D1B3E", borderRadius:r, padding:"13px", marginBottom:9, display:"flex", alignItems:"center", gap:12, cursor:"pointer", boxShadow:"0 2px 12px rgba(0,0,0,0.4)", transition:"transform 0.15s" }}
@@ -3800,8 +3800,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const required = docsRequisPour(u?.user_metadata?.nationalite).filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     })();
-    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("status","approved")
-      .then(({count})=>{ if(count!=null) setSpotsLeft(Math.max(0,100-count)); });
+    // Les places de l'offre se comptent à l'ouverture de l'accès aux
+    // prestations, comme la règle serveur — et non au nombre d'approuvés, qui
+    // annonçait des places déjà prises.
+    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("missions_enabled",true)
+      .then(({count,error})=>{
+        if(error) { console.error("[offre] places illisibles :", error.message); return; }
+        if(count!=null) setSpotsLeft(Math.max(0,100-count));
+      });
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({data})=>{ if(data?.value!=null) setLaunchPhaseActive(Boolean(data.value)); });
   },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps

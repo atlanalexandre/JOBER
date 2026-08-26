@@ -907,31 +907,40 @@ describe("montant encaissé — contrôle de cohérence", () => {
 });
 
 // ── Quota mensuel du prestataire et offre de lancement ────────────
-// L'inscription annonce « 8 prestations/mois gratuites aux 100 premiers inscrits ».
-// Le quota retombait pourtant toujours sur plan_limits.free (2) : un prestataire du
-// lancement se voyait refuser sa 3ᵉ prestation. Reproduit la décision de
-// limitePlanMensuelle() dans api/missions.js.
+// L'inscription annonce « 8 prestations/mois gratuites aux 100 premiers
+// prestataires validés ». Le quota retombait pourtant toujours sur
+// plan_limits.free (2) : un prestataire du lancement se voyait refuser sa 3ᵉ
+// prestation. Reproduit la décision de limitePlanMensuelle() dans api/missions.js.
+//
+// La place s'attribue depuis le 24/08/2026 à l'OUVERTURE DE L'ACCÈS AUX
+// PRESTATIONS, et non à l'inscription : un compte refusé ou sans documents ne
+// consomme plus de place. D'où le nom du critère ci-dessous.
 describe("limite mensuelle — offre de lancement", () => {
   // Doit rester le miroir de `limitePlanMensuelle` dans api/missions.js.
   const LIMITES = { free: 2, premium: 8, elite: 999 };
-  const limite = ({ plan, lancement, rangCentPremiers }) => {
+  const limite = ({ plan, lancement, parmiLesCentOuverts }) => {
     const base = LIMITES[plan] ?? LIMITES.free;
-    if (plan !== "free" || !lancement || !rangCentPremiers) return base;
+    if (plan !== "free" || !lancement || !parmiLesCentOuverts) return base;
     return Math.max(base, LIMITES.premium);
   };
 
   it("prestataire du lancement : 8 prestations, pas 2", () => {
-    expect(limite({ plan:"free", lancement:true, rangCentPremiers:true })).toBe(8);
+    expect(limite({ plan:"free", lancement:true, parmiLesCentOuverts:true })).toBe(8);
   });
-  it("hors des 100 premiers : le plan free reste à 2", () => {
-    expect(limite({ plan:"free", lancement:true, rangCentPremiers:false })).toBe(2);
+  it("hors des 100 premiers ouverts : le plan free reste à 2", () => {
+    expect(limite({ plan:"free", lancement:true, parmiLesCentOuverts:false })).toBe(2);
+  });
+  it("inscrit mais accès non ouvert : aucune place, donc 2", () => {
+    // C'est tout l'objet du changement : la place ne se prend plus en
+    // remplissant le formulaire d'inscription.
+    expect(limite({ plan:"free", lancement:true, parmiLesCentOuverts:false })).toBe(2);
   });
   it("offre de lancement désactivée : retour à 2 pour tout le monde", () => {
-    expect(limite({ plan:"free", lancement:false, rangCentPremiers:true })).toBe(2);
+    expect(limite({ plan:"free", lancement:false, parmiLesCentOuverts:true })).toBe(2);
   });
   it("un plan payant n'est jamais dégradé par l'offre", () => {
-    expect(limite({ plan:"premium", lancement:true, rangCentPremiers:true })).toBe(8);
-    expect(limite({ plan:"elite",   lancement:true, rangCentPremiers:true })).toBe(999);
+    expect(limite({ plan:"premium", lancement:true, parmiLesCentOuverts:true })).toBe(8);
+    expect(limite({ plan:"elite",   lancement:true, parmiLesCentOuverts:true })).toBe(999);
   });
 });
 

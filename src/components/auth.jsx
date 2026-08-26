@@ -667,7 +667,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
             })}
             {isLaunchPhase() && (
               <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
-                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers inscrits</strong> → <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong> !<br/>
+                🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers prestataires validés</strong> → <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong> !<br/>
                 <span style={{ color:C.textSub }}>2 prestations/mois ensuite pour le plan Gratuit.</span>
               </div>
             )}
@@ -1346,7 +1346,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
             <div style={{ flex:1 }}>
               <span style={{ fontWeight:700, color:"#10D98F", fontSize:12 }}>Offre de lancement</span>
               <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>
-                {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la prestation" : "8 prestations gratuites · Réservé aux 100 premiers prestataires inscrits"}
+                {role==="client" ? "Tarif transparent · le prix affiché est le vrai prix de la prestation" : "8 prestations gratuites · Réservé aux 100 premiers prestataires validés"}
               </div>
             </div>
           </div>
