@@ -838,6 +838,31 @@ Second trou : `date` est NULLE sur les prestations sur plusieurs jours, qui port
 **jamais** examinées. Une prestation du 30/07 était encore « Remplaçant recherché » le 21/08.
 La requête teste maintenant `or=(date.lte.…, and(date.is.null, date_debut.lte.…))`.
 
+**Changer de formule modifie l'abonnement, il n'en crée pas un second** (24/08/2026). Un
+prestataire en Premium qui passait Elite repartait dans un tunnel de paiement neuf et se
+retrouvait avec **deux abonnements actifs** — 29 € + 59 € prélevés chaque mois. Le profil ne
+gardant que le dernier identifiant, le premier n'était plus surveillé par personne.
+
+Trois défauts se tenaient :
+
+| Défaut | Conséquence |
+|---|---|
+| Le changement de formule ouvrait un nouveau tunnel | Double prélèvement, indéfiniment |
+| `customer.subscription.deleted` retrouvait le client par son seul `stripe_customer_id` | Un abonné Elite repassait **gratuit** le jour où son vieux Premium était résilié |
+| Le retour au gratuit écrivait `plan_abonnement` sans rien dire à Stripe | Affiché « Gratuit », prélevé tous les mois |
+
+`api/stripe-subscription.js` modifie désormais l'abonnement existant (`items[0][price]`), et
+n'ouvre un tunnel que s'il n'y en a aucun de vivant — `active`, `trialing` ou `past_due`. Une
+**montée** en gamme se facture immédiatement (`always_invoice`) : le quota est disponible dans
+la seconde, il se paie dans la seconde. Une **descente** porte un avoir sur la facture suivante
+(`create_prorations`) : rembourser une différence sur une carte pour la reprélever le mois
+d'après n'a aucun intérêt. Le **retour au gratuit** résilie en fin de période
+(`cancel_at_period_end`) — le mois est payé, il est dû.
+
+Le webhook n'agit plus que sur l'abonnement **courant** du profil ; un événement portant sur un
+autre est ignoré et journalisé en avertissement, parce qu'un abonnement fantôme encore facturé
+est un problème en soi.
+
 **L'offre de lancement s'attribue à l'ouverture de l'accès aux prestations** (24/08/2026).
 Les 8 prestations mensuelles revenaient aux 100 profils prestataires les plus anciens **par
 date d'inscription**, sans regarder le statut du compte ni l'accès aux prestations : la place
