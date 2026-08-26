@@ -60,6 +60,15 @@ export const tarifInterim = (t) => Math.round(t * 2.2 * 100) / 100;
 export const economiePct  = (t) => Math.round(((tarifInterim(t) - t) / tarifInterim(t)) * 100);
 export const formatE = (v) => v.toFixed(2).replace(".", ",") + " €/h";
 
+// Un MONTANT, pas un taux horaire.
+//
+// Le simulateur de charges affichait « Prestation 4h — 39,00 €/h » : le total
+// de quatre heures, présenté comme un tarif horaire. Et « Net après charges
+// 9,75 €/h/h », parce que `formatE` porte déjà le « /h » et qu'on le rajoutait.
+// Deux unités fausses sur le même encart, à l'écran que voit tout prestataire
+// qui s'inscrit.
+export const formatMontant = (v) => v.toFixed(2).replace(".", ",") + " €";
+
 export const CASHBACK_TIERS = [
   { id:"standard", min:0,  max:2,  rate:0.005,  label:"Standard", icon:"🥉", color:"#8B8FA8" },
   { id:"silver",   min:3,  max:5,  rate:0.0075, label:"Silver",   icon:"🥈", color:"#C0C0C0" },

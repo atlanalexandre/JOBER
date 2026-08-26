@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST } from "../constants/data.js";
 import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Badge, AddressAutocomplete, formatPhone, checkIban } from "./ui.jsx";
 
@@ -424,13 +424,17 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                           </div>
                           <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 8px", borderBottom:`1px solid rgba(255,255,255,0.06)` }}>
                             <span style={{ fontSize:12, color:C.textSub, fontWeight:700 }}>Net après charges</span>
-                            <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}/h</span>
+                            {/* `formatE` porte déjà « €/h » : le « /h » ajouté ici
+                                donnait « 9,75 €/h/h ». */}
+                            <span style={{ fontSize:13, fontWeight:800, color:"#10D98F" }}>{formatE(netApres)}</span>
                           </div>
                           <div style={{ display:"flex", gap:6, marginTop:8 }}>
                             {scenarios.map(s=>(
                               <div key={s.label} style={{ flex:1, background:"#162547", borderRadius:7, padding:"6px 4px", textAlign:"center" }}>
                                 <div style={{ fontSize:10, color:C.textSub, marginBottom:2 }}>{s.label}</div>
-                                <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatE(s.gain)}</div>
+                                {/* Un total de 4 h n'est pas un taux horaire :
+                                    « 39,00 €/h » annonçait quatre fois le vrai gain. */}
+                                <div style={{ fontSize:12, fontWeight:800, color:"#10D98F" }}>{formatMontant(s.gain)}</div>
                               </div>
                             ))}
                           </div>
