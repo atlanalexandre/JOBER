@@ -9192,7 +9192,8 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     { icon:"📄", title:"Constituez votre dossier", lines:[
       "Sept pièces sont exigées : photo de profil, extrait KBIS ou INSEE, attestation URSSAF, pièce d'identité, justificatif de domicile, RIB et attestation RC Pro.",
       "Tant qu'il en manque une, le dossier ne peut pas être examiné. Vos diplômes et certifications sont facultatifs, mais ils comptent aux yeux des clients.",
-    ], color:C.violet },
+      "Où les déposer : sur votre tableau de bord, onglet « Docs ». C'est au même endroit que vous les renouvellerez — l'attestation URSSAF et la RC Pro sont à refaire chaque année.",
+    ], action:{ to:"p_dashboard", data:{ onglet:"docs" }, label:"📂 Ouvrir l'onglet Docs →" }, color:C.violet },
     { icon:"✅", title:"Deux validations, pas une", lines:[
       "1️⃣ Notre équipe vérifie votre dossier, généralement sous 24 h, et active votre compte.",
       "2️⃣ L'accès aux prestations est ouvert dans un second temps. C'est à ce moment que vous recevez le lien pour configurer votre compte de virement — sans lui, aucun paiement ne peut vous être envoyé.",
@@ -9209,7 +9210,8 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     ], color:"#4FC3F7" },
     { icon:"🧾", title:"Vous restez indépendant", lines:[
       "Vous fixez librement votre tarif, y compris celui d'une prolongation demandée en cours de prestation.",
-      "ALANE établit vos factures en votre nom et pour votre compte : c'est le mandat de facturation que vous acceptez à l'inscription. Elles restent les vôtres.",
+      "Vous acceptez deux mandats à l'inscription. Le mandat de FACTURATION : ALANE établit vos factures en votre nom et pour votre compte — elles restent les vôtres. Le mandat d'ENCAISSEMENT : ALANE encaisse le prix de la prestation à votre place, auprès du client (CGPS art. 7.2).",
+      "Cet argent ne devient à aucun moment la propriété d'ALANE. Il est conservé chez Stripe jusqu'à la fin du délai de réclamation, puis vous est reversé. Seuls les frais de service rémunèrent ALANE. Vous pouvez révoquer ce mandat à tout moment en clôturant votre compte.",
       "Votre attestation RC Pro doit rester valide : pensez à la renouveler avant son expiration, sans quoi votre compte peut être suspendu.",
     ], color:"#F06292" },
   ];
@@ -9233,6 +9235,17 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
           {s.lines ? (
             <div style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:320, marginLeft:"auto", marginRight:"auto", textAlign:"left" }}>
               {s.lines.map((l,i) => <p key={i} style={{ margin:"0 0 10px" }}>{l}</p>)}
+              {/* Montrer l'endroit plutôt que le décrire. Le tutoriel disait
+                  quelles pièces déposer sans jamais dire OÙ : le prestataire
+                  refermait l'écran et cherchait. Le bouton mène directement à
+                  la page concernée. Il n'apparaît que si la personne peut
+                  réellement y aller — un compte client n'a pas d'écran de
+                  documents prestataire, et le contrôle de rôle le refuserait. */}
+              {s.action && onNavigate && role === "prestataire" && (
+                <button onClick={()=>{ onDone(); onNavigate(s.action.to, s.action.data); }} style={{ marginTop:8, background:`${s.color}22`, border:`1px solid ${s.color}66`, borderRadius:8, padding:"10px 14px", color:s.color, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
+                  {s.action.label}
+                </button>
+              )}
               {isLast && (
                 <button onClick={()=>{ onDone(); onNavigate?.("faq"); }} style={{ marginTop:8, background:"transparent", border:`1px solid ${s.color}66`, borderRadius:8, padding:"10px 14px", color:s.color, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
                   📖 En savoir plus dans la FAQ →
