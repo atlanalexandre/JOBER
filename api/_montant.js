@@ -44,6 +44,22 @@ export const FRAIS_PAR_DEFAUT = {
   // Modifiable depuis platform_settings.frais_service, sans redéploiement,
   // pour suivre le barème réel constaté sur les relevés.
   pourcentage: 2,
+
+  // Plancher des frais de service sur une PROLONGATION uniquement.
+  //
+  // Une prolongation ne rappelle pas la part fixe — la mise en relation est
+  // déjà payée — et ne laisse donc que les 2 %. Sur une prolongation d'une
+  // heure à 17 €, cela fait 0,34 € encaissés, quand Stripe prélève environ
+  // 1,5 % + 0,25 € de commission fixe, soit 0,51 € : chaque petite
+  // prolongation coûtait de l'argent à ALANE. Le point de bascule se situait
+  // autour de 50 €.
+  //
+  // La commission fixe de Stripe étant la même sur 17 € que sur 1 000 €, c'est
+  // un plancher qu'il faut, pas un taux plus élevé. Au-delà de 45 €, les 2 %
+  // repassent devant et le plancher ne joue plus.
+  //
+  // Modifiable depuis platform_settings.frais_service, sans redéploiement.
+  minimum_prolongation: 0.90,
 };
 
 /**

@@ -3089,9 +3089,16 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       recopiée : c'est ainsi que les quatre bornes de pointage
                       avaient divergé. */}
                   {fenetrePartagePosition({ date:m.date, heure_debut:m.heure_debut, hours:m.hours, actual_hours:m.actual_hours, started_at:startedAtMap[m.id] }).ouverte && (
+                    /* Le bouton passait au ROUGE une fois la position envoyée.
+                       Le rouge signale partout ailleurs un danger, un refus ou
+                       une annulation : ici, tout s'est bien passé. Le
+                       prestataire lisait donc une alerte là où il n'y avait
+                       qu'une confirmation. Une position transmise est un
+                       succès — elle reste verte, en second plan pour se
+                       distinguer de l'action encore à faire. */
                     <button onClick={() => toggleTracking(m.id)}
-                      style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(242,94,94,0.4)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(242,94,94,0.08)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "#F25E5E" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
-                      {sharingLocation[m.id] ? "📍 Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
+                      style={{ width:"100%", padding:"9px", borderRadius:10, border:`1px solid ${sharingLocation[m.id] ? "rgba(16,217,143,0.25)" : "rgba(16,217,143,0.3)"}`, background:sharingLocation[m.id] ? "rgba(255,255,255,0.03)" : "rgba(16,217,143,0.08)", color:sharingLocation[m.id] ? "rgba(16,217,143,0.75)" : "#10D98F", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                      {sharingLocation[m.id] ? "✅ Position transmise — envoyer à nouveau" : "📍 Envoyer ma position au client"}
                     </button>
                   )}
                   {/* Se faire remplacer plutôt qu'annuler : la prestation reste

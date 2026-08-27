@@ -1621,6 +1621,9 @@ export function useProviders() {
               dispon_jours:          p.dispon_jours || [],
               dispon_jours_creneaux: p.dispon_jours_creneaux || null,
               code_postal:  p.code_postal,
+              // La ville était renvoyée par l'API mais jamais reprise ici : le
+              // filtre par ville était donc impossible à écrire.
+              ville:        p.ville || null,
               rating:       p.rating || 0,
               reviews:      p.reviews || 0,
               distance:     "—",
@@ -2234,6 +2237,7 @@ export function SearchFiltersScreen({ onNavigate }) {
   const [ratingMin,setRatingMin]=useState(0);
   const [tarifMax,setTarifMax]=useState(50);
   const [dispoNow,setDispoNow]=useState(false);
+  const [ville,setVille]=useState("");
   const [showFilters,setShowFilters]=useState(false);
   const [favs,setFavs]=useState([]);
   const [favUserId,setFavUserId]=useState(null);
@@ -2260,6 +2264,11 @@ export function SearchFiltersScreen({ onNavigate }) {
     }
   };
 
+  // Les villes réellement représentées, triées, sans doublon de casse.
+  const villesDisponibles = [...new Set(
+    providers.map(p => (p.ville || "").trim()).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, "fr"));
+
   const filtered = providers.filter(p=>{
     if (search) {
       const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
@@ -2269,6 +2278,7 @@ export function SearchFiltersScreen({ onNavigate }) {
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
     if(dispoNow && !p.available) return false;
+    if(ville && (p.ville || "").trim().toLowerCase() !== ville.toLowerCase()) return false;
     return true;
   }).sort((a,b) => (b.planRank||0) - (a.planRank||0));
 
@@ -2287,7 +2297,7 @@ export function SearchFiltersScreen({ onNavigate }) {
         <div style={{ background:"#0D1B3E", padding:"16px 18px", borderBottom:`1px solid ${C.border}`, boxShadow:"0 4px 16px rgba(0,0,0,0.08)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
             <span style={{ fontWeight:800, color:C.text, fontSize:14 }}>Filtres</span>
-            <button onClick={()=>{setRatingMin(0);setTarifMax(50);setDispoNow(false);}} style={{ background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer" }}>Réinitialiser</button>
+            <button onClick={()=>{setRatingMin(0);setTarifMax(50);setDispoNow(false);setVille("");}} style={{ background:"none", border:"none", color:C.violet, fontWeight:700, fontSize:12, cursor:"pointer" }}>Réinitialiser</button>
           </div>
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:12, color:C.textSub, fontWeight:600 }}>Note minimum : {ratingMin > 0 ? `${ratingMin}★` : "Toutes"}</label>
@@ -2299,6 +2309,21 @@ export function SearchFiltersScreen({ onNavigate }) {
             <label style={{ fontSize:12, color:C.textSub, fontWeight:600 }}>Tarif max : {tarifMax} €/h</label>
             <input type="range" min={10} max={50} value={tarifMax} onChange={e=>setTarifMax(+e.target.value)} style={{ width:"100%", marginTop:6, accentColor:C.violet }} />
           </div>
+          {/* Filtre par ville — annoncé par le tutoriel depuis toujours, et
+              absent de l'écran. La liste est construite à partir des
+              prestataires réellement affichables : on ne propose donc jamais
+              une ville qui ne renverrait aucun résultat. */}
+          {villesDisponibles.length > 0 && (
+            <div style={{ marginBottom:12 }}>
+              <label style={{ fontSize:12, color:C.textSub, fontWeight:600 }}>Ville</label>
+              <select value={ville} onChange={e=>setVille(e.target.value)}
+                style={{ width:"100%", marginTop:6, padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.06)", color:C.text, fontSize:13, fontFamily:"inherit" }}>
+                <option value="">Toutes les villes</option>
+                {villesDisponibles.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          )}
+
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={()=>setDispoNow(!dispoNow)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${dispoNow?C.success:C.grayLight}`, background:dispoNow?`${C.success}15`:C.white, color:dispoNow?C.success:C.gray, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>● Dispo maintenant</button>
           </div>
@@ -9135,11 +9160,11 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const [step, setStep] = useState(0);
 
   const clientSteps = [
-        // « Filtrez par ville » : ce filtre n'existe pas. La recherche porte sur le
-    // nom, le métier et les compétences ; les filtres sont la note, le tarif et
-    // la disponibilité. Annoncer un critère qu'on ne propose pas fait chercher
-    // au client quelque chose qu'il ne trouvera pas.
-    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif et disponibilité, ou cherchez directement un métier ou une compétence.", color:C.violet },
+        // Le filtre par ville a été ajouté le 27/08/2026 : cette phrase le
+    // promettait depuis longtemps sans qu'il existe. La liste des villes est
+    // construite à partir des prestataires affichables — ne jamais reproposer
+    // ici un critère que l'écran de recherche n'offre pas.
+    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité, ou cherchez directement un métier ou une compétence.", color:C.violet },
         // « Répondent rapidement » ne repose sur rien : aucun traitement ne mesure
     // ce délai. C'est le même travers que le « < 10 min de réponse » retiré de
     // la page d'accueil. Ce qui est vrai et vérifiable, c'est le délai imposé au

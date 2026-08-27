@@ -131,3 +131,37 @@ describe("estimation montrée au client avant la demande", () => {
     }
   });
 });
+
+// Le plancher de frais sur les prolongations (27/08/2026).
+//
+// Les 2 % seuls ne couvraient pas la commission fixe de Stripe (~1,5 % + 0,25 €)
+// sur les petits montants : ALANE payait pour prolonger une prestation.
+describe("plancher de frais sur une prolongation", () => {
+  const MINIMUM = FRAIS_PAR_DEFAUT.minimum_prolongation;
+
+  it("couvre la commission fixe de Stripe sur les petites prolongations", () => {
+    // Le cas réel qui a fait découvrir le problème : 1 h à 17 €.
+    const d = prixHeuresSupp(1, 17, 1);
+    expect(d.fraisService).toBe(MINIMUM);
+    const coutStripe = d.total * 0.015 + 0.25;
+    expect(d.fraisService).toBeGreaterThan(coutStripe);
+  });
+
+  it("s'efface dès que le pourcentage le dépasse", () => {
+    const bascule = MINIMUM * 100 / FRAIS_PAR_DEFAUT.pourcentage;   // 45 € avec les valeurs par défaut
+    expect(prixHeuresSupp(1, bascule, 1).fraisService).toBeCloseTo(MINIMUM, 2);
+    const d = prixHeuresSupp(4, 25, 1);                             // 100 €
+    expect(d.fraisService).toBeCloseTo(100 * FRAIS_PAR_DEFAUT.pourcentage / 100, 2);
+    expect(d.fraisService).toBeGreaterThan(MINIMUM);
+  });
+
+  it("ne dépasse jamais ce que touche le prestataire", () => {
+    const d = prixHeuresSupp(1, 1, 1);   // 1 € de prestation, plancher à 0,90 €
+    expect(d.fraisService).toBeLessThanOrEqual(d.partPrestataire);
+  });
+
+  it("reste nul quand la prolongation n'est pas calculable", () => {
+    expect(prixHeuresSupp(0, 20, 1).fraisService).toBe(0);
+    expect(prixHeuresSupp(2, 0, 1).fraisService).toBe(0);
+  });
+});
