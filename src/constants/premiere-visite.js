@@ -14,6 +14,11 @@ export const CLES_PREMIERE_VISITE = [
   "alane_presta_checklist_dismissed",   // checklist « complétez votre profil »
   "alane_pwa_banner",                   // bannière d'installation
   "alane_notif_asked",                  // demande d'autorisation des notifications
+  // Le guide des onglets du tableau de bord prestataire. Il manquait à cette
+  // liste : le bouton « Réinitialiser le tutoriel » rejouait l'accueil du
+  // tutoriel mais laissait le guide marqué comme déjà vu, et il n'existait
+  // aucun moyen de le revoir. C'est pourtant le même genre de repère.
+  "alane_presta_tour_done",
 ];
 
 // Renvoie le nombre de clés effacées, ou -1 si le stockage est inaccessible

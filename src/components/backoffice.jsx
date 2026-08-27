@@ -2705,7 +2705,7 @@ export function BOTest({ onNavigate }) {
 
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>🎓 Tutoriel first-login</div>
-        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Ouvre l'application, efface ses repères de première visite (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) et rejoue le tutoriel demandé — sans qu'il soit besoin d'être connecté avec le rôle correspondant. Vous quittez le back-office : revenez-y par admin.alane.fr.</p>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Ouvre l'application, efface ses repères de première visite (tutoriel, guide des onglets, checklist prestataire, bannière d'installation, demande de notifications) et rejoue le tutoriel demandé — sans qu'il soit besoin d'être connecté avec le rôle correspondant. Vous quittez le back-office : revenez-y par admin.alane.fr.</p>
         <div style={{ display:"flex", gap:8 }}>
           <ResetOnboardingButton role="client"      libelle="🔄 Tutoriel client" />
           <ResetOnboardingButton role="prestataire" libelle="🔄 Tutoriel prestataire" />

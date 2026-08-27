@@ -13,23 +13,27 @@ function faireStockage(initial = {}) {
 describe("effacerPremiereVisite()", () => {
   afterEach(() => { delete globalThis.localStorage; vi.restoreAllMocks(); });
 
-  it("efface le tutoriel ET les trois autres repères, sans toucher au reste", () => {
+  it("efface le tutoriel ET les quatre autres repères, sans toucher au reste", () => {
     globalThis.localStorage = faireStockage({
       "alane_onboarded_abc-123": "1",
       "alane_presta_checklist_dismissed": "1",
       "alane_pwa_banner": "1",
       "alane_notif_asked": "1",
+      "alane_presta_tour_done_abc-123": "1",
       "alane_stay_logged_in": "1",     // ne doit PAS partir : déconnecterait l'utilisateur
       "alane_booking_draft": "{}",     // ne doit PAS partir : c'est son travail en cours
     });
-    expect(effacerPremiereVisite()).toBe(4);
+    expect(effacerPremiereVisite()).toBe(5);
     expect(Object.keys(globalThis.localStorage).sort())
       .toEqual(["alane_booking_draft", "alane_stay_logged_in"]);
   });
 
   it("les quatre repères connus sont bien ceux de la liste", () => {
-    expect(CLES_PREMIERE_VISITE).toHaveLength(4);
+    expect(CLES_PREMIERE_VISITE).toHaveLength(5);
     expect(CLES_PREMIERE_VISITE).toContain("alane_onboarded");
+    // Le guide des onglets du tableau de bord prestataire : oublié au premier
+    // jet, il n'était alors relançable par aucun bouton.
+    expect(CLES_PREMIERE_VISITE).toContain("alane_presta_tour_done");
   });
 
   it("renvoie -1 si le stockage est inaccessible (navigation privée)", () => {
