@@ -2065,10 +2065,10 @@ export default async function handler(req, res) {
         // celui que le backoffice affiche, et personne ne le saurait.
         console.error("[cashback] paliers illisibles, valeurs par défaut appliquées :", e.message);
       }
-      const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
+      const profileR = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers });
       const profileD = await profileR.json();
       const prof = Array.isArray(profileD) && profileD[0];
-      const mCount = (prof?.missions_completed_month||0)+1;
+      const mCount = (prof?.commandes_mois||0)+1;   // commandes du CLIENT, pas le quota prestataire
       const rate = [...CASHBACK_TIERS].reverse().find(t=>mCount>=t.min)?.rate||0.01;
       const cashback = Math.round(partPrestataire*rate*100)/100;
       const cashbackRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_cashback`, { method:"POST", headers:{...headers,"Prefer":"return=representation"}, body: JSON.stringify({ p_user_id:m.client_id, p_delta:cashback, p_missions:1 }) }).catch(()=>null);

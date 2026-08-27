@@ -864,12 +864,12 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
       const tourKey = `alane_tour_done_${user.id}`;
       let tourDone; try { tourDone = localStorage.getItem(tourKey); } catch(e) {}
       if (!tourDone) setShowTour(true);
-      supabase.from("profiles").select("prenom,cashback_balance,missions_completed_month").eq("id", user.id).single()
+      supabase.from("profiles").select("prenom,cashback_balance,commandes_mois").eq("id", user.id).single()
         .then(({ data: p }) => {
           if (!p || !mounted) return;
           if (p.prenom) setUserName(p.prenom);
           setWalletBalance(p.cashback_balance || 0);
-          setWalletMissions(p.missions_completed_month || 0);
+          setWalletMissions(p.commandes_mois || 0);
         });
     });
     return ()=>{ mounted=false; };
@@ -2873,8 +2873,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
-      supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", data.user.id).single()
-        .then(({ data: prof }) => { if (prof) setWalletInfo({ balance: prof.cashback_balance || 0, missionsThisMonth: prof.missions_completed_month || 0 }); });
+      supabase.from("profiles").select("cashback_balance,commandes_mois").eq("id", data.user.id).single()
+        .then(({ data: prof }) => { if (prof) setWalletInfo({ balance: prof.cashback_balance || 0, missionsThisMonth: prof.commandes_mois || 0 }); });
       const meta = data.user.user_metadata || {};
       if (meta.adresse) setSavedAddress({ adresse: meta.adresse, ville: meta.ville || "", cp: meta.code_postal || "" });
     });
@@ -7746,21 +7746,21 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
       if (!user) { setWLoading(false); return; }
 
       const [{ data: profile }, { data: completedMissions }] = await Promise.all([
-        supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id", user.id).single(),
+        supabase.from("profiles").select("cashback_balance,commandes_mois").eq("id", user.id).single(),
         supabase.from("missions").select("id,metier,sector,date,hours,tarif_horaire,montant_total,status")
           .eq("client_id", user.id).eq("status", "completed").order("created_at", { ascending: false }),
       ]);
 
       setWalletData({
         balance: profile?.cashback_balance || 0,
-        missionsThisMonth: profile?.missions_completed_month || 0,
+        missionsThisMonth: profile?.commandes_mois || 0,
       });
 
       if (Array.isArray(completedMissions)) {
         setHistory(completedMissions.map(m => {
           const sector = SECTORS.find(s => s.id === m.sector);
           const montant = m.montant_total || ((m.hours||0) * (m.tarif_horaire||0));
-          const rate = getCashbackTier(profile?.missions_completed_month || 0).rate;
+          const rate = getCashbackTier(profile?.commandes_mois || 0).rate;
           const cashback = Math.round(montant * rate * 100) / 100;
           return {
             prestation: m.metier || sector?.label || "Prestation",

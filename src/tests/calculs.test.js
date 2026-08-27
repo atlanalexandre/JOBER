@@ -489,7 +489,7 @@ describe("montant perçu par le prestataire", () => {
 // compte totalement inutilisable (règle 1.1).
 describe("mise à jour du profil — garde-fous", () => {
   const INTERDITS = ["plan_abonnement","subscription_end_date","plan_souhaite","role","status",
-    "missions_enabled","trial_exhausted","missions_completed_month","cashback_balance",
+    "missions_enabled","trial_exhausted","missions_completed_month","commandes_mois","cashback_balance",
     "prepaid_balance","stripe_customer_id","stripe_subscription_id","stripe_account_id","stripe_account_status"];
   const verdict = (donnees, metaExistant = {}) => {
     if (INTERDITS.some(k => k in donnees)) return "champ interdit";
