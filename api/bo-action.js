@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
+import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
@@ -135,7 +136,7 @@ export default async function handler(req, res) {
   try {
     if (action === "list") {
       const [profilesRes, authRes, blacklistRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,created_at,rib&order=created_at.desc`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,role,prenom,nom,status,trial_exhausted,missions_completed_month,plan_abonnement,missions_enabled,mandat_facturation_at,mandat_encaissement_at,created_at,rib&order=created_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=10000`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/account_blacklist?select=email_hash,telephone_hash,iban_hash,siret_hash`, { headers }).catch(() => null),
       ]);
@@ -385,11 +386,25 @@ export default async function handler(req, res) {
       const majProfil = { missions_enabled: enabled };
       if (enabled) {
         const dRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=missions_enabled_at`,
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`
+            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at`,
           { headers }
         );
         const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
-        if (!(Array.isArray(dRows) && dRows[0]?.missions_enabled_at)) {
+        const p0 = Array.isArray(dRows) ? dRows[0] : null;
+
+        // Les deux mandats AVANT l'accès aux prestations — voir _mandats.js.
+        if (!p0) {
+          console.error(`[enable_missions] profil ${profileId} illisible — accès non ouvert.`);
+          return res.status(404).json({ error: "Profil introuvable." });
+        }
+        const manquants = mandatsManquants(p0);
+        if (manquants.length > 0) {
+          console.log(`[enable_missions] ${profileId} : ${manquants.join(", ")} — accès non ouvert.`);
+          return res.status(409).json({ error: messageMandatsManquants(manquants) });
+        }
+
+        if (!p0.missions_enabled_at) {
           majProfil.missions_enabled_at = new Date().toISOString();
         }
       }

@@ -794,6 +794,18 @@ l'administrateur n'a pas cliqué « ✅ Activer l'accès aux prestations » dans
 prestataire approuvé **n'apparaît pas** aux clients — c'est voulu, mais c'est aussi la première
 chose à vérifier si le catalogue paraît vide.
 
+**Les deux mandats conditionnent cette ouverture** (27/08/2026). `enable_missions` refuse en
+409 tant que `profiles.mandat_facturation_at` ou `mandat_encaissement_at` est vide, et le
+bouton du backoffice est désactivé avec la raison écrite au-dessus. La règle vit dans
+[`api/_mandats.js`](api/_mandats.js), testée.
+
+Le motif est contractuel : l'article 7.2 des CGPS annonce que le mandat d'encaissement est
+recueilli « préalablement à tout encaissement », et sans mandat de facturation `api/invoice.js`
+n'émet qu'une **attestation sans numéro**, pas une facture opposable à la comptabilité du
+prestataire. Le contrôle est posé à l'ouverture de l'accès **et non au versement** : refuser
+l'accès n'immobilise l'argent de personne, alors que bloquer un virement retiendrait une somme
+due à quelqu'un qui a déjà travaillé. Le prestataire signe depuis son espace, onglet Revenus.
+
 Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. Le dernier est
 traité à la connexion (`auth.jsx:1175`) et au démarrage (`App.jsx:1391`) : la session est
 fermée et l'utilisateur renvoyé à l'écran de choix de rôle.

@@ -970,11 +970,32 @@ function BOComptes() {
                           {actioning===p.id+"disable_missions" ? "…" : "🚫 Désactiver"}
                         </button>
                       </div>
-                    ) : (
-                      <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning} style={{ padding:"9px 18px", borderRadius:10, border:"none", background:C.success, color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
-                        {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux prestations"}
-                      </button>
-                    )}
+                    ) : (() => {
+                      // Les deux mandats conditionnent l'ouverture de l'accès
+                      // (CGPS art. 7.2). Le serveur refuse de toute façon, mais
+                      // un bouton qui échoue une fois sur deux sans qu'on sache
+                      // pourquoi use la confiance qu'on a dans l'écran : la
+                      // raison est écrite avant le clic.
+                      const sansFact = !p.mandat_facturation_at;
+                      const sansEnc  = !p.mandat_encaissement_at;
+                      const bloque   = sansFact || sansEnc;
+                      return (
+                        <>
+                          {bloque && (
+                            <div style={{ background:"rgba(240,180,41,0.12)", border:"1px solid rgba(240,180,41,0.4)", borderRadius:10, padding:"9px 12px", marginBottom:8, fontSize:11.5, color:C.text, lineHeight:1.6 }}>
+                              ⚠️ Mandat{sansFact && sansEnc ? "s" : ""} manquant{sansFact && sansEnc ? "s" : ""} :{" "}
+                              {[sansFact && "facturation", sansEnc && "encaissement"].filter(Boolean).join(" et ")}.
+                              <br />Le prestataire les accepte depuis son espace, onglet Revenus. L'accès ne peut pas être ouvert avant.
+                            </div>
+                          )}
+                          <button onClick={()=>handleAction(p.id,"enable_missions")} disabled={!!actioning || bloque}
+                            title={bloque ? "Mandats non acceptés par le prestataire" : ""}
+                            style={{ padding:"9px 18px", borderRadius:10, border:"none", background:bloque?"rgba(255,255,255,0.08)":C.success, color:bloque?C.textMuted:"#fff", fontWeight:700, fontSize:13, cursor:bloque?"not-allowed":"pointer", fontFamily:"inherit", opacity:actioning?0.5:1 }}>
+                            {actioning===p.id+"enable_missions" ? "…" : "✅ Activer l'accès aux prestations"}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
