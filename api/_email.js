@@ -3,6 +3,11 @@ import { appUrl } from "./_url.js";
 
 export function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"); }
 
+// Un montant en euros, écrit comme en France : virgule, deux décimales, espace
+// insécable avant le sigle. Les mails affichaient « 20.2 € » ou « 18.5 € » —
+// le nombre brut de la base, avec un point et sans les centimes.
+export function euros(v) { return `${Number(v || 0).toFixed(2).replace(".", ",")}\u00a0€`; }
+
 export function hashPii(value) {
   if (value == null) return null;
   return crypto.createHash("sha256").update(String(value).trim().toLowerCase()).digest("hex");

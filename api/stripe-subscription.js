@@ -195,7 +195,7 @@ export default async function handler(req, res) {
       // va jusqu'à son terme, la suivante applique le nouveau tarif. Un
       // changement de prix immédiat, même sans prorata, ne saurait pas faire ça.
       let calendrierId = sub.schedule || null;
-      let phaseEnCours = null;
+      let phaseEnCours;
 
       if (!calendrierId) {
         const cr = await fetch("https://api.stripe.com/v1/subscription_schedules", {

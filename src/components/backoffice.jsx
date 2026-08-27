@@ -1356,6 +1356,14 @@ export function BOSupport() {
 // automatique toutes les deux heures, sans aucune fenêtre pour voir ce qui
 // passe, ce qui bloque, ni ce qui traîne. Un traitement qu'on ne regarde pas
 // est un traitement dont on apprend la panne par le prestataire qui réclame.
+// Un montant en euros, écrit comme en France.
+//
+// Le back-office affichait « 20.2€ », « 19.9€ », « 26.9€ » — le nombre brut,
+// avec un point et sans les centimes. `BOVersements` avait déjà son propre
+// `euro()` local ; les autres écrans s'en passaient. Une seule fonction, en
+// tête de fichier, et plus personne n'improvise.
+export const euros = (v) => `${Number(v || 0).toFixed(2).replace(".", ",")} €`;
+
 const MOTIFS_RETENUE = [
   { id:"reclamation_client",  l:"Réclamation du client" },
   { id:"opposition_bancaire", l:"Opposition bancaire / rétrofacturation" },
@@ -1453,7 +1461,7 @@ export function BOVersements() {
   }, []);
 
   const nom = (id) => data.noms[id] || (id ? `${id.slice(0,8)}…` : "—");
-  const euro = (v) => `${Number(v||0).toFixed(2).replace(".", ",")} €`;
+  const euro = euros;   // conservé : utilisé une vingtaine de fois dans cet écran
   const jour = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day:"numeric", month:"short", year:"numeric" }) : "—";
 
   const retenir = async (m) => {
@@ -1860,7 +1868,7 @@ export function BOLitiges() {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
             <div>
               <div style={{ fontWeight:700, color:"#F25E5E", fontSize:14 }}>⚠️ {m.titre || m.metier || "Prestation"}</div>
-              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {m.montant_total || 0} €</div>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:3 }}>📅 {m.date} · 💶 {euros(m.montant_total)}</div>
               {m.client_email && <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Client : {m.client_email}</div>}
               {m.presta_email && <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>Prestataire : {m.presta_email}</div>}
             </div>
@@ -1901,7 +1909,7 @@ export function BOLitiges() {
             return (
               <>
                 <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"10px 12px", marginBottom:10, fontSize:11.5, color:"rgba(255,255,255,0.7)", lineHeight:1.65 }}>
-                  Le client a payé <strong style={{ color:C.white }}>{Number(m.montant_total || 0).toFixed(2).replace(".", ",")} €</strong>. Cet argent est bloqué : ni chez lui, ni chez le prestataire.<br />
+                  Le client a payé <strong style={{ color:C.white }}>{euros(m.montant_total)}</strong>. Cet argent est bloqué : ni chez lui, ni chez le prestataire.<br />
                   ALANE ne tranche pas le litige, elle <strong style={{ color:C.white }}>propose une issue</strong>. Les deux parties sont prévenues et ont 48 h pour dire non. Sans refus de l'une d'elles, l'issue s'applique automatiquement.
                 </div>
 
@@ -2576,16 +2584,39 @@ export function EmailTestButton() {
   );
 }
 
+// Tout ce qu'un compte ne voit qu'une seule fois, dans sa vie de navigateur.
+//
+// Le bouton n'effaçait que `alane_onboarded_*` : les trois autres repères de
+// première visite — la checklist du prestataire, la bannière « installer
+// l'application », la demande d'autorisation des notifications — survivaient à
+// la réinitialisation. On rejouait donc un tutoriel amputé, et le bouton
+// paraissait ne rien faire.
+const CLES_PREMIERE_VISITE = [
+  "alane_onboarded",                    // le tutoriel lui-même (suffixé par l'id du compte)
+  "alane_presta_checklist_dismissed",   // checklist « complétez votre profil »
+  "alane_pwa_banner",                   // bannière d'installation
+  "alane_notif_asked",                  // demande d'autorisation des notifications
+];
+
 function ResetOnboardingButton() {
-  const [done, setDone] = useState(false);
   const handle = () => {
-    try { const keys = Object.keys(localStorage).filter(k => k.startsWith("alane_onboarded")); keys.forEach(k => localStorage.removeItem(k)); } catch(e) {}
-    setDone(true);
-    setTimeout(() => setDone(false), 3000);
+    try {
+      Object.keys(localStorage)
+        .filter(k => CLES_PREMIERE_VISITE.some(p => k.startsWith(p)))
+        .forEach(k => localStorage.removeItem(k));
+    } catch (e) {
+      console.error("[tutoriel] réinitialisation impossible :", e.message);
+      return;
+    }
+    // Le tutoriel n'est relu qu'au montage de l'accueil. Sans ce rechargement,
+    // l'onglet en cours gardait son état React et rien ne se passait tant qu'on
+    // ne fermait pas l'application : le bouton effaçait bien la clé, mais on ne
+    // voyait jamais le résultat. On repart donc de la page d'accueil.
+    window.location.assign("/");
   };
   return (
-    <button onClick={handle} style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${done ? C.success : C.border}`, background:done ? `${C.success}18` : "transparent", color:done ? C.success : C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-      {done ? "✅ Tutoriel réinitialisé — retourne à l'accueil" : "🔄 Réinitialiser le tutoriel"}
+    <button onClick={handle} style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+      🔄 Réinitialiser le tutoriel et ouvrir l'accueil
     </button>
   );
 }
@@ -2691,7 +2722,7 @@ export function BOTest({ onNavigate }) {
 
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>🎓 Tutoriel first-login</div>
-        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Réinitialise le tutoriel pour qu'il se relance au prochain accès à l'accueil (efface la clé localStorage du navigateur actuel).</p>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Efface les repères de première visite de CE navigateur (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) puis rouvre l'accueil : le tutoriel se relance immédiatement.</p>
         <ResetOnboardingButton />
       </div>
 
@@ -3266,8 +3297,12 @@ export function BOReminders() {
 }
 
 export function BOMissions() {
-  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", rejected:"Refusée", refused:"Refusée", disputed:"En litige" };
-  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, rejected:"#F25E5E", refused:"#F25E5E", disputed:"#F25E5E" };
+  // `cancelled` et `needs_replacement` manquaient : le badge affichait alors le
+  // statut BRUT de la base — « CANCELLED » en anglais, au milieu de « EN COURS »
+  // et « REFUSÉE ». Toute valeur autorisée par la contrainte doit avoir son
+  // libellé, sans quoi c'est le nom technique qui sort à l'écran.
+  const STATUS_LABELS = { open:"Ouverte", pending_acceptance:"En attente", assigned:"En cours", completed:"Terminée", closed:"Clôturée", cancelled:"Annulée", needs_replacement:"Remplaçant recherché", rejected:"Refusée", refused:"Refusée", disputed:"En litige" };
+  const STATUS_COLORS = { open:C.violet, pending_acceptance:"#F0B429", assigned:"#10D98F", completed:"#A29BFE", closed:C.textMuted, cancelled:"#F25E5E", needs_replacement:"#F2A65E", rejected:"#F25E5E", refused:"#F25E5E", disputed:"#F25E5E" };
 
   const [prestations, setMissions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -3400,7 +3435,7 @@ export function BOMissions() {
                 <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:12, color:C.textSub, marginBottom:4 }}>
                   <span>📅 {m.date||"—"}</span>
                   <span>⏱ {m.hours}h</span>
-                  {montant > 0 && <span>💶 {montant}€</span>}
+                  {montant > 0 && <span>💶 {euros(montant)}</span>}
                 </div>
                 <div style={{ fontSize:12, color:C.textMuted }}>
                   👤 {m.client_name}{m.presta_name ? ` → 👷 ${m.presta_name}` : " → pas de prestataire"}
@@ -3511,7 +3546,7 @@ export function BORefundSection() {
   }, []);
 
   const handleRefund = async (m) => {
-    if (!await showConfirm(`Rembourser ${m.montant_total} € pour la prestation ${m.id.slice(0,8)} ?`)) return;
+    if (!await showConfirm(`Rembourser ${euros(m.montant_total)} pour la prestation ${m.id.slice(0,8)} ?`)) return;
     setRefunding(m.id);
     let token = ""; try { token = sessionStorage.getItem("bo_token") || ""; } catch(e) {}
     const r = await fetch("/api/stripe-refund", {
@@ -3534,7 +3569,7 @@ export function BORefundSection() {
       {prestations.map(m => (
         <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.grayLight}` }}>
           <div>
-            <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {m.montant_total} €</div>
+            <div style={{ color:C.text, fontSize:12, fontWeight:600 }}>{m.metier||m.sector} · {euros(m.montant_total)}</div>
             <div style={{ color:C.textSub, fontSize:11 }}>{new Date(m.created_at).toLocaleDateString("fr-FR")} · {m.stripe_payment_intent?.slice(0,20)}…</div>
           </div>
           {done[m.id]

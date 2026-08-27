@@ -1288,10 +1288,17 @@ ${toRole === "prestataire" ? `
   ${(() => { const addr = [m.adresse, m.ville].filter(Boolean).join(", "); return addr ? `<a href="https://www.google.com/maps/dir/?api=1&amp;destination=${encodeURIComponent(addr)}" style="display:inline-block;padding:9px 18px;background:#F0B429;color:#050E20;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px;">📍 Calculer mon itinéraire →</a>` : ""; })()}
 </div>` : ""}
 ${(() => {
-  const appUrl = appUrl();
+  // `lienApp`, pas `appUrl` : la variable locale portait le nom de la fonction
+  // importée et s'initialisait avec elle — `const appUrl = appUrl()`. JavaScript
+  // lit alors la variable en cours de déclaration, jamais l'import, et lève
+  // « Cannot access 'appUrl' before initialization » à CHAQUE rappel construit.
+  // Le traitement automatique répondait donc « Erreur rappels » depuis le
+  // regroupement de l'URL dans _url.js. Trois autres endroits avaient la même
+  // faute : relances de validation, auto-validation, et api/missions.js.
+  const lienApp = appUrl();
   const loc = encodeURIComponent([m.adresse, m.ville].filter(Boolean).join(", ") || "");
   const titleEnc = encodeURIComponent(`Mission ALANE — ${m.metier||"Mission"}`);
-  const descEnc  = encodeURIComponent(`Prestation via ALANE. Voir détails : ${appUrl}`);
+  const descEnc  = encodeURIComponent(`Prestation via ALANE. Voir détails : ${lienApp}`);
   const heureDebut = m.heure_debut || "08:00";
   const [hd, md2] = heureDebut.split(":").map(Number);
   const endMin = hd * 60 + md2 + Math.round(Number(m.hours) * 60);
@@ -1300,7 +1307,7 @@ ${(() => {
   const gcStart = `${y}${mo}${d}T${heureDebut.replace(":","").padEnd(6,"0")}`;
   const gcEnd   = `${y}${mo}${d}T${heureFin.replace(":","").padEnd(6,"0")}`;
   const gcUrl   = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titleEnc}&dates=${gcStart}/${gcEnd}&details=${descEnc}&location=${loc}`;
-  const icsUrl  = `${appUrl}/api/support?ics=1&title=${titleEnc}&date=${tomorrowStr}&start=${encodeURIComponent(heureDebut)}&end=${encodeURIComponent(heureFin)}&location=${loc}&description=${descEnc}`;
+  const icsUrl  = `${lienApp}/api/support?ics=1&title=${titleEnc}&date=${tomorrowStr}&start=${encodeURIComponent(heureDebut)}&end=${encodeURIComponent(heureFin)}&location=${loc}&description=${descEnc}`;
   return `<div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
 <a href="${gcUrl}" style="display:inline-block;background:#4285F4;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">📅 Google Agenda</a>
 <a href="${icsUrl}" style="display:inline-block;background:#555;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:700;font-size:13px;margin:4px;">🗓 Apple / Outlook</a>
@@ -1426,7 +1433,7 @@ ${(() => {
             const prestaEmail  = userMap[m.prestataire_id]?.email;
             const clientName   = nameMap[m.client_id]  || "Client";
             const prestaName   = nameMap[m.prestataire_id] || "Prestataire";
-            const appUrl       = appUrl();
+            const lienApp      = appUrl();
             const missionLabel = `${esc(m.metier||"Mission")} · ${esc(m.ville||"")} · ${m.date}`;
 
             // Email prestataire : uniquement s'il n'a pas encore confirmé la fin de mission
@@ -1443,10 +1450,10 @@ ${(() => {
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(prestaName)}</strong>,</p>
 <p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestation du <strong style="color:#A29BFE;">${m.date}</strong> est terminée mais vous n'avez pas encore confirmé la fin de prestation depuis votre espace.<br/><br/>Cette confirmation est <strong style="color:#fff;">indispensable pour déclencher votre paiement</strong>.</p>
 <div style="text-align:center;margin-top:20px;">
-<a href="${appUrl}" style="display:inline-block;background:#7C6FE0;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Confirmer ma prestation →</a>
+<a href="${lienApp}" style="display:inline-block;background:#7C6FE0;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Confirmer ma prestation →</a>
 </div>
 </td></tr>
-<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
             // Email client : uniquement si le prestataire a déjà confirmé mais le client n'a pas validé
@@ -1463,10 +1470,10 @@ ${(() => {
 <p style="color:#F0F0F5;font-size:15px;margin:0 0 16px;">Bonjour <strong>${esc(clientName)}</strong>,</p>
 <p style="color:#8B8FA8;font-size:14px;line-height:1.7;margin:0 0 20px;">Votre prestataire a confirmé la fin de la prestation du <strong style="color:#F0B429;">${m.date}</strong>. Il ne vous reste plus qu'à valider depuis votre espace pour finaliser le paiement et obtenir votre cashback.</p>
 <div style="text-align:center;margin-top:20px;">
-<a href="${appUrl}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider la prestation →</a>
+<a href="${lienApp}" style="display:inline-block;background:#F0B429;color:#fff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:14px;">Valider la prestation →</a>
 </div>
 </td></tr>
-<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;"><p style="color:#4A4E6A;font-size:11px;margin:0;">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
             const vSends = [];
@@ -1552,7 +1559,7 @@ ${(() => {
                 continue;
               }
               const mLabel = esc(m.metier || m.sector || "Prestation");
-              const appUrl = appUrl();
+              const lienApp = appUrl();
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
               const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
@@ -1602,7 +1609,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><div style="margin-top:18px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.06)"><div style="font-weight:700;font-size:12px;margin-bottom:5px">${esc(INFORMATION_FISCALE.titre)}</div><div style="font-size:11px;line-height:1.7;color:rgba(255,255,255,0.75)">${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}</div></div><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: resendBody({ from: RESEND_FROM, to: [prestaEmail], subject: `Prestation validée — votre paiement est en cours 💰`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#A29BFE;margin:0 0 12px">Prestation validée automatiquement ✅</h2><p>Bonjour ${esc(prestaPrenom)},</p><p>Le délai de validation de 24h étant écoulé, votre prestation <strong>${mLabel}</strong> a été automatiquement validée.</p><p>Votre paiement de <strong style="color:#A29BFE">${partPrestataire.toFixed(2)} €</strong> est programmé le <strong>${new Date(echeanceVersementMs(m)).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })}</strong>, à la fermeture du délai de 48 h dont le client dispose pour signaler un problème. Il sera ensuite versé sur votre IBAN sous 1 à 2 jours ouvrés.</p><div style="margin-top:18px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.06)"><div style="font-weight:700;font-size:12px;margin-bottom:5px">${esc(INFORMATION_FISCALE.titre)}</div><div style="font-size:11px;line-height:1.7;color:rgba(255,255,255,0.75)">${esc(INFORMATION_FISCALE.texte).replace(/\n/g, "<br/>")}</div></div><p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
                 // Email client — confirmation auto-validation
@@ -1614,7 +1621,7 @@ ${(() => {
                   await fetch("https://api.resend.com/emails", {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-                    body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${cashbackEarned.toFixed(2)} €</strong> a été crédité sur votre wallet.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${appUrl}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
+                    body: resendBody({ from: RESEND_FROM, to: [clientEmail], subject: `Prestation validée automatiquement — ALANE`, html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0A1628;color:#fff;padding:32px;border-radius:16px"><h2 style="color:#F0B429;margin:0 0 12px">Prestation validée ✅</h2><p>Bonjour ${esc(clientPrenom)},</p><p>Votre prestation <strong>${mLabel}</strong> a été automatiquement validée, le délai de confirmation de 24h étant écoulé.</p>${cashbackEarned > 0 ? `<p>Votre cashback de <strong style="color:#F0B429">+${cashbackEarned.toFixed(2)} €</strong> a été crédité sur votre wallet.</p>` : ""}<p style="margin-top:24px;color:rgba(255,255,255,0.5);font-size:12px">L'équipe ALANE · <a href="${lienApp}" style="color:#7C6FE0;">www.alane.fr</a></p></div>` }),
                   }).catch(()=>{});
                 })(),
               ]);

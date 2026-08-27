@@ -4372,7 +4372,13 @@ export function ChatScreen({ provider, onBack, chatClientId }) {
           <div style={{ width:44, height:44, borderRadius:r, background:`${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p.avatar}</div>
           <div>
             <div style={{ color:C.white, fontWeight:700, fontSize:15 }}>{p.name}</div>
-            <div style={{ color:C.success, fontSize:12, fontWeight:600 }}>● En ligne</div>
+            {/* « ● En ligne », en vert, était écrit en dur : rien dans
+                l'application ne mesure la présence de personne. On annonçait
+                donc à chaque conversation que l'autre était là, y compris à
+                quatre heures du matin. Remplacé par ce qui est vrai — le rôle
+                de l'interlocuteur — pour que personne n'attende une réponse
+                immédiate sur la foi d'une pastille inventée. */}
+            <div style={{ color:C.textSub, fontSize:12, fontWeight:600 }}>{chatClientId ? "Client" : "Prestataire"}</div>
           </div>
         </div>
       </div>

@@ -3025,7 +3025,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                     )}
                   </div>
                   {m.client_id && (
-                    <button onClick={()=>onNavigate("chat", { id: m.client_id, name: "Client", avatar: "👤", color: "#4FC3F7", clientId: m.client_id })}
+                    <button onClick={()=>onNavigate("chat", { id: m.client_id, name: m.client_name || "Client", avatar: "👤", color: "#4FC3F7", clientId: m.client_id })}
                       style={{ width:"100%", padding:"9px", borderRadius:10, border:"1px solid rgba(79,195,247,0.3)", background:"rgba(79,195,247,0.08)", color:"#4FC3F7", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                       💬 Chat avec le client
                     </button>
