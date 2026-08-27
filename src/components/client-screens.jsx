@@ -2930,7 +2930,24 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   // `toFixed(2)` produit « 20.20 », avec un POINT. Le tunnel de commande
   // affichait donc « + 5.20 € frais = 20.20 € total » là où un prix français
   // s'écrit avec une virgule — sur l'écran même où le client décide de payer.
-  const totalGlobal = formatMontant(Math.round((totalHT + fraisMission) * 100) / 100).replace(" €", "");
+  // Le total, EN NOMBRE.
+  //
+  // Il était calculé puis immédiatement transformé en texte français —
+  // `formatMontant(66.10)` donne « 66,10 € », dont on retirait le sigle pour
+  // obtenir « 66,10 ». Deux endroits le relisaient ensuite comme un nombre :
+  //
+  //   Number("66,10")     → NaN      → l'écran affichait « Cashback +NaN € »
+  //   parseFloat("66,10") → 66       → et le client était débité de 66,00 €
+  //                                    quand le récapitulatif annonçait 66,10 €.
+  //
+  // JavaScript ne lit pas la virgule décimale. L'écart valait jusqu'à 99
+  // centimes par réservation, toujours au détriment d'ALANE, et le montant
+  // débité ne correspondait pas au montant annoncé — ce qui, sur un écran de
+  // paiement, n'est pas qu'une question d'affichage.
+  //
+  // Le nombre reste un nombre. Le formatage n'a lieu qu'à l'affichage.
+  const totalGlobalNum = Math.round((totalHT + fraisMission) * 100) / 100;
+  const totalGlobal = formatMontant(totalGlobalNum).replace(" €", "");
 
   // Urgence — départ minimum 45 min, arrondi au quart d'heure supérieur
   const _urgentMs = Date.now() + 45 * 60 * 1000;
@@ -2955,7 +2972,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
         <div style={{ position:"fixed", inset:0, zIndex:10000, overflowY:"auto", background:"#0A1628", WebkitOverflowScrolling:"touch" }}>
           <ContractScreen
             provider={p}
-            amount={parseFloat(totalGlobal)}
+            amount={totalGlobalNum}
             hours={hours}
             date={isUrgent ? urgentStartDate : startDate || ""}
             missionId={null}
@@ -3381,7 +3398,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ["Heure de fin", (()=>{ const t = isUrgent ? urgentStartTime : (startTime||"08:00"); const [h,m] = t.split(":").map(Number); const endMin = h*60 + m + hours*60; return `${String(Math.floor(endMin/60)%24).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`; })()],
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
-              ["Tarif HT/h", `${tarifHoraire.toFixed(2)} €${isUrgent?" (urgence)":""}`],
+              ["Tarif HT/h", `${formatMontant(tarifHoraire)}${isUrgent?" (urgence)":""}`],
               ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
               ["Lieu", [adresse, cp, ville].filter(Boolean).join(", ")||"—"],
             ].map(([l,v])=>(
@@ -3392,11 +3409,11 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             ))}
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
               <span style={{ color:C.textSub, fontSize:13 }}>Sous-total HT {missionType==="range" && nbJours>1 && <span style={{ color:C.textMuted, fontSize:11 }}>({nbJours}j)</span>}</span>
-              <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{totalHT.toFixed(2)} €</span>
+              <span style={{ fontWeight:600, color:C.text, fontSize:13 }}>{formatMontant(totalHT)}</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
               <span style={{ color:C.textSub, fontSize:13 }}>Frais de service</span>
-              <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{fraisMission.toFixed(2)} €</span>
+              <span style={{ fontWeight:600, color:C.accentGold, fontSize:13 }}>{formatMontant(fraisMission)}</span>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 4px" }}>
               <span style={{ fontWeight:700, color:C.text, fontSize:15 }}>Total TTC</span>
@@ -3405,8 +3422,14 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
 
             {/* Cashback gagné sur cette prestation */}
             {(() => {
-              const tier = getCashbackTier(walletInfo.missionsThisMonth);
-              const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
+              // `+ 1` : le serveur compte la prestation en cours avant de
+              // choisir le palier (api/missions.js, action `complete`). L'écran
+              // ne la comptait pas, si bien qu'à la charnière d'un palier — la
+              // 3e, la 6e, la 10e prestation du mois — il annonçait un taux
+              // inférieur à celui qui allait être crédité.
+              const missionsAvecCelleCi = (walletInfo.missionsThisMonth || 0) + 1;
+              const tier = getCashbackTier(missionsAvecCelleCi);
+              const earned = calcCashback(totalGlobalNum, missionsAvecCelleCi);
               return (
                 <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 0", alignItems:"center" }}>
                   <div style={{ display:"flex", gap:7, alignItems:"center" }}>
@@ -3585,7 +3608,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: parseFloat(totalGlobal), hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -3594,8 +3617,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           <div style={{ textAlign:"center", paddingTop:10 }}>
             {/* Cashback gagné — confirmation */}
             {(() => {
-              const earned = calcCashback(Number(totalGlobal), walletInfo.missionsThisMonth);
-              const tier = getCashbackTier(walletInfo.missionsThisMonth);
+              const missionsAvecCelleCi = (walletInfo.missionsThisMonth || 0) + 1;
+              const earned = calcCashback(totalGlobalNum, missionsAvecCelleCi);
+              const tier = getCashbackTier(missionsAvecCelleCi);
               return (
                 <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"16px", marginBottom:20, display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${C.success}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💰</div>
