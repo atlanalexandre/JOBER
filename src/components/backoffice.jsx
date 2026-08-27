@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
+import { origineApp } from "../constants/premiere-visite.js";
 import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Libellés des types de documents. Déclarés une seule fois : deux copies locales
@@ -2584,39 +2585,16 @@ export function EmailTestButton() {
   );
 }
 
-// Tout ce qu'un compte ne voit qu'une seule fois, dans sa vie de navigateur.
-//
-// Le bouton n'effaçait que `alane_onboarded_*` : les trois autres repères de
-// première visite — la checklist du prestataire, la bannière « installer
-// l'application », la demande d'autorisation des notifications — survivaient à
-// la réinitialisation. On rejouait donc un tutoriel amputé, et le bouton
-// paraissait ne rien faire.
-const CLES_PREMIERE_VISITE = [
-  "alane_onboarded",                    // le tutoriel lui-même (suffixé par l'id du compte)
-  "alane_presta_checklist_dismissed",   // checklist « complétez votre profil »
-  "alane_pwa_banner",                   // bannière d'installation
-  "alane_notif_asked",                  // demande d'autorisation des notifications
-];
-
+// Le back-office est servi sur admin.alane.fr, l'application sur www.alane.fr :
+// deux origines, donc deux stockages locaux distincts. Ce bouton effaçait des
+// clés qui n'ont jamais existé de son côté — il ne pouvait pas fonctionner.
+// Il envoie désormais le navigateur sur l'application avec `?tutoriel=reset` ;
+// c'est elle qui efface ses propres repères et relance le tutoriel.
 function ResetOnboardingButton() {
-  const handle = () => {
-    try {
-      Object.keys(localStorage)
-        .filter(k => CLES_PREMIERE_VISITE.some(p => k.startsWith(p)))
-        .forEach(k => localStorage.removeItem(k));
-    } catch (e) {
-      console.error("[tutoriel] réinitialisation impossible :", e.message);
-      return;
-    }
-    // Le tutoriel n'est relu qu'au montage de l'accueil. Sans ce rechargement,
-    // l'onglet en cours gardait son état React et rien ne se passait tant qu'on
-    // ne fermait pas l'application : le bouton effaçait bien la clé, mais on ne
-    // voyait jamais le résultat. On repart donc de la page d'accueil.
-    window.location.assign("/");
-  };
   return (
-    <button onClick={handle} style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-      🔄 Réinitialiser le tutoriel et ouvrir l'accueil
+    <button onClick={() => window.location.assign(`${origineApp()}/?tutoriel=reset`)}
+      style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+      🔄 Réinitialiser le tutoriel et ouvrir l'application
     </button>
   );
 }
@@ -2722,7 +2700,7 @@ export function BOTest({ onNavigate }) {
 
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>🎓 Tutoriel first-login</div>
-        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Efface les repères de première visite de CE navigateur (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) puis rouvre l'accueil : le tutoriel se relance immédiatement.</p>
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Ouvre l'application, efface ses repères de première visite (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) et relance le tutoriel immédiatement. Vous quittez le back-office : revenez-y par admin.alane.fr.</p>
         <ResetOnboardingButton />
       </div>
 

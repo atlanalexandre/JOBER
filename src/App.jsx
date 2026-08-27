@@ -5,6 +5,7 @@ import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
 import { SECTORS, METIERS } from "./constants/data.js";
+import { effacerPremiereVisite } from "./constants/premiere-visite.js";
 import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPlacesLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
@@ -1089,6 +1090,24 @@ export default function App() {
   const isRecoveryRef  = useRef(false);     // true dès que PASSWORD_RECOVERY event est reçu
   const [resetToken]   = useState(()=>{ try { return new URLSearchParams(window.location.search).get("reset_token")||null; } catch{ return null; } });
 
+  // Relance du tutoriel demandée depuis le back-office (?tutoriel=reset).
+  //
+  // Lue au montage, avant tout le reste : c'est ici, sur l'origine de
+  // l'application, que vivent réellement les clés de première visite — le
+  // back-office, sur admin.alane.fr, ne peut pas y toucher.
+  const [tutorielForce, setTutorielForce] = useState(false);
+  useEffect(()=>{
+    let demande = null;
+    try { demande = new URLSearchParams(window.location.search).get("tutoriel"); } catch { /* URL illisible */ }
+    if (demande !== "reset") return;
+    effacerPremiereVisite();
+    setTutorielForce(true);
+    setShowOnboarding(true);
+    // Le paramètre est retiré de l'URL : sans cela, un rafraîchissement
+    // relancerait le tutoriel indéfiniment.
+    try { window.history.replaceState({}, "", window.location.pathname); } catch { /* historique verrouillé */ }
+  },[]);
+
   // Capture ?ref=, ?profil=, ?bo= URL params
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search);
@@ -1576,15 +1595,21 @@ export default function App() {
     <div aria-live="polite" aria-atomic="true" style={{ position:"absolute", width:1, height:1, overflow:"hidden", clip:"rect(0 0 0 0)", whiteSpace:"nowrap" }}>
       {notifCount > 0 ? `${notifCount} nouvelle${notifCount > 1 ? "s" : ""} notification${notifCount > 1 ? "s" : ""}` : ""}
     </div>
-    {showOnboarding && supaUser && (
+    {/* `tutorielForce` : la relance demandée depuis le back-office s'affiche même
+        sans session ouverte. Sans cela, l'écran de test restait vide dès qu'on
+        n'était pas connecté — et le bouton passait, une fois de plus, pour
+        cassé. La clé n'est écrite que s'il y a un compte à qui l'attribuer. */}
+    {showOnboarding && (supaUser || tutorielForce) && (
       <OnboardingScreen
         role={role}
         onDone={()=>{
-          try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {}
+          if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
+          setTutorielForce(false);
           setShowOnboarding(false);
         }}
         onNavigate={(to)=>{
-          try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {}
+          if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
+          setTutorielForce(false);
           setShowOnboarding(false);
           navigate(to);
         }}
