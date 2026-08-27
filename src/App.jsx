@@ -200,7 +200,10 @@ function SplashScreen({ onNext }) {
             // le nombre, surtout quand ce nombre vaut un.
             ...(prestaCount != null ? [{ v:String(prestaCount), l:prestaCount > 1 ? "Prestataires" : "Prestataire" }] : []),
             { v:String(SECTORS.length), l:"Secteurs" },
-            { v:"0 €", l:"Inscription" },
+            // « 0 € · Inscription » : le sigle euro n'avait aucun sens en face
+            // d'un mot qui ne désigne pas une somme. C'est le montant des frais
+            // d'inscription qui vaut zéro — le libellé le dit maintenant.
+            { v:"0 €", l:"Frais d'inscription" },
           ].map(s=>(
             <div key={s.l} style={{
               background:"rgba(255,255,255,0.04)",
@@ -939,7 +942,7 @@ function ResponsiveLayout({ children, screen, role, isLoggedIn, onNavigate, show
           {/* Stats — mêmes chiffres, mêmes exigences que sur l'écran d'accueil :
               ils étaient ici entièrement écrits en dur, donc toujours faux. */}
           <div style={{ display:"flex", gap:24 }}>
-            {[[String(SECTORS.length),"Secteurs"],["0 €","Inscription"],["48 h","Pour signaler"]].map(([v,l])=>(
+            {[[String(SECTORS.length),"Secteurs"],["0 €","Frais d'inscription"],["48 h","Pour signaler"]].map(([v,l])=>(
               <div key={l}>
                 <div style={{ color:C.white, fontWeight:900, fontSize:22 }}>{v}</div>
                 <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:2 }}>{l}</div>

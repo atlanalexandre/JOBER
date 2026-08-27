@@ -43,6 +43,14 @@ export default defineConfig([
     },
   },
   {
+    // Les tests des fonctions serverless lisent `process.env` pour vérifier le
+    // repli des variables d'environnement : ils tournent sous Node, pas dans un
+    // navigateur. Sans ces globales, `no-undef` les refusait et la CI restait
+    // rouge — ce qui, à force, la rend inutile.
+    files: ['src/tests/**/*.{js,jsx}'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     files: ['api/**/*.js'],
     languageOptions: {
       globals: { ...globals.node, fetch: 'readonly', Response: 'readonly', Request: 'readonly', Headers: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', crypto: 'readonly', Buffer: 'readonly' },
@@ -51,6 +59,14 @@ export default defineConfig([
       'no-empty': 'warn',
       'no-unused-vars': ['warn', { caughtErrors: 'none', argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-undef': 'error',
+      // Lire une variable avant sa déclaration ne vaut pas `undefined` en
+      // JavaScript : cela lève une erreur, à l'exécution seulement. Deux cas
+      // dormaient ici. `const appUrl = appUrl()` cassait tous les rappels
+      // quotidiens depuis des semaines — le back-office n'affichait qu'un
+      // « Erreur rappels » sans cause. Et l'annulation d'une prestation pas
+      // encore validée répondait 500. Les fonctions restent autorisées : elles
+      // sont remontées par le moteur, contrairement aux `const` et `let`.
+      'no-use-before-define': ['error', { variables: true, functions: false, classes: false }],
     },
   },
 ])

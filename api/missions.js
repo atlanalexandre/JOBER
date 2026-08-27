@@ -1982,7 +1982,7 @@ export default async function handler(req, res) {
         const metier = esc(mission.metier || mission.sector || "Prestation");
         const missionDate = esc(mission.date || "");
         const ville = esc(mission.ville || "");
-        const appUrl = appUrl();
+        const lienApp = appUrl();
         const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
         if (clientEmail && RESEND_API_KEY) {
           await fetch("https://api.resend.com/emails", {
@@ -2014,7 +2014,7 @@ export default async function handler(req, res) {
                       ${ville ? `<div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px">📍</span><span style="color:rgba(255,255,255,0.7);font-size:13px">${ville}</span></div>` : ""}
                     </div>
                   </div>
-                  <a href="${appUrl}" style="display:block;text-align:center;background:linear-gradient(135deg,#A29BFE,#6C63FF);color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;font-size:15px;letter-spacing:0.3px">
+                  <a href="${lienApp}" style="display:block;text-align:center;background:linear-gradient(135deg,#A29BFE,#6C63FF);color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;font-size:15px;letter-spacing:0.3px">
                     Valider la prestation →
                   </a>
                 </div>
@@ -2972,6 +2972,12 @@ export default async function handler(req, res) {
       const FRAIS_DEFAUT = 4.90;
       // montant_total n'est défini qu'à la validation — pour les missions assigned non validées,
       // le montant réel est dans le PaymentIntent Stripe. On le récupère si nécessaire.
+      // Déclarée ICI, et non cent lignes plus bas comme avant : la lecture du
+      // montant réel dans Stripe, juste en dessous, s'y référait déjà. Lire une
+      // constante avant sa déclaration ne vaut pas `undefined` en JavaScript,
+      // cela lève une erreur — l'annulation d'une prestation pas encore validée
+      // (donc sans montant_total, le cas courant) répondait 500.
+      const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       let missionAmount = Number(mission.montant_total) || 0;
       if (!missionAmount && mission.stripe_payment_intent && STRIPE_SECRET_KEY) {
         try {
@@ -3075,7 +3081,6 @@ export default async function handler(req, res) {
       let stripeRefundId = null;
       let stripeRefundError = null;
       let walletRefunded = false;
-      const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
       const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
       const RESEND_FROM    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
       const ADMIN_EMAIL    = process.env.ADMIN_EMAIL;
@@ -3998,9 +4003,35 @@ export default async function handler(req, res) {
         return { ...sansAdresse, distance_km };
       }));
 
+      // Le nom du client, sur les prestations ACCEPTÉES seulement.
+      //
+      // L'écran du prestataire ouvrait la messagerie sur « Client », en dur :
+      // il écrivait à quelqu'un sans savoir à qui. Le nom n'est pas ajouté aux
+      // prestations `pending` — tant qu'il n'a pas accepté, il n'a pas à savoir
+      // qui est derrière la demande, au même titre que l'adresse (minimisation,
+      // RGPD art. 5.1.c). Une fois la prestation acceptée, il a de toute façon
+      // l'adresse et il doit pouvoir nommer son interlocuteur.
+      const assignedList = Array.isArray(assigned) ? assigned : [];
+      const idsClients = [...new Set(assignedList.map(m => m.client_id).filter(Boolean))];
+      if (idsClients.length > 0) {
+        try {
+          const cr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${idsClients.join(",")})&select=id,prenom,nom`, { headers });
+          const cd = await cr.json();
+          if (!cr.ok) throw new Error(JSON.stringify(cd).slice(0, 200));
+          const noms = {};
+          (Array.isArray(cd) ? cd : []).forEach(pr => {
+            const n = `${pr.prenom || ""} ${pr.nom || ""}`.trim();
+            if (n) noms[pr.id] = n;
+          });
+          assignedList.forEach(m => { m.client_name = noms[m.client_id] || null; });
+        } catch (e) {
+          console.error("[my_missions] noms des clients illisibles :", e.message);
+        }
+      }
+
       return res.status(200).json({
         pending:  pendingSansAdresse,
-        assigned: Array.isArray(assigned) ? assigned : [],
+        assigned: assignedList,
       });
     }
 
