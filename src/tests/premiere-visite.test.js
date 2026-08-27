@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { CLES_PREMIERE_VISITE, effacerPremiereVisite, origineApp } from "../constants/premiere-visite.js";
 
 // Faux localStorage : les tests tournent sans navigateur. Comme le vrai, les
