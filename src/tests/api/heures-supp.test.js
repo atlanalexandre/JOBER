@@ -108,3 +108,26 @@ describe("bornes du tarif proposé", () => {
     }
   });
 });
+
+// L'estimation affichée au client dans les deux dialogues « heures
+// supplémentaires » passe par `prixHeuresSupp`. Elle annonçait auparavant
+// `heures × tarif`, arrondi à l'euro : les frais de service n'y étaient pas,
+// et le montant réclamé ensuite était donc toujours plus élevé que le montant
+// annoncé. Sur un écran qui engage de l'argent, c'est le sens inverse de celui
+// qu'on peut se permettre.
+describe("estimation montrée au client avant la demande", () => {
+  it("n'est jamais inférieure à heures × tarif", () => {
+    for (const h of [1, 2, 4, 8]) {
+      const d = prixHeuresSupp(h, 15, 1);
+      expect(d.total).toBeGreaterThanOrEqual(h * 15);
+      expect(d.partPrestataire).toBeCloseTo(h * 15, 2);
+      expect(d.fraisService).toBeGreaterThan(0);
+    }
+  });
+
+  it("vaut zéro — et non un montant deviné — quand le tarif est inconnu", () => {
+    for (const tarif of [0, null, undefined, NaN]) {
+      expect(prixHeuresSupp(2, tarif, 1).total).toBe(0);
+    }
+  });
+});

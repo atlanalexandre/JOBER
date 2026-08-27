@@ -3844,9 +3844,35 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                   <span>1h min</span><span>8h max</span>
                 </div>
               </div>
-              <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:20, fontSize:13, color:C.text }}>
-                💳 Supplément estimé : <strong>{p?.rateNum ? `${(p.rateNum * extraHoursValue).toFixed(0)} €` : `${extraHoursValue}h × tarif horaire`}</strong>
-              </div>
+              {/* L'estimation annonçait « heures × tarif », arrondie à l'euro :
+                  elle oubliait les frais de service, que le client règle
+                  pourtant sur une prolongation comme sur la prestation
+                  initiale. Le chiffre affiché était donc systématiquement
+                  inférieur à ce qui allait être demandé. On passe par
+                  `prixHeuresSupp`, la fonction que le serveur utilise pour
+                  facturer — un seul calcul, pas deux qui divergent. */}
+              {(() => {
+                const tarifEstime = Number(contractMissionData?.tarif_horaire || p?.rateNum || 0);
+                const d = prixHeuresSupp(extraHoursValue, tarifEstime, 1);
+                const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
+                return (
+                  <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:20, fontSize:13, color:C.text }}>
+                    {d.total > 0 ? (
+                      <>
+                        💳 Estimation : <strong>{fr(d.total)} €</strong>
+                        <div style={{ color:C.textSub, fontSize:11.5, marginTop:4, lineHeight:1.6 }}>
+                          {extraHoursValue} h × {fr(tarifEstime)} € = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
+                        </div>
+                      </>
+                    ) : (
+                      <>💳 Le montant vous sera indiqué dès que le prestataire aura chiffré la prolongation.</>
+                    )}
+                    <div style={{ color:C.textMuted, fontSize:11, marginTop:6, lineHeight:1.6 }}>
+                      Rien n'est débité maintenant. Le prestataire peut proposer un autre tarif ; vous verrez le montant exact et vous resterez libre de refuser.
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ display:"flex", gap:10 }}>
                 <button onClick={()=>setExtraHoursModal(false)} style={{ flex:1, padding:"12px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
                 <button disabled={extraHoursSending} onClick={async()=>{
@@ -3858,6 +3884,14 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
                     body: JSON.stringify({ action:"request_extra_hours", mission_id:resolvedMissionId, extra_hours:extraHoursValue }),
                   });
                   if (r.ok) { setExtraHoursStatus("pending"); setExtraHoursModal(false); }
+                  else {
+                    // Un échec silencieux laissait le client persuadé d'avoir
+                    // envoyé sa demande — et attendre une réponse qui ne
+                    // viendrait jamais.
+                    const j = await r.json().catch(() => ({}));
+                    console.error("[heures supp] demande refusée :", j?.error || r.status);
+                    showToast(j?.error || "Demande non envoyée — réessayez.", "error");
+                  }
                   setExtraHoursSending(false);
                 }} style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:C.accentGold, color:"#fff", fontWeight:800, fontSize:14, cursor:extraHoursSending?"default":"pointer", opacity:extraHoursSending?0.6:1, fontFamily:"inherit" }}>
                   {extraHoursSending ? "Envoi…" : "Envoyer la demande →"}
@@ -6784,7 +6818,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 {dist != null && (
                   <div style={{ color:"rgba(255,255,255,0.7)", fontSize:12, marginBottom:10 }}>
-                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1)} km`}</strong> du lieu de prestation
+                    🏃 À environ <strong style={{ color:"#fff" }}>{dist < 1 ? `${Math.round(dist*1000)} m` : `${dist.toFixed(1).replace(".", ",")} km`}</strong> du lieu de prestation
                   </div>
                 )}
                 <a href={`https://www.google.com/maps?q=${prestaPosition.lat},${prestaPosition.lng}`} target="_blank" rel="noopener noreferrer"
@@ -6991,14 +7025,31 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       commencee = Date.now() >= new Date(yy, mm2 - 1, dd, hh, mi).getTime();
                     } catch { /* date illisible */ }
                   }
-                  return !commencee ? (
+                  // TROIS états, pas deux. « Le prestataire n'a pas encore
+                  // confirmé la fin de prestation » s'affichait dès la première
+                  // minute, alors que le compteur juste au-dessus indiquait
+                  // « 00:03 en cours » : on reprochait à quelqu'un de ne pas
+                  // avoir fini un travail qu'il venait de commencer. Tant que
+                  // l'heure de fin n'est pas atteinte, il n'y a rien à attendre.
+                  const fin = finPrestationMs(selected);
+                  const terminee = fin != null && Date.now() >= fin;
+                  if (!commencee) return (
                     <>
                       <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>📅 Prestation à venir</div>
                       <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
                         Votre prestataire est confirmé. Vous pourrez valider la prestation une fois qu'elle aura eu lieu et qu'il l'aura confirmée de son côté.
                       </div>
                     </>
-                  ) : (
+                  );
+                  if (!terminee) return (
+                    <>
+                      <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>🚀 Prestation en cours</div>
+                      <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
+                        Rien à faire pour l'instant. La validation vous sera proposée une fois l'heure de fin passée et la prestation confirmée par le prestataire.
+                      </div>
+                    </>
+                  );
+                  return (
                     <>
                       <div style={{ fontWeight:700, color:"#A29BFE", fontSize:14, marginBottom:4 }}>⏳ En attente de confirmation</div>
                       <div style={{ color:C.textSub, fontSize:13, lineHeight:1.5 }}>
@@ -7281,6 +7332,30 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               <div style={{ background:"#0D1B3E", borderRadius:20, padding:24, margin:20, maxWidth:360, width:"100%" }}>
                 <h3 style={{ color:C.text, fontSize:17, fontWeight:800, margin:"0 0 6px" }}>⏱ Heures supplémentaires</h3>
                 <p style={{ color:C.textSub, fontSize:13, margin:"0 0 16px", lineHeight:1.5 }}>Le prestataire devra confirmer la demande.</p>
+                {/* Ce dialogue ne montrait AUCUN montant : on demandait au
+                    client d'engager jusqu'à huit heures de prestation sans lui
+                    donner le moindre ordre de grandeur. */}
+                {(() => {
+                  const d = prixHeuresSupp(extraHoursValue, Number(selected.tarif_horaire || 0), 1);
+                  const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
+                  return (
+                    <div style={{ background:`${C.accentGold}12`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:C.text }}>
+                      {d.total > 0 ? (
+                        <>
+                          💳 Estimation : <strong>{fr(d.total)} €</strong>
+                          <div style={{ color:C.textSub, fontSize:11.5, marginTop:4, lineHeight:1.6 }}>
+                            {extraHoursValue} h × {fr(selected.tarif_horaire)} € = {fr(d.partPrestataire)} € · frais de service {fr(d.fraisService)} €
+                          </div>
+                        </>
+                      ) : (
+                        <>💳 Le montant vous sera indiqué dès que le prestataire aura chiffré la prolongation.</>
+                      )}
+                      <div style={{ color:C.textMuted, fontSize:11, marginTop:6, lineHeight:1.6 }}>
+                        Rien n'est débité maintenant. Le prestataire peut proposer un autre tarif ; vous verrez le montant exact et vous resterez libre de refuser.
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
                   <button onClick={()=>setExtraHoursValue(v=>Math.max(1,v-1))} style={{ width:40, height:40, borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.07)", color:C.text, fontSize:20, cursor:"pointer", fontFamily:"inherit" }}>−</button>
                   <div style={{ flex:1, textAlign:"center", fontWeight:800, color:C.text, fontSize:22 }}>{extraHoursValue}h</div>
@@ -7297,6 +7372,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, extra_hours_status:"pending" } : m));
                       setSelected(s => s ? { ...s, extra_hours_status:"pending" } : s);
                       setExtraHoursModal(false);
+                    } else {
+                      // Sans ce bloc, le dialogue se contentait de rester ouvert
+                      // sans un mot : le client ne savait pas si sa demande était
+                      // partie.
+                      const j = await res.json().catch(() => ({}));
+                      console.error("[heures supp] demande refusée :", j?.error || res.status);
+                      showToast(j?.error || "Demande non envoyée — réessayez.", "error");
                     }
                     setExtraHoursSending(false);
                   }} style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:C.accentGold, color:"#fff", fontWeight:800, fontSize:14, cursor:extraHoursSending?"default":"pointer", opacity:extraHoursSending?0.6:1, fontFamily:"inherit" }}>
