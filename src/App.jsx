@@ -4,9 +4,9 @@ import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS 
 import { C, font, r } from "./constants/colors.js";
 import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
-import { SECTORS } from "./constants/data.js";
+import { SECTORS, METIERS } from "./constants/data.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPrestaCount, fetchPlacesLancement } from "./components/ui.jsx";
+import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPlacesLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
@@ -103,15 +103,17 @@ function AlaneIcon({ size = 18 }) {
 // ── Primitives ────────────────────────────────────────────────────
 // ── UI Primitives — Premium Dark ─────────────────────────────────
 
+// Le nombre de métiers couverts, déduit de la liste elle-même : il suit si
+// elle change, contrairement à un chiffre recopié qui devient faux en silence.
+const NB_METIERS = new Set(Object.values(METIERS).flat()).size;
+
 // ── SCREENS ───────────────────────────────────────────────────────
 
 function SplashScreen({ onNext }) {
   const [v,setV]=useState(false);
-  const [prestaCount,setPrestaCount]=useState(null);
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
-    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
     fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
   },[]);
   // Les places de l'offre ne se déduisent PLUS du nombre de prestataires
@@ -194,11 +196,20 @@ function SplashScreen({ onNext }) {
               pour qu'il suive si elle change. */}
         <div style={{ display:"flex", gap:8, marginBottom:36, flexWrap:"wrap" }}>
           {[
-            // Tant que le nombre réel n'est pas connu, la pastille est omise :
-            // mieux vaut deux chiffres que trois dont un faux.
-            // « 1 Prestataires » sur la page d'accueil : le pluriel doit suivre
-            // le nombre, surtout quand ce nombre vaut un.
-            ...(prestaCount != null ? [{ v:String(prestaCount), l:prestaCount > 1 ? "Prestataires" : "Prestataire" }] : []),
+            // Le nombre de prestataires inscrits n'est plus affiché.
+            //
+            // Il l'a été, et il disait la vérité — « 1 Prestataire ». C'est
+            // exact et c'est décourageant pour le premier client qui arrive.
+            // La tentation était d'écrire « de nombreux prestataires » : ce
+            // serait une pratique commerciale trompeuse au sens de l'article
+            // L121-2 du code de la consommation, exactement comme les « 88+
+            // prestataires » qu'il a fallu retirer de ce même écran.
+            //
+            // La pastille dit donc autre chose de vrai, et qui répond à la même
+            // question du visiteur — « trouverai-je ce qu'il me faut ? » : le
+            // nombre de métiers couverts. Il est déduit de la liste, donc
+            // vérifiable et toujours à jour.
+            { v:String(NB_METIERS), l:"Métiers couverts" },
             { v:String(SECTORS.length), l:"Secteurs" },
             // « 0 € · Inscription » : le sigle euro n'avait aucun sens en face
             // d'un mot qui ne désigne pas une somme. C'est le montant des frais
@@ -248,10 +259,8 @@ function SplashScreen({ onNext }) {
 function RoleScreen({ onSelect, onBack, notice }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
-  const [prestaCount,setPrestaCount]=useState(null);
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{
-    fetchPrestaCount().then(c=>{ if(c!=null) setPrestaCount(c); });
     fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
   },[]);
   // Les places de l'offre ne se déduisent PLUS du nombre de prestataires

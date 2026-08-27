@@ -549,11 +549,8 @@ export function PromptModal() {
 
 // ── Les places de l'offre de lancement ───────────────────────────────
 //
-// À ne pas confondre avec `fetchPrestaCount()` juste en dessous, qui compte les
-// prestataires APPROUVÉS et sert à la vitrine (« 88+ prestataires »).
-//
-// Le compteur de l'offre se calculait sur ce même nombre, alors que la règle
-// serveur retenait les 100 premiers INSCRITS : les deux ne comptaient pas la
+// Le compteur de l'offre se calculait autrefois sur le nombre de prestataires
+// APPROUVÉS, alors que la règle serveur retenait les 100 premiers INSCRITS : les deux ne comptaient pas la
 // même chose, et l'écran pouvait annoncer des places qui n'existaient plus.
 // Depuis le 24/08/2026 la place s'attribue à l'ouverture de l'accès aux
 // prestations, et c'est ce que cette fonction compte — une seule vérité.
@@ -569,18 +566,13 @@ export function fetchPlacesLancement() {
   return _placesPending;
 }
 
-// ── prestaCount singleton ────────────────────────────────────────────
-let _prestaCountCache = null;
-let _prestaCountPending = null;
-export function fetchPrestaCount() {
-  if (_prestaCountCache !== null) return Promise.resolve(_prestaCountCache);
-  if (_prestaCountPending) return _prestaCountPending;
-  _prestaCountPending = fetch("/api/prestataires?action=count")
-    .then(r => r.json())
-    .then(d => { _prestaCountCache = d.count ?? null; _prestaCountPending = null; return _prestaCountCache; })
-    .catch(() => { _prestaCountPending = null; return null; });
-  return _prestaCountPending;
-}
+// `fetchPrestaCount()` a été retirée le 27/08/2026.
+//
+// Elle servait la pastille « N Prestataires » de la vitrine, supprimée : le
+// nombre réel décourage tant qu'il est bas, et l'arrondir vers le haut serait
+// trompeur. Trois écrans l'appelaient encore à chaque ouverture pour un chiffre
+// que plus personne n'affichait. `/api/prestataires?action=count` reste en
+// place, il sert ailleurs.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Proposition de résolution d'un litige (CGPS art. 17.1)
