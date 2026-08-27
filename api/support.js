@@ -104,7 +104,7 @@ export default async function handler(req, res) {
     const isPresta = role === "prestataire";
     const welcomeHtml = emailHtml(`
       <p>Bonjour <strong>${esc(prenom)}</strong>,</p>
-      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverrons un email dès validation de votre compte (généralement sous 24h)." : "Notre équipe va valider votre compte et vous enverrons un email dès approbation."}</p>
+      <p>Votre inscription sur <strong>ALANE</strong> a bien été reçue. ${isPresta ? "Notre équipe va examiner votre dossier et vous enverra un e-mail dès la validation de votre compte, généralement sous 24 h." : "Notre équipe va valider votre compte et vous enverra un e-mail dès son approbation."}</p>
       <p>En attendant, si vous avez des questions, n'hésitez pas à contacter notre support.</p>
       <p>À très bientôt,<br/><strong>L'équipe ALANE</strong></p>
     `);

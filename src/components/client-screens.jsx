@@ -9174,11 +9174,44 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la prestation terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
   ];
+  // Le tutoriel prestataire, réécrit le 27/08/2026.
+  //
+  // Il datait de la première version et n'avait jamais été relu, contrairement
+  // à celui du client. Il annonçait « un profil complet reçoit 3× plus de
+  // prestations » — un chiffre que rien ne mesure, inventé, du même tonneau que
+  // les « 88+ prestataires » retirés de la page d'accueil. Il promettait une
+  // validation « sous 24-48h » quand le mail de bienvenue dit 24 h.
+  //
+  // Surtout, il ne disait rien de ce qu'un prestataire a réellement besoin de
+  // savoir : les pièces exigées, les DEUX validations successives, le délai
+  // pour répondre à une proposition, et surtout QUAND il est payé. Chaque
+  // chiffre ci-dessous est vérifié dans le code et dérivé de sa source quand
+  // elle existe — un nombre recopié devient faux sans prévenir.
+  const quotaPlan = (id) => ABONNEMENTS_PRESTA.find(p => p.id === id)?.missions ?? 0;
   const prestaSteps = [
-    { icon:"📝", title:"Complétez votre profil", desc:"Renseignez vos compétences, tarifs, disponibilités et complétez votre parcours. Un profil complet reçoit 3× plus de prestations.", color:C.violet },
-    { icon:"✅", title:"Validation par notre équipe", desc:"Notre équipe vérifie votre profil sous 24-48h. Vous recevrez un email de confirmation dès que votre compte est activé.", color:C.accentGold },
-    { icon:"📦", title:"Recevez des prestations", desc:"Les clients vous sélectionnent directement selon votre profil. Acceptez ou refusez chaque prestation proposée. Votre plan définit votre quota mensuel.", color:C.success },
-    { icon:"💶", title:"Gérez votre agenda & revenus", desc:"Acceptez les prestations proposées, suivez vos paiements et développez votre activité sur ALANE.", color:"#4FC3F7" },
+    { icon:"📄", title:"Constituez votre dossier", lines:[
+      "Sept pièces sont exigées : photo de profil, extrait KBIS ou INSEE, attestation URSSAF, pièce d'identité, justificatif de domicile, RIB et attestation RC Pro.",
+      "Tant qu'il en manque une, le dossier ne peut pas être examiné. Vos diplômes et certifications sont facultatifs, mais ils comptent aux yeux des clients.",
+    ], color:C.violet },
+    { icon:"✅", title:"Deux validations, pas une", lines:[
+      "1️⃣ Notre équipe vérifie votre dossier, généralement sous 24 h, et active votre compte.",
+      "2️⃣ L'accès aux prestations est ouvert dans un second temps. C'est à ce moment que vous recevez le lien pour configurer votre compte de virement — sans lui, aucun paiement ne peut vous être envoyé.",
+    ], color:C.accentGold },
+    { icon:"📦", title:"Répondez aux propositions", lines:[
+      `Les clients vous sélectionnent selon votre profil. Vous acceptez ou vous refusez : un refus n'a aucune conséquence sur votre compte.`,
+      "Attention au délai : passé le temps imparti, la prestation est proposée à quelqu'un d'autre.",
+      `Votre formule fixe le nombre de prestations par mois — ${quotaPlan("free")} en Gratuit, ${quotaPlan("premium")} en Premium, illimité en Elite.`,
+    ], color:C.success },
+    { icon:"💶", title:"Comment vous êtes payé", lines:[
+      "Sur place, signalez votre arrivée, puis confirmez la fin de la prestation. Le client valide de son côté — sans réponse de sa part, la validation est automatique au bout de 24 h.",
+      `Le virement part ${HEURES_CONTESTATION} h après la fin de la prestation — ce délai est celui dont le client dispose pour signaler un problème — et arrive sur votre compte sous 1 à 2 jours ouvrés.`,
+      "ALANE retient ses frais de service sur ce que paie le client, jamais sur votre tarif : vous touchez ce que vous avez annoncé.",
+    ], color:"#4FC3F7" },
+    { icon:"🧾", title:"Vous restez indépendant", lines:[
+      "Vous fixez librement votre tarif, y compris celui d'une prolongation demandée en cours de prestation.",
+      "ALANE établit vos factures en votre nom et pour votre compte : c'est le mandat de facturation que vous acceptez à l'inscription. Elles restent les vôtres.",
+      "Votre attestation RC Pro doit rester valide : pensez à la renouveler avant son expiration, sans quoi votre compte peut être suspendu.",
+    ], color:"#F06292" },
   ];
 
   const steps = role === "prestataire" ? prestaSteps : clientSteps;
@@ -9201,7 +9234,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
             <div style={{ color:C.textSub, fontSize:14, lineHeight:1.7, maxWidth:320, marginLeft:"auto", marginRight:"auto", textAlign:"left" }}>
               {s.lines.map((l,i) => <p key={i} style={{ margin:"0 0 10px" }}>{l}</p>)}
               {isLast && (
-                <button onClick={()=>{ onDone(); onNavigate?.("faq"); }} style={{ marginTop:8, background:"transparent", border:"1px solid rgba(79,195,247,0.4)", borderRadius:8, padding:"10px 14px", color:"#4FC3F7", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
+                <button onClick={()=>{ onDone(); onNavigate?.("faq"); }} style={{ marginTop:8, background:"transparent", border:`1px solid ${s.color}66`, borderRadius:8, padding:"10px 14px", color:s.color, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
                   📖 En savoir plus dans la FAQ →
                 </button>
               )}
