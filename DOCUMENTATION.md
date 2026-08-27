@@ -261,7 +261,7 @@ ne lit est un piège, l'administrateur croit agir alors que rien ne change.
 | `subscription_prices` | `api/plans.js`, écrans d'abonnement |
 | `plan_limits` | `api/missions.js` — helper `limitePlanMensuelle()`, appliqué au plan lu dans **`profiles`** |
 | `launch_phase` | badges de l'interface **et** `limitePlanMensuelle()` (8 prestations/mois aux 100 premiers prestataires) |
-| `frais_service` | tunnel de réservation, `api/stripe-intent.js` |
+| `frais_service` | tunnel de réservation, `api/stripe-intent.js`, et `api/_heures_supp.js` pour les prolongations. Sous-clés : `single` (4,90 €), `range` (2,90 €/jour), `urgent` (9,90 €), `pourcentage` (2 %), et **`minimum_prolongation`** (0,90 €) — plancher appliqué **aux seules prolongations**, qui ne rappellent pas la part fixe et ne laissaient donc que 2 %, en dessous de la commission fixe de Stripe sur les petits montants |
 | `urgency_surcharge` | écran de secteur (majoration affichée au client) |
 | `seuils_dependance` | `api/bo-action.js` — action `signaux_dependance`. Absent = valeurs par défaut de `_dependance.js` (60 % du CA, 8 prestations minimum, 24 jours sur 8 semaines, fenêtre 180 j) |
 | `disabled_sectors` | `api/missions.js` — `get_sector_status` (affichage) et `assign_after_payment` (refus de réservation) |

@@ -33,6 +33,13 @@
 // prélevés par le prestataire de services de paiement », et ces frais-là
 // s'appliquent bien au nouvel encaissement.
 //
+// Avec cette seule part proportionnelle, les petites prolongations étaient
+// déficitaires : 0,34 € encaissés sur une prolongation d'une heure à 17 €,
+// pour environ 0,51 € de commission Stripe (1,5 % + 0,25 € fixes). D'où le
+// plancher `minimum_prolongation`, ajouté le 27/08/2026. Ce n'est pas un taux
+// plus élevé qu'il fallait : la commission fixe de Stripe est la même sur 17 €
+// que sur 1 000 €, seuls les petits montants posaient problème.
+//
 // LE TARIF EST CELUI QUE LE PRESTATAIRE ANNONCE
 //
 // Il fixe librement son prix (CGPS art. 6.1), et une prolongation qu'il n'avait
@@ -81,8 +88,19 @@ export function prixHeuresSupp(heures, tarif, jours = 1, frais = FRAIS_PAR_DEFAU
 
   // Part proportionnelle seule — voir l'en-tête. La grille vit dans
   // `_montant.js` ; on lit son pourcentage plutôt que d'en écrire un second.
-  const pourcentage = Number({ ...FRAIS_PAR_DEFAUT, ...(frais || {}) }.pourcentage) || 0;
-  const fraisService = Math.round(partPrestataire * pourcentage) / 100;
+  const bareme = { ...FRAIS_PAR_DEFAUT, ...(frais || {}) };
+  const pourcentage = Number(bareme.pourcentage) || 0;
+  const proportionnel = Math.round(partPrestataire * pourcentage) / 100;
+
+  // Plancher. Les 2 % seuls ne couvraient pas la commission fixe de Stripe sur
+  // les petits montants : 0,34 € encaissés sur une prolongation à 17 € pour
+  // environ 0,51 € prélevés. ALANE payait pour prolonger. Le plancher cesse de
+  // jouer dès que les 2 % le dépassent — au-delà de 45 € avec les valeurs par
+  // défaut. Il ne peut jamais dépasser la part du prestataire : mieux vaut
+  // renoncer aux frais que facturer une prolongation plus chère qu'elle ne
+  // rapporte à celui qui la réalise.
+  const minimum = Math.max(0, Number(bareme.minimum_prolongation) || 0);
+  const fraisService = Math.round(Math.min(Math.max(proportionnel, minimum), partPrestataire) * 100) / 100;
 
   const total = Math.round((partPrestataire + fraisService) * 100) / 100;
   return { partPrestataire, fraisService, total, centimes: Math.round(total * 100) };
