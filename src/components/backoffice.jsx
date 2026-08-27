@@ -2590,11 +2590,16 @@ export function EmailTestButton() {
 // clés qui n'ont jamais existé de son côté — il ne pouvait pas fonctionner.
 // Il envoie désormais le navigateur sur l'application avec `?tutoriel=reset` ;
 // c'est elle qui efface ses propres repères et relance le tutoriel.
-function ResetOnboardingButton() {
+//
+// Le rôle est passé explicitement : sans lui, l'application montrait le
+// tutoriel correspondant à la session ouverte — donc jamais celui du
+// prestataire tant qu'on n'était pas connecté en prestataire. Les deux versions
+// sont différentes et doivent toutes deux être relisibles depuis ici.
+function ResetOnboardingButton({ role, libelle }) {
   return (
-    <button onClick={() => window.location.assign(`${origineApp()}/?tutoriel=reset`)}
-      style={{ padding:"9px 16px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-      🔄 Réinitialiser le tutoriel et ouvrir l'application
+    <button onClick={() => window.location.assign(`${origineApp()}/?tutoriel=reset&role=${role}`)}
+      style={{ flex:1, padding:"9px 12px", borderRadius:r, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+      {libelle}
     </button>
   );
 }
@@ -2700,8 +2705,11 @@ export function BOTest({ onNavigate }) {
 
       <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"16px", marginTop:12 }}>
         <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:6 }}>🎓 Tutoriel first-login</div>
-        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Ouvre l'application, efface ses repères de première visite (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) et relance le tutoriel immédiatement. Vous quittez le back-office : revenez-y par admin.alane.fr.</p>
-        <ResetOnboardingButton />
+        <p style={{ color:C.textSub, fontSize:12, margin:"0 0 12px" }}>Ouvre l'application, efface ses repères de première visite (tutoriel, checklist prestataire, bannière d'installation, demande de notifications) et rejoue le tutoriel demandé — sans qu'il soit besoin d'être connecté avec le rôle correspondant. Vous quittez le back-office : revenez-y par admin.alane.fr.</p>
+        <div style={{ display:"flex", gap:8 }}>
+          <ResetOnboardingButton role="client"      libelle="🔄 Tutoriel client" />
+          <ResetOnboardingButton role="prestataire" libelle="🔄 Tutoriel prestataire" />
+        </div>
       </div>
 
     </div>

@@ -1095,13 +1095,25 @@ export default function App() {
   // Lue au montage, avant tout le reste : c'est ici, sur l'origine de
   // l'application, que vivent réellement les clés de première visite — le
   // back-office, sur admin.alane.fr, ne peut pas y toucher.
+  //
+  // `tutorielRole` : QUEL tutoriel rejouer. Sans lui, l'écran suivait le rôle de
+  // la session ouverte — donc toujours le tutoriel client tant qu'on n'était pas
+  // connecté en prestataire, et jamais le tutoriel prestataire depuis le
+  // back-office. C'est un paramètre d'affichage : il ne change pas le rôle du
+  // compte, il ne dit que la version à montrer.
   const [tutorielForce, setTutorielForce] = useState(false);
+  const [tutorielRole, setTutorielRole]   = useState(null);
   useEffect(()=>{
-    let demande = null;
-    try { demande = new URLSearchParams(window.location.search).get("tutoriel"); } catch { /* URL illisible */ }
+    let demande = null, roleDemande = null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      demande = params.get("tutoriel");
+      roleDemande = params.get("role");
+    } catch { /* URL illisible */ }
     if (demande !== "reset") return;
     effacerPremiereVisite();
     setTutorielForce(true);
+    if (roleDemande === "prestataire" || roleDemande === "client") setTutorielRole(roleDemande);
     setShowOnboarding(true);
     // Le paramètre est retiré de l'URL : sans cela, un rafraîchissement
     // relancerait le tutoriel indéfiniment.
@@ -1601,15 +1613,17 @@ export default function App() {
         cassé. La clé n'est écrite que s'il y a un compte à qui l'attribuer. */}
     {showOnboarding && (supaUser || tutorielForce) && (
       <OnboardingScreen
-        role={role}
+        role={tutorielRole || role}
         onDone={()=>{
           if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
           setTutorielForce(false);
+          setTutorielRole(null);
           setShowOnboarding(false);
         }}
         onNavigate={(to)=>{
           if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
           setTutorielForce(false);
+          setTutorielRole(null);
           setShowOnboarding(false);
           navigate(to);
         }}
