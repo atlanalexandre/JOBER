@@ -5,6 +5,8 @@ import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, forma
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
+import { prixHeuresSupp } from "../../api/_heures_supp.js";
+import { nombreDeJours } from "../../api/_montant.js";
 
 const ACCEPTED_TYPES = new Set(["application/pdf","image/jpeg","image/jpg","image/png","image/webp","image/heic","image/heif"]);
 const ACCEPTED_EXTS  = new Set(["pdf","jpg","jpeg","png","webp","heic","heif"]);
@@ -2800,12 +2802,44 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       </div>
                     </div>
 
+                    {/* Ce que le prestataire va toucher, avant d'accepter.
+                        Il ne l'apprenait que dans le message de confirmation,
+                        une fois sa réponse envoyée. Sur une prestation
+                        récurrente le calcul n'a rien d'évident : le tarif est
+                        multiplié par le nombre de jours, si bien que « 17 €/h »
+                        saisi pour une prolongation d'une heure sur cinq jours
+                        représente 85 €. Même fonction que le serveur. */}
+                    {(() => {
+                      const tarifSaisi = Number(tarifSupp[m.id] ?? m.tarif_horaire);
+                      const d = prixHeuresSupp(m.extra_hours_requested, tarifSaisi, nombreDeJours(m));
+                      const fr = (v) => Number(v || 0).toFixed(2).replace(".", ",");
+                      return d.partPrestataire > 0 ? (
+                        <div style={{ background:"rgba(16,217,143,0.08)", border:"1px solid rgba(16,217,143,0.25)", borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:12, color:C.text, lineHeight:1.6 }}>
+                          Vous percevrez <strong style={{ color:"#10D98F" }}>{fr(d.partPrestataire)} €</strong> HT.
+                          <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>
+                            Le client réglera {fr(d.total)} € — dont {fr(d.fraisService)} € de frais de service ALANE. Rien n'est acquis tant qu'il n'a pas payé.
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ background:"rgba(242,94,94,0.08)", border:"1px solid rgba(242,94,94,0.3)", borderRadius:10, padding:"10px 12px", marginBottom:12, fontSize:12, color:"#F25E5E" }}>
+                          Indiquez un tarif compris entre 1 € et 500 € pour pouvoir accepter.
+                        </div>
+                      );
+                    })()}
+
                     <div style={{ display:"flex", gap:8 }}>
                       <button onClick={async () => {
                         const { data: sd } = await supabase.auth.getSession();
                         const token = sd?.session?.access_token;
                         const r = await fetch("/api/missions", { method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${token||""}`}, body: JSON.stringify({ action:"respond_extra_hours", mission_id:m.id, response:"refuse" }) });
                         if (r.ok) setAssignedMissions(prev => prev.map(x => x.id===m.id ? {...x, extra_hours_status:"refused", extra_hours_requested:null} : x));
+                        else {
+                          // Le refus échouait sans un mot : la demande restait
+                          // affichée, et le prestataire pouvait la croire traitée.
+                          const j = await r.json().catch(() => ({}));
+                          console.error("[heures supp] refus non enregistré :", j?.error || r.status);
+                          showToast(j?.error || "Votre refus n'a pas pu être enregistré — réessayez.");
+                        }
                       }} style={{ flex:1, padding:"10px", borderRadius:10, border:"1px solid rgba(242,94,94,0.4)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
                         ✗ Refuser
                       </button>

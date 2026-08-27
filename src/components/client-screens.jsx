@@ -6608,7 +6608,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         amount={dSupp.total}
         missionId={paiementSupp.id}
         mode="supplement"
-        description={`${paiementSupp.extra_hours_requested} h supplémentaires`}
+        description={`${paiementSupp.extra_hours_requested} h supplémentaire${Number(paiementSupp.extra_hours_requested) > 1 ? "s" : ""}`}
         onBack={() => setPaiementSupp(null)}
         onSuccess={async (intentId) => {
           try {
@@ -6974,7 +6974,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                       💶 Prolongation à régler
                     </div>
                     <div style={{ color:C.textSub, fontSize:12, lineHeight:1.7 }}>
-                      Le prestataire accepte <strong style={{ color:C.text }}>{selected.extra_hours_requested} h</strong> supplémentaires
+                      Le prestataire accepte <strong style={{ color:C.text }}>{selected.extra_hours_requested} h</strong> supplémentaire{Number(selected.extra_hours_requested) > 1 ? "s" : ""}
                       à <strong style={{ color:C.text }}>{Number(selected.extra_hours_tarif || 0).toFixed(2).replace(".", ",")} €/h</strong>.
                       <br />Prestation {d.partPrestataire.toFixed(2).replace(".", ",")} € · frais de service {d.fraisService.toFixed(2).replace(".", ",")} €
                       <br /><strong style={{ color:C.text, fontSize:14 }}>Total {d.total.toFixed(2).replace(".", ",")} €</strong>
