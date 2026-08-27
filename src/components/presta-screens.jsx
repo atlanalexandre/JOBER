@@ -1130,23 +1130,31 @@ export function PrestaProfilTab({ onNavigate }) {
         </div>
       )}
 
-      {/* Disponibilités */}
-      {meta && (meta.dispon_jours?.length || meta.dispon_creneaux?.length) && (
+      {/* Disponibilités
+          `dispon_creneaux` — sans « _jours » — est un champ de l'ancien modèle,
+          LU à quatre endroits et ÉCRIT nulle part. La ligne des créneaux était
+          donc toujours vide : le prestataire voyait « Lun · Jeu · Ven » sans
+          jamais retrouver les plages horaires qu'il avait saisies, alors
+          qu'elles sont bien enregistrées dans `dispon_jours_creneaux`. */}
+      {meta && meta.dispon_jours?.length > 0 && (
         <div style={{ background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:12 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>📅 Disponibilités</div>
             <button onClick={()=>onNavigate("presta_profile_edit")} style={{ background:"transparent", border:"none", color:C.violet, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Modifier</button>
           </div>
-          {meta.dispon_jours?.length > 0 && (
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
-              {meta.dispon_jours.map(j=><span key={j} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"3px 9px", color:C.violet, fontSize:11, fontWeight:600 }}>{j.slice(0,3)}</span>)}
-            </div>
-          )}
-          {meta.dispon_creneaux?.length > 0 && (
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-              {meta.dispon_creneaux.map(c=><span key={c} style={{ background:"rgba(255,255,255,0.05)", borderRadius:6, padding:"3px 8px", color:C.textSub, fontSize:11 }}>{c.split(" ")[0]}</span>)}
-            </div>
-          )}
+          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+            {meta.dispon_jours.map(j => {
+              const plages = (meta.dispon_jours_creneaux || {})[j] || [];
+              return (
+                <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:6, padding:"3px 9px", color:C.violet, fontSize:11, fontWeight:600, minWidth:38, textAlign:"center" }}>{j.slice(0,3)}</span>
+                  <span style={{ color:C.textSub, fontSize:11 }}>
+                    {plages.length > 0 ? plages.map(c => c.split(" ")[0]).join(" · ") : "toute la journée"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
           {meta.dispo_immediat && <div style={{ color:C.success, fontSize:11, fontWeight:600, marginTop:8 }}>🟢 Disponible immédiatement</div>}
         </div>
       )}
@@ -1363,8 +1371,15 @@ export function PrestaProfileEditScreen({ onBack }) {
       if (m.dispon_jours_creneaux && Object.keys(m.dispon_jours_creneaux).length > 0) {
         setDispos(m.dispon_jours_creneaux);
       } else if (m.dispon_jours?.length) {
+        // Repli pour les comptes antérieurs au format par jour. Il lisait
+        // `m.dispon_creneaux`, un champ que plus rien n'écrit : chaque jour
+        // était donc reconstruit VIDE. L'écran s'ouvrait sans aucune plage
+        // cochée, et le premier enregistrement effaçait les disponibilités —
+        // `dispon_jours` se déduit des jours ayant au moins une plage.
+        // À défaut de savoir quelles plages, on les prend toutes : un jour
+        // déclaré disponible l'était, au minimum, pour quelque chose.
         const rebuilt = {};
-        (m.dispon_jours || []).forEach(j => { rebuilt[j] = m.dispon_creneaux || []; });
+        (m.dispon_jours || []).forEach(j => { rebuilt[j] = [...PLAGES]; });
         setDispos(rebuilt);
       }
       setDispoImmediat(m.dispo_immediat !== false);
