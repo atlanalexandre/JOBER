@@ -2,7 +2,7 @@
 // Push notifications + cache strategy
 /* global clients */
 
-const CACHE_NAME = "alane-v3";
+const CACHE_NAME = "alane-v4";
 const STATIC_ASSETS = [
   "/manifest.json",
   "/favicon.svg",
@@ -40,8 +40,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Ne pas intercepter les requêtes API Supabase/Stripe/Resend
+  // Ne pas intercepter les requêtes API Supabase/Stripe/Resend, ni le fichier
+  // d'estampille : c'est lui qui dit si une nouvelle version est déployée. Servi
+  // depuis le cache, il répondrait éternellement l'ancienne valeur et la
+  // détection de mise à jour ne se déclencherait jamais.
   if (
+    url.pathname === "/version.json" ||
     url.pathname.startsWith("/api/") ||
     url.hostname.includes("supabase.co") ||
     url.hostname.includes("stripe.com") ||

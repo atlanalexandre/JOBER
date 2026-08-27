@@ -6,6 +6,7 @@ import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.
 import { CGU } from "./constants/cgu.js";
 import { SECTORS, METIERS } from "./constants/data.js";
 import { effacerPremiereVisite } from "./constants/premiere-visite.js";
+import { nouvelleVersionDisponible, rechargerVersion } from "./lib/version.js";
 import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPlacesLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
@@ -1084,6 +1085,25 @@ export default function App() {
   const [bookingDraftBanner,setBookingDraftBanner]=useState(null); // { prestataireName, metier, montant }
   const [docsRefreshKey,setDocsRefreshKey]=useState(0);
   const [cookieNotice,setCookieNotice]=useState(()=>{ try { return !localStorage.getItem("alane_cookie_ok"); } catch(e) { return false; } });
+
+  // Une version plus récente est-elle déployée ?
+  //
+  // On regarde au démarrage, puis chaque fois que l'application revient au
+  // premier plan — le moment exact où quelqu'un rouvre une application
+  // installée qu'il n'a pas fermée depuis des semaines. Et toutes les demi-
+  // heures pour la session qui reste ouverte toute la journée.
+  const [majDisponible, setMajDisponible] = useState(false);
+  useEffect(()=>{
+    let vivant = true;
+    const verifier = () => {
+      if (document.visibilityState !== "visible") return;
+      nouvelleVersionDisponible().then(oui => { if (vivant && oui) setMajDisponible(true); });
+    };
+    verifier();
+    const minuteur = setInterval(verifier, 30 * 60 * 1000);
+    document.addEventListener("visibilitychange", verifier);
+    return () => { vivant = false; clearInterval(minuteur); document.removeEventListener("visibilitychange", verifier); };
+  },[]);
   const [clientCashback,setClientCashback]=useState(null);
   const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
   const initProfileRef = useRef(undefined); // cache profil préchargé dès INITIAL_SESSION
@@ -1694,6 +1714,21 @@ export default function App() {
             style={{ background:"transparent", border:"none", color:"rgba(255,255,255,0.6)", fontSize:18, cursor:"pointer", padding:"4px", lineHeight:1, flexShrink:0 }}
           >×</button>
         </div>
+      </div>
+    )}
+    {/* Jamais de rechargement d'autorité : couper une réservation ou un dépôt
+        de document en cours ferait perdre la saisie. On prévient, l'utilisateur
+        choisit son moment. La bannière ne se ferme pas — elle disparaît au
+        rechargement, quand elle n'a plus lieu d'être. */}
+    {majDisponible && (
+      <div style={{ position:"fixed", left:12, right:12, bottom:12, zIndex:9998, background:"#162547", border:`1px solid ${C.violet}66`, borderRadius:14, padding:"12px 14px", display:"flex", gap:12, alignItems:"center", boxShadow:"0 8px 28px rgba(0,0,0,0.45)" }}>
+        <div style={{ flex:1, color:C.text, fontSize:12.5, lineHeight:1.5 }}>
+          <strong>Nouvelle version disponible.</strong> Rechargez pour l'utiliser — vous pouvez finir ce que vous faites avant.
+        </div>
+        <button onClick={rechargerVersion}
+          style={{ background:C.violet, border:"none", borderRadius:10, padding:"9px 16px", color:"#fff", fontWeight:700, fontSize:12.5, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
+          Recharger
+        </button>
       </div>
     )}
     {cookieNotice && (
