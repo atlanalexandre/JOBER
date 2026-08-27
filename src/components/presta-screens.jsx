@@ -4078,9 +4078,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
           {[
             {l:"Prestations",v:String(statsData.prestations||0),i:"✅"},
-            {l:"Ce mois",v:statsData.revenuMois>0?(statsData.revenuMois+"€"):"—",i:"💶"},
-            {l:"Note",v:statsData.note?(statsData.note+"★"):"—",i:"⭐"},
-            {l:"Streak",v:streak>0?`🔥${streak}j`:"—",i:"",highlight:streak>=3},
+            // « 127.5€ » : le nombre brut de la base, point compris, collé au
+            // sigle. Et « Streak » en anglais, seul mot non traduit de l'écran.
+            {l:"Ce mois",v:statsData.revenuMois>0?formatMontant(Number(statsData.revenuMois)):"—",i:"💶"},
+            {l:"Note",v:statsData.note?(String(statsData.note).replace(".", ",")+"★"):"—",i:"⭐"},
+            {l:"Jours de suite",v:streak>0?`🔥${streak}j`:"—",i:"",highlight:streak>=3},
           ].map(s=>(
             <div key={s.l} style={{ background:s.highlight?"linear-gradient(135deg,rgba(240,180,41,0.2),rgba(240,120,41,0.12))":"rgba(255,255,255,0.1)", borderRadius:12, padding:"10px 6px", textAlign:"center", border:s.highlight?"1px solid rgba(240,180,41,0.4)":"none" }}>
               {s.i && <div style={{ fontSize:16 }}>{s.i}</div>}
@@ -4539,7 +4541,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                         const isCurrentMonth = i === 3;
                         return (
                           <div key={label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                            <div style={{ fontSize:10, color:rev>0?C.success:C.textMuted, fontWeight:700 }}>{rev>0?rev.toFixed(0)+"€":""}</div>
+                            <div style={{ fontSize:10, color:rev>0?C.success:C.textMuted, fontWeight:700 }}>{rev>0?rev.toFixed(0)+"\u00a0€":""}</div>
                             <div style={{ width:"100%", height:60, display:"flex", alignItems:"flex-end" }}>
                               <div style={{ width:"100%", height:`${pct}%`, borderRadius:"6px 6px 3px 3px", background:isCurrentMonth?`linear-gradient(180deg,${C.success},${C.success}88)`:"rgba(16,217,143,0.3)", transition:"height .4s" }} />
                             </div>
@@ -4589,9 +4591,16 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
                 );
               })}
             </>}
-            <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
-              💡 Ces montants correspondent à votre taux horaire net encaissé à chaque prestation.
-            </div>
+            {/* « Ces montants correspondent à… » s'affichait sous « Aucun revenu
+                pour le moment » : une explication de montants qui n'existent
+                pas. Le plafond auto-entrepreneur, lui, reste visible dès le
+                premier jour — c'est une information à connaître avant d'avoir
+                encaissé, pas après. */}
+            {completedMissions.length > 0 && (
+              <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"10px 14px", fontSize:12, color:C.text, marginBottom:12 }}>
+                💡 Ces montants correspondent à votre taux horaire net encaissé à chaque prestation.
+              </div>
+            )}
             <div style={{ background:"rgba(239,68,68,0.10)", border:"1px solid rgba(239,68,68,0.35)", borderRadius:12, padding:"12px 14px", fontSize:12, color:C.text, marginBottom:12, lineHeight:1.6 }}>
               <span style={{ fontWeight:700 }}>⚠️ Plafond auto-entrepreneur</span><br/>
               Le régime micro-entreprise est soumis à un plafond annuel de chiffre d'affaires de <strong>77 700 € pour les prestations de services</strong> (seuil révisé chaque année). Au-delà de ce seuil, vous perdez le bénéfice du régime. Suivez vos revenus toutes sources confondues et consultez l'URSSAF ou un expert-comptable si vous approchez de cette limite.
