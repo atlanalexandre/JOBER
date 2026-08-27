@@ -2689,8 +2689,23 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
         {p.dispon_jours?.length > 0 && (
           <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
             <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>📅 Disponibilités</h4>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              {p.dispon_jours.map(j=><span key={j} style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:12, fontWeight:600 }}>{j}</span>)}
+            {/* Les jours SEULS induisaient le client en erreur : « Lundi » se lit
+                comme « disponible lundi », alors que le prestataire peut n'avoir
+                déclaré que le matin. Il réservait l'après-midi, et le
+                prestataire refusait. Les plages sont enregistrées dans
+                `dispon_jours_creneaux` — autant les montrer. */}
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {p.dispon_jours.map(j => {
+                const plages = (p.dispon_jours_creneaux || {})[j] || [];
+                return (
+                  <div key={j} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ background:`${C.violet}20`, border:`1px solid ${C.violet}44`, borderRadius:8, padding:"5px 12px", color:C.violet, fontSize:12, fontWeight:600, minWidth:82, textAlign:"center" }}>{j}</span>
+                    <span style={{ color:C.textSub, fontSize:12 }}>
+                      {plages.length > 0 ? plages.map(c => c.split(" ")[0]).join(" · ") : "toute la journée"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2780,6 +2795,12 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   // plutôt que vers la présence d'une personne — ce qui distingue, en droit, une
   // prestation de services d'une fourniture de main-d'œuvre.
   const [estPro, setEstPro] = useState(false);
+  // Le nom du client, pour le contrat.
+  //
+  // Il s'écrivait « ALANE (plateforme) · Jean Dupont (prestataire) · (client) » :
+  // une des trois parties d'un contrat n'était pas nommée. Un document qu'on
+  // fait signer électroniquement doit au minimum dire qui signe.
+  const [clientNom, setClientNom] = useState("");
   // null tant que le client n'a pas répondu : on ne présume ni l'un ni l'autre.
   const [chezTiers, setChezTiers] = useState(null);
   const [tiersDecl, setTiersDecl] = useState({ beneficiaire:"", service_vendu:"", perimetre:"", livrable:"", organisateur:"" });
@@ -2788,7 +2809,10 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     let vivant = true;
     supabase.auth.getUser().then(({ data }) => {
       if (!vivant) return;
-      setEstPro((data?.user?.user_metadata?.type_compte || "") === "professionnel");
+      const mc = data?.user?.user_metadata || {};
+      setEstPro((mc.type_compte || "") === "professionnel");
+      // Une société signe sous sa raison sociale, un particulier sous son nom.
+      setClientNom(mc.societe_nom || `${mc.prenom || ""} ${mc.nom || ""}`.trim());
     }).catch(() => {});
     return () => { vivant = false; };
   }, []);
@@ -2920,6 +2944,10 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return new Date(d).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" });
   };
 
+  // La date du contrat, écrite comme en France. Elle s'affichait « 2026-08-28 »,
+  // le format brut de la base, dans un document signé électroniquement.
+  const dateContrat = isUrgent ? urgentStartDate : (startDate ? formatDate(startDate) : "—");
+
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
       {/* Contrat électronique client */}
@@ -2944,13 +2972,13 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
           contractText={`CONTRAT DE PRESTATION DE SERVICES
 
 Parties :
-ALANE (plateforme) · ${p.name || ""} (prestataire) · (client)
+ALANE (plateforme) · ${p.name || ""} (prestataire) · ${clientNom || "le client"} (client)
 
 Prestation :
 Métier : ${p.jobTitle || p.role || ""}
-Date : ${isUrgent ? urgentStartDate : startDate || ""}
-Durée : ${hours} heure(s)
-Tarif horaire : ${tarifHoraire.toFixed(2)} €/h
+Date : ${dateContrat}
+Durée : ${hours} heure${hours > 1 ? "s" : ""}
+Tarif horaire : ${formatMontant(tarifHoraire)}/h
 
 En confirmant ce contrat, vous acceptez les Conditions Générales de Prestation de Services (CGPS) d'ALANE et vous engagez à honorer la prestation telle que définie ci-dessus.
 
@@ -3054,7 +3082,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             <div style={{ width:44, height:44, borderRadius:12, background:`${p.color}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>{p.avatar}</div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.name}</div>
-              <div style={{ color:C.textSub, fontSize:12 }}>{p.jobTitle||p.role} · {tarifHoraire.toFixed(2)} € HT/h</div>
+              <div style={{ color:C.textSub, fontSize:12 }}>{p.jobTitle||p.role} · {formatMontant(tarifHoraire)} HT/h</div>
             </div>
             {isUrgent && <Badge color={C.accent} small>🚨 Urgence</Badge>}
           </div>
@@ -3193,7 +3221,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </div>
             {isUrgent && (
               <div style={{ marginTop:10, background:`${C.accentGold}15`, borderRadius:8, padding:"8px 10px", fontSize:11, color:C.text }}>
-                💶 Tarif urgence : <strong>{tarifHoraire.toFixed(2)} € HT/h</strong> (tarif standard + 2,00 € surcoût urgence)
+                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif standard + 2,00 € surcoût urgence)
               </div>
             )}
           </div>
@@ -5909,7 +5937,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
           <div style={{ background:`${C.success}10`, border:`1px solid ${C.success}22`, borderRadius:12, padding:"14px" }}>
             <div style={{ fontSize:11, color:C.textSub, fontWeight:600, marginBottom:10 }}>RÉMUNÉRATION NETTE</div>
             {[
-              ["Taux horaire net",`${m.tarifNet.toFixed(2)} €/h`],
+              ["Taux horaire net",`${formatMontant(m.tarifNet)}/h`],
               ["Nombre d’heures",`${billedHours}h`],
               ["Montant net total",`${brut.toFixed(2)} €`],
               ["Statut","✅ Virement effectué"],
