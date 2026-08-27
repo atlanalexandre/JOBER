@@ -4317,6 +4317,17 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
 // navigateur d'un client français interprète déjà « 2026-07-30T08:00 » en heure locale.
 export const HEURES_CONTESTATION = 48;
 
+// Une date de prestation, écrite comme en France.
+//
+// Plusieurs écrans affichaient « 2026-08-28 » — le format brut de la base —
+// jusque dans l'en-tête du suivi de prestation et dans le contrat.
+export function formatDateFr(d) {
+  if (!d) return "";
+  const t = new Date(`${d}T00:00:00`);
+  if (isNaN(t.getTime())) return String(d);
+  return t.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
+
 // Seuil de retard ouvrant l'annulation sans frais. Un retard se juge en proportion,
 // pas en minutes : 30 min sur une prestation d'une heure, c'est la moitié du service
 // perdu ; sur huit heures, c'est un contretemps. Doit rester identique au calcul de
@@ -6725,13 +6736,13 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
             <div>
               <h2 style={{ color:C.white, fontSize:18, fontWeight:800, margin:"0 0 4px" }}>{selected.metier || sector?.label}</h2>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                {selected.date && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📅 {selected.date}</span>}
+                {selected.date && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📅 {formatDateFr(selected.date)}</span>}
                 {selected.started_at
                   ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {new Date(selected.started_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</span>
                   : selected.heure_debut && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>🕐 {selected.heure_debut}</span>}
                 {(selected.actual_hours ?? selected.hours) ? <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>⏱ {selected.actual_hours ?? selected.hours}h</span> : null}
                 {selected.ville && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>📍 {selected.ville}</span>}
-                {selected.tarif_horaire > 0 && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>💶 {selected.tarif_horaire} €/h</span>}
+                {selected.tarif_horaire > 0 && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12 }}>💶 {formatMontant(Number(selected.tarif_horaire))}/h</span>}
               </div>
             </div>
           </div>
@@ -6743,6 +6754,35 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               délai de 48 h de l'article 17.1 : sans moyen de s'y opposer,
               l'absence d'opposition ne vaudrait pas accord. */}
           <BlocPropositionResolution mission={selected} role="client" onOppose={() => opposerResolution(selected.id)} onAccepte={() => accepterResolution(selected.id)} />
+
+          {/* Aucun prestataire encore affecté.
+              L'écran ne rendait ALORS AUCUN bloc : ni carte prestataire, ni
+              localisation, ni état. Le client se retrouvait devant un en-tête
+              et un unique bouton rouge « Annuler la prestation », sans savoir
+              si sa demande était partie, attendue, ou perdue. Un écran vide
+              dont la seule action est destructrice pousse à annuler ce qui
+              n'avait aucune raison de l'être. */}
+          {!selected.prestataire_id && ["open","pending_acceptance","needs_replacement"].includes(selected.status) && (
+            <div style={{ background:"rgba(124,111,224,0.09)", border:`1px solid ${C.violet}44`, borderRadius:16, padding:"16px", marginBottom:16 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:8 }}>
+                <span style={{ width:9, height:9, borderRadius:"50%", background:C.violet, flexShrink:0 }} />
+                <div style={{ fontWeight:800, color:C.violetLight, fontSize:14 }}>
+                  {selected.status === "needs_replacement" ? "Recherche d'un remplaçant" : "Recherche d'un prestataire"}
+                </div>
+              </div>
+              <div style={{ color:C.textSub, fontSize:13, lineHeight:1.65 }}>
+                {selected.status === "needs_replacement"
+                  ? "Le prestataire prévu ne peut plus intervenir. Votre créneau est conservé et la prestation est proposée aux autres prestataires disponibles du secteur."
+                  : "Votre demande a bien été enregistrée et transmise. Vous serez prévenu dès qu'un prestataire l'accepte, et vous pourrez alors suivre son arrivée en direct."}
+                <br />Votre paiement reste bloqué : rien n'est versé tant que personne n'a accepté.
+              </div>
+              <div style={{ color:C.textMuted, fontSize:11.5, lineHeight:1.6, marginTop:10 }}>
+                Sans réponse dans le délai imparti, la prestation est annulée
+                automatiquement et vous êtes intégralement remboursé — vous
+                n'avez rien à faire.
+              </div>
+            </div>
+          )}
 
           {/* Carte prestataire assigné */}
           {(["assigned","pending_acceptance","completed","closed"].includes(selected.status)) && selected.prestataire_id && prestaDetails && (() => {
