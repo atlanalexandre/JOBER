@@ -1121,6 +1121,9 @@ export default function App() {
   // connecté en prestataire, et jamais le tutoriel prestataire depuis le
   // back-office. C'est un paramètre d'affichage : il ne change pas le rôle du
   // compte, il ne dit que la version à montrer.
+  // L'onglet sur lequel ouvrir le tableau de bord prestataire, quand un écran
+  // veut y emmener précisément (le tutoriel vers « Docs », par exemple).
+  const [prestaOnglet, setPrestaOnglet] = useState(null);
   const [tutorielForce, setTutorielForce] = useState(false);
   const [tutorielRole, setTutorielRole]   = useState(null);
   useEffect(()=>{
@@ -1608,6 +1611,10 @@ export default function App() {
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); }
     if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
+    // Le tableau de bord prestataire peut être ouvert sur un onglet précis :
+    // `navigate("p_dashboard", { onglet:"docs" })`. Remis à null autrement, sans
+    // quoi un retour ultérieur rouvrirait toujours le même onglet.
+    if(to==="p_dashboard") setPrestaOnglet(data?.onglet || null);
     if(to==="legal") setLegalType(data||"cgu");
     if(to==="payslip") setPayslipData(data);
     if(to==="mission_request") setSelectedSector(data);
@@ -1640,12 +1647,15 @@ export default function App() {
           setTutorielRole(null);
           setShowOnboarding(false);
         }}
-        onNavigate={(to)=>{
+        onNavigate={(to,data)=>{
           if (supaUser) { try { localStorage.setItem(`alane_onboarded_${supaUser.id}`, "1"); } catch(e) {} }
           setTutorielForce(false);
           setTutorielRole(null);
           setShowOnboarding(false);
-          navigate(to);
+          // `data` était ignoré : le bouton « Ouvrir l'onglet Docs » déposait
+          // le prestataire sur le tableau de bord, onglet Prestations, à charge
+          // pour lui de trouver le bon.
+          navigate(to,data);
         }}
       />
     )}
@@ -2112,7 +2122,7 @@ export default function App() {
 
       {role==="prestataire" && (screen==="p_home"||screen==="p_missions"||screen==="p_dashboard") && (
         <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
-          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} onNavigate={(to,data)=>{
+          <PrestaDashboard activeScreen={screen} docsRefreshKey={docsRefreshKey} notifCount={notifCount} ongletInitial={prestaOnglet} onNavigate={(to,data)=>{
             if(to==="payslip") navigate("payslip",data);
             else if(to==="legal") navigate("legal",data);
             else navigate(to,data);

@@ -3514,7 +3514,7 @@ function debutLocalMs(m) {
   return Number.isNaN(t) ? null : t;
 }
 
-export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0 }) {
+export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, notifCount=0, ongletInitial=null }) {
   // Opposition à une proposition de résolution (CGPS art. 17.1). Même geste
   // que côté client, même endpoint : c'est le serveur qui vérifie que
   // l'appelant est bien partie au litige.
@@ -3566,7 +3566,15 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     }
   };
 
-  const [tab,setTab]=useState("prestations");
+  // `ongletInitial` : ouvrir le tableau de bord DIRECTEMENT sur un onglet.
+  //
+  // Le tutoriel disait quelles pièces déposer sans dire où, et son bouton ne
+  // pouvait que déposer le prestataire sur l'onglet « Prestations », à charge
+  // pour lui de trouver « Docs ». Montrer l'endroit vaut mieux que le décrire.
+  // La valeur n'est retenue que si elle correspond à un onglet réel.
+  const [tab,setTab]=useState(
+    ONGLETS_PRESTA_GUIDE.some(o => o.id === ongletInitial) ? ongletInitial : "prestations"
+  );
   const [_userRib,setUserRib]=useState(null);
   const [ribMissionError,_setRibMissionError]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);

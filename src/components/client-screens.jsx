@@ -9192,8 +9192,8 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     { icon:"📄", title:"Constituez votre dossier", lines:[
       "Sept pièces sont exigées : photo de profil, extrait KBIS ou INSEE, attestation URSSAF, pièce d'identité, justificatif de domicile, RIB et attestation RC Pro.",
       "Tant qu'il en manque une, le dossier ne peut pas être examiné. Vos diplômes et certifications sont facultatifs, mais ils comptent aux yeux des clients.",
-      "Où les déposer : onglet Profil, puis « 📂 Mes documents ». C'est au même endroit que vous les renouvellerez.",
-    ], action:{ to:"doc_upload", label:"📂 Ouvrir Mes documents →" }, color:C.violet },
+      "Où les déposer : sur votre tableau de bord, onglet « Docs ». C'est au même endroit que vous les renouvellerez — l'attestation URSSAF et la RC Pro sont à refaire chaque année.",
+    ], action:{ to:"p_dashboard", data:{ onglet:"docs" }, label:"📂 Ouvrir l'onglet Docs →" }, color:C.violet },
     { icon:"✅", title:"Deux validations, pas une", lines:[
       "1️⃣ Notre équipe vérifie votre dossier, généralement sous 24 h, et active votre compte.",
       "2️⃣ L'accès aux prestations est ouvert dans un second temps. C'est à ce moment que vous recevez le lien pour configurer votre compte de virement — sans lui, aucun paiement ne peut vous être envoyé.",
@@ -9242,7 +9242,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
                   réellement y aller — un compte client n'a pas d'écran de
                   documents prestataire, et le contrôle de rôle le refuserait. */}
               {s.action && onNavigate && role === "prestataire" && (
-                <button onClick={()=>{ onDone(); onNavigate(s.action.to); }} style={{ marginTop:8, background:`${s.color}22`, border:`1px solid ${s.color}66`, borderRadius:8, padding:"10px 14px", color:s.color, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
+                <button onClick={()=>{ onDone(); onNavigate(s.action.to, s.action.data); }} style={{ marginTop:8, background:`${s.color}22`, border:`1px solid ${s.color}66`, borderRadius:8, padding:"10px 14px", color:s.color, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", width:"100%", display:"block" }}>
                   {s.action.label}
                 </button>
               )}
