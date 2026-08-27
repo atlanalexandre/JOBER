@@ -2233,7 +2233,6 @@ export function SearchFiltersScreen({ onNavigate }) {
   const [search,setSearch]=useState("");
   const [ratingMin,setRatingMin]=useState(0);
   const [tarifMax,setTarifMax]=useState(50);
-  const [distMax,setDistMax]=useState(20);
   const [dispoNow,setDispoNow]=useState(false);
   const [showFilters,setShowFilters]=useState(false);
   const [favs,setFavs]=useState([]);
@@ -9136,8 +9135,16 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
   const [step, setStep] = useState(0);
 
   const clientSteps = [
-    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif, ville et disponibilité pour trouver exactement qui il vous faut.", color:C.violet },
-    { icon:"📋", title:"Publiez votre prestation", desc:"Décrivez votre besoin en quelques clics. Les prestataires disponibles vous répondent rapidement ou vous pouvez en sélectionner un directement.", color:C.accentGold },
+        // « Filtrez par ville » : ce filtre n'existe pas. La recherche porte sur le
+    // nom, le métier et les compétences ; les filtres sont la note, le tarif et
+    // la disponibilité. Annoncer un critère qu'on ne propose pas fait chercher
+    // au client quelque chose qu'il ne trouvera pas.
+    { icon:"🔍", title:"Trouvez le bon prestataire", desc:"Parcourez notre catalogue par secteur d'activité. Filtrez par note, tarif et disponibilité, ou cherchez directement un métier ou une compétence.", color:C.violet },
+        // « Répondent rapidement » ne repose sur rien : aucun traitement ne mesure
+    // ce délai. C'est le même travers que le « < 10 min de réponse » retiré de
+    // la page d'accueil. Ce qui est vrai et vérifiable, c'est le délai imposé au
+    // prestataire pour répondre — et ce qui se passe s'il ne répond pas.
+    { icon:"📋", title:"Publiez votre prestation", desc:"Décrivez votre besoin en quelques clics, ou sélectionnez directement un prestataire. Celui que vous sollicitez dispose d'un délai limité pour répondre : passé ce délai, la prestation est proposée à quelqu'un d'autre.", color:C.accentGold },
     { icon:"🔒", title:"Payez en toute sécurité", desc:"Votre paiement est sécurisé via Stripe. L'argent n'est versé au prestataire que 48 h après la fin de la prestation : vous avez ce délai pour signaler un problème.", color:C.success },
     { icon:"⭐", title:"Validez et notez", desc:"Une fois la prestation terminée, validez-la pour libérer le paiement et laissez un avis pour aider la communauté.", color:"#F06292" },
     { icon:"⚖️", title:"Bien travailler avec un auto-entrepreneur", lines:["✅ Le bon réflexe : variez les prestataires selon vos besoins — c'est ce qui rend la plateforme utile.","⚠️ À éviter : utiliser le même prestataire comme seule ressource de façon répétée sur le long terme."], color:"#4FC3F7" },
