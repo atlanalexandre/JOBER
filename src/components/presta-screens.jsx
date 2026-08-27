@@ -3336,7 +3336,14 @@ const PRESTA_TOUR_STEPS = [
     icon:"✍️",
     title:"Onglet Revenus — vos deux mandats",
     desc:"Deux autorisations à signer une seule fois : le mandat de facturation (ALANE établit vos factures en votre nom) et le mandat d'encaissement (ALANE encaisse le client et vous reverse).",
-    consequence:"Sans ces deux signatures, aucune facture ne peut être émise à votre nom, donc aucun versement ne peut partir.",
+    // « … donc aucun versement ne peut partir » était FAUX : rien dans le
+    // chemin du virement ne lit ces mandats, l'argent part quand même. Ce qui
+    // change réellement, c'est le document : `api/invoice.js` n'attribue de
+    // numéro de facture que si `mandat_facturation_at` est renseigné ; sinon
+    // il émet une attestation sans numéro, qui ne vaut pas facture pour la
+    // comptabilité du prestataire. Annoncer une conséquence qui ne se produit
+    // pas décrédibilise toutes les autres.
+    consequence:"Sans ces deux signatures, ALANE ne peut pas émettre de facture numérotée à votre nom : vous ne recevez qu'une attestation, qui ne vaut pas facture pour votre comptabilité.",
     color:"#10D98F",
   },
   {
@@ -3352,7 +3359,11 @@ const PRESTA_TOUR_STEPS = [
     icon:"🔔",
     title:"Onglet Prestations — vos propositions",
     desc:"Les prestations qui vous sont proposées arrivent ici, et une notification vous prévient sur votre téléphone. Vous acceptez ou vous refusez, sans avoir à vous justifier.",
-    consequence:"Vous avez 1 heure pour répondre à une prestation du jour, 4 heures pour les autres. Passé ce délai, elle est proposée à quelqu'un d'autre.",
+    // Trois délais, pas deux. Celui des prestations urgentes — 20 minutes —
+    // manquait : un prestataire persuadé d'avoir une heure la perdait sans
+    // comprendre. Les valeurs viennent de la réservation (src/App.jsx) :
+    // urgent 20 min, jour même 60 min, sinon 240 min.
+    consequence:"Vous avez 20 minutes pour répondre à une prestation urgente, 1 heure pour une prestation du jour, 4 heures pour les autres. Passé ce délai, elle est proposée à quelqu'un d'autre.",
     color:"#F06292",
   },
 ];
