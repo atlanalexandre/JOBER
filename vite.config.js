@@ -1,8 +1,38 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Estampille de build, écrite dans `dist/version.json` et injectée dans le
+// bundle sous le nom `__BUILD_ID__`.
+//
+// POURQUOI
+//
+// Une application installée sur l'écran d'accueil n'est presque jamais fermée.
+// Le service worker met bien à jour les fichiers, mais l'onglet ouvert continue
+// d'exécuter le JavaScript chargé le premier jour. Le 27/08/2026, le
+// back-office affichait encore un bouton « Seed démo prestataire » supprimé le
+// 14/08 — deux semaines de retard, sur un écran qui manipule des comptes. Le
+// même écart faisait croire qu'un correctif ne fonctionnait pas alors qu'il
+// n'était simplement pas chargé.
+//
+// Sur une application qui manipule de l'argent, un client ne doit pas rester
+// des semaines sur du code que l'on croit remplacé.
+const BUILD_ID = String(Date.now());
+
+const estampilleDeBuild = () => ({
+  name: "estampille-de-build",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({
+      type: "asset",
+      fileName: "version.json",
+      source: JSON.stringify({ build: BUILD_ID }),
+    });
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  plugins: [react(), estampilleDeBuild()],
   build: {
     rollupOptions: {
       output: {

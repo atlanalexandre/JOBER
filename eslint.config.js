@@ -16,7 +16,10 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
+      // `__BUILD_ID__` est remplacé par Vite à la compilation (voir
+      // vite.config.js). Il n'existe pas à l'exécution en développement, d'où
+      // le garde `typeof` à l'endroit qui le lit.
+      globals: { ...globals.browser, __BUILD_ID__: "readonly" },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
