@@ -9,7 +9,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, 
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPrestaCount, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -834,14 +834,12 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   const { providers, loading: providersLoading } = useProviders();
   const sectorStatus = useSectorStatus();
   const [launchPhaseHome, setLaunchPhaseHome] = useState(isLaunchPhase());
-  const [prestaCount, setPrestaCount] = useState(null);
   // Les places de l'offre, comptées comme la règle serveur les compte : à
   // l'ouverture de l'accès aux prestations, pas au nombre d'approuvés.
   const [placesHome, setPlacesHome] = useState(null);
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
-    fetchPrestaCount().then(c => { if (c != null) setPrestaCount(c); });
     fetchPlacesLancement().then(n => { if (n != null) setPlacesHome(n); });
   }, []);
   const tier = getCashbackTier(walletMissions);
