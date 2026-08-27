@@ -844,10 +844,10 @@ export default async function handler(req, res) {
             // Créditer le cashback client (même logique que l'action complete)
             if (m.client_id && montantTotal > 0) {
               try {
-                const pr2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=missions_completed_month`, { headers });
+                const pr2 = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=commandes_mois`, { headers });
                 const pr2Data = pr2.ok ? await pr2.json().catch(() => []) : [];
                 const clientProfile = Array.isArray(pr2Data) && pr2Data[0];
-                const missionsThisMonth = (clientProfile?.missions_completed_month || 0) + 1;
+                const missionsThisMonth = (clientProfile?.commandes_mois || 0) + 1;
                 const CASHBACK_TIERS = [
                   { min: 0,  max: 2,   rate: 0.005  },
                   { min: 3,  max: 5,   rate: 0.0075 },
@@ -1250,11 +1250,14 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Le montant de la prestation est nul ou invalide — contactez le support pour finaliser manuellement." });
       }
 
-      // Récupérer le palier cashback du client (missions_completed_month)
-      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,missions_completed_month`, { headers });
+      // Le palier de cashback du CLIENT se lit dans `commandes_mois`, jamais dans
+      // `missions_completed_month` : cette dernière est le quota du prestataire.
+      // Un compte qui exerce les deux rôles voyait sinon son palier client
+      // gonflé par ses propres prestations (migration du 27/08/2026).
+      const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}&select=cashback_balance,commandes_mois`, { headers });
       const profiles = await pr.json();
       const profile = Array.isArray(profiles) && profiles[0];
-      const missionsThisMonth = (profile?.missions_completed_month || 0) + missionDayCount;
+      const missionsThisMonth = (profile?.commandes_mois || 0) + missionDayCount;
 
       // Calcul du taux selon palier — lu depuis platform_settings pour rester synchronisé avec le BO
       let CASHBACK_TIERS = [
@@ -1311,7 +1314,7 @@ export default async function handler(req, res) {
         await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${client_id}`, {
           method: "PATCH",
           headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify({ cashback_balance: newBalance, missions_completed_month: missionsThisMonth }),
+          body: JSON.stringify({ cashback_balance: newBalance, commandes_mois: missionsThisMonth }),
         }).catch(e => console.error("[complete] fallback cashback PATCH failed:", e.message));
       } else {
         atomicBalance = Array.isArray(rpcData) && rpcData[0]?.cashback_balance != null

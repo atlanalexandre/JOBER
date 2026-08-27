@@ -97,6 +97,19 @@ Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approve
 `suspended`), `missions_enabled` (accès aux prestations accordé par l'administration),
 `plan_abonnement`, `cashback_balance`, `prepaid_balance`, `avatar_url`.
 
+**Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
+
+| Colonne | À qui elle sert | Incrémentée quand |
+|---|---|---|
+| `missions_completed_month` | **Prestataire** — son quota mensuel (2 en Gratuit, 8 en Premium) | il termine une prestation |
+| `commandes_mois` | **Client** — son palier de cashback (0,5 % à 1,5 %) | une prestation qu'il a commandée est validée |
+
+Les deux étaient une seule colonne. Un compte exerçant les deux rôles voyait donc son palier
+client gonflé par ses propres prestations — un compte à zéro commande affichait « Palier 🥈
+Silver ». Dans l'autre sens, une commande consommait son quota de prestataire. Le traitement
+mensuel remet **les deux** à zéro ; la fonction `increment_cashback()` vise `commandes_mois`.
+Ni l'une ni l'autre n'est modifiable depuis le navigateur.
+
 **`missions`** — la prestation. C'est l'objet central. Attention : **il n'existe pas de table
 `prestations`**, malgré le vocabulaire employé dans l'interface.
 Statuts autorisés : `open`, `pending_acceptance`, `assigned`, `needs_replacement`,

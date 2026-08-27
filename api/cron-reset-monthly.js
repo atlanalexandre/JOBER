@@ -1562,10 +1562,10 @@ ${(() => {
               const lienApp = appUrl();
 
               // Lire le profil client au moment du traitement pour éviter les données périmées
-              const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,missions_completed_month`, { headers });
+              const cpRes  = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.client_id}&select=cashback_balance,commandes_mois`, { headers });
               const cpData = await cpRes.json();
               const profile = Array.isArray(cpData) && cpData[0] ? cpData[0] : {};
-              const missionsThisMonth = (profile.missions_completed_month || 0) + jours;
+              const missionsThisMonth = (profile.commandes_mois || 0) + jours;
               const rate = [...CASHBACK_TIERS].reverse().find(t => missionsThisMonth >= t.min)?.rate || 0.01;
               const cashbackEarned = Math.round(partPrestataire * rate * 100) / 100;
               const newBalance = Math.round(((profile.cashback_balance || 0) + cashbackEarned) * 100) / 100;
@@ -1757,12 +1757,14 @@ ${(() => {
 
   // ── Mode reset mensuel (défaut) ─────────────────────────────────
   try {
-    // Reset mensuel : remet missions_completed_month à 0 ET débloque trial_exhausted pour TOUS les profils.
+    // Reset mensuel : remet les DEUX compteurs à 0 — le quota du prestataire
+    // (missions_completed_month) et les commandes du client (commandes_mois) —
+    // ET débloque trial_exhausted pour TOUS les profils.
     // Le quota free (2 missions/mois) est mensuel — trial_exhausted doit se réinitialiser chaque 1er du mois.
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,trial_exhausted.is.true)`, {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?or=(missions_completed_month.gt.0,commandes_mois.gt.0,trial_exhausted.is.true)`, {
       method: "PATCH",
       headers: { ...headers, "Prefer": "return=minimal" },
-      body: JSON.stringify({ missions_completed_month: 0, trial_exhausted: false }),
+      body: JSON.stringify({ missions_completed_month: 0, commandes_mois: 0, trial_exhausted: false }),
     });
 
     if (!r.ok) {

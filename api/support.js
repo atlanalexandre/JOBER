@@ -374,7 +374,7 @@ ${[["👤 Prestataire",esc(prestaName)||"À confirmer"],["💼 Poste",esc(job)||
 
       await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
         method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" },
-        body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0 }),
+        body: JSON.stringify({ prenom: "Anonymisé", nom: "Anonymisé", cashback_balance: 0, missions_completed_month: 0, commandes_mois: 0 }),
       });
       // L'anonymisation des prestations efface l'adresse d'intervention, y compris
       // sur des prestations déjà facturées. C'est licite tant que la facture, elle,

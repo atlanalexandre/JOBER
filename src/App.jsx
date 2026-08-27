@@ -1334,7 +1334,7 @@ export default function App() {
   // Charger le cashback du client quand on arrive sur le dashboard
   useEffect(()=>{
     if(!supaUser || role !== "client" || screen !== "dashboard") return;
-    supabase.from("profiles").select("cashback_balance,missions_completed_month").eq("id",supaUser.id).single()
+    supabase.from("profiles").select("cashback_balance,commandes_mois").eq("id",supaUser.id).single()
       .then(({ data })=>{ if(data) setClientCashback(data); });
   },[supaUser, role, screen]);
 
@@ -2040,12 +2040,12 @@ export default function App() {
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:1 }}>
                   <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Cashback disponible</span>
-                  <Badge color={getCashbackTier(clientCashback?.missions_completed_month||0).color} small>
-                    {getCashbackTier(clientCashback?.missions_completed_month||0).icon} {getCashbackTier(clientCashback?.missions_completed_month||0).label}
+                  <Badge color={getCashbackTier(clientCashback?.commandes_mois||0).color} small>
+                    {getCashbackTier(clientCashback?.commandes_mois||0).icon} {getCashbackTier(clientCashback?.commandes_mois||0).label}
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {tauxCashback(getCashbackTier(clientCashback?.missions_completed_month||0))} sur chaque prestation
+                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {tauxCashback(getCashbackTier(clientCashback?.commandes_mois||0))} sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>
