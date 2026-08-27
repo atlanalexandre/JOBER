@@ -9208,11 +9208,19 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
       `Le virement part ${HEURES_CONTESTATION} h après la fin de la prestation — ce délai est celui dont le client dispose pour signaler un problème — et arrive sur votre compte sous 1 à 2 jours ouvrés.`,
       "ALANE retient ses frais de service sur ce que paie le client, jamais sur votre tarif : vous touchez ce que vous avez annoncé.",
     ], color:"#4FC3F7" },
+    // Écrit court, volontairement.
+    //
+    // La version longue tenait sur quatre paragraphes : sur un téléphone, le
+    // titre passait sous la barre du navigateur et le bouton « C'est parti »
+    // sortait de l'écran. Un tutoriel qu'on doit faire défiler est un tutoriel
+    // qu'on passe. Le détail juridique vit dans les CGPS, que le prestataire
+    // accepte formellement à l'inscription, et dans la FAQ vers laquelle mène
+    // le bouton ci-dessous. Cet écran doit rendre la chose compréhensible, pas
+    // exhaustive.
     { icon:"🧾", title:"Vous restez indépendant", lines:[
-      "Vous fixez librement votre tarif, y compris celui d'une prolongation demandée en cours de prestation.",
-      "Vous acceptez deux mandats à l'inscription. Le mandat de FACTURATION : ALANE établit vos factures en votre nom et pour votre compte — elles restent les vôtres. Le mandat d'ENCAISSEMENT : ALANE encaisse le prix de la prestation à votre place, auprès du client (CGPS art. 7.2).",
-      "Cet argent ne devient à aucun moment la propriété d'ALANE. Il est conservé chez Stripe jusqu'à la fin du délai de réclamation, puis vous est reversé. Seuls les frais de service rémunèrent ALANE. Vous pouvez révoquer ce mandat à tout moment en clôturant votre compte.",
-      "Votre attestation RC Pro doit rester valide : pensez à la renouveler avant son expiration, sans quoi votre compte peut être suspendu.",
+      "Vous fixez librement votre tarif, y compris celui d'une prolongation.",
+      "Deux mandats vous lient à ALANE : elle facture en votre nom, et elle encaisse à votre place. Cet argent n'est à aucun moment le sien — il est conservé chez Stripe, puis vous est reversé. Seuls les frais de service la rémunèrent.",
+      "Votre attestation RC Pro doit rester valide, sans quoi votre compte peut être suspendu.",
     ], color:"#F06292" },
   ];
 
