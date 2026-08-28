@@ -363,6 +363,121 @@ export const METIERS_TARIFS = {
   },
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Chercher un métier écrit en écriture inclusive
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Vingt métiers portent une terminaison entre parenthèses : « Gouvernant(e)
+// d'étage », « Hôte(sse) de caisse », « Serveur(se) », « Caissier(ère)
+// principal(e) », « Animateur(trice) événementiel(le) »…
+//
+// Une recherche par `includes` sur le libellé brut ne trouve alors NI l'une ni
+// l'autre des deux formes réellement tapées :
+//
+//   « gouvernante »  → 0 résultat   (le libellé contient « gouvernant(e) »)
+//   « hotesse »      → 0 résultat
+//   « serveuse »     → 0 résultat
+//
+// C'est-à-dire, très exactement, la façon dont ces métiers se nomment le plus
+// souvent. Constaté le 28/08/2026 en cherchant pourquoi « gouvernante »
+// paraissait absente du catalogue : elle y était depuis toujours, illisible.
+//
+// `motsCherchables` produit donc un texte de recherche qui contient les DEUX
+// formes, sans accents, et `correspondRecherche` compare terme à terme — de
+// sorte que « gouvernante etage » comme « gouvernant d'étage » aboutissent.
+
+// Terminaisons féminines des noms de métier, ramenées au masculin.
+//
+// Les parenthèses ne règlent que les libellés qui en portent. Restent tous les
+// autres, écrits au masculin seul : « Vendeur en restauration », « Coiffeur »,
+// « Chauffeur livreur ». Une femme qui tape « vendeuse » ne trouvait rien.
+//
+// Le repliement s'applique des DEUX côtés — au libellé comme à la recherche —
+// si bien qu'il ne peut pas créer d'écart : il rapproche, il n'invente pas.
+const TERMINAISONS_FEMININES = [
+  [/trice$/, "teur"],   // animatrice  → animateur
+  [/euse$/,  "eur"],    // vendeuse    → vendeur
+  [/iere$/,  "ier"],    // caissiere   → caissier
+  [/ere$/,   "er"],     // lingere     → linger
+  [/ve$/,    "f"],      // administrative → administratif
+];
+
+const replierGenre = (mot) => {
+  for (const [motif, remplacement] of TERMINAISONS_FEMININES) {
+    if (motif.test(mot)) return mot.replace(motif, remplacement);
+  }
+  return mot;
+};
+
+/**
+ * Minuscules, sans accent, ponctuation ramenée à des espaces, terminaisons
+ * féminines repliées au masculin.
+ */
+export function normaliserTexte(t) {
+  return String(t || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map(replierGenre)
+    .join(" ");
+}
+
+/**
+ * Le texte sur lequel chercher un libellé : toutes ses formes plausibles.
+ *
+ * La terminaison entre parenthèses ne s'ajoute pas toujours au radical, elle
+ * en remplace parfois la fin :
+ *
+ *   Gouvernant(e)   → Gouvernant + e        = Gouvernante     (ajout)
+ *   Hôte(sse)       → Hôte + sse            = Hôtesse         (ajout)
+ *   Serveur(se)     → Serveu | r + se       = Serveuse        (remplace 1)
+ *   Caissier(ère)   → Caissi | er + ère     = Caissière       (remplace 1)
+ *   Animateur(trice)→ Anima | teur + trice  = Animatrice      (remplace 4)
+ *
+ * Aucune règle simple ne les couvre toutes. On produit donc l'ajout ET les
+ * remplacements des une à quatre dernières lettres : les formes inexistantes
+ * ainsi générées ne gênent personne, elles ne font qu'allonger le texte de
+ * recherche — alors qu'une forme manquante rend un métier introuvable.
+ */
+export function motsCherchables(libelle) {
+  const brut = String(libelle || "");
+  if (!brut.includes("(")) return normaliserTexte(brut);
+
+  // Chaque parenthèse est développée indépendamment, sur la base du libellé
+  // débarrassé de toutes les autres : un libellé en portant deux — « Caissier
+  // (ère) principal(e) » — donne ainsi les deux mots féminins.
+  const sansToutes = brut.replace(/\([^)]*\)/g, "");
+  const formes = new Set([brut, sansToutes]);
+
+  const parentheses = brut.match(/\(([^)]*)\)/g) || [];
+  for (const p of parentheses) {
+    const contenu = p.slice(1, -1);
+    if (!contenu) continue;
+    const avant = brut.slice(0, brut.indexOf(p)).replace(/\([^)]*\)/g, "");
+    const apres = brut.slice(brut.indexOf(p) + p.length).replace(/\([^)]*\)/g, "");
+    for (let coupe = 0; coupe <= 4; coupe++) {
+      if (coupe > avant.length) break;
+      formes.add(avant.slice(0, avant.length - coupe) + contenu + apres);
+    }
+  }
+  return [...new Set([...formes].map(normaliserTexte))].filter(Boolean).join(" ");
+}
+
+/**
+ * Le libellé répond-il à cette recherche ? Tous les mots tapés doivent s'y
+ * retrouver, dans n'importe quel ordre — « etage gouvernante » fonctionne.
+ * Une recherche vide accepte tout : c'est à l'appelant de ne pas filtrer.
+ */
+export function correspondRecherche(libelle, recherche) {
+  const termes = normaliserTexte(recherche).split(" ").filter(Boolean);
+  if (termes.length === 0) return true;
+  const foin = motsCherchables(libelle);
+  return termes.every(t => foin.includes(t));
+}
+
 export const METIERS = Object.fromEntries(
   Object.entries(METIERS_TARIFS).map(([k,v]) => [k, Object.keys(v)])
 );
