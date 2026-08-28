@@ -5,7 +5,7 @@ import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
 import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO, correspondRecherche } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
@@ -1962,7 +1962,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             )}
           </div>
 
-          {(jobSearch ? allServices.filter(s => s.name.toLowerCase().includes(jobSearch.toLowerCase())) : allServices).map((svc,i) => (
+          {(jobSearch ? allServices.filter(s => correspondRecherche(s.name, jobSearch)) : allServices).map((svc,i) => (
             <div key={i} onClick={()=>svc.availCount>0 && setSelectedJob(svc.name)} style={{
               background:"#0D1B3E", borderRadius:r, padding:"14px 16px", marginBottom:8,
               display:"flex", alignItems:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.4)",
@@ -2271,9 +2271,11 @@ export function SearchFiltersScreen({ onNavigate }) {
 
   const filtered = providers.filter(p=>{
     if (search) {
-      const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
-      const fields = [p.name, p.prenom, p.nom, p.jobTitle, ...(p.skills||[])].map(f=>(f||"").toLowerCase());
-      if (!terms.every(t => fields.some(f => f.includes(t)))) return false;
+      // `correspondRecherche` plutôt qu'un `includes` sur le texte brut : les
+      // libellés en écriture inclusive — « Hôte(sse) de caisse », « Serveur(se) »
+      // — ne répondaient à AUCUNE des deux formes que l'on tape réellement.
+      const champs = [p.name, p.prenom, p.nom, p.jobTitle, ...(p.skills||[])].filter(Boolean);
+      if (!champs.some(f => correspondRecherche(f, search))) return false;
     }
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
@@ -9012,11 +9014,11 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
                 <div style={{ position:"relative" }}>
                   <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:15, opacity:0.5 }}>🔍</span>
                   <input type="text" placeholder="Tapez pour filtrer…" value={metierSearch||""} onChange={e=>{ setMetierSearch(e.target.value); if(!e.target.value) setMetier(""); }}
-                    style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length>0?0:undefined }} />
+                    style={{ width:"100%", padding:"11px 14px 11px 40px", borderRadius:r, border:`1px solid ${C.border}`, fontSize:14, fontFamily:"inherit", color:C.text, background:"#112240", outline:"none", boxSizing:"border-box", marginBottom:metierSearch&&jobs.filter(j=>correspondRecherche(j, metierSearch)).length>0?0:undefined }} />
                 </div>
-                {metierSearch && jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).length > 0 && (
+                {metierSearch && jobs.filter(j=>correspondRecherche(j, metierSearch)).length > 0 && (
                   <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, overflow:"hidden", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", marginTop:2, maxHeight:200, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
-                    {jobs.filter(j=>j.toLowerCase().includes(metierSearch.toLowerCase())).map((j,i,arr)=>(
+                    {jobs.filter(j=>correspondRecherche(j, metierSearch)).map((j,i,arr)=>(
                       <button key={i} onMouseDown={()=>{ setMetier(j); setMetierSearch(j); }}
                         style={{ width:"100%", padding:"10px 14px", background:"transparent", border:"none", borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none", color:C.text, fontSize:13, textAlign:"left", cursor:"pointer", fontFamily:"inherit" }}>
                         {j}
