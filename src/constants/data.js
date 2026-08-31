@@ -547,6 +547,39 @@ export const DOCS_REQUIS_CLIENT_PRO = [
 export const JOURS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 export const PLAGES=["Matin (6h-13h)","Après-midi (13h-20h)","Soir/Nuit (20h-6h)"];
 export const NIVEAUX=["Débutant","Confirmé","Expert"];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Niveau et expérience : par MÉTIER, pas par personne
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// L'inscription demandait « votre niveau général » et « vos années
+// d'expérience » une seule fois, pour tout le compte — alors qu'un prestataire
+// déclare plusieurs métiers. Quelqu'un qui a huit ans comme agent de propreté
+// et six mois comme employé de rayon devait choisir un chiffre pour les deux :
+// soit il se sous-vend sur son vrai métier, soit il surestime l'autre. Dans les
+// deux cas le client lit une information fausse, et c'est sur cette
+// information qu'il choisit.
+//
+// Le niveau et l'expérience sont donc portés par chaque entrée de
+// `metiers_list`. Les champs globaux `niveau` et `experience_ans` restent en
+// base — le catalogue, le profil public et le back-office les lisent — mais ils
+// sont désormais DÉRIVÉS et non plus saisis : le plus haut niveau et la plus
+// longue expérience déclarés. Une valeur dérivée ne peut pas contredire le
+// détail dont elle est tirée.
+
+/** Le plus élevé des niveaux déclarés. « Confirmé » à défaut de tout. */
+export function niveauGlobal(metiersList) {
+  const rang = (n) => Math.max(0, NIVEAUX.indexOf(n));
+  const liste = Array.isArray(metiersList) ? metiersList : [];
+  if (liste.length === 0) return "Confirmé";
+  return liste.reduce((meilleur, m) => (rang(m?.niveau) > rang(meilleur) ? m.niveau : meilleur), NIVEAUX[0]);
+}
+
+/** La plus longue expérience déclarée, en années. */
+export function experienceGlobale(metiersList) {
+  const liste = Array.isArray(metiersList) ? metiersList : [];
+  return liste.reduce((max, m) => Math.max(max, Number(m?.experienceAns) || 0), 0);
+}
 export const LANGUES_LIST=["Français","Anglais","Espagnol","Arabe","Portugais","Allemand","Italien","Mandarin"];
 
 export const COMPETENCES_PAR_SECTEUR = {
