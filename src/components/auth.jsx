@@ -176,7 +176,32 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         plan_abonnement: "free",
         rib: ribIban.replace(/\s/g,"") || null,
       });
-      if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
+      if (profileErr) {
+        // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.
+        // Abandonner ici laissait l'utilisateur dans une impasse — il
+        // recommençait et se heurtait à « Un compte existe déjà avec cet
+        // email », sans pouvoir se connecter non plus.
+        console.error("[inscription] profil non créé depuis le navigateur :", profileErr.message);
+        let rattrape = false;
+        try {
+          const rr = await fetch("/api/reparer-profil", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${data.session?.access_token || ""}` },
+            body: JSON.stringify({}),
+          });
+          rattrape = rr.ok;
+          if (!rr.ok) console.error("[inscription] rattrapage serveur refusé :", rr.status);
+        } catch (e) {
+          console.error("[inscription] rattrapage serveur impossible :", e.message);
+        }
+        if (!rattrape) {
+          // Le compte est créé : la connexion réparera le profil. Le dire, plutôt
+          // que d'envoyer vers un support qui n'a rien de plus à proposer.
+          setError("Votre compte a bien été créé, mais son profil n'a pas pu être enregistré. Connectez-vous avec cet email : nous le rétablissons automatiquement.");
+          setLoading(false);
+          return;
+        }
+      }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" });
@@ -897,7 +922,32 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
       });
-      if (profileErr) { setError("Erreur création profil. Contactez le support."); setLoading(false); return; }
+      if (profileErr) {
+        // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.
+        // Abandonner ici laissait l'utilisateur dans une impasse — il
+        // recommençait et se heurtait à « Un compte existe déjà avec cet
+        // email », sans pouvoir se connecter non plus.
+        console.error("[inscription] profil non créé depuis le navigateur :", profileErr.message);
+        let rattrape = false;
+        try {
+          const rr = await fetch("/api/reparer-profil", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${data.session?.access_token || ""}` },
+            body: JSON.stringify({}),
+          });
+          rattrape = rr.ok;
+          if (!rr.ok) console.error("[inscription] rattrapage serveur refusé :", rr.status);
+        } catch (e) {
+          console.error("[inscription] rattrapage serveur impossible :", e.message);
+        }
+        if (!rattrape) {
+          // Le compte est créé : la connexion réparera le profil. Le dire, plutôt
+          // que d'envoyer vers un support qui n'a rien de plus à proposer.
+          setError("Votre compte a bien été créé, mais son profil n'a pas pu être enregistré. Connectez-vous avec cet email : nous le rétablissons automatiquement.");
+          setLoading(false);
+          return;
+        }
+      }
       const _token = data.session?.access_token || "";
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "client" });
@@ -1211,20 +1261,35 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       }
 
       if (!profile) {
-        // Profil absent — créer depuis les métadonnées d'inscription (nouveau compte)
-        const meta = user.user_metadata || {};
-        if (meta.role && meta.role === role) {
-          await supabase.from("profiles").upsert({
-            id: user.id,
-            role: meta.role,
-            prenom: meta.prenom || "",
-            nom: meta.nom || "",
-            status: "pending",
-          }, { onConflict: "id", ignoreDuplicates: true });
-          setError("Votre compte est en attente de validation par notre équipe. Vous serez notifié par email.");
-        } else {
-          setError("Profil introuvable. Contactez le support si le problème persiste.");
+        // Profil absent : l'inscription s'est interrompue entre la création du
+        // compte et celle du profil.
+        //
+        // La reconstruction se faisait ici même, par un `upsert` depuis le
+        // navigateur — c'est-à-dire par le chemin QUI VENAIT D'ÉCHOUER, et
+        // soumis à la même RLS. Elle exigeait en outre que le rôle inscrit
+        // corresponde à l'écran de connexion utilisé, sans quoi elle renvoyait
+        // « Profil introuvable, contactez le support » : une impasse pour
+        // quelqu'un qui possède un compte et un mot de passe valides.
+        //
+        // Elle passe désormais par /api, en service role, qui ne dépend ni de
+        // la RLS ni de l'écran d'où l'on vient.
+        let repare = false;
+        try {
+          const { data: sd } = await supabase.auth.getSession();
+          const rr = await fetch("/api/reparer-profil", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+            body: JSON.stringify({}),
+          });
+          const rj = await rr.json().catch(() => ({}));
+          repare = rr.ok && !!rj.profil;
+          if (!rr.ok) console.error("[connexion] réparation du profil refusée :", rj.error || rr.status);
+        } catch (e) {
+          console.error("[connexion] réparation du profil impossible :", e.message);
         }
+        setError(repare
+          ? "Votre compte est en attente de validation par notre équipe. Vous serez notifié par email."
+          : "Votre compte existe mais son profil n'a pas pu être rétabli. Écrivez à direction@alane.fr, nous le débloquons manuellement.");
         await supabase.auth.signOut();
         return;
       }

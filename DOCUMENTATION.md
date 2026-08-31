@@ -444,10 +444,26 @@ Le confondre conduit à ajouter la mauvaise vérification dans un nouveau fichie
 
 | Mécanisme | Fichiers | Principe |
 |---|---|---|
-| `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
+| `verifyUser` | `missions`, `support`, `wallet`, `stripe-intent`, `stripe-wallet-topup`, `booking-draft`, `get-documents`, `notify-doc`, `reparer-profil` | Jeton Supabase de l'utilisateur, validé auprès de `/auth/v1/user` |
 | Vérification inline équivalente | `save-document`, `update-profile`, `upload-document`, `stripe-subscription` | Même principe, mais avec une copie locale du code au lieu de `_auth.js` |
 | Token backoffice | `bo-action`, `bo-verify-pin`, `invoice`, `stripe-refund`, `reset-password`, `forgot-password` | Session BO signée en HMAC avec `BO_SESSION_SECRET` |
 | `CRON_SECRET` / signature Stripe | `cron-abandon`, `cron-reset-monthly` / `stripe-webhook` | Appels machine, jamais déclenchés par un utilisateur |
+
+**`api/reparer-profil.js` — l'inscription en deux temps, et son rattrapage** (31/08/2026).
+
+L'inscription crée le compte (`auth.signUp`) puis la ligne `profiles`, en deux appels depuis
+le navigateur. Quand le second échouait — le plus souvent parce que `signUp` ne renvoie pas
+toujours de session immédiate, si bien que l'`upsert` partait en rôle anonyme et se faisait
+refuser par la RLS — le compte d'authentification existait **déjà**. L'utilisateur lisait
+« Erreur création profil », recommençait, se heurtait à « Un compte existe déjà avec cet
+email », et ne pouvait pas non plus se connecter : « Profil introuvable ». Impasse complète,
+constatée sur un vrai candidat prestataire qui a abandonné.
+
+`reparer-profil` reconstruit la ligne manquante en service role, à partir de
+`user_metadata`. Elle est **idempotente**, n'accorde aucun droit — `status: "pending"`, plan
+`free` — et ne modifie jamais un profil existant. Elle est appelée à deux endroits : au
+rattrapage immédiat de l'inscription, et à la connexion si le profil est introuvable. Un
+compte à moitié créé se répare donc tout seul à la première reconnexion.
 
 `missions.js` utilise une version **étendue** de `verifyUser` qui contrôle en plus le `status`
 du profil. C'est volontaire : ne pas la remplacer par celle de `_auth.js`.
