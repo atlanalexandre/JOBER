@@ -1,6 +1,7 @@
 import { resendBody, sendEmail, emailHtml, esc as escEmail } from "./_email.js";
 import { sendPushToUser, notifier } from "./_push.js";
 import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temps.js";
+import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
 import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
@@ -174,7 +175,7 @@ export default async function handler(req, res) {
   // Le déclenchement manuel du backoffice n'annonçait que les rappels J-1 :
   // on lançait le traitement pour débloquer des virements, et il répondait
   // « Aucun email à envoyer ». On ne savait pas s'il avait travaillé.
-  const bilan = { versements: 0, inscriptions: 0 };
+  const bilan = { versements: 0, inscriptions: 0, orphelins: 0 };
 
   // ── Témoin de vie ─────────────────────────────────────────────────
   //
@@ -1108,6 +1109,82 @@ export default async function handler(req, res) {
   // attente jamais signalés, envoie UN courriel qui les liste, et les marque.
   // `notify_signup` marque lui aussi quand il réussit — l'alerte immédiate est
   // conservée quand elle fonctionne, et n'est pas redoublée.
+  // ── Les comptes SANS profil : ce que le balayage suivant ne peut pas voir ──
+  //
+  // Le relevé ci-dessous part de `profiles`. Or une inscription peut échouer
+  // APRÈS la création du compte d'authentification et AVANT celle du profil :
+  // il n'y a alors aucune ligne à relever, et le dossier est invisible partout
+  // — pas d'alerte immédiate, pas de rattrapage, pas de trace dans le
+  // back-office. Le candidat, lui, ne peut ni se réinscrire ni se connecter.
+  //
+  // C'est arrivé le 31/08/2026 : un prestataire a rempli les sept étapes, et
+  // personne n'a jamais su qu'il s'était inscrit.
+  //
+  // Ce balayage part donc de `auth.users`, la seule source qui fasse foi pour
+  // « quelqu'un s'est inscrit ». Il reconstruit le profil manquant — le dossier
+  // rejoint alors le flux normal et sera signalé par le relevé suivant, dans le
+  // même passage.
+  {
+    try {
+      const utilisateurs = [];
+      let page = 1;
+      while (page <= 10) {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${page}`, { headers });
+        if (!r.ok) {
+          console.error(`[orphelins] liste des comptes illisible (${r.status}) — balayage abandonné.`);
+          break;
+        }
+        const d = await r.json().catch(() => ({}));
+        const lot = Array.isArray(d.users) ? d.users : [];
+        utilisateurs.push(...lot);
+        if (lot.length < 1000) break;
+        page++;
+      }
+
+      if (utilisateurs.length > 0) {
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id`, { headers });
+        const profils = pr.ok ? await pr.json().catch(() => null) : null;
+        if (!Array.isArray(profils)) {
+          console.error("[orphelins] profils illisibles — aucune réparation tentée.");
+        } else {
+          const connus = new Set(profils.map(p => p.id));
+          // Quinze minutes de battement : une inscription en cours a le droit
+          // de finir toute seule. Réparer trop tôt, ce serait courir contre le
+          // navigateur de quelqu'un qui est encore devant son écran.
+          const limite = Date.now() - 15 * 60 * 1000;
+          const orphelins = utilisateurs.filter(u =>
+            u?.id && !connus.has(u.id) && new Date(u.created_at).getTime() < limite
+          );
+
+          let repares = 0;
+          for (const u of orphelins) {
+            // Le rôle n'est pas devinable : ici, on décide pour quelqu'un
+            // d'absent. Un compte sans rôle déclaré est signalé, pas rangé
+            // d'office du côté client.
+            if (!roleDeclare(u)) {
+              console.error(`[orphelins] ${u.id} (${u.email || "sans email"}) : aucun rôle déclaré — à traiter à la main.`);
+              continue;
+            }
+            const { cree, motif } = await creerProfilSiAbsent(u, SUPABASE_URL, headers);
+            if (cree) {
+              repares++;
+              console.log(`[orphelins] profil ${roleDeclare(u)} reconstruit pour ${u.email || u.id} `
+                + `(inscrit le ${new Date(u.created_at).toLocaleDateString("fr-FR")}).`);
+            } else if (motif && !/déjà/.test(motif)) {
+              console.error(`[orphelins] ${u.id} non réparé : ${motif}`);
+            }
+          }
+          if (orphelins.length > 0) {
+            console.log(`[orphelins] ${orphelins.length} compte(s) sans profil, ${repares} réparé(s).`);
+          }
+          bilan.orphelins = repares;
+        }
+      }
+    } catch (e) {
+      console.error("[orphelins] balayage interrompu :", e.message);
+    }
+  }
+
   {
     try {
       const enAttenteRes = await fetch(
@@ -1715,7 +1792,7 @@ ${(() => {
         }
       } catch(e) { console.error("end-notif in reminders error:", e); }
 
-      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length, versements: bilan.versements, inscriptions: bilan.inscriptions });
+      return res.status(200).json({ success: true, reminders: sent, validationReminders: validationSent, autoValidated, endNotifSent, missions: missions.length, versements: bilan.versements, inscriptions: bilan.inscriptions, orphelins: bilan.orphelins });
     } catch (e) {
       console.error("cron reminders error:", e);
       return res.status(500).json({ error: "Erreur rappels" });
