@@ -469,6 +469,15 @@ refuser par la RLS — le compte d'authentification existait **déjà**. L'utili
 email », et ne pouvait pas non plus se connecter : « Profil introuvable ». Impasse complète,
 constatée sur un vrai candidat prestataire qui a abandonné.
 
+**Le filet de sécurité ne pouvait pas voir ces comptes.** Le balayage des inscriptions en
+attente part de `profiles` : un compte sans profil n'y figure pas. Ni alerte immédiate, ni
+rattrapage, ni trace dans le back-office — personne ne savait que ce prestataire s'était
+inscrit. Un second balayage part donc de `auth.users`, la seule source qui fasse foi pour
+« quelqu'un s'est inscrit », et reconstruit les profils manquants ; le dossier rejoint alors
+le flux normal et est signalé par le relevé suivant, dans le même passage. Il laisse 15 minutes
+de battement — une inscription en cours a le droit de finir toute seule — et **ne devine
+jamais le rôle** : un compte sans rôle déclaré est journalisé, pas rangé d'office côté client.
+
 `reparer-profil` reconstruit la ligne manquante en service role, à partir de
 `user_metadata`. Elle est **idempotente**, n'accorde aucun droit — `status: "pending"`, plan
 `free` — et ne modifie jamais un profil existant. Elle est appelée à deux endroits : au
