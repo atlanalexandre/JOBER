@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, StepHeader, Badge, AddressAutocomplete, formatPhone, checkIban } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
@@ -41,10 +41,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [telephone, setTelephone] = useState("");
   const [dateNaissance, setDateNaissance] = useState("");
   const [metiers, setMetiers] = useState([]);
-  const [newMetier, setNewMetier] = useState({sector:"", metier:"", niveau:"Confirmé", tarifNet:12, certifs:""});
+  const [newMetier, setNewMetier] = useState({sector:"", metier:"", niveau:"Confirmé", experienceAns:2, tarifNet:12, certifs:""});
   const [justAdded, setJustAdded] = useState(false);
-  const [niveau, setNiveau] = useState("Confirmé");
-  const [experienceAns, setExperienceAns] = useState(2);
   const [competences, setCompetences] = useState([]);
   const [langues, setLangues] = useState(["Français"]);
   const [dispos, setDispos] = useState({});
@@ -104,7 +102,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 2) {
       if (metiers.length === 0) return "Ajoutez au moins un métier";
     }
-    if (step === 3) { if (!niveau) return "Sélectionnez votre niveau"; }
+    // L'étape 3 ne demande plus ni niveau ni expérience — ils sont déclarés
+    // métier par métier à l'étape 2, qui exige déjà au moins un métier.
+    if (step === 3) { if (metiers.length === 0) return "Ajoutez au moins un métier à l'étape précédente"; }
     if (step === 4) {
       if (!Object.values(dispos).some(cr => cr?.length > 0)) return "Sélectionnez au moins un créneau";
     }
@@ -144,7 +144,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         ville: villeBase.trim(), zone_km: rayonKm,
         secteur: metiers[0]?.sector || "", metier: metiers[0]?.metier || "",
         tarif_net: metiers[0]?.tarifNet || 12, metiers_list: metiers,
-        niveau, experience_ans: experienceAns, competences, langues,
+        // Dérivés des métiers, jamais saisis : une valeur globale saisie à part
+        // finit toujours par contredire le détail qu'elle est censée résumer.
+        niveau: niveauGlobal(metiers), experience_ans: experienceGlobale(metiers), competences, langues,
         dispon_jours: JOURS.filter(j => (dispos[j]||[]).length > 0), dispon_jours_creneaux: dispos, dispo_immediat: dispoImmediat,
         // L'IBAN n'est plus écrit ici : user_metadata est encodé dans le jeton
         // d'authentification, transmis en en-tête à chaque requête et conservé dans le
@@ -247,7 +249,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const addMetier = () => {
     if (!newMetier.sector || !newMetier.metier) return;
     setMetiers(prev => [...prev, {...newMetier, id: Date.now()}]);
-    setNewMetier({sector:"", metier:"", niveau:"Confirmé", tarifNet:12, certifs:""});
+    setNewMetier({sector:"", metier:"", niveau:"Confirmé", experienceAns:2, tarifNet:12, certifs:""});
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1500);
   };
@@ -335,7 +337,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                   </div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, color:C.text, fontSize:13 }}>{m.metier}</div>
-                    <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{SECTORS.find(s=>s.id===m.sector)?.label} · {m.niveau}</div>
+                    <div style={{ color:C.textSub, fontSize:11, marginTop:1 }}>{SECTORS.find(s=>s.id===m.sector)?.label} · {m.niveau}{m.experienceAns != null ? ` · ${m.experienceAns === 0 ? "moins d\u2019un an" : `${m.experienceAns} an${m.experienceAns>1?"s":""}`}` : ""}</div>
                     <div style={{ display:"flex", gap:10, marginTop:4, alignItems:"center" }}>
                       <span style={{ fontSize:13, fontWeight:800, color:C.success }}>Vous : {formatE(m.tarifNet)}</span>
                       <span style={{ fontSize:11, color:C.textMuted }}>→ Client : {formatE(prixClient(m.tarifNet, m.sector||"divers"))}</span>
@@ -470,7 +472,19 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                 </div>
               );
             })()}
-            {newMetier.sector && newMetier.metier && <Select label="Niveau" options={["Débutant","Confirmé","Expert"]} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />}
+            {newMetier.sector && newMetier.metier && <>
+              <Select label="Niveau sur ce métier" options={NIVEAUX} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />
+              {/* L'expérience se déclare PAR MÉTIER. Elle était demandée une
+                  seule fois pour tout le compte : huit ans d'agent de propreté
+                  et six mois d'employé de rayon devaient tenir dans un seul
+                  chiffre, forcément faux pour l'un des deux. */}
+              <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>
+                Expérience sur ce métier : <span style={{ color:accentColor, fontWeight:800 }}>{newMetier.experienceAns === 0 ? "moins d'un an" : `${newMetier.experienceAns} an${newMetier.experienceAns>1?"s":""}`}</span>
+              </label>
+              <input type="range" min={0} max={20} value={newMetier.experienceAns}
+                onChange={e=>setNewMetier({...newMetier,experienceAns:Number(e.target.value)})}
+                style={{ width:"100%", accentColor, marginBottom:16 }} />
+            </>}
             <Btn full onClick={addMetier} disabled={!newMetier.sector||!newMetier.metier} variant={justAdded?"success":"primary"} style={{ padding:"12px", fontSize:14 }}>
               {justAdded ? "✓ Métier ajouté !" : metiers.length===0 ? "+ Ajouter ce métier" : "+ Ajouter un autre métier"}
             </Btn>
@@ -478,19 +492,24 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 3 && <>
-          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:12 }}>Quel est votre niveau général ?</p>
-          <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-            {NIVEAUX.map(n => (
-              <button key={n} onClick={()=>setNiveau(n)} style={{ flex:1, padding:"13px 8px", borderRadius:r, border:`2px solid ${niveau===n?accentColor:C.border}`, background:niveau===n?`${accentColor}20`:"rgba(255,255,255,0.03)", cursor:"pointer", fontFamily:"inherit", textAlign:"center", transition:"all 0.2s" }}>
-                <div style={{ fontSize:22, marginBottom:4 }}>{n==="Débutant"?"🌱":n==="Confirmé"?"💪":"🏆"}</div>
-                <div style={{ color:niveau===n?accentColor:C.textSub, fontWeight:niveau===n?700:500, fontSize:12 }}>{n}</div>
-              </button>
-            ))}
+          {/* Le niveau et l'expérience se déclarent à l'étape précédente, métier
+              par métier. Cet écran les demandait une SECONDE fois, pour tout le
+              compte : deux réponses possibles à la même question, et c'est la
+              réponse globale — la moins précise — qui l'emportait à l'affichage.
+              Il rappelle désormais ce qui a été saisi, et ne le redemande pas. */}
+          <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px", marginBottom:20 }}>
+            <div style={{ fontSize:12, color:C.textSub, fontWeight:700, textTransform:"uppercase", letterSpacing:0.8, marginBottom:10 }}>Votre expérience, métier par métier</div>
+            {metiers.length === 0
+              ? <div style={{ color:C.textMuted, fontSize:12.5, lineHeight:1.6 }}>Revenez à l'étape précédente pour ajouter au moins un métier.</div>
+              : metiers.map((m,i) => (
+                  <div key={m.id ?? i} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:12, padding:"6px 0", borderTop: i ? `1px solid ${C.border}` : "none" }}>
+                    <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>{m.metier}</span>
+                    <span style={{ color:C.textSub, fontSize:12, textAlign:"right", flexShrink:0 }}>
+                      {m.niveau}{m.experienceAns != null ? ` · ${m.experienceAns === 0 ? "< 1 an" : `${m.experienceAns} an${m.experienceAns>1?"s":""}`}` : ""}
+                    </span>
+                  </div>
+                ))}
           </div>
-          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>
-            Années d'expérience : <span style={{ color:accentColor, fontWeight:800 }}>{experienceAns} an{experienceAns>1?"s":""}</span>
-          </label>
-          <input type="range" min={0} max={20} value={experienceAns} onChange={e=>setExperienceAns(Number(e.target.value))} style={{ width:"100%", accentColor, marginBottom:20 }} />
           {allCompListe.length > 0 && <>
             <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:4, textTransform:"uppercase", letterSpacing:0.8 }}>Vos spécialités</label>
             <p style={{ fontSize:11, color:C.textSub, margin:"0 0 10px", lineHeight:1.5 }}>Ces tags apparaissent sur votre profil et aident les clients à vous trouver</p>
@@ -718,8 +737,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
               // « Femme/Valet de chambre (12,50 €/h/h) » sur le récapitulatif
               // final, juste avant la création du compte.
               { l:"Métiers",       v:metiers.map(m=>`${m.metier} (${formatE(m.tarifNet)})`).join(", ") || "—" },
-              { l:"Niveau",        v:niveau },
-              { l:"Expérience",    v:`${experienceAns} an${experienceAns>1?"s":""}` },
+              // Le récapitulatif reprend le détail par métier, pas une moyenne
+              // qui ne correspondrait à aucun d'entre eux.
+              { l:"Expérience",    v:metiers.map(m=>`${m.metier} : ${m.niveau}${m.experienceAns != null ? `, ${m.experienceAns === 0 ? "< 1 an" : `${m.experienceAns} an${m.experienceAns>1?"s":""}`}` : ""}`).join(" · ") || "—" },
               { l:"Disponibilités",v:JOURS.filter(j=>(dispos[j]||[]).length>0).map(j=>`${j.slice(0,3)}: ${(dispos[j]||[]).map(c=>c.split(" ")[0]).join(", ")}`).join(" · ") || "—" },
               { l:"Langues",       v:langues.join(", ") },
               { l:"Statut",        v:statutPro },

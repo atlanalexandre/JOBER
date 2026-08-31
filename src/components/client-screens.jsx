@@ -2672,6 +2672,40 @@ export function ProfileScreen({ provider, onNavigate, onBack }) {
             : <div style={{ fontSize:16, color:C.textMuted }}>Non renseigné</div>}
           <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>Taux horaire · Auto-entrepreneur</div>
         </div>
+        {/* Métiers, niveau et expérience — le détail, pas un résumé.
+            Le profil n'affichait que le métier principal et un niveau valable
+            pour tout le compte. Un prestataire expert avec huit ans en propreté
+            et débutant depuis six mois en rayon apparaissait « Expert · 8 ans »
+            sur les deux : le client choisissait sur une information fausse.
+            Chaque métier porte désormais les siennes. */}
+        {p.metiers_list?.length > 0 && (
+          <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
+            <h4 style={{ margin:"0 0 12px", color:C.text, fontSize:14, fontWeight:700 }}>💼 Métiers et expérience</h4>
+            <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
+              {p.metiers_list.map((m,i) => {
+                const sect = SECTORS.find(x => x.id === m.sector);
+                return (
+                  <div key={`${m.metier}-${i}`} style={{ display:"flex", gap:11, alignItems:"flex-start", paddingTop: i ? 11 : 0, borderTop: i ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width:32, height:32, borderRadius:9, background:`${sect?.color || C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>{sect?.icon || "💼"}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:C.text, fontSize:13.5, fontWeight:700 }}>{m.metier}</div>
+                      <div style={{ color:C.textSub, fontSize:11.5, marginTop:2 }}>
+                        {m.niveau || "Confirmé"}
+                        {m.experienceAns != null && ` · ${m.experienceAns === 0 ? "moins d'un an" : `${m.experienceAns} an${m.experienceAns > 1 ? "s" : ""}`} d'expérience`}
+                      </div>
+                      {m.certifs && <div style={{ color:C.textMuted, fontSize:11, marginTop:3 }}>🎓 {m.certifs}</div>}
+                    </div>
+                    {m.tarifNet > 0 && (
+                      <div style={{ color:C.violet, fontSize:12.5, fontWeight:800, flexShrink:0, whiteSpace:"nowrap" }}>
+                        {formatE(prixClient(m.tarifNet, m.sector || "divers"))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {p.langues?.length > 0 && (
           <div style={{ background:"#0D1B3E", borderRadius:18, padding:"17px", marginBottom:14, border:`1px solid ${C.border}` }}>
             <h4 style={{ margin:"0 0 10px", color:C.text, fontSize:14, fontWeight:700 }}>🌐 Langues</h4>

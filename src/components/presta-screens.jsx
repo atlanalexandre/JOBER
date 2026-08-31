@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
@@ -482,7 +482,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   };
   const [docs,setDocs]=useState({});
   const [metiers,setMetiers]=useState([]);
-  const [newMetier,setNewMetier]=useState({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
+  const [newMetier,setNewMetier]=useState({sector:"",metier:"",niveau:"Confirmé",experienceAns:2,certifs:"",tarifNet:12});
   const [langues,setLangues]=useState(["Français"]);
   const [bio,setBio]=useState("");
   const [dispos,setDispos]=useState({});
@@ -497,7 +497,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   const addMetier=()=>{
     if(!newMetier.sector||!newMetier.metier)return;
     setMetiers(prev=>[...prev,{...newMetier,id:Date.now()}]);
-    setNewMetier({sector:"",metier:"",niveau:"Confirmé",certifs:"",tarifNet:12});
+    setNewMetier({sector:"",metier:"",niveau:"Confirmé",experienceAns:2,certifs:"",tarifNet:12});
     setJustAdded(true);
     clearTimeout(justAddedRef.current);
     justAddedRef.current=setTimeout(()=>setJustAdded(false),1500);
@@ -544,7 +544,10 @@ export function PrestaOnboarding({ onComplete, onBack }) {
           zone_km: parseInt(adresse.rayon) || 20,
           bio,
           secteur: metiers[0]?.sector || existingMeta.secteur,
-          metiers_list: metiers.map(m => ({ sector: m.sector, metier: m.metier, niveau: m.niveau, tarifNet: m.tarifNet, certifs: m.certifs })),
+          metiers_list: metiers.map(m => ({ sector: m.sector, metier: m.metier, niveau: m.niveau, experienceAns: m.experienceAns ?? null, tarifNet: m.tarifNet, certifs: m.certifs })),
+          // Dérivés de la liste, jamais saisis à part.
+          niveau: niveauGlobal(metiers),
+          experience_ans: experienceGlobale(metiers),
           tarif_net: metiers[0]?.tarifNet || existingMeta.tarif_net,
           langues,
           dispon_jours_creneaux: dispos,
@@ -894,7 +897,17 @@ export function PrestaOnboarding({ onComplete, onBack }) {
                 </div>
               );
             })()}
-            <Select label="Niveau" options={["Débutant","Confirmé","Expert"]} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />
+            <Select label="Niveau sur ce métier" options={NIVEAUX} value={newMetier.niveau} onChange={e=>setNewMetier({...newMetier,niveau:e.target.value})} />
+            {/* Une expérience par métier, comme à l'inscription : elle valait
+                pour le compte entier, si bien qu'un prestataire ayant huit ans
+                sur un métier et six mois sur un autre en annonçait forcément
+                un de faux. */}
+            <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>
+              Expérience sur ce métier : <span style={{ color:C.violet, fontWeight:800 }}>{newMetier.experienceAns === 0 ? "moins d'un an" : `${newMetier.experienceAns} an${newMetier.experienceAns>1?"s":""}`}</span>
+            </label>
+            <input type="range" min={0} max={20} value={newMetier.experienceAns}
+              onChange={e=>setNewMetier({...newMetier,experienceAns:Number(e.target.value)})}
+              style={{ width:"100%", accentColor:C.violet, marginBottom:16 }} />
             <Input label="Certifications (optionnel)" placeholder="Ex : CACES 1, HACCP, SST…" value={newMetier.certifs} onChange={e=>setNewMetier({...newMetier,certifs:e.target.value})} hint="Laissez vide si aucune certification" />
             <Btn
               full
@@ -1113,8 +1126,20 @@ export function PrestaProfilTab({ onNavigate }) {
           <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
             {secteurInfo && <Badge color={color} small>{secteurInfo.icon} {secteurInfo.label}</Badge>}
             {meta.metier && <Badge color={C.violet} small>💼 {meta.metier}</Badge>}
-            {meta.niveau && <Badge color={C.textSub} small>{meta.niveau==="Débutant"?"🌱":meta.niveau==="Confirmé"?"💪":"🏆"} {meta.niveau}</Badge>}
-            {meta.experience_ans!=null && <Badge color={C.textSub} small>🕐 {meta.experience_ans} an{meta.experience_ans>1?"s":""}</Badge>}
+            {/* Le niveau et l'expérience sont propres à chaque métier : les
+                afficher une seule fois pour tout le compte laissait croire
+                qu'ils valaient partout. Les pastilles suivent donc les métiers
+                déclarés, et retombent sur les valeurs globales pour les
+                comptes antérieurs, qui ne portent pas encore le détail. */}
+            {(Array.isArray(meta.metiers_list) && meta.metiers_list.length > 0
+              ? meta.metiers_list
+              : (meta.metier ? [{ metier: meta.metier, niveau: meta.niveau, experienceAns: meta.experience_ans }] : [])
+            ).map((m,i) => (m.niveau || m.experienceAns != null) && (
+              <Badge key={`${m.metier}-${i}`} color={C.textSub} small>
+                {m.niveau==="Débutant"?"🌱":m.niveau==="Expert"?"🏆":"💪"} {m.metier} · {m.niveau || "Confirmé"}
+                {m.experienceAns != null ? ` · ${m.experienceAns === 0 ? "< 1 an" : `${m.experienceAns} an${m.experienceAns>1?"s":""}`}` : ""}
+              </Badge>
+            ))}
           </div>
           {meta.tarif_net && (
             <div style={{ background:`${color}15`, borderRadius:10, padding:"10px 12px", marginBottom:meta.langues?.length?10:0, display:"flex", justifyContent:"space-between", alignItems:"center" }}>

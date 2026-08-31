@@ -97,6 +97,16 @@ Champs clés : `role` (`client` ou `prestataire`), `status` (`pending`, `approve
 `suspended`), `missions_enabled` (accès aux prestations accordé par l'administration),
 `plan_abonnement`, `cashback_balance`, `prepaid_balance`, `avatar_url`.
 
+**Niveau et expérience se déclarent par MÉTIER** (31/08/2026). Chaque entrée de
+`user_metadata.metiers_list` porte son `niveau` et son `experienceAns`. Les champs globaux
+`niveau` et `experience_ans` existent toujours — le catalogue, le profil public et le
+back-office les lisent — mais ils sont **dérivés** (`niveauGlobal()`, `experienceGlobale()` de
+`src/constants/data.js`) et ne sont plus saisis nulle part : le plus haut niveau et la plus
+longue expérience déclarés. Ils étaient auparavant demandés une seule fois pour tout le
+compte, si bien qu'un prestataire ayant huit ans sur un métier et six mois sur un autre en
+annonçait nécessairement un de faux. Une valeur dérivée ne peut pas contredire le détail dont
+elle est tirée.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |
