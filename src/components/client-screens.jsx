@@ -9346,7 +9346,7 @@ export function OnboardingScreen({ role, onDone, onNavigate }) {
     // le bouton ci-dessous. Cet écran doit rendre la chose compréhensible, pas
     // exhaustive.
     { icon:"🧾", title:"Vous restez indépendant", lines:[
-      "Vous fixez librement votre tarif, y compris celui d'une prolongation.",
+      "Vous fixez librement votre tarif, y compris celui d'une prolongation. Métiers, tarifs, rayon, disponibilités : tout se modifie quand vous voulez depuis votre espace, sans nous le demander.",
       "Deux mandats vous lient à ALANE : elle facture en votre nom, et elle encaisse à votre place. Cet argent n'est à aucun moment le sien — il est conservé chez Stripe, puis vous est reversé. Seuls les frais de service la rémunèrent.",
       "Votre attestation RC Pro doit rester valide, sans quoi votre compte peut être suspendu.",
     ], color:"#F06292" },

@@ -323,6 +323,14 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 2 && <>
+          {/* Rien de ce qui est saisi ici n'est définitif, et il faut le dire
+              AVANT la saisie : c'est l'étape où l'on annonce son tarif, donc
+              celle où l'on hésite le plus. Quelqu'un qui craint d'être figé à
+              12 €/h pour toujours met un chiffre au hasard, ou abandonne. */}
+          <p style={{ color:C.textSub, fontSize:12.5, margin:"0 0 14px", lineHeight:1.6 }}>
+            Ajoutez autant de métiers que vous en exercez, chacun avec son tarif.
+            <strong style={{ color:C.text }}> Tout reste modifiable à tout moment</strong> depuis votre espace, une fois inscrit.
+          </p>
           {/* Liste des métiers ajoutés */}
           {metiers.length > 0 && (
             <div style={{ marginBottom:16 }}>
@@ -534,7 +542,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         </>}
 
         {step === 4 && <>
-          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:14 }}>Indiquez vos créneaux disponibles jour par jour.</p>
+          <p style={{ color:C.textSub, fontSize:13, marginTop:0, marginBottom:14, lineHeight:1.6 }}>
+            Indiquez vos créneaux disponibles jour par jour.
+            <span style={{ color:C.textMuted }}> Vous les changerez quand vous voudrez — vos disponibilités ne vous engagent pas.</span>
+          </p>
           {JOURS.map(jour => {
             const sel = dispos[jour] || [];
             const hasSel = sel.length > 0;
