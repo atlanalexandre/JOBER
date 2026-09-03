@@ -67,3 +67,38 @@ describe("normaliserTexte() et motsCherchables()", () => {
     expect(motsCherchables("Plongeur")).toBe("plongeur");
   });
 });
+
+// L'écriture inclusive réglée, il restait un écart plus banal : l'appellation
+// courante n'est pas le libellé officiel. « Femme de ménage » — le terme le
+// plus employé du premier secteur de la plateforme — ne renvoyait aucun
+// résultat, pas plus qu'« enseignant » ou « vigile ».
+describe("appellations courantes", () => {
+  it("trouve le métier sous le nom que les gens emploient", () => {
+    expect(trouve("femme de ménage")).toContain("Agent de propreté");
+    expect(trouve("homme de ménage")).toContain("Agent de propreté");
+    expect(trouve("vigile")).toContain("Agent de sécurité");
+    expect(trouve("enseignant")).toContain("Professeur particulier / Soutien scolaire");
+    expect(trouve("instituteur")).toContain("Professeur particulier / Soutien scolaire");
+  });
+
+  // On rapproche, on n'élargit pas : un mot dont le métier n'existe pas au
+  // catalogue doit rester sans résultat. Mieux vaut ne rien trouver que d'être
+  // envoyé vers autre chose.
+  it("ne renvoie rien pour un métier réellement absent", () => {
+    for (const q of ["nounou", "plombier", "électricien", "aide-soignant"]) {
+      expect(trouve(q), `« ${q} »`).toHaveLength(0);
+    }
+  });
+});
+
+// Ajoutés le 03/09/2026 : « professeur » ne renvoyait rien, alors que c'est
+// l'une des activités les plus exercées en micro-entreprise.
+describe("enseignement et formation", () => {
+  it("propose les cours et la formation", () => {
+    expect(trouve("professeur").length).toBeGreaterThanOrEqual(3);
+    expect(trouve("professeure").length).toBeGreaterThanOrEqual(3);   // forme féminine
+    expect(trouve("formateur").length).toBeGreaterThanOrEqual(2);
+    expect(trouve("formatrice").length).toBeGreaterThanOrEqual(2);
+    expect(trouve("soutien scolaire")).toContain("Professeur particulier / Soutien scolaire");
+  });
+});
