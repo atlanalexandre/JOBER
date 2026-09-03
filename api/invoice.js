@@ -673,6 +673,29 @@ export default async function handler(req, res) {
       letter-spacing: 0.3px;
     }
     .print-btn:hover { background: #6A5FCC; }
+
+    /* Retour à l'application.
+       La facture s'ouvre dans un onglet, et sur une application installée sur
+       l'écran d'accueil il n'y a NI barre d'adresse, NI bouton « précédent » :
+       on arrivait sur la facture sans aucun moyen d'en repartir autrement que
+       par le gestionnaire d'applications. Le bouton vit donc DANS le document,
+       seul endroit qui fonctionne quel que soit le mode d'ouverture. */
+    .retour-btn {
+      display: block;
+      width: 100%;
+      max-width: 700px;
+      margin: 12px auto 0;
+      padding: 14px;
+      background: transparent;
+      color: #9BA0BA;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .retour-btn:hover { color: #E8EAF0; border-color: rgba(255,255,255,0.35); }
     @media print {
       body { background: #fff !important; color: #111 !important; padding: 0 !important; }
       .header {
@@ -681,7 +704,7 @@ export default async function handler(req, res) {
         print-color-adjust: exact;
       }
       .card { background: #f4f6fa !important; border-color: #dde3ee !important; }
-      .print-btn { display: none !important; }
+      .print-btn, .retour-btn { display: none !important; }
       .logo { color: #7C6FE0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .invoice-num { color: #7C6FE0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .total-row.total-ttc .total-row-value { color: #7C6FE0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -801,7 +824,28 @@ export default async function handler(req, res) {
     </div>
 
     <button class="print-btn" onclick="window.print()">🖨️ Imprimer / Télécharger en PDF</button>
+    <button class="retour-btn" onclick="retourApplication()">← Retour à l'application</button>
   </div>
+  <script>
+    // Trois cas, dans cet ordre.
+    //
+    // 1. La facture a été ouverte dans un NOUVEL onglet : le fermer rend la
+    //    main à l'écran d'où l'on venait. `window.close()` n'est autorisé que
+    //    pour un onglet ouvert par script — d'où le repli.
+    // 2. Elle a remplacé la page courante : l'historique ramène en arrière.
+    // 3. Ni l'un ni l'autre — historique vide, application installée : on
+    //    retourne à l'accueil plutôt que de laisser l'utilisateur coincé.
+    function retourApplication() {
+      try {
+        if (window.opener && !window.opener.closed) { window.close(); return; }
+      } catch (e) {
+        // Accès à `opener` refusé par le navigateur : on passe au cas suivant.
+        console.error("[facture] onglet parent inaccessible :", e.message);
+      }
+      if (window.history.length > 1) { window.history.back(); return; }
+      window.location.assign("/");
+    }
+  </script>
   <!-- L'impression ne se déclenche PLUS toute seule au chargement.
        Sur téléphone, la feuille de partage s'ouvrait par-dessus le document
        avant qu'on ait pu le lire, et il fallait la fermer pour voir sa propre

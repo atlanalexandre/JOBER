@@ -360,6 +360,29 @@ export const METIERS_TARIFS = {
     "Hôte(sse) bilingue salon":             { min:13,   max:17,   default:14.5, rome:"M1601" },
     "Community manager":                    { min:16,   max:26,   default:20, rome:null },
     "Interprète / Traducteur":              { min:20,   max:35,   default:26, rome:"E1108" },
+    // Enseignement et formation — ajoutés le 03/09/2026.
+    //
+    // « Professeur » ne renvoyait aucun résultat, ni « enseignant », ni
+    // « formateur », ni « soutien scolaire ». C'est pourtant l'une des
+    // activités les plus exercées en micro-entreprise.
+    //
+    // Ce qui est proposé ici, ce sont des COURS et des FORMATIONS vendus comme
+    // prestation de services — pas un poste d'enseignant. L'enseignement dans
+    // un établissement scolaire relève de l'Éducation nationale et ne se
+    // commande pas à l'heure sur une plateforme ; il n'a donc pas sa place au
+    // catalogue.
+    //
+    // Une réserve à connaître : la FORMATION PROFESSIONNELLE CONTINUE (celle
+    // financée par un OPCO, un employeur ou le CPF) suppose un numéro de
+    // déclaration d'activité obtenu auprès de la DREETS. Un formateur qui n'en
+    // a pas peut former, mais pas facturer au titre de la formation
+    // professionnelle. La plateforme ne vérifie pas ce numéro : c'est au
+    // prestataire de s'y conformer, comme pour tout agrément.
+    "Professeur particulier / Soutien scolaire": { min:18, max:32, default:22, rome:"K2107" },
+    "Professeur de langues":                { min:18,   max:34,   default:24, rome:"K2107" },
+    "Professeur de musique":                { min:18,   max:35,   default:25, rome:"K2105" },
+    "Formateur professionnel":              { min:22,   max:45,   default:30, rome:"K2111" },
+    "Formateur bureautique / informatique": { min:22,   max:45,   default:30, rome:"K2111" },
   },
 };
 
@@ -397,6 +420,7 @@ export const METIERS_TARIFS = {
 const TERMINAISONS_FEMININES = [
   [/trice$/, "teur"],   // animatrice  → animateur
   [/euse$/,  "eur"],    // vendeuse    → vendeur
+  [/eure$/,  "eur"],    // professeure → professeur
   [/iere$/,  "ier"],    // caissiere   → caissier
   [/ere$/,   "er"],     // lingere     → linger
   [/ve$/,    "f"],      // administrative → administratif
@@ -466,6 +490,25 @@ export function motsCherchables(libelle) {
   return [...new Set([...formes].map(normaliserTexte))].filter(Boolean).join(" ");
 }
 
+// ── Les mots que les gens tapent, et qui ne sont pas ceux du catalogue ─────
+//
+// L'écriture inclusive réglée, il reste un écart plus banal : l'appellation
+// courante n'est pas toujours le libellé officiel. « Femme de ménage » — le
+// terme le plus employé du premier secteur de la plateforme — ne renvoyait
+// AUCUN résultat, pas plus qu'« enseignant » ou « vigile ».
+//
+// Ces alias ne sont pas des à-peu-près : chacun désigne le même métier que le
+// libellé auquel il est rattaché. On rapproche, on n'élargit pas. Un mot dont
+// le métier n'existe pas au catalogue — « nounou », « plombier » — reste
+// volontairement sans résultat : mieux vaut ne rien trouver que d'être envoyé
+// vers autre chose.
+const ALIAS_METIERS = {
+  "Agent de propreté":        ["femme de ménage", "homme de ménage", "ménage", "nettoyage"],
+  "Agent d'entretien des bureaux": ["femme de ménage bureaux", "ménage bureaux"],
+  "Agent de sécurité":        ["vigile", "videur"],
+  "Professeur particulier / Soutien scolaire": ["enseignant", "instituteur", "cours particuliers", "prof"],
+};
+
 /**
  * Le libellé répond-il à cette recherche ? Tous les mots tapés doivent s'y
  * retrouver, dans n'importe quel ordre — « etage gouvernante » fonctionne.
@@ -474,7 +517,8 @@ export function motsCherchables(libelle) {
 export function correspondRecherche(libelle, recherche) {
   const termes = normaliserTexte(recherche).split(" ").filter(Boolean);
   if (termes.length === 0) return true;
-  const foin = motsCherchables(libelle);
+  const alias = (ALIAS_METIERS[libelle] || []).map(normaliserTexte).join(" ");
+  const foin = alias ? `${motsCherchables(libelle)} ${alias}` : motsCherchables(libelle);
   return termes.every(t => foin.includes(t));
 }
 
