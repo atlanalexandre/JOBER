@@ -830,7 +830,7 @@ export default async function handler(req, res) {
     // Trois cas, dans cet ordre.
     //
     // 1. La facture a été ouverte dans un NOUVEL onglet : le fermer rend la
-    //    main à l'écran d'où l'on venait. `window.close()` n'est autorisé que
+    //    main à l'écran d'où l'on venait. window.close() n'est autorisé que
     //    pour un onglet ouvert par script — d'où le repli.
     // 2. Elle a remplacé la page courante : l'historique ramène en arrière.
     // 3. Ni l'un ni l'autre — historique vide, application installée : on
@@ -839,7 +839,7 @@ export default async function handler(req, res) {
       try {
         if (window.opener && !window.opener.closed) { window.close(); return; }
       } catch (e) {
-        // Accès à `opener` refusé par le navigateur : on passe au cas suivant.
+        // Accès à opener refusé par le navigateur : on passe au cas suivant.
         console.error("[facture] onglet parent inaccessible :", e.message);
       }
       if (window.history.length > 1) { window.history.back(); return; }

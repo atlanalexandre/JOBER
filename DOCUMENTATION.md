@@ -107,6 +107,22 @@ compte, si bien qu'un prestataire ayant huit ans sur un métier et six mois sur 
 annonçait nécessairement un de faux. Une valeur dérivée ne peut pas contredire le détail dont
 elle est tirée.
 
+**Une prestation interrompue en cours est `completed`, pas `cancelled`** (03/09/2026). Le
+versement automatique ne relève que les prestations `completed` : tant qu'une interruption
+passait en `cancelled`, elle sortait du circuit et le prestataire dépendait d'un virement fait
+à la main. Une prestation interrompue **est** terminée — plus tôt que prévu, pour les heures
+faites. `cancellation_reason` en garde la raison, `actual_hours` les heures dues.
+
+Les **frais de service restent acquis** à ALANE, comme à toute autre clôture : ils rémunèrent
+la mise en relation, pas les heures (`api/_cloture.js`). Le remboursement se calculait
+auparavant « payé − heures faites × tarif », ce qui les rendait intégralement au client — et
+faisait perdre à ALANE la commission Stripe, jamais restituée sur un remboursement.
+
+**Réserve connue** : sur une prestation **récurrente** interrompue au troisième jour, les deux
+premiers ne sont pas comptés. `elapsedHours` part de la première date et se trouve plafonné aux
+heures d'une seule journée. Le défaut préexiste à cette correction ; le lever suppose de
+décider ce qui est dû à un prestataire dont on interrompt une récurrence.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |
