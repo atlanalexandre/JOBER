@@ -19,6 +19,11 @@ export const SCREEN_TO_PATH = {
   presta_pending:    "/provider/pending",
   faq:               "/faq",
   legal:             "/legal",
+  // Les mentions légales ont leur propre adresse : l'article 6-III de la LCEN
+  // exige qu'elles soient accessibles « de manière directe et permanente », donc
+  // à un visiteur qui n'a pas de compte. `/legal` seul retombe sur les CGU, et
+  // elles n'étaient atteignables que depuis le menu d'un compte client.
+  mentions_legales:  "/mentions-legales",
   public_contact:    "/contact",
 
   // Backoffice (admin.alane.fr)
@@ -87,7 +92,7 @@ export const NEEDS_DATA = new Set([
 export const PUBLIC_SCREENS = new Set([
   "splash", "role", "auth_client", "auth_presta", "reset_password",
   "how_client", "how_presta", "client_onboarding", "presta_onboarding",
-  "faq", "legal", "public_contact", "bo_login", "bo_dashboard",
+  "faq", "legal", "mentions_legales", "public_contact", "bo_login", "bo_dashboard",
 ]);
 
 // Écrans de connexion : un utilisateur déjà authentifié n'a rien à y faire.

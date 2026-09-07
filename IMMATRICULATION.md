@@ -31,22 +31,33 @@ d'immatriculation.
 
 ---
 
-## 2. Les mentions légales — `src/components/client-screens.jsx`
+## 2. Les mentions légales — `src/constants/editeur.js`
 
-L'écran existe déjà et porte des marqueurs `[À REMPLIR]`. Chercher cette chaîne
-dans le fichier : elle apparaît dans deux sections.
+**Mis à jour le 07/09/2026.** Il n'y a plus de marqueurs `[À REMPLIR]` à
+chercher dans les écrans : l'identité de l'éditeur vit dans un seul fichier,
+[`src/constants/editeur.js`](src/constants/editeur.js), que les mentions légales
+lisent. Les factures et les conditions devront le lire aussi (§3).
 
-**Section « Éditeur du site »** — six champs :
-raison sociale, forme juridique, capital social, SIRET, siège social,
-directeur de la publication.
+Trois gestes, et rien d'autre :
 
-**Section « Données personnelles »** — deux champs :
-responsable de traitement, délégué à la protection des données (le second n'est
-obligatoire que dans des cas précis ; à défaut, écrire « non désigné » plutôt
-que de laisser un crochet vide).
+1. **Remplir `EDITEUR`** depuis l'extrait Kbis : `denomination`,
+   `formeJuridique`, `capital`, `siren`, `siret`, `rcs`, `ape`, `siege`,
+   `directeurPublication`, `responsableTraitement`, `dpo` (« non désigné » si
+   aucun n'est requis), et `tvaIntra` si la TVA est applicable (voir §5).
+2. **Passer `IMMATRICULEE` à `true`**. Tant qu'il vaut `false`, la page annonce
+   que la société est en cours de constitution — c'est vrai, et c'est infiniment
+   préférable à un champ vide ou à un crochet affiché à l'utilisateur.
+3. **Porter la date du jour dans `MAJ_MENTIONS`**, qui indique aux utilisateurs
+   quand le document a changé.
 
-**Ne pas oublier** : porter la date du jour dans `maj`, qui indique aux
-utilisateurs quand le document a changé.
+`src/tests/mentions-legales.test.js` **échoue tant qu'un champ obligatoire
+manque** une fois le drapeau passé à `true` : une identification partielle a
+l'air complète, et c'est le pire des deux états.
+
+**L'écran est public** depuis le 07/09/2026, à l'adresse `/mentions-legales`,
+lié depuis l'accueil, le menu client et l'espace prestataire. Il n'était
+auparavant atteignable que par un client connecté — ce que l'article 6-III de la
+LCEN, qui exige un accès « direct et permanent », n'admet pas.
 
 > **Pourquoi c'est le premier point de la liste.** L'article 6-III de la loi
 > pour la confiance dans l'économie numérique impose ces mentions à tout
