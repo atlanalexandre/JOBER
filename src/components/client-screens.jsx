@@ -9,6 +9,7 @@ import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, 
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
+import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement } from "../constants/editeur.js";
 import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
@@ -458,7 +459,7 @@ export function SettingsScreen({ role, onNavigate, onBack, onLogout }) {
         { icon:"🔔", label:"Notifications", value:"Activées" },
         { icon:"🌍", label:"Langue", value:"Français" },
         { icon:"📄", label:"CGU & Politique de confidentialité", action:()=>onNavigate("legal","cgu"), chevron:true },
-        { icon:"⚖️", label:"Mentions légales", action:()=>onNavigate("legal","mentions_legales"), chevron:true },
+        { icon:"⚖️", label:"Mentions légales", action:()=>onNavigate("mentions_legales"), chevron:true },
       ]
     },
     {
@@ -5881,13 +5882,16 @@ export function LegalScreen({ type, onBack }) {
     mentions_legales: {
       title:"Mentions légales",
       icon:"⚖️",
-      maj:"16 août 2026",
+      maj: MAJ_MENTIONS,
       sections:[
-        { title:"Éditeur du site", text:"Raison sociale : [À REMPLIR — ex. ALANE SAS]\nForme juridique : [À REMPLIR — ex. SAS]\nCapital social : [À REMPLIR — ex. 1 000 €]\nSIRET : [À REMPLIR]\nSiège social : [À REMPLIR — ex. 75001 Paris, France]\nEmail : direction@alane.fr\nDirecteur de la publication : [À REMPLIR]" },
-        { title:"Hébergeur", text:"Vercel Inc.\n340 Pine Street, Suite 200\nSan Francisco, CA 94104, États-Unis\nhttps://vercel.com\n\nBase de données : Supabase Inc.\n970 Toa Payoh N, Singapour\nhttps://supabase.com" },
+        // L'identité de l'éditeur vient de `src/constants/editeur.js`, source
+        // unique partagée avec les factures et les conditions. Elle portait ici
+        // des marqueurs « [À REMPLIR] », affichés tels quels à l'utilisateur.
+        { title:"Éditeur du site", text: blocEditeur() },
+        { title:"Hébergement", text: blocHebergeurs() },
         { title:"Propriété intellectuelle", text:"L'ensemble du contenu de la plateforme ALANE (textes, graphismes, logotype, code source) est protégé par le droit d'auteur. Toute reproduction, même partielle, est interdite sans autorisation préalable écrite de l'éditeur." },
         { title:"Résolution des litiges et médiation", text:"En cas de difficulté sur une prestation, ALANE met à votre disposition une procédure de résolution amiable, gratuite et interne : signalez le problème depuis l'historique de vos prestations dans les 48 heures suivant la fin de celle-ci. Les deux parties sont invitées à fournir leurs observations, et ALANE formule sous 72 heures ouvrées une proposition de résolution.\n\nCette procédure est interne à la Plateforme. Elle ne constitue ni un arbitrage, ni une médiation au sens juridique : ALANE est partie à la relation et n'est pas un tiers indépendant. La proposition n'a aucun caractère contraignant, et vous restez libre de la refuser.\n\nMédiateur de la consommation : conformément aux articles L.612-1 et suivants du Code de la consommation, vous avez le droit de recourir gratuitement à un médiateur de la consommation indépendant. ALANE est en cours de désignation d'un médiateur référencé par la Commission d'évaluation et de contrôle de la médiation de la consommation ; ses coordonnées seront publiées ici dès son adhésion effective.\n\nDans l'intervalle, et à tout moment, vous conservez l'intégralité de vos droits : vous pouvez recourir à la plateforme européenne de règlement en ligne des litiges (https://ec.europa.eu/consumers/odr) ou saisir la juridiction compétente, qui est celle de votre domicile si vous avez la qualité de consommateur." },
-        { title:"Données personnelles", text:"Conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés, vous disposez d'un droit d'accès, de rectification et de suppression de vos données personnelles. Pour exercer ces droits : direction@alane.fr\n\nResponsable de traitement : [À REMPLIR]\nDélégué à la Protection des Données : [À REMPLIR — si applicable]" },
+        { title:"Données personnelles", text:"Conformément au Règlement Général sur la Protection des Données (RGPD) et à la loi Informatique et Libertés, vous disposez d'un droit d'accès, de rectification et de suppression de vos données personnelles. Pour exercer ces droits : rgpd@alane.fr\n\n" + blocResponsableTraitement() },
       ]
     }
   };

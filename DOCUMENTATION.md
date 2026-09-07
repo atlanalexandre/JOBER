@@ -2614,7 +2614,26 @@ Principales adresses :
 | `/missions` | Historique des prestations |
 | `/booking` | Réservation |
 | `/settings`, `/notifications`, `/support` | Communs aux deux espaces |
+| `/legal` | Conditions générales (CGU par défaut) |
+| `/mentions-legales` | Mentions légales — **publique, atteignable sans compte** |
 | `/admin` | Backoffice |
+
+**Les mentions légales ont leur propre adresse** (07/09/2026). L'article 6-III de la loi pour
+la confiance dans l'économie numérique exige qu'elles soient accessibles « de manière directe
+et permanente », donc à un visiteur qui n'a pas de compte. Elles n'existaient que dans le menu
+d'un compte client : `/legal` retombe toujours sur les CGU, le type de document n'étant porté
+que par la mémoire de l'application. Elles sont désormais liées depuis l'accueil public, le
+menu client et l'espace prestataire — qui n'en avait aucun.
+
+**L'identité de l'éditeur vit dans [`src/constants/editeur.js`](src/constants/editeur.js)**, et
+nulle part ailleurs : mentions légales, factures et conditions doivent porter la même, et
+recopiée d'un écran à l'autre elle finirait par diverger — c'est ce qui est arrivé aux CGPS.
+Le drapeau `IMMATRICULEE` y commande deux états, sans intermédiaire : tant qu'il vaut `false`,
+la page annonce explicitement que la société est en cours de constitution. Elle affichait
+auparavant des marqueurs `[À REMPLIR]`, tels quels, à l'utilisateur. Le jour de
+l'immatriculation : remplir les champs, passer le drapeau à `true`, et le test
+`src/tests/mentions-legales.test.js` échoue tant qu'un champ obligatoire manque. Voir
+[IMMATRICULATION.md](IMMATRICULATION.md) pour ce qui ne se trouve pas dans ce fichier.
 
 Trois gardes s'appliquent automatiquement : sans session sur un écran protégé, on est renvoyé
 vers `/auth/signin` ; avec une session sur un écran de connexion, vers son espace ; et un

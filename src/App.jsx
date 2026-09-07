@@ -111,7 +111,7 @@ const NB_METIERS = new Set(Object.values(METIERS).flat()).size;
 
 // ── SCREENS ───────────────────────────────────────────────────────
 
-function SplashScreen({ onNext }) {
+function SplashScreen({ onNext, onMentions }) {
   const [v,setV]=useState(false);
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
@@ -252,6 +252,15 @@ function SplashScreen({ onNext }) {
         </Btn>
         <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", marginTop:14, letterSpacing:0.3 }}>
           Gratuit · Sans engagement · Résultats immédiats
+        </p>
+        {/* Accès « direct et permanent » aux mentions légales, imposé par
+            l'article 6-III de la LCEN : un visiteur sans compte n'avait aucun
+            moyen de savoir qui édite la plateforme. */}
+        <p style={{ textAlign:"center", marginTop:18 }}>
+          <a href="/mentions-legales" onClick={(e)=>{ e.preventDefault(); onMentions?.(); }}
+             style={{ color:C.textMuted, fontSize:11, textDecoration:"underline", letterSpacing:0.3 }}>
+            Mentions légales
+          </a>
         </p>
       </div>
     </div>
@@ -1772,7 +1781,7 @@ export default function App() {
       {screen==="settings"          && <SettingsScreen role={role} onNavigate={navigate} onBack={()=>setScreen(role==="prestataire"?"p_home":"home")} onLogout={async()=>{ await supabase.auth.signOut(); setRole(null); setScreen("role"); }} />}
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
-      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} />}
+      {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} />}
       {screen==="role"              && <RoleScreen notice={authNotice} onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
@@ -2008,6 +2017,10 @@ export default function App() {
       {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
+      {/* Écran distinct du précédent parce qu'il a sa PROPRE adresse : les
+          mentions légales doivent être atteignables sans compte (LCEN art.
+          6-III), et `/legal` seul retombe toujours sur les CGU. */}
+      {screen==="mentions_legales"  && <LegalScreen type="mentions_legales" onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
       {screen==="payslip"           && <PayslipScreen provider={payslipData?.provider||selectedProvider} prestation={payslipData} onBack={()=>setScreen(role==="prestataire"?"p_dashboard":"dashboard")} />}
       {screen==="bo_login"          && <BackofficeLogin onLogin={()=>{ setBoUnlocked(true); setScreen("bo_dashboard"); }} onBack={()=>setScreen("splash")} />}
       {screen==="bo_dashboard"      && boUnlocked && <BackofficeDashboard onBack={()=>{ try { sessionStorage.removeItem("bo_token"); } catch(e) {} setBoUnlocked(false); setScreen("splash"); }} onNavigate={(s,r,data)=>{ if(r) setRole(r); setBoTestMode(true); navigate(s,data); }} />}
@@ -2078,6 +2091,7 @@ export default function App() {
               { icon:"📋", label:"CGU",                sub:"Conditions générales",             action:"legal_cgu"     },
               { icon:"📝", label:"CGPS",               sub:"Conditions de prestation",         action:"legal_cgps"    },
               { icon:"🔒", label:"Confidentialité",    sub:"Politique de données",             action:"legal_privacy" },
+              { icon:"⚖️", label:"Mentions légales",    sub:"Éditeur, hébergeur, médiation",    action:"mentions_legales" },
               { icon:"⚙️", label:"Paramètres",         sub:"Compte, sécurité, paiement",      action:"settings"      },
             ].map((item,i) => (
               <div key={i} onClick={()=>{
@@ -2135,6 +2149,9 @@ export default function App() {
                 <button onClick={()=>navigate("legal","cgps")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📝 CGPS</button>
                 <button onClick={()=>navigate("legal","privacy")} style={{ flex:1, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>🔒 Confidentialité</button>
               </div>
+              {/* L'espace prestataire n'offrait AUCUN accès aux mentions légales :
+                  seul le menu du compte client en portait un. */}
+              <button onClick={()=>navigate("mentions_legales")} style={{ width:"100%", marginTop:10, padding:"11px", borderRadius:12, border:`1px solid ${C.border}`, background:"#0D1B3E", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>⚖️ Mentions légales</button>
             </div>
           )}
         </div>
