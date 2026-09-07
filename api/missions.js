@@ -2,7 +2,7 @@ import { resendBody, sendEmail } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
-import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
+import { montantsDeCloture, nombreDeJours, partHoraire } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
@@ -3268,7 +3268,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,heure_debut,hours,tarif_horaire`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3292,11 +3292,50 @@ export default async function handler(req, res) {
       // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h)
       const billedHours = Math.min(Math.ceil(elapsedHours), totalHours);
       const tarifHoraire = Number(mission.tarif_horaire) || 0;
-      const proratedAmount = billedHours * tarifHoraire;
+
+      const originalMontant = Number(mission.montant_total) || 0;
+
+      // LES FRAIS DE SERVICE RESTENT ACQUIS (03/09/2026).
+      //
+      // Le remboursement se calculait « payé − heures faites × tarif », et cette
+      // soustraction rendait au client L'INTÉGRALITÉ DES FRAIS DE SERVICE. Sur
+      // une prestation de 4 h à 15 €/h payée 66,10 €, interrompue au bout de
+      // 2 h 10 : 45 € au prestataire, 21,10 € au client, et ZÉRO pour ALANE —
+      // qui perdait en plus la commission Stripe, jamais restituée sur un
+      // remboursement.
+      //
+      // C'était contraire à la règle appliquée partout ailleurs, écrite dans
+      // `_cloture.js` : les frais « rémunèrent la mise en relation, pas les
+      // heures ». Une prestation écourtée de trois heures les conservait ; la
+      // même interrompue au bout de trois heures les rendait. Et le client qui
+      // annulait la veille payait 4,90 € quand celui qui laissait le prestataire
+      // se déplacer et travailler ne payait rien.
+      //
+      // Ils se déduisent de l'encaissement, comme à la clôture, plutôt que de
+      // recopier ici la grille tarifaire — une grille recopiée finit par
+      // diverger.
+      const joursPrestation = nombreDeJours(mission);
+      const partPrevue = partHoraire(mission, Number(mission.hours) || 0, joursPrestation);
+      const fraisService = (partPrevue > 0 && originalMontant > partPrevue)
+        ? Math.round((originalMontant - partPrevue) * 100) / 100
+        : 0;
+
+      // La part due au prestataire porte sur UN jour : l'interruption arrête la
+      // prestation, elle ne la reporte pas.
+      //
+      // RÉSERVE CONNUE, inchangée par cette correction : sur une prestation
+      // RÉCURRENTE interrompue au troisième jour, les deux premiers ne sont pas
+      // comptés — `elapsedHours` part de la première date et se trouve plafonné
+      // aux heures d'une seule journée. Le défaut préexiste ; le corriger
+      // suppose de décider ce qu'on doit à un prestataire dont on interrompt une
+      // récurrence, ce qui n'est pas une question technique.
+      const proratedAmount = partHoraire(mission, billedHours, 1);
+
+      // Ce que le client garde à sa charge : sa part horaire, plus les frais.
+      const totalClient = Math.round((proratedAmount + fraisService) * 100) / 100;
 
       // B-06: Stripe partial refund — executed BEFORE overwriting montant_total
-      const originalMontant = Number(mission.montant_total) || 0;
-      const refundAmount = Math.max(0, originalMontant - proratedAmount);
+      const refundAmount = Math.max(0, Math.round((originalMontant - totalClient) * 100) / 100);
       let stripeRefundId = null;
       const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
 
@@ -3368,9 +3407,28 @@ export default async function handler(req, res) {
       const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
+        // `completed`, et non plus `cancelled` (03/09/2026).
+        //
+        // Le versement automatique ne relève que les prestations `completed` :
+        // une prestation interrompue en sortait, et le prestataire dépendait
+        // d'un virement fait à la main, annoncé par un courriel « ACTION
+        // REQUISE ». Un courriel manqué, et quelqu'un qui avait travaillé
+        // n'était jamais payé — sans que rien ne le rappelle. C'était le seul
+        // endroit de la plateforme où l'argent dû tenait à un geste humain.
+        //
+        // Une prestation interrompue EST terminée : plus tôt que prévu, pour
+        // les heures faites. `cancellation_reason` en garde la raison, et
+        // `actual_hours` les heures réellement dues.
+        //
+        // `montant_total` conserve les frais de service encaissés : l'écraser
+        // par la seule part horaire effacerait la trace de ce que le client a
+        // payé, sur laquelle se calculent la facture et tout remboursement
+        // ultérieur.
         body: JSON.stringify({
-          status: "cancelled",
-          montant_total: proratedAmount,
+          status: "completed",
+          validation_client: true,
+          actual_hours: billedHours,
+          montant_total: totalClient,
           cancellation_reason: `Interrompue en cours — prorata ${billedHours}h sur ${totalHours}h prévues`,
         }),
       });
@@ -3383,6 +3441,37 @@ export default async function handler(req, res) {
           error: "Vous avez été remboursé, mais la prestation n'a pas pu être clôturée. "
                + "Écrivez à direction@alane.fr en indiquant la date : nous la fermons manuellement.",
         });
+      }
+
+      // Le versement entre dans le circuit normal, avec son échéance.
+      //
+      // Le montant est FIGÉ ici et non recalculé au moment du virement : il
+      // porte sur les heures réellement effectuées, que `actual_hours` vient
+      // d'enregistrer. Le délai reste celui de l'article 17.1 des CGPS — le
+      // client garde ses quarante-huit heures pour signaler un problème, même
+      // sur une prestation qu'il a lui-même interrompue.
+      if (proratedAmount > 0 && mission.prestataire_id) {
+        const echeanceInterruption = new Date(echeanceVersementMs(mission)).toISOString();
+        const versementProgramme = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            payout_status: "pending",
+            payout_due_at: echeanceInterruption,
+            payout_amount: proratedAmount,
+          }),
+        }).catch(e => { console.error("[cancel_in_progress] mise en attente du versement :", e.message); return null; });
+
+        if (!versementProgramme || !versementProgramme.ok) {
+          // Sans échéance, aucun virement ne partira : c'est le prestataire qui
+          // ne serait pas payé pour des heures qu'il a faites. Il faut que cela
+          // se voie dans les journaux, et que l'administration le sache.
+          console.error(`[cancel_in_progress] échéance de versement NON enregistrée pour ${mission_id} `
+            + `(${versementProgramme?.status}) — ${proratedAmount.toFixed(2)} € dus au prestataire `
+            + "à virer à la main.");
+        } else {
+          console.log(`[cancel_in_progress] versement de ${proratedAmount.toFixed(2)} € programmé `
+            + `au ${echeanceInterruption} — prestation ${mission_id}`);
+        }
       }
 
       // Récupérer infos prestataire (email + téléphone)
@@ -3449,7 +3538,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             sender: "ALANE",
             recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-            content: `Prestation "${missionLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT. L'équipe ALANE vous contacte sous 24h.`,
+            content: `Prestation "${missionLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT, versés automatiquement à la fermeture du délai de 48 h.`,
           }),
         }).catch(() => {});
       }
@@ -3460,7 +3549,7 @@ export default async function handler(req, res) {
             user_id: mission.prestataire_id,
             type: "mission",
             title: "Prestation interrompue — paiement prorata 💶",
-            body: `La prestation "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT). L'équipe ALANE vous contacte sous 24h.`,
+            body: `La prestation "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT), versés automatiquement à la fermeture du délai de 48 h.`,
           }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -3471,7 +3560,7 @@ export default async function handler(req, res) {
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
             subject: `[ARRÊT EN COURS] Prestation ${mission_id.slice(0,8)} — paiement partiel ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
-            message: `Prestation interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial client : ${originalMontant.toFixed(2)} €\nRemboursement client : ${refundAmount.toFixed(2)} € ${stripeRefundId ? `(✅ effectué — ${stripeRefundId})` : "(⚠️ ÉCHEC — à traiter manuellement)"}\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. ${stripeRefundId ? `Remboursement de ${refundAmount.toFixed(2)} € effectué automatiquement (${stripeRefundId})` : `Rembourser le client manuellement de ${refundAmount.toFixed(2)} € sur Stripe`}\n2. Virer le prorata de ${proratedAmount.toFixed(2)} € HT au prestataire`,
+            message: `Prestation interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial client : ${originalMontant.toFixed(2)} €\nRemboursement client : ${refundAmount.toFixed(2)} € ${stripeRefundId ? `(✅ effectué — ${stripeRefundId})` : "(⚠️ ÉCHEC — à traiter manuellement)"}\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. ${stripeRefundId ? `Remboursement de ${refundAmount.toFixed(2)} € effectué automatiquement (${stripeRefundId})` : `Rembourser le client manuellement de ${refundAmount.toFixed(2)} € sur Stripe`}\n2. Rien à faire pour le prestataire : ${proratedAmount.toFixed(2)} € HT lui sont versés automatiquement à la fermeture du délai de 48 h.\nFrais de service conservés par ALANE : ${fraisService.toFixed(2)} €`,
             user_email: clientEmail,
             user_id: caller.id,
             status: "open",
@@ -3498,12 +3587,13 @@ export default async function handler(req, res) {
                   <tr><td style="padding:6px 0;color:#666">Durée effectuée</td><td>${elapsedHours.toFixed(2)}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${proratedAmount.toFixed(2)} € HT</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${fraisService.toFixed(2)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
                 </table>
                 <p style="margin-top:16px;font-size:13px;color:#666">
                   Actions :<br>
                   1. Rembourser le client partiellement sur <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">Stripe</a><br>
-                  2. Virer ${proratedAmount.toFixed(2)} € HT au prestataire
+                  2. Rien à faire pour le prestataire — ${proratedAmount.toFixed(2)} € HT versés automatiquement sous 48 h
                 </p>
                 <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
