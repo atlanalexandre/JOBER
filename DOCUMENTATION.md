@@ -107,21 +107,45 @@ compte, si bien qu'un prestataire ayant huit ans sur un métier et six mois sur 
 annonçait nécessairement un de faux. Une valeur dérivée ne peut pas contredire le détail dont
 elle est tirée.
 
-**Une prestation interrompue en cours est `completed`, pas `cancelled`** (03/09/2026). Le
+**Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
+prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
+bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son
+après-midi : toute la prestation s'arrêtait, jeudi et vendredi compris, sans qu'il l'ait
+demandé. Et le prestataire y perdait ses lundi et mardi déjà travaillés, `elapsedHours` partant
+de la première date et se trouvant plafonné aux heures d'une seule journée.
+
+L'écran d'interruption propose donc deux issues, la moins destructrice par défaut :
+
+| Choix | Ce qui se passe |
+|---|---|
+| **Garder les journées suivantes** (défaut) | La prestation reste `assigned` et reprend le lendemain. Seules les heures non faites du jour sont enregistrées dans `missions.heures_perdues`, et remboursées. Aucun versement n'est programmé : le solde se fait à la clôture normale. |
+| **Arrêter toute la prestation** | La prestation passe `completed`, les journées restantes s'ajoutent à `heures_perdues`, `montant_total` est ramené au net dû, et le versement du prestataire est programmé à échéance +48 h. |
+
+Sur une prestation d'une seule date — de très loin le cas courant — les deux reviennent au
+même, et le choix n'est pas proposé.
+
+**`missions.heures_perdues`** (numeric, `NOT NULL DEFAULT 0`, `CHECK >= 0`, non modifiable
+depuis le navigateur) porte les heures convenues comme non effectuées, **cumulées sur toute la
+prestation**. `montantsDeCloture()` (`api/_cloture.js`) les déduit de la part du prestataire —
+sur le **montant** et non sur les heures, puisque `heures_perdues` est un total tandis que
+`hours` s'entend par jour : les soustraire l'une de l'autre retirerait la perte autant de fois
+qu'il y a de jours. Elle vaut 0 sur toute prestation jamais interrompue.
+
+Le jour en cours est déterminé par `dateDuJourFr()` (`api/_temps.js`) et non par
+`toISOString()` : Vercel tourne en UTC, et entre minuit et 2 h du matin en France la date UTC
+est encore celle de la veille — une interruption à 0 h 30 aurait compté une journée de plus
+comme accomplie, donc payée.
+
+**Une prestation arrêtée en cours est `completed`, pas `cancelled`** (03/09/2026). Le
 versement automatique ne relève que les prestations `completed` : tant qu'une interruption
 passait en `cancelled`, elle sortait du circuit et le prestataire dépendait d'un virement fait
-à la main. Une prestation interrompue **est** terminée — plus tôt que prévu, pour les heures
+à la main. Une prestation arrêtée **est** terminée — plus tôt que prévu, pour les heures
 faites. `cancellation_reason` en garde la raison, `actual_hours` les heures dues.
 
 Les **frais de service restent acquis** à ALANE, comme à toute autre clôture : ils rémunèrent
 la mise en relation, pas les heures (`api/_cloture.js`). Le remboursement se calculait
 auparavant « payé − heures faites × tarif », ce qui les rendait intégralement au client — et
 faisait perdre à ALANE la commission Stripe, jamais restituée sur un remboursement.
-
-**Réserve connue** : sur une prestation **récurrente** interrompue au troisième jour, les deux
-premiers ne sont pas comptés. `elapsedHours` part de la première date et se trouve plafonné aux
-heures d'une seule journée. Le défaut préexiste à cette correction ; le lever suppose de
-décider ce qui est dû à un prestataire dont on interrompt une récurrence.
 
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 

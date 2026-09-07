@@ -1,8 +1,8 @@
 import { resendBody, sendEmail } from "./_email.js";
 import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
-import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "./_temps.js";
-import { montantsDeCloture, nombreDeJours, partHoraire } from "./_cloture.js";
+import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "./_temps.js";
+import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
@@ -3268,7 +3268,7 @@ export default async function handler(req, res) {
       if (!isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const mRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif`,
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,prestataire_id,status,stripe_payment_intent,montant_total,metier,sector,date,date_debut,date_fin,heure_debut,hours,tarif_horaire,extra_hours_appliquees,extra_hours_tarif,heures_perdues`,
         { headers }
       );
       const mData = await mRes.json();
@@ -3278,22 +3278,62 @@ export default async function handler(req, res) {
       if (mission.status !== "assigned") return res.status(400).json({ error: "La prestation n'est pas en cours" });
       if (!mission.heure_debut) return res.status(400).json({ error: "Heure de début non définie sur cette prestation" });
 
-      // Calcul du prorata arrondi à l'heure supérieure
-      const missionStartNaive = mission.date
-        ? new Date(`${mission.date}T${mission.heure_debut}`)
-        : null;
-      const missionStart = missionStartNaive
-        ? new Date(missionStartNaive.getTime() + frenchOffsetMs(missionStartNaive))
-        : null;
-      const elapsedMs = Math.max(0, missionStart ? Date.now() - missionStart.getTime() : 0);
-      const elapsedHours = elapsedMs / 3600000;
-      const totalHours = Number(mission.hours) || 1;
-      const roundedHours = Math.min(Math.ceil(elapsedHours * 10) / 10, totalHours);
-      // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h)
-      const billedHours = Math.min(Math.ceil(elapsedHours), totalHours);
+      // ── Ce qui a réellement été fait ────────────────────────────────────
+      //
+      // Sur une prestation récurrente, `hours` est un nombre d'heures PAR JOUR
+      // et `date_debut`/`date_fin` bornent la période. Le temps écoulé était
+      // compté depuis la PREMIÈRE date, puis plafonné aux heures d'une seule
+      // journée : un prestataire ayant travaillé lundi et mardi, interrompu
+      // mercredi, perdait ses deux premières journées.
+      //
+      // On compte donc séparément les journées déjà accomplies et les heures
+      // faites aujourd'hui.
+      const totalHours = Number(mission.hours) || 1;        // heures PAR JOUR
       const tarifHoraire = Number(mission.tarif_horaire) || 0;
+      const joursPrestation = nombreDeJours(mission);
+      const estRecurrente = joursPrestation > 1;
+
+      // La journée en cours part de l'heure de début D'AUJOURD'HUI, jamais de
+      // la première date : sur une récurrente, elles diffèrent.
+      const aujourdHui = dateDuJourFr();
+      const debutDuJour = debutPrestationMs(aujourdHui, mission.heure_debut);
+      const elapsedMs = Math.max(0, debutDuJour === null ? 0 : Date.now() - debutDuJour);
+      const elapsedHours = elapsedMs / 3600000;
+
+      // Arrondi à l'heure entière supérieure (ex: 4h30 → 5h), au bénéfice du
+      // prestataire, et plafonné aux heures prévues pour la journée.
+      const heuresDuJour = Math.min(Math.ceil(elapsedHours), totalHours);
+      const heuresPerduesDuJour = Math.max(0, totalHours - heuresDuJour);
+
+      // Journées ANTÉRIEURES à aujourd'hui, donc entièrement accomplies. Une
+      // prestation d'une seule date n'en compte aucune.
+      const premierJour = mission.date_debut || mission.date;
+      const joursEcoules = (estRecurrente && premierJour)
+        ? Math.max(0, Math.min(
+            joursPrestation - 1,
+            Math.round((new Date(`${aujourdHui}T00:00:00Z`) - new Date(`${premierJour}T00:00:00Z`)) / 86400000)
+          ))
+        : 0;
+
+      // Heures dues pour tout ce qui a été fait : les journées complètes
+      // derrière nous, plus celles d'aujourd'hui.
+      const billedHours = joursEcoules * totalHours + heuresDuJour;
+
+      // Le client choisit ce qu'il advient des journées suivantes. Par défaut
+      // on n'arrête QUE la journée en cours : arrêter l'après-midi du mercredi
+      // ne doit pas annuler le jeudi et le vendredi sans qu'il l'ait demandé.
+      // Sur une prestation d'une seule date, les deux reviennent au même.
+      const annulerReste = !estRecurrente || req.body?.annuler_reste === true;
+      const joursRestants = annulerReste ? 0 : Math.max(0, joursPrestation - joursEcoules - 1);
 
       const originalMontant = Number(mission.montant_total) || 0;
+
+      // Heures qu'il est convenu de ne pas faire, ajoutées à celles d'une
+      // éventuelle interruption antérieure.
+      const heuresPerduesAjoutees = heuresPerduesDuJour + joursRestants * totalHours;
+      const heuresPerduesTotal = Math.round(
+        ((Number(mission.heures_perdues) || 0) + heuresPerduesAjoutees) * 100
+      ) / 100;
 
       // LES FRAIS DE SERVICE RESTENT ACQUIS (03/09/2026).
       //
@@ -3314,28 +3354,18 @@ export default async function handler(req, res) {
       // Ils se déduisent de l'encaissement, comme à la clôture, plutôt que de
       // recopier ici la grille tarifaire — une grille recopiée finit par
       // diverger.
-      const joursPrestation = nombreDeJours(mission);
-      const partPrevue = partHoraire(mission, Number(mission.hours) || 0, joursPrestation);
-      const fraisService = (partPrevue > 0 && originalMontant > partPrevue)
-        ? Math.round((originalMontant - partPrevue) * 100) / 100
-        : 0;
+      // Le partage passe par `montantsDeCloture`, la seule source du calcul :
+      // il retranche les heures non faites de la part du prestataire et déduit
+      // les frais de l'encaissement, sans recopier ici la grille tarifaire.
+      const partage = montantsDeCloture({ ...mission, heures_perdues: heuresPerduesTotal });
+      const proratedAmount = partage.partPrestataire;
+      const fraisService   = partage.fraisService;
+      const totalClient    = partage.totalClient;
 
-      // La part due au prestataire porte sur UN jour : l'interruption arrête la
-      // prestation, elle ne la reporte pas.
-      //
-      // RÉSERVE CONNUE, inchangée par cette correction : sur une prestation
-      // RÉCURRENTE interrompue au troisième jour, les deux premiers ne sont pas
-      // comptés — `elapsedHours` part de la première date et se trouve plafonné
-      // aux heures d'une seule journée. Le défaut préexiste ; le corriger
-      // suppose de décider ce qu'on doit à un prestataire dont on interrompt une
-      // récurrence, ce qui n'est pas une question technique.
-      const proratedAmount = partHoraire(mission, billedHours, 1);
-
-      // Ce que le client garde à sa charge : sa part horaire, plus les frais.
-      const totalClient = Math.round((proratedAmount + fraisService) * 100) / 100;
-
+      // Le remboursement porte sur les heures perdues AJOUTÉES aujourd'hui :
+      // celles d'une interruption antérieure ont déjà été rendues.
       // B-06: Stripe partial refund — executed BEFORE overwriting montant_total
-      const refundAmount = Math.max(0, Math.round((originalMontant - totalClient) * 100) / 100);
+      const refundAmount = Math.max(0, Math.round(heuresPerduesAjoutees * tarifHoraire * 100) / 100);
       let stripeRefundId = null;
       const isWalletPaidInProgress = mission.stripe_payment_intent?.startsWith("wallet_");
 
@@ -3407,30 +3437,33 @@ export default async function handler(req, res) {
       const majAnnul = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
         method: "PATCH",
         headers: { ...headers, "Prefer": "return=representation" },
-        // `completed`, et non plus `cancelled` (03/09/2026).
+        // DEUX ISSUES, selon ce que le client a choisi.
         //
-        // Le versement automatique ne relève que les prestations `completed` :
-        // une prestation interrompue en sortait, et le prestataire dépendait
-        // d'un virement fait à la main, annoncé par un courriel « ACTION
-        // REQUISE ». Un courriel manqué, et quelqu'un qui avait travaillé
-        // n'était jamais payé — sans que rien ne le rappelle. C'était le seul
-        // endroit de la plateforme où l'argent dû tenait à un geste humain.
+        // « Arrêter toute la prestation » : elle se clôture. `completed` et non
+        // `cancelled`, parce que le versement automatique ne relève que les
+        // prestations terminées — en `cancelled`, le prestataire dépendait d'un
+        // virement fait à la main, et un courriel manqué suffisait à ce que
+        // quelqu'un qui avait travaillé ne soit jamais payé.
         //
-        // Une prestation interrompue EST terminée : plus tôt que prévu, pour
-        // les heures faites. `cancellation_reason` en garde la raison, et
-        // `actual_hours` les heures réellement dues.
-        //
-        // `montant_total` conserve les frais de service encaissés : l'écraser
-        // par la seule part horaire effacerait la trace de ce que le client a
-        // payé, sur laquelle se calculent la facture et tout remboursement
-        // ultérieur.
-        body: JSON.stringify({
-          status: "completed",
-          validation_client: true,
-          actual_hours: billedHours,
-          montant_total: totalClient,
-          cancellation_reason: `Interrompue en cours — prorata ${billedHours}h sur ${totalHours}h prévues`,
-        }),
+        // « Arrêter seulement aujourd'hui » : la prestation RESTE `assigned` et
+        // reprend demain. On n'enregistre que les heures non faites ; le solde
+        // se fera à la clôture normale. `montant_total` n'est PAS réécrit : il
+        // documente l'encaissement d'origine, dont `montantsDeCloture` déduit
+        // les frais de service. Le ramener au net effacerait cette trace, et la
+        // clôture finale ne retrouverait plus les frais.
+        body: JSON.stringify(annulerReste
+          ? {
+              status: "completed",
+              validation_client: true,
+              actual_hours: totalHours,
+              heures_perdues: heuresPerduesTotal,
+              montant_total: totalClient,
+              cancellation_reason: `Interrompue en cours — ${billedHours}h dues sur ${totalHours * joursPrestation}h prévues`,
+            }
+          : {
+              heures_perdues: heuresPerduesTotal,
+              cancellation_reason: `Journée du ${aujourdHui} écourtée — ${heuresDuJour}h faites sur ${totalHours}h prévues`,
+            }),
       });
       const lignesAnnul = await majAnnul.json().catch(() => []);
       if (!majAnnul.ok || !Array.isArray(lignesAnnul) || lignesAnnul.length === 0) {
@@ -3445,12 +3478,18 @@ export default async function handler(req, res) {
 
       // Le versement entre dans le circuit normal, avec son échéance.
       //
+      // UNIQUEMENT si la prestation est arrêtée. Une prestation qui reprend
+      // demain n'est pas terminée : programmer son versement aujourd'hui
+      // paierait le prestataire avant qu'il ait fait les journées restantes, et
+      // le montant figé serait faux. Elle se règle à sa clôture normale, qui
+      // déduira `heures_perdues`.
+      //
       // Le montant est FIGÉ ici et non recalculé au moment du virement : il
       // porte sur les heures réellement effectuées, que `actual_hours` vient
       // d'enregistrer. Le délai reste celui de l'article 17.1 des CGPS — le
       // client garde ses quarante-huit heures pour signaler un problème, même
       // sur une prestation qu'il a lui-même interrompue.
-      if (proratedAmount > 0 && mission.prestataire_id) {
+      if (annulerReste && proratedAmount > 0 && mission.prestataire_id) {
         const echeanceInterruption = new Date(echeanceVersementMs(mission)).toISOString();
         const versementProgramme = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
           method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
@@ -3473,6 +3512,24 @@ export default async function handler(req, res) {
             + `au ${echeanceInterruption} — prestation ${mission_id}`);
         }
       }
+
+      // ── Ce qu'on annonce, dit une seule fois ──────────────────────────────
+      //
+      // Les deux issues ne se racontent pas de la même façon. « Vous serez
+      // payé(e) pour 6 h » est faux quand la prestation reprend demain : rien
+      // n'est versé ce jour-là, et le montant dû n'est pas encore connu. Une
+      // annonce fausse sur de l'argent vaut une panne.
+      const eur  = (n) => Number(n || 0).toFixed(2).replace(".", ",");
+      const nbh  = (n) => String(Math.round(Number(n || 0) * 100) / 100).replace(".", ",");
+      const jourFr = new Date(`${aujourdHui}T12:00:00Z`).toLocaleDateString("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
+
+      const resumeIssue = annulerReste
+        ? `La prestation est arrêtée définitivement : ${nbh(billedHours)}h dues sur les ${nbh(totalHours * joursPrestation)}h prévues.`
+        : `Seule la journée du ${jourFr} est écourtée : ${nbh(heuresDuJour)}h faites sur ${nbh(totalHours)}h prévues. La prestation reprend comme prévu.`;
+
+      const reglementIssue = annulerReste
+        ? `Vous serez réglé(e) ${eur(proratedAmount)} € HT, versés automatiquement à la fermeture du délai de 48 h.`
+        : `Les ${nbh(heuresPerduesAjoutees)}h non faites aujourd'hui seront déduites de votre règlement final. Le reste de la prestation est inchangé.`;
 
       // Récupérer infos prestataire (email + téléphone)
       let prestaEmail = null;
@@ -3508,21 +3565,26 @@ export default async function handler(req, res) {
           body: resendBody({
             from: RESEND_FROM,
             to: prestaEmail,
-            subject: `💶 Prestation interrompue — vous serez payé(e) pour ${billedHours}h`,
+            subject: annulerReste
+              ? `💶 Prestation interrompue — vous serez payé(e) ${eur(proratedAmount)} € HT`
+              : `⏱️ Journée écourtée — ${nbh(heuresDuJour)}h au lieu de ${nbh(totalHours)}h`,
             html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
-              <h2 style="color:#050E20">Prestation interrompue par le client</h2>
+              <h2 style="color:#050E20">${annulerReste ? "Prestation interrompue par le client" : "Journée écourtée par le client"}</h2>
               <p style="color:#444">Bonjour ${esc(prestaName)},</p>
-              <p style="color:#444">Le client a mis fin à la prestation <strong>${esc(missionLabel)}</strong> avant son terme prévu.</p>
+              <p style="color:#444">${annulerReste
+                ? `Le client a mis fin à la prestation <strong>${esc(missionLabel)}</strong> avant son terme prévu.`
+                : `Le client a écourté la journée d'aujourd'hui sur la prestation <strong>${esc(missionLabel)}</strong>. <strong>Elle n'est pas annulée</strong> : les journées suivantes sont maintenues.`}</p>
               <div style="background:#fff;border-radius:10px;padding:16px;margin:20px 0;border-left:4px solid #7C6FE0">
                 <table style="width:100%;font-size:14px;color:#333">
-                  <tr><td style="padding:5px 0;color:#666">Durée prévue</td><td style="font-weight:700">${totalHours}h</td></tr>
-                  <tr><td style="padding:5px 0;color:#666">Durée effectuée</td><td style="font-weight:700">${elapsedHours.toFixed(1).replace(".",",")}h</td></tr>
-                  <tr><td style="padding:5px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h (arrondi heure supérieure)</td></tr>
-                  <tr><td style="padding:5px 0;color:#666">Tarif horaire</td><td style="font-weight:700">${tarifHoraire.toFixed(2).replace(".",",")} € HT/h</td></tr>
-                  <tr><td style="padding:5px 0;color:#666;border-top:1px solid #eee;padding-top:10px">Montant dû</td><td style="font-weight:800;color:#10D98F;font-size:17px;border-top:1px solid #eee;padding-top:10px">${proratedAmount.toFixed(2).replace(".",",")} € HT</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">${annulerReste ? "Durée prévue" : "Durée prévue aujourd'hui"}</td><td style="font-weight:700">${nbh(annulerReste ? totalHours * joursPrestation : totalHours)}h</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">Effectué aujourd'hui</td><td style="font-weight:700">${nbh(heuresDuJour)}h (arrondi heure supérieure)</td></tr>
+                  <tr><td style="padding:5px 0;color:#666">Tarif horaire</td><td style="font-weight:700">${eur(tarifHoraire)} € HT/h</td></tr>
+                  ${annulerReste
+                    ? `<tr><td style="padding:5px 0;color:#666;border-top:1px solid #eee;padding-top:10px">Montant dû</td><td style="font-weight:800;color:#10D98F;font-size:17px;border-top:1px solid #eee;padding-top:10px">${eur(proratedAmount)} € HT</td></tr>`
+                    : `<tr><td style="padding:5px 0;color:#666;border-top:1px solid #eee;padding-top:10px">Heures déduites</td><td style="font-weight:700;color:#7C6FE0;border-top:1px solid #eee;padding-top:10px">${nbh(heuresPerduesAjoutees)}h</td></tr>`}
                 </table>
               </div>
-              <p style="color:#444;font-size:13px">L'équipe ALANE traite votre règlement dans les meilleurs délais. Vous recevrez un virement sous 5 jours ouvrés.</p>
+              <p style="color:#444;font-size:13px">${reglementIssue}</p>
               <p style="color:#888;font-size:12px;margin-top:24px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
             </div>`,
           }),
@@ -3538,7 +3600,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             sender: "ALANE",
             recipient: prestaPhone.startsWith("+") ? prestaPhone : `+33${prestaPhone.replace(/^0/, "")}`,
-            content: `Prestation "${missionLabel}" interrompue après ${elapsedHours.toFixed(1).replace(".",",")}h. Vous serez réglé(e) pour ${billedHours}h = ${proratedAmount.toFixed(2).replace(".",",")} € HT, versés automatiquement à la fermeture du délai de 48 h.`,
+            content: `Prestation "${missionLabel}" : ${resumeIssue} ${reglementIssue}`,
           }),
         }).catch(() => {});
       }
@@ -3548,8 +3610,8 @@ export default async function handler(req, res) {
         await notifier({
             user_id: mission.prestataire_id,
             type: "mission",
-            title: "Prestation interrompue — paiement prorata 💶",
-            body: `La prestation "${missionLabel}" a été interrompue. Vous serez payé(e) pour ${billedHours}h (${proratedAmount.toFixed(2).replace(".",",")} € HT), versés automatiquement à la fermeture du délai de 48 h.`,
+            title: annulerReste ? "Prestation interrompue — paiement prorata 💶" : "Journée écourtée par le client ⏱️",
+            body: `Prestation "${missionLabel}" : ${resumeIssue} ${reglementIssue}`,
           }, SUPABASE_URL, headers).catch(() => {});
       }
 
@@ -3559,8 +3621,12 @@ export default async function handler(req, res) {
           method: "POST",
           headers: { ...headers, "Prefer": "return=minimal" },
           body: JSON.stringify({
-            subject: `[ARRÊT EN COURS] Prestation ${mission_id.slice(0,8)} — paiement partiel ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
-            message: `Prestation interrompue par le client en cours d'exécution.\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nDurée prévue : ${totalHours}h\nDurée effectuée : ${elapsedHours.toFixed(2)}h\nHeures facturées : ${billedHours}h (arrondi supérieur)\nMontant dû au prestataire : ${proratedAmount.toFixed(2)} € HT\nMontant initial client : ${originalMontant.toFixed(2)} €\nRemboursement client : ${refundAmount.toFixed(2)} € ${stripeRefundId ? `(✅ effectué — ${stripeRefundId})` : "(⚠️ ÉCHEC — à traiter manuellement)"}\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\nActions requises :\n1. ${stripeRefundId ? `Remboursement de ${refundAmount.toFixed(2)} € effectué automatiquement (${stripeRefundId})` : `Rembourser le client manuellement de ${refundAmount.toFixed(2)} € sur Stripe`}\n2. Rien à faire pour le prestataire : ${proratedAmount.toFixed(2)} € HT lui sont versés automatiquement à la fermeture du délai de 48 h.\nFrais de service conservés par ALANE : ${fraisService.toFixed(2)} €`,
+            subject: annulerReste
+              ? `[ARRÊT EN COURS] Prestation ${mission_id.slice(0,8)} — paiement partiel ${nbh(billedHours)}h / ${eur(proratedAmount)} € HT`
+              : `[JOURNÉE ÉCOURTÉE] Prestation ${mission_id.slice(0,8)} — ${nbh(heuresPerduesAjoutees)}h non faites le ${aujourdHui}`,
+            message: `${annulerReste ? "Prestation interrompue par le client en cours d'exécution — ARRÊTÉE." : "Journée écourtée par le client — la prestation CONTINUE."}\n\nMission : ${missionLabel}\nPrestataire : ${prestaName} (${prestaEmail || mission.prestataire_id})\nClient : ${clientEmail || caller.id}\n\nJours de la prestation : ${joursPrestation}\nHeures par jour : ${nbh(totalHours)}h\nJournée du ${aujourdHui} : ${nbh(heuresDuJour)}h faites (arrondi supérieur)\nHeures non faites ajoutées : ${nbh(heuresPerduesAjoutees)}h\nHeures non faites cumulées : ${nbh(heuresPerduesTotal)}h\nMontant initial client : ${eur(originalMontant)} €\nRemboursement client : ${eur(refundAmount)} € ${stripeRefundId ? `(✅ effectué — ${stripeRefundId})` : (refundAmount > 0 ? "(⚠️ ÉCHEC — à traiter manuellement)" : "(aucun)")}\nPaymentIntent Stripe : ${mission.stripe_payment_intent}\n\n${annulerReste
+              ? `Part prestataire : ${eur(proratedAmount)} € HT, versée automatiquement à la fermeture du délai de 48 h — rien à faire.`
+              : `Aucun versement programmé : la prestation se clôturera normalement à son terme, et les ${nbh(heuresPerduesTotal)}h non faites seront déduites de la part du prestataire à ce moment-là.`}\nFrais de service conservés par ALANE : ${eur(fraisService)} €`,
             user_email: clientEmail,
             user_id: caller.id,
             status: "open",
@@ -3576,24 +3642,32 @@ export default async function handler(req, res) {
             body: resendBody({
               from: RESEND_FROM,
               to: ADMIN_EMAIL,
-              subject: `[ACTION REQUISE] Arrêt en cours — ${missionLabel} — ${billedHours}h / ${proratedAmount.toFixed(2)} € HT`,
+              subject: annulerReste
+                ? `[INFO] Arrêt en cours — ${missionLabel} — ${nbh(billedHours)}h / ${eur(proratedAmount)} € HT`
+                : `[INFO] Journée écourtée — ${missionLabel} — ${nbh(heuresPerduesAjoutees)}h non faites`,
               html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
-                <h2 style="color:#050E20">⚠️ Prestation interrompue en cours d'exécution</h2>
+                <h2 style="color:#050E20">${annulerReste ? "⚠️ Prestation interrompue en cours d'exécution" : "⏱️ Journée écourtée — la prestation continue"}</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:14px">
                   <tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-weight:700">${esc(missionLabel)}</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-weight:700">${esc(prestaName)} — ${esc(prestaEmail||"—")}</td></tr>
                   <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(clientEmail||caller.id)}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Durée prévue</td><td>${totalHours}h</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Durée effectuée</td><td>${elapsedHours.toFixed(2)}h</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Heures facturées</td><td style="font-weight:700;color:#7C6FE0">${billedHours}h</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${proratedAmount.toFixed(2)} € HT</td></tr>
-                  <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${fraisService.toFixed(2)} €</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Jours / heures par jour</td><td>${joursPrestation} × ${nbh(totalHours)}h</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Journée du ${aujourdHui}</td><td>${nbh(heuresDuJour)}h faites</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Heures non faites cumulées</td><td style="font-weight:700;color:#7C6FE0">${nbh(heuresPerduesTotal)}h</td></tr>
+                  <tr><td style="padding:6px 0;color:#666">Remboursement client</td><td style="font-weight:700">${eur(refundAmount)} €</td></tr>
+                  ${annulerReste ? `<tr><td style="padding:6px 0;color:#666">Montant prestataire</td><td style="font-weight:700;color:#10D98F">${eur(proratedAmount)} € HT</td></tr>` : ""}
+                  <tr><td style="padding:6px 0;color:#666">Frais de service conservés</td><td style="font-weight:700;color:#7C6FE0">${eur(fraisService)} €</td></tr>
                   <tr><td style="padding:6px 0;color:#666">PaymentIntent</td><td style="font-size:12px">${mission.stripe_payment_intent}</td></tr>
                 </table>
                 <p style="margin-top:16px;font-size:13px;color:#666">
-                  Actions :<br>
-                  1. Rembourser le client partiellement sur <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">Stripe</a><br>
-                  2. Rien à faire pour le prestataire — ${proratedAmount.toFixed(2)} € HT versés automatiquement sous 48 h
+                  ${stripeRefundId
+                    ? `Remboursement de ${eur(refundAmount)} € déjà effectué automatiquement (${stripeRefundId}).`
+                    : (refundAmount > 0
+                        ? `⚠️ Remboursement de ${eur(refundAmount)} € NON effectué — à traiter sur <a href="https://dashboard.stripe.com/payments/${mission.stripe_payment_intent}" style="color:#7C6FE0">Stripe</a>.`
+                        : "Aucun remboursement dû.")}<br>
+                  ${annulerReste
+                    ? `Rien à faire pour le prestataire — ${eur(proratedAmount)} € HT versés automatiquement sous 48 h.`
+                    : "Rien à faire : la prestation se clôturera normalement à son terme, heures non faites déduites."}
                 </p>
                 <p style="margin-top:16px;font-size:12px;color:#888">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
               </div>`,
@@ -3602,7 +3676,15 @@ export default async function handler(req, res) {
         }
       }
 
-      return res.status(200).json({ success: true, billedHours, proratedAmount });
+      return res.status(200).json({
+        success: true,
+        annulee: annulerReste,
+        billedHours,
+        heuresDuJour,
+        heuresPerdues: heuresPerduesTotal,
+        remboursement: refundAmount,
+        proratedAmount,
+      });
     }
 
     if (action === "checkin_mission") {

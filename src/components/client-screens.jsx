@@ -6226,6 +6226,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [cancelling, setCancelling] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
+  // Le sort des journées suivantes, sur une prestation récurrente. Par défaut
+  // on ne touche qu'à la journée en cours.
+  const [annulerReste, setAnnulerReste] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
   const [showDisputeModal, setShowDisputeModal] = useState(null);
   const [disputeMsg, setDisputeMsg] = useState("");
@@ -6682,7 +6685,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     setCancelling(false);
   };
 
-  const handleStopInProgress = async () => {
+  // Interrompre : par défaut la JOURNÉE EN COURS seulement. Sur une prestation
+  // récurrente, rentrer plus tôt un mercredi ne doit pas annuler le jeudi et le
+  // vendredi ; le client choisit, et c'est ce choix qu'on transmet.
+  const handleStopInProgress = async (annulerReste = false) => {
     if (!selected) return;
     setStopping(true);
     try {
@@ -6691,12 +6697,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       const res = await fetch("/api/missions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id }),
+        body: JSON.stringify({ action: "cancel_in_progress", mission_id: selected.id, annuler_reste: annulerReste === true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");
-      setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "cancelled" } : m));
-      setSelected(null);
+      // Le serveur clôture en `completed`, pas en `cancelled` : une prestation
+      // interrompue est terminée pour les heures faites, et c'est ce statut que
+      // relève le versement automatique du prestataire.
+      if (data.annulee) {
+        setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, status: "completed" } : m));
+        setSelected(null);
+        showToast("Prestation arrêtée. Le prestataire est prévenu.");
+      } else {
+        setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, heures_perdues: data.heuresPerdues } : m));
+        setSelected(prev => prev ? { ...prev, heures_perdues: data.heuresPerdues } : prev);
+        showToast("Journée écourtée. La prestation reprend comme prévu.");
+      }
       setShowStopConfirm(false);
     } catch(e) { showToast(e.message || "Erreur lors de l'arrêt. Réessayez."); }
     setStopping(false);
@@ -7307,14 +7323,39 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           )}
 
           {(() => {
-            const mStart = selected.date ? new Date(`${selected.date}T${selected.heure_debut || "00:00"}`) : null;
-            const mEnd   = mStart ? new Date(mStart.getTime() + Number(selected.hours || 1) * 3600000) : null;
-            const now2   = Date.now();
+            // Sur une prestation récurrente, `date` est la PREMIÈRE date, et
+            // `hours` le nombre d'heures PAR JOUR. La fenêtre calculée sur ces
+            // deux valeurs se refermait au soir du premier jour : le bouton
+            // « Interrompre » disparaissait dès le deuxième, et le client
+            // n'avait plus aucun moyen d'arrêter quoi que ce soit.
+            const heuresJournee = Number(selected.hours || 1);
+            const jourDeb = selected.date_debut || selected.date || null;
+            const jourFin = selected.date_fin   || selected.date || null;
+            const aujourdHuiFr = new Intl.DateTimeFormat("fr-CA", {
+              timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+            }).format(new Date());
+            const recurrente = !!(jourDeb && jourFin && jourFin > jourDeb);
+
+            const now2 = Date.now();
+            const mStart = jourDeb ? new Date(`${jourDeb}T${selected.heure_debut || "00:00"}`) : null;
+            const mEnd   = jourFin
+              ? new Date(new Date(`${jourFin}T${selected.heure_debut || "00:00"}`).getTime() + heuresJournee * 3600000)
+              : null;
             const isStarted = mStart && mStart.getTime() < now2;
             const isEnded   = mEnd   && mEnd.getTime()   < now2;
-            const elapsedH  = mStart && isStarted ? (now2 - mStart.getTime()) / 3600000 : 0;
-            const billedH   = Math.min(Math.ceil(elapsedH), Number(selected.hours || 1));
-            const prorata   = billedH * Number(selected.tarif_horaire || 0);
+
+            // La journée en cours : celle d'aujourd'hui si on est dans la
+            // période, et elle seule.
+            const dansLaPeriode = jourDeb && jourFin && aujourdHuiFr >= jourDeb && aujourdHuiFr <= jourFin;
+            const debutAuj = dansLaPeriode ? new Date(`${aujourdHuiFr}T${selected.heure_debut || "00:00"}`) : null;
+            const elapsedH = debutAuj && debutAuj.getTime() < now2 ? (now2 - debutAuj.getTime()) / 3600000 : 0;
+            const heuresDuJour = Math.min(Math.ceil(elapsedH), heuresJournee);
+            const joursEcoules = recurrente && dansLaPeriode
+              ? Math.max(0, Math.round((new Date(`${aujourdHuiFr}T00:00:00Z`) - new Date(`${jourDeb}T00:00:00Z`)) / 86400000))
+              : 0;
+            const billedH  = joursEcoules * heuresJournee + heuresDuJour;
+            const heuresNonFaites = Math.max(0, heuresJournee - heuresDuJour);
+            const prorata  = billedH * Number(selected.tarif_horaire || 0);
 
             return (<>
               {/* Prestation pas encore démarrée : annulation classique */}
@@ -7325,10 +7366,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </button>
               )}
 
-              {/* Prestation en cours : interrompre avec prorata */}
-              {selected.status === "assigned" && isStarted && !isEnded && (
-                <button onClick={()=>setShowStopConfirm(true)} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                  ⏹ Interrompre la prestation en cours
+              {/* Prestation en cours : interrompre la journée, au prorata */}
+              {selected.status === "assigned" && isStarted && !isEnded && dansLaPeriode && (
+                <button onClick={()=>{ setAnnulerReste(false); setShowStopConfirm(true); }} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.5)", background:"rgba(242,94,94,0.1)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                  ⏹ {recurrente ? "Interrompre la journée en cours" : "Interrompre la prestation en cours"}
                 </button>
               )}
 
@@ -7381,29 +7422,58 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
                   <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
                     <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⏹</div>
-                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>Interrompre la prestation ?</div>
-                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, textAlign:"center", marginBottom:16 }}>La prestation est en cours depuis {elapsedH.toFixed(1).replace(".",",")}h</div>
+                    <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:6 }}>
+                      {recurrente ? "Interrompre la journée en cours ?" : "Interrompre la prestation ?"}
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, textAlign:"center", marginBottom:16 }}>
+                      La journée d'aujourd'hui a commencé il y a {elapsedH.toFixed(1).replace(".",",")}h
+                    </div>
                     <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:12, padding:"16px", marginBottom:18 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Durée effectuée</span>
-                        <span style={{ color:"#fff", fontWeight:700, fontSize:13 }}>{elapsedH.toFixed(1).replace(".",",")}h</span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Prévu aujourd'hui</span>
+                        <span style={{ color:"#fff", fontWeight:700, fontSize:13 }}>{String(heuresJournee).replace(".",",")}h</span>
                       </div>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Heures facturées</span>
-                        <span style={{ color:"#7C6FE0", fontWeight:800, fontSize:15 }}>{billedH}h <span style={{ fontSize:11, fontWeight:400 }}>(arrondi supérieur)</span></span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Effectué aujourd'hui</span>
+                        <span style={{ color:"#7C6FE0", fontWeight:800, fontSize:15 }}>{String(heuresDuJour).replace(".",",")}h <span style={{ fontSize:11, fontWeight:400 }}>(arrondi supérieur)</span></span>
                       </div>
                       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
-                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Montant prestataire</span>
-                        <span style={{ color:"#10D98F", fontWeight:800, fontSize:16 }}>{prorata.toFixed(2).replace(".",",")} € HT</span>
+                        <span style={{ color:"rgba(255,255,255,0.6)", fontSize:13 }}>Remboursé aujourd'hui</span>
+                        <span style={{ color:"#10D98F", fontWeight:800, fontSize:16 }}>{(heuresNonFaites * Number(selected.tarif_horaire || 0)).toFixed(2).replace(".",",")} €</span>
                       </div>
                     </div>
+
+                    {/* Le sort des journées suivantes n'appartient qu'au client :
+                        écourter un mercredi n'annule pas le jeudi sans qu'il l'ait
+                        demandé. Le choix par défaut est donc le moins destructeur. */}
+                    {recurrente && (
+                      <div style={{ marginBottom:18 }}>
+                        {[
+                          { valeur:false, titre:"Garder les journées suivantes", detail:`La prestation reprend comme prévu jusqu'au ${new Date(`${jourFin}T12:00:00`).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })}.` },
+                          { valeur:true,  titre:"Arrêter toute la prestation",   detail:`Les journées restantes sont annulées et remboursées (${((heuresNonFaites + Math.max(0, (Math.round((new Date(`${jourFin}T00:00:00Z`) - new Date(`${aujourdHuiFr}T00:00:00Z`)) / 86400000)) * heuresJournee)) * Number(selected.tarif_horaire || 0)).toFixed(2).replace(".",",")} € au total).` },
+                        ].map(opt => (
+                          <button key={String(opt.valeur)} onClick={()=>setAnnulerReste(opt.valeur)} style={{
+                            width:"100%", textAlign:"left", marginBottom:8, padding:"12px 14px", borderRadius:12, cursor:"pointer", fontFamily:"inherit",
+                            border: annulerReste === opt.valeur ? "1px solid #7C6FE0" : "1px solid rgba(255,255,255,0.12)",
+                            background: annulerReste === opt.valeur ? "rgba(124,111,224,0.15)" : "transparent",
+                          }}>
+                            <div style={{ color:"#fff", fontWeight:700, fontSize:13, marginBottom:3 }}>
+                              {annulerReste === opt.valeur ? "◉" : "○"} {opt.titre}
+                            </div>
+                            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, lineHeight:1.45, paddingLeft:18 }}>{opt.detail}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textAlign:"center", marginBottom:18, lineHeight:1.5 }}>
-                      Le prestataire sera averti par email et SMS. L'équipe ALANE traitera le remboursement partiel sous 48h.
+                      Le prestataire est averti par email et SMS. Les heures non faites vous sont remboursées ;
+                      les <strong style={{ color:"#F0B429" }}>frais de service restent acquis</strong>, ils couvrent la mise en relation déjà effectuée.
                     </div>
                     <div style={{ display:"flex", gap:10 }}>
                       <button onClick={()=>setShowStopConfirm(false)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Continuer</button>
-                      <button onClick={handleStopInProgress} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                        {stopping ? "Arrêt…" : "Interrompre"}
+                      <button onClick={()=>handleStopInProgress(annulerReste)} disabled={stopping} style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                        {stopping ? "Arrêt…" : (recurrente && !annulerReste ? "Écourter la journée" : "Interrompre")}
                       </button>
                     </div>
                   </div>
