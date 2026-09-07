@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp } from "../../../api/_temps.js";
+import { frenchOffsetMs, debutPrestationMs, finPrestationMs, retardMinutes, echeanceVersementMs, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "../../../api/_temps.js";
 
 // Repère : « 14:00 » le 6 août 2026 est une heure de Paris en heure d'été,
 // donc 12:00 UTC. En janvier, la même heure vaut 13:00 UTC.
@@ -331,5 +331,25 @@ describe("finPrestationMs — la borne qui ferme l'annulation", () => {
     const debut = new Date("2026-08-21T08:00:00Z").getTime();
     const base = { started_at: new Date(debut).toISOString(), hours: 4 };
     expect(finPrestationMs(base)).toBe(debut + 4 * 3600000);
+  });
+});
+
+describe("dateDuJourFr", () => {
+  // Vercel tourne en UTC : entre minuit et 2 h du matin en France, la date UTC
+  // est encore celle de la veille. Une journée interrompue à 0 h 30 aurait été
+  // rattachée au jour précédent, et aurait compté une journée de plus comme
+  // accomplie — donc payée.
+  it("rend le jour français, pas le jour UTC", () => {
+    expect(dateDuJourFr(Date.parse("2026-09-06T22:30:00Z"))).toBe("2026-09-07");
+  });
+
+  it("rend le même jour en pleine journée", () => {
+    expect(dateDuJourFr(Date.parse("2026-09-07T10:00:00Z"))).toBe("2026-09-07");
+  });
+
+  // En hiver le décalage n'est que d'une heure : 23 h 30 UTC est déjà demain.
+  it("suit le changement d'heure", () => {
+    expect(dateDuJourFr(Date.parse("2026-01-06T23:30:00Z"))).toBe("2026-01-07");
+    expect(dateDuJourFr(Date.parse("2026-01-06T22:30:00Z"))).toBe("2026-01-06");
   });
 });

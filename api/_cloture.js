@@ -33,16 +33,6 @@ export function nombreDeJours(m) {
 }
 
 /**
- * Montants dus à la clôture d'une prestation.
- *
- * @param {object} m  la prestation, telle que lue en base
- * @returns {{
- *   heuresEffectives:number, jours:number, partPrestataire:number,
- *   fraisService:number, totalClient:number,
- *   ajustementRetard:{avant:number, apres:number, retard:number}|null
- * }}
- */
-/**
  * Part horaire due au prestataire, tarif des heures supplémentaires compris.
  *
  * Une prestation prolongée porte DEUX tarifs : celui convenu à la commande, et
@@ -68,6 +58,18 @@ export function partHoraire(m, heures, jours) {
   return Math.round((base * tarif + supp * tarifSupp) * (Number(jours) || 1) * 100) / 100;
 }
 
+/**
+ * Montants dus à la clôture d'une prestation.
+ *
+ * @param {object} m  la prestation, telle que lue en base. `heures_perdues`,
+ *                     s'il est renseigné, retire de la part du prestataire les
+ *                     heures convenues comme non effectuées.
+ * @returns {{
+ *   heuresEffectives:number, jours:number, partPrestataire:number,
+ *   fraisService:number, totalClient:number,
+ *   ajustementRetard:{avant:number, apres:number, retard:number}|null
+ * }}
+ */
 export function montantsDeCloture(m) {
   const jours        = nombreDeJours(m);
 
@@ -90,7 +92,23 @@ export function montantsDeCloture(m) {
     }
   }
 
-  const partPrestataire = partHoraire(m, heuresEffectives, jours);
+  // Heures convenues comme non faites, à la suite d'une interruption de journée
+  // (07/09/2026). Elles se déduisent de la part du prestataire : sans cela, une
+  // prestation récurrente reprise le lendemain paierait à la clôture des heures
+  // dont le client et le prestataire étaient convenus qu'elles ne seraient pas
+  // effectuées.
+  //
+  // La déduction porte sur le MONTANT et non sur les heures : `heures_perdues`
+  // est un total sur toute la prestation, alors que `heuresEffectives` est un
+  // nombre d'heures PAR JOUR. Les soustraire l'une de l'autre mêlerait deux
+  // unités et retirerait la perte autant de fois qu'il y a de jours.
+  const heuresPerdues = Math.max(0, Number(m?.heures_perdues) || 0);
+  const valeurPerdue = Math.round(heuresPerdues * (Number(m?.tarif_horaire) || 0) * 100) / 100;
+
+  const partPrestataire = Math.max(
+    0,
+    Math.round((partHoraire(m, heuresEffectives, jours) - valeurPerdue) * 100) / 100
+  );
 
   // Frais de service réellement encaissés : ce qui a été payé, moins la part
   // horaire prévue. On les déduit de l'encaissement plutôt que de reproduire ici

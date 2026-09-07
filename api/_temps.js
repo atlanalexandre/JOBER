@@ -55,6 +55,20 @@ export function frenchOffsetMs(date) {
  * @param {string} heureDebut  « 14:00 » — 08:00 par défaut, comme partout ailleurs
  * @returns {number|null} null si la date est absente ou illisible
  */
+/**
+ * La date du jour telle qu'elle est vécue en France, au format « AAAA-MM-JJ ».
+ *
+ * Vercel tourne en UTC : `new Date().toISOString().slice(0,10)` donne la veille
+ * pendant les deux premières heures de la nuit française. Une interruption à
+ * minuit trente serait rattachée au jour précédent, et compterait une journée
+ * de plus comme accomplie.
+ */
+export function dateDuJourFr(nowMs = Date.now()) {
+  return new Intl.DateTimeFormat("fr-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(nowMs));
+}
+
 export function debutPrestationMs(date, heureDebut) {
   if (!date) return null;
   const [h = 8, mn = 0] = String(heureDebut || "08:00").split(":").map(Number);
