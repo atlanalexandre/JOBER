@@ -94,7 +94,13 @@ const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/
 ```
 
 Exception : `RESEND_FROM` et `ADMIN_EMAIL` contiennent des espaces **significatifs**
-(`JOBER <no-reply@…>`). Ne jamais leur appliquer ce nettoyage.
+(`ALANE <no-reply@…>`). Ne jamais leur appliquer ce nettoyage.
+
+L'exemple portait `JOBER`, l'ancien nom du projet. Ce n'était qu'un exemple, mais il entretenait
+le doute sur la valeur réellement posée dans Vercel — et le nom d'expéditeur, lui, s'affiche
+dans la boîte de réception de chaque client et de chaque prestataire. Il doit valoir `ALANE`,
+comme le domaine et le contenu des messages : un expéditeur qui ne correspond ni à l'un ni à
+l'autre est lu comme une usurpation par les filtres anti-spam (voir DOCUMENTATION.md §8).
 
 ### 1.5 La clé service role ne sort jamais du dossier `/api`
 
