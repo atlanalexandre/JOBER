@@ -4,6 +4,7 @@ import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
+import { qualificationsPour } from "./_qualifications.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
@@ -402,6 +403,56 @@ export default async function handler(req, res) {
         if (manquants.length > 0) {
           console.log(`[enable_missions] ${profileId} : ${manquants.join(", ")} — accès non ouvert.`);
           return res.status(409).json({ error: messageMandatsManquants(manquants) });
+        }
+
+        // ── Les métiers réglementés supposent un titre PRODUIT ET VÉRIFIÉ ───
+        //
+        // Le document « Diplômes & certifications » était facultatif pour tout
+        // le monde : un agent de sécurité pouvait donc être mis en relation
+        // avec un client sans avoir jamais produit sa carte professionnelle,
+        // alors qu'exercer sans carte est un délit (trois ans et 45 000 €,
+        // art. L617-1 du code de la sécurité intérieure).
+        //
+        // La règle vit ICI, côté serveur, et pas seulement dans l'écran du
+        // prestataire : c'est l'ouverture de l'accès aux prestations qui la
+        // rend opposable. Un contrôle qui ne vit que dans le navigateur ne
+        // protège personne.
+        //
+        // On exige `verified` et pas seulement la présence du fichier : un
+        // document déposé mais jamais regardé ne vaut pas une vérification.
+        try {
+          const uq = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+          const uqData = uq.ok ? await uq.json().catch(() => null) : null;
+          const attendues = qualificationsPour(uqData?.user_metadata?.metiers_list);
+
+          if (attendues.length > 0) {
+            const dq = await fetch(
+              `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`
+              + `&type=eq.diplomes&select=verified&limit=1`,
+              { headers }
+            );
+            const dqRows = dq.ok ? await dq.json().catch(() => []) : [];
+            const justificatif = Array.isArray(dqRows) ? dqRows[0] : null;
+
+            if (!justificatif || justificatif.verified !== true) {
+              const quoi = attendues.map(q => `${q.titre} (${q.metiers.join(", ")})`).join(" ; ");
+              console.log(`[enable_missions] ${profileId} : justificatif de qualification `
+                + `${justificatif ? "déposé mais non vérifié" : "absent"} — accès non ouvert. Attendu : ${quoi}`);
+              return res.status(409).json({
+                error: justificatif
+                  ? `Le justificatif de qualification est déposé mais pas encore vérifié. Ouvrez-le et validez-le avant d'ouvrir l'accès. Attendu : ${quoi}.`
+                  : `Ce prestataire déclare un métier réglementé et n'a pas produit son justificatif. Attendu : ${quoi}.`,
+              });
+            }
+          }
+        } catch (e) {
+          // Ne jamais ouvrir l'accès « au bénéfice du doute » : si l'on ne peut
+          // pas vérifier, on ne sait pas, et on ne sait pas au sujet d'un
+          // métier réglementé.
+          console.error(`[enable_missions] ${profileId} : qualifications illisibles —`, e.message);
+          return res.status(503).json({
+            error: "Impossible de vérifier les qualifications de ce prestataire. Réessayez dans un instant.",
+          });
         }
 
         if (!p0.missions_enabled_at) {

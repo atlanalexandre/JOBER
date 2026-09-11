@@ -228,6 +228,54 @@ au pointage — ont été **supprimés le 11/09/2026**. L'écran était strictem
 qu'une clé de navigateur, sans aucun appel serveur. Le code, dérivé de l'identifiant du
 prestataire et de la date, se générait sans jamais voir le client : il ne prouvait rien.
 
+**Les métiers réglementés exigent leur titre** (11/09/2026). Le document « Diplômes &
+certifications » était facultatif pour tout le monde. Un agent de sécurité pouvait donc être mis
+en relation avec un client **sans avoir jamais produit sa carte professionnelle**, alors
+qu'exercer sans carte est puni de trois ans d'emprisonnement et 45 000 € d'amende (code de la
+sécurité intérieure, art. L617-1) — et que la plateforme, qui organise la mise en relation,
+aurait eu du mal à expliquer qu'elle n'avait rien demandé.
+
+[`api/_qualifications.js`](api/_qualifications.js) nomme, **métier par métier**, le titre
+attendu et le texte qui l'impose — 30 métiers à ce jour :
+
+| Famille | Titre attendu |
+|---|---|
+| Sécurité privée (6 métiers) | Carte professionnelle CNAPS, diplôme SSIAP à jour |
+| Sport et baignade (2) | Carte professionnelle d'éducateur sportif, BNSSA |
+| Animation (2) | BAFA ou équivalent |
+| Conduite (3) | Carte VTC, permis C ou D avec FIMO/FCO |
+| Coiffure et esthétique (2) | CAP, BP, ou 3 ans de pratique |
+| Métiers de bouche (13) | CAP de la spécialité, ou 3 ans de pratique |
+| Bâtiment, travaux sur cordes (2) | CAP du second œuvre, CQP cordiste / IRATA |
+
+Le fichier vit dans `api/` et non dans `src/constants/` : **la règle s'applique côté serveur**,
+et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
+
+**Ce que ça change concrètement** :
+
+1. `docsRequisPour(nationalite, metiers)` prend désormais les métiers déclarés. Le document
+   devient obligatoire, et **son intitulé nomme le titre attendu** — « Carte professionnelle
+   CNAPS » plutôt que « Diplômes & certifications ». Un prestataire à qui l'on réclame « un
+   diplôme » envoie n'importe quoi ; à qui l'on réclame sa carte, envoie sa carte ;
+2. l'inscription, l'onglet « Docs » et la checklist « Premiers pas » lisent tous cette liste —
+   l'onglet affichait jusqu'ici `DOCS_REQUIS` brut, donc la même liste pour tout le monde ;
+3. **`enable_missions` refuse d'ouvrir l'accès aux prestations** tant que le justificatif n'est
+   pas déposé **et vérifié**. Un document déposé mais jamais regardé ne vaut pas une
+   vérification. Si la vérification elle-même échoue, l'accès n'est pas ouvert au bénéfice du
+   doute : réponse 503, et on réessaie.
+
+> **Ce que la plateforme ne fait PAS.** Elle n'authentifie aucun titre. Contrôler une carte
+> CNAPS auprès du CNAPS, un permis auprès de l'ANTS ou un diplôme auprès de son école suppose
+> des accès qu'elle n'a pas. C'est une exigence de **production**, vérifiée à l'œil par le
+> back-office comme les autres pièces — pas une certification.
+
+**Avant d'ajouter une entrée** : vérifier que le titre est exigé par un *texte*, et pas
+seulement recommandé par l'usage. Le CACES en est le contre-exemple — c'est une recommandation
+de la CNAM, et c'est l'autorisation de conduite délivrée par l'employeur qui est obligatoire ;
+un indépendant n'en a pas. De même, servir ou vendre n'est pas *préparer* : les vendeurs en
+boulangerie ne sont pas concernés, les boulangers le sont. Une exigence sans fondement finit
+par être contournée, et décrédibilise les autres.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |
