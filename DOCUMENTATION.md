@@ -269,6 +269,14 @@ et `src/constants/data.js` la ré-exporte. Une copie aurait divergé.
 > des accès qu'elle n'a pas. C'est une exigence de **production**, vérifiée à l'œil par le
 > back-office comme les autres pièces — pas une certification.
 
+**Ce qui est exigé et ce qu'il faut savoir sont deux registres distincts.** `NOTES_METIERS`,
+dans le même fichier, porte les conditions qui existent sans s'appliquer à tous : le numéro de
+déclaration d'activité DREETS n'est nécessaire qu'à un formateur qui facture de la **formation
+professionnelle continue** (OPCO, employeur, CPF), pas à celui qui donne un cours à un
+particulier. L'exiger de tous aurait écarté la majorité des inscrits. Ces notes s'affichent au
+moment où le prestataire choisit le métier, et n'imposent aucun document. Un métier ne peut pas
+figurer dans les deux tables — c'est testé.
+
 **Avant d'ajouter une entrée** : vérifier que le titre est exigé par un *texte*, et pas
 seulement recommandé par l'usage. Le CACES en est le contre-exemple — c'est une recommandation
 de la CNAM, et c'est l'autorisation de conduite délivrée par l'employeur qui est obligatoire ;

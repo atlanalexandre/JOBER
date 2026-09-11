@@ -129,3 +129,33 @@ export function qualificationsPour(metiers) {
   return [...parTitre.values()];
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Ce qu'il faut SAVOIR sans que ce soit exigible
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// À distinguer soigneusement du tableau ci-dessus. Là, un texte impose un titre
+// et la plateforme le réclame. Ici, une condition existe mais ne s'applique
+// qu'à une partie des situations : l'exiger de tous écarterait des
+// prestataires parfaitement en règle.
+//
+// Le cas qui a motivé cette distinction : le numéro de déclaration d'activité
+// (DREETS) des formateurs. Il n'est nécessaire que pour facturer au titre de la
+// FORMATION PROFESSIONNELLE CONTINUE — celle financée par un OPCO, un employeur
+// ou le CPF. Un formateur qui donne un cours à un particulier n'en a pas
+// besoin. Le réclamer à tous aurait écarté la majorité des inscrits.
+//
+// Une exigence sans fondement finit par être contournée, et décrédibilise
+// celles qui en ont un. On informe, et on laisse le prestataire se conformer.
+export const NOTES_METIERS = {
+  "Formateur professionnel":              { texte: "Pour facturer au titre de la formation professionnelle continue (OPCO, employeur, CPF), un numéro de déclaration d'activité auprès de la DREETS est nécessaire. Il ne l'est pas pour un cours donné à un particulier." },
+  "Formateur bureautique / informatique": { texte: "Pour facturer au titre de la formation professionnelle continue (OPCO, employeur, CPF), un numéro de déclaration d'activité auprès de la DREETS est nécessaire. Il ne l'est pas pour un cours donné à un particulier." },
+  "Professeur particulier / Soutien scolaire": { texte: "Les cours à domicile chez un particulier peuvent ouvrir droit au crédit d'impôt services à la personne, sous réserve d'une déclaration d'activité SAP. Ce n'est pas une condition d'exercice." },
+  "Aide à domicile":                      { texte: "L'aide à domicile chez un particulier peut ouvrir droit au crédit d'impôt services à la personne, sous réserve d'une déclaration d'activité SAP. Ce n'est pas une condition d'exercice." },
+  "Auxiliaire de vie":                    { texte: "L'intervention auprès de personnes vulnérables peut relever d'un agrément ou d'une autorisation départementale selon le public accompagné. À vérifier avant d'accepter ce type de prestation." },
+};
+
+/** Ce qu'il faut savoir sur ce métier, sans que ce soit exigible. */
+export function noteMetier(metier) {
+  return NOTES_METIERS[metier]?.texte || null;
+}

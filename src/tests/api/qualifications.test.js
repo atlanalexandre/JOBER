@@ -121,3 +121,31 @@ describe("l'application côté serveur", () => {
     expect(bloc.slice(0, bloc.indexOf("majProfil"))).toContain("503");
   });
 });
+
+// Ajouté le 11/09/2026. Le numéro de déclaration d'activité DREETS n'est
+// nécessaire que pour facturer au titre de la FORMATION PROFESSIONNELLE
+// CONTINUE — celle financée par un OPCO, un employeur ou le CPF. Un formateur
+// qui donne un cours à un particulier n'en a pas besoin.
+describe("les notes d'information", () => {
+  it("informent sans exiger", async () => {
+    const { noteMetier } = await import("../../../api/_qualifications.js");
+    expect(noteMetier("Formateur professionnel")).toMatch(/DREETS/);
+    // Et surtout : aucune de ces mentions ne rend un document obligatoire.
+    const d = docsRequisPour("Française", ["Formateur professionnel"]).find(x => x.id === "diplomes");
+    expect(d.required).toBe(false);
+  });
+
+  it("ne visent que des métiers qui existent", async () => {
+    const { NOTES_METIERS } = await import("../../../api/_qualifications.js");
+    const inconnus = Object.keys(NOTES_METIERS).filter(m => !TOUS_LES_METIERS.includes(m));
+    expect(inconnus, `libellés sans métier correspondant : ${inconnus.join(", ")}`).toEqual([]);
+  });
+
+  // Un métier ne doit pas être à la fois « exigé » et « bon à savoir » : le
+  // prestataire ne saurait plus lequel des deux l'engage.
+  it("ne se superposent pas aux obligations", async () => {
+    const { NOTES_METIERS } = await import("../../../api/_qualifications.js");
+    const doublons = Object.keys(NOTES_METIERS).filter(m => QUALIFICATIONS_OBLIGATOIRES[m]);
+    expect(doublons).toEqual([]);
+  });
+});

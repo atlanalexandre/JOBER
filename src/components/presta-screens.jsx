@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
@@ -910,6 +910,35 @@ export function PrestaOnboarding({ onComplete, onBack }) {
             <input type="range" min={0} max={20} value={newMetier.experienceAns}
               onChange={e=>setNewMetier({...newMetier,experienceAns:Number(e.target.value)})}
               style={{ width:"100%", accentColor:C.violet, marginBottom:16 }} />
+            {/* Ce que suppose le métier choisi, dit AU MOMENT DU CHOIX et pas
+                trois écrans plus loin. Deux registres bien distincts : ce qui
+                est exigé par un texte et que la plateforme réclamera, et ce
+                qu'il faut simplement savoir. Les mélanger ferait prendre une
+                information pour une obligation, et l'inverse. */}
+            {(() => {
+              const q = qualificationRequise(newMetier.metier);
+              if (!q) return null;
+              return (
+                <div style={{ background:"rgba(240,180,41,0.10)", border:"1px solid rgba(240,180,41,0.40)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+                  <div style={{ color:"#F0B429", fontWeight:800, fontSize:12.5, marginBottom:5 }}>⚖️ Métier réglementé — justificatif obligatoire</div>
+                  <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>
+                    <strong style={{ color:C.text }}>{q.titre}</strong>{q.detail ? ` — ${q.detail}` : ""}.
+                    <br/>Vous devrez le déposer dans vos documents : sans lui, votre accès aux prestations ne pourra pas être ouvert.
+                    <div style={{ color:C.textMuted, fontSize:11, marginTop:5 }}>{q.texte}</div>
+                  </div>
+                </div>
+              );
+            })()}
+            {(() => {
+              const n = noteMetier(newMetier.metier);
+              if (!n) return null;
+              return (
+                <div style={{ background:`${C.violet}12`, border:`1px solid ${C.violet}33`, borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+                  <div style={{ color:C.violet, fontWeight:800, fontSize:12.5, marginBottom:5 }}>ℹ️ Bon à savoir</div>
+                  <div style={{ color:C.textSub, fontSize:12, lineHeight:1.55 }}>{n}</div>
+                </div>
+              );
+            })()}
             <Input label="Certifications (optionnel)" placeholder="Ex : CACES 1, HACCP, SST…" value={newMetier.certifs} onChange={e=>setNewMetier({...newMetier,certifs:e.target.value})} hint="Laissez vide si aucune certification" />
             <Btn
               full
@@ -3467,8 +3496,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [tab,setTab]=useState(
     ONGLETS_PRESTA_GUIDE.some(o => o.id === ongletInitial) ? ongletInitial : "prestations"
   );
-  const [_userRib,setUserRib]=useState(null);
-  const [ribMissionError,_setRibMissionError]=useState(false);
+  // L'IBAN du prestataire. Le bandeau d'alerte plus bas était branché sur un
+  // état que PERSONNE ne mettait jamais à vrai : il ne s'est donc jamais
+  // affiché. La donnée était pourtant chargée juste à côté.
+  const [userRib,setUserRib]=useState(null);
+  const [ribCharge,setRibCharge]=useState(false);
   const [spotsLeft,setSpotsLeft]=useState(null);
   const [planActuel,setPlanActuel]=useState("free");
   const [planLoaded,setPlanLoaded]=useState(false);
@@ -3620,6 +3652,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
       const u = session?.user; if(!u) return;
       setUserRib(u.user_metadata?.rib||null);
+      setRibCharge(true);
       setDispoRapide(u.user_metadata?.dispo_immediat !== false);
       setUserName([u.user_metadata?.prenom,u.user_metadata?.nom].filter(Boolean).join(" ")||"Mon espace");
       // profiles.avatar_url d'abord (hors JWT), repli metadata pour les comptes non migrés
@@ -4069,7 +4102,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
               donnerait prise au reproche d'un pouvoir de direction déguisé
               (CGPS art. 5.2). Annoncer une priorité qui n'existe pas la vendait
               deux fois : au prestataire, et contre la défense de la plateforme. */}
-          {ribMissionError && (
+          {ribCharge && !userRib && (
             <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.4)", borderRadius:12, padding:"12px 14px", marginBottom:14, fontSize:13, color:"#F25E5E", lineHeight:1.6 }}>
               🏦 <strong>IBAN / RIB manquant</strong><br/>Ajoutez votre IBAN dans vos réglages avant d'accepter une prestation.
             </div>
