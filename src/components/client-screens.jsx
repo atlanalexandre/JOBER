@@ -3729,12 +3729,24 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     );
   }, []);
 
-  // Fetch prestataire name if not provided
+  // Nom ET PHOTO du prestataire.
+  //
+  // Cet écran, ouvert pendant la prestation, n'affichait qu'un émoji 👤 : le
+  // client qui s'en servait pour suivre l'arrivée de quelqu'un n'avait, à
+  // l'instant où cette personne sonnait, aucun visage à comparer. La photo est
+  // lue ici même, sans dépendre du catalogue public — dont le filtrage laissait
+  // régulièrement le client sans rien.
+  const [photoPresta, setPhotoPresta] = useState(p?.photo_url || null);
   useEffect(() => {
-    if (providerName && providerName !== "Prestataire") return;
     if (!p?.id) return;
-    supabase.from("profiles").select("prenom,nom").eq("id", p.id).single()
-      .then(({ data }) => { if (data) setProviderName([data.prenom, data.nom].filter(Boolean).join(" ") || "Prestataire"); });
+    supabase.from("profiles").select("prenom,nom,avatar_url").eq("id", p.id).single()
+      .then(({ data }) => {
+        if (!data) return;
+        if (!providerName || providerName === "Prestataire") {
+          setProviderName([data.prenom, data.nom].filter(Boolean).join(" ") || "Prestataire");
+        }
+        if (data.avatar_url) setPhotoPresta(data.avatar_url);
+      });
   }, [p?.id]);
 
   // Poll prestation status + prestataire GPS every 20s
@@ -3842,7 +3854,11 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
             </div>
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:`${p?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{p?.avatar||"👤"}</div>
+            <div style={{ width:40, height:40, borderRadius:12, background:`${p?.color||C.violet}22`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, overflow:"hidden" }}>
+              {photoPresta
+                ? <img src={photoPresta} alt={`Photo de ${providerName || "votre prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                : (p?.avatar||"👤")}
+            </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{providerName || p?.name || "Prestataire"}</div>
               <div style={{ color:C.textSub, fontSize:12 }}>{p?.jobTitle||p?.role||""}</div>
@@ -6230,6 +6246,9 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   const [cancelling, setCancelling] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
+  // Vérification de l'identité du prestataire au moment de son arrivée.
+  const [identiteEnCours, setIdentiteEnCours] = useState(false);
+  const [confirmRefusIdentite, setConfirmRefusIdentite] = useState(false);
   // Le sort des journées suivantes, sur une prestation récurrente. Par défaut
   // on ne touche qu'à la journée en cours.
   const [annulerReste, setAnnulerReste] = useState(false);
@@ -6327,13 +6346,20 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       const prenom = acceptedCand?.prenom || selected.prestataire_prenom || "";
       const nom    = acceptedCand?.nom    || selected.prestataire_nom    || "";
       const fullProv = providers.find(p => p.id === selected.prestataire_id);
+      // La photo vient d'abord de LA PRESTATION (`prestataire_photo`, servi par
+      // /api/missions), et seulement ensuite du catalogue public. Le catalogue
+      // est filtré — compte approuvé, accès aux prestations ouvert, secteur
+      // actif, consentement d'affichage coché : un prestataire qui en sortait
+      // entre la réservation et le jour J laissait le client devant de simples
+      // initiales, au moment précis où il devait reconnaître quelqu'un.
+      const photoPresta = selected.prestataire_photo || fullProv?.photo_url || null;
       if (prenom || nom) {
         const name = [prenom, nom].filter(Boolean).join(" ");
         const initials = [prenom[0], nom[0]].filter(Boolean).join("").toUpperCase() || "P";
         setPrestaName(name);
-        setPrestaDetails({ initials, avgRating: 0, photo_url: fullProv?.photo_url || null });
+        setPrestaDetails({ initials, avgRating: 0, photo_url: photoPresta });
       } else {
-        setPrestaDetails(prev => prev || { initials: "P", avgRating: 0, photo_url: fullProv?.photo_url || null });
+        setPrestaDetails(prev => prev || { initials: "P", avgRating: 0, photo_url: photoPresta });
       }
       // Enrich with ratings (no RLS issue — public read)
       supabase.from("ratings").select("rating").eq("reviewee_provider_id", selected.prestataire_id)
@@ -6689,6 +6715,50 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     setCancelling(false);
   };
 
+  // « C'est bien elle » / « Ce n'est pas elle », au moment de l'arrivée.
+  //
+  // Tout passe par /api : un refus déclenche un remboursement intégral et la
+  // suspension d'un prestataire. Laisser le navigateur écrire ça, ce serait
+  // permettre à n'importe qui de se rembourser et de suspendre qui il veut.
+  const repondreIdentite = async (cestBienElle) => {
+    if (!selected || identiteEnCours) return;
+    setIdentiteEnCours(true);
+    try {
+      const { data: sd } = await supabase.auth.getSession();
+      const token = sd?.session?.access_token;
+      const res = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          action: cestBienElle ? "confirmer_identite" : "refuser_identite",
+          mission_id: selected.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+
+      if (cestBienElle) {
+        setMissions(ms => ms.map(m => m.id === selected.id ? { ...m, identite_statut: "confirmee" } : m));
+        setSelected(prev => prev ? { ...prev, identite_statut: "confirmee" } : prev);
+        showToast("Merci, c'est noté.", "success");
+      } else {
+        setMissions(ms => ms.map(m => m.id === selected.id
+          ? { ...m, identite_statut: "refusee", status: "cancelled" } : m));
+        setSelected(prev => prev ? { ...prev, identite_statut: "refusee", status: "cancelled" } : prev);
+        setConfirmRefusIdentite(false);
+        // Le remboursement peut avoir échoué côté Stripe alors que la prestation
+        // est bien arrêtée : ne jamais annoncer un virement qui n'est pas parti.
+        showToast(data.rembourse
+          ? "Prestation annulée. Vous êtes intégralement remboursé, frais compris."
+          : "Prestation annulée. Notre équipe traite votre remboursement et vous écrit sous 24 h.");
+      }
+    } catch (e) {
+      console.error("[identite] réponse impossible :", e.message);
+      showToast(e.message || "Échec de l'envoi. Réessayez, ou écrivez à direction@alane.fr.");
+    }
+    setIdentiteEnCours(false);
+  };
+
   // Interrompre : par défaut la JOURNÉE EN COURS seulement. Sur une prestation
   // récurrente, rentrer plus tôt un mercredi ne doit pas annuler le jeudi et le
   // vendredi ; le client choisit, et c'est ce choix qu'on transmet.
@@ -6918,6 +6988,95 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               </div>
             );
           })()}
+          {/* ── « Est-ce bien la personne que j'ai réservée ? » ──────────────
+              Posée au moment où quelqu'un se présente, et à ce moment-là
+              seulement. Jusqu'ici le client n'avait aucun moyen de le vérifier
+              ni de dire non : ses seuls recours étaient l'annulation ordinaire,
+              frais de service retenus alors qu'il n'y est pour rien, ou le
+              litige — dont le bouton n'apparaît qu'APRÈS la prestation, donc
+              une fois la personne entrée chez lui. */}
+          {selected.status === "assigned" && selected.arrived_at && !selected.identite_statut && (
+            <div style={{ background:"linear-gradient(135deg,rgba(124,111,224,0.12),rgba(124,111,224,0.04))", border:`1.5px solid ${C.violet}66`, borderRadius:16, padding:"16px", marginBottom:16 }}>
+              <div style={{ fontWeight:800, color:C.violet, fontSize:14, marginBottom:4 }}>👤 Est-ce bien la bonne personne ?</div>
+              <div style={{ color:C.textSub, fontSize:12.5, marginBottom:14, lineHeight:1.55 }}>
+                Avant de la laisser commencer, vérifiez que la personne devant vous est bien celle que vous avez réservée.
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:14, background:"rgba(255,255,255,0.05)", borderRadius:12, padding:"12px 14px", marginBottom:14 }}>
+                <div style={{ width:64, height:64, borderRadius:"50%", background:`linear-gradient(135deg,${C.violet},#A29BFE)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:800, color:"#fff", flexShrink:0, overflow:"hidden" }}>
+                  {prestaDetails?.photo_url
+                    ? <img src={prestaDetails.photo_url} alt={`Photo de ${prestaName || "votre prestataire"}`} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    : (prestaDetails?.initials || "P")}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName || "Prestataire"}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}</div>
+                  {/* Le repli silencieux sur les initiales laissait croire qu'il
+                      n'y avait rien à comparer. On le dit. */}
+                  {!prestaDetails?.photo_url && (
+                    <div style={{ color:"#F0B429", fontSize:11, marginTop:4, lineHeight:1.4 }}>
+                      Aucune photo disponible — vérifiez son identité en lui demandant son nom.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display:"flex", gap:10 }}>
+                <button
+                  disabled={identiteEnCours}
+                  onClick={() => repondreIdentite(true)}
+                  style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#10D98F", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity: identiteEnCours ? 0.6 : 1 }}>
+                  {identiteEnCours ? "…" : "✅ C'est bien elle"}
+                </button>
+                <button
+                  disabled={identiteEnCours}
+                  onClick={() => setConfirmRefusIdentite(true)}
+                  style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(242,94,94,0.45)", background:"rgba(242,94,94,0.12)", color:"#F25E5E", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity: identiteEnCours ? 0.6 : 1 }}>
+                  ⛔ Ce n'est pas elle
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selected.identite_statut === "confirmee" && (
+            <div style={{ background:"rgba(16,217,143,0.06)", border:"1px solid rgba(16,217,143,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12, fontSize:12, color:C.textSub }}>
+              ✅ Vous avez confirmé qu'il s'agissait bien de {prestaName || "votre prestataire"}
+            </div>
+          )}
+
+          {/* Confirmation avant de refuser : la prestation s'arrête et le
+              prestataire est suspendu. Ce n'est pas un geste à faire par
+              inadvertance sur un écran de téléphone. */}
+          {confirmRefusIdentite && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div style={{ background:"#0D1B3E", borderRadius:"20px 20px 0 0", padding:"28px 22px 36px", width:"100%", maxWidth:480 }}>
+                <div style={{ fontSize:28, textAlign:"center", marginBottom:10 }}>⛔</div>
+                <div style={{ fontWeight:800, color:"#F25E5E", fontSize:17, textAlign:"center", marginBottom:10 }}>
+                  Ce n'est pas la personne réservée ?
+                </div>
+                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", lineHeight:1.65, marginBottom:18 }}>
+                  Vous n'avez pas à la laisser entrer.
+                  <br/><br/>
+                  La prestation est <strong style={{ color:"#fff" }}>annulée immédiatement</strong> et vous êtes
+                  <strong style={{ color:"#10D98F" }}> intégralement remboursé, frais de service compris</strong>.
+                  <br/><br/>
+                  Le prestataire est prévenu et son accès aux prestations est suspendu le temps que nous
+                  vérifiions. Nous entendons les deux parties avant de trancher.
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={()=>setConfirmRefusIdentite(false)} disabled={identiteEnCours}
+                    style={{ flex:1, padding:"12px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                    Annuler
+                  </button>
+                  <button onClick={()=>repondreIdentite(false)} disabled={identiteEnCours}
+                    style={{ flex:1, padding:"12px", borderRadius:10, border:"none", background:"#F25E5E", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                    {identiteEnCours ? "Signalement…" : "Confirmer le refus"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {selected.delay_status === "pending" && (
             <div style={{ background:"linear-gradient(135deg,rgba(240,180,41,0.1),rgba(240,180,41,0.05))", border:"1.5px solid rgba(240,180,41,0.4)", borderRadius:16, padding:"16px", marginBottom:16 }}>
               <div style={{ fontWeight:800, color:"#F0B429", fontSize:14, marginBottom:6 }}>⏱ Durée de la prestation</div>

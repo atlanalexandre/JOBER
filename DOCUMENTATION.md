@@ -147,6 +147,64 @@ la mise en relation, pas les heures (`api/_cloture.js`). Le remboursement se cal
 auparavant « payé − heures faites × tarif », ce qui les rendait intégralement au client — et
 faisait perdre à ALANE la commission Stripe, jamais restituée sur un remboursement.
 
+**Le client vérifie l'identité du prestataire à son arrivée** (11/09/2026). Rien ne le lui
+permettait. L'écran de suivi — celui qu'on ouvre pendant la prestation — n'affichait qu'un
+émoji ; la notification d'arrivée ne nommait même pas le prestataire (« Votre prestataire est
+arrivé(e) pour "Ménage" ») ; et aucune action ne disait « ce n'est pas la bonne personne ». Les
+seuls recours étaient l'annulation ordinaire, **frais de service retenus alors que le client
+n'y est pour rien**, ou le litige — dont le bouton n'apparaît qu'APRÈS la prestation, donc une
+fois la personne entrée au domicile.
+
+Le pointage d'arrivée est déclaratif : le prestataire appuie sur un bouton, sans position, sans
+photo, sans code. Un prestataire qui envoyait quelqu'un d'autre à sa place n'était arrêté par
+rien.
+
+| Colonne de `missions` | Contenu |
+|---|---|
+| `identite_statut` | `confirmee`, `refusee`, ou NULL tant que le client n'a pas répondu |
+| `identite_repondu_at` | horodatage de la réponse ; sur un refus, date l'incident |
+
+Les deux sont **fermées à l'écriture depuis le navigateur** : un refus rembourse et suspend,
+un client capable de les écrire se rembourserait lui-même.
+
+Ce qu'un refus déclenche (`api/missions.js`, action `refuser_identite`) :
+
+1. **remboursement intégral, frais de service compris.** C'est la seule annulation client dans
+   ce cas, et pour une raison précise : les frais rémunèrent une mise en relation, or elle n'a
+   pas eu lieu — la personne annoncée ne s'est pas présentée. Même raisonnement que la
+   défaillance du prestataire, CGPS art. 8.2 ;
+2. la prestation passe `cancelled`, **même si le remboursement a échoué** — on ne laisse
+   personne travailler chez un client qui vient de dire que ce n'est pas la bonne personne. Le
+   ticket et l'écran disent alors franchement que le virement est à reprendre ;
+3. le prestataire est **suspendu** (`missions_enabled = false`), de façon **réversible d'un clic
+   depuis le back-office** : c'est une mise en attente, pas une sanction ;
+4. prestataire prévenu par notification et par courriel, avec l'adresse pour s'expliquer ;
+   ticket support et courriel à l'administration.
+
+**La photo suit désormais la prestation, plus le catalogue.** Elle ne venait que de
+`/api/prestataires`, filtré sur `status=approved`, `missions_enabled=true`, les secteurs ouverts,
+et masqué sans la case « j'autorise l'affichage de ma photo ». Un prestataire qui sortait de ce
+filtre entre la réservation et le jour J laissait le client devant de simples initiales, sans
+un mot d'explication. `/api/missions` sert maintenant `prestataire_photo` au client **de cette
+prestation**, quel que soit le consentement d'affichage : celui-ci régit le catalogue, où
+n'importe qui regarde, mais la photo devient nécessaire à l'exécution du contrat et à la
+sécurité de quelqu'un qui va ouvrir sa porte. Quand aucune photo n'existe, l'écran **le dit**
+au lieu de replier silencieusement sur des initiales.
+
+> **Ce que cela ne règle pas.** La photo affichée (`profiles.avatar_url`) **n'est validée par
+> personne**. Le back-office valide la pièce `photo` de la table `documents`, qui est un
+> stockage distinct et jamais rapproché : un prestataire peut changer son avatar quand il veut,
+> après validation de son dossier. Le drapeau `isVirtual`, censé l'empêcher, est lu sept fois
+> dans `backoffice.jsx` et **jamais affecté** — il ne fait rien. Tant que ce n'est pas corrigé,
+> la photo aide le client mais ne prouve rien ; le nom et le bouton de refus font l'essentiel
+> du travail.
+
+Reste également sans emploi : `genMissionCode()` (`src/constants/data.js`) et l'écran
+`presta_pointage`, vestige d'un code à quatre chiffres. Aucun écran n'y mène, rien n'est envoyé
+au serveur, le client ne voit ce code nulle part — et il est de toute façon dérivé de
+l'identifiant du prestataire et de la date, donc générable sans jamais voir le client. **À
+supprimer plutôt qu'à réparer.**
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |
