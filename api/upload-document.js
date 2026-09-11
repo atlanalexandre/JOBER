@@ -2,7 +2,34 @@ export const config = {
   runtime: 'edge',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EN SURSIS — plus aucun écran n'appelle cette fonction (11/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Les envois de documents passent aujourd'hui par le Storage Supabase depuis le
+// navigateur. Ses trois voisines mortes — `get-documents`, `save-document` et
+// `update-profile` — ont été supprimées le même jour : deux d'entre elles
+// ÉCRIVAIENT, et un point d'entrée authentifié qui modifie des données sans
+// aucun usage n'est que de la surface d'attaque.
+//
+// Celle-ci est gardée en sursis pour une raison précise : le service worker met
+// à jour les fichiers, mais un onglet resté ouvert continue d'exécuter le
+// JavaScript du premier jour. Une application installée depuis trois semaines
+// pourrait donc encore l'appeler, et la supprimer casserait l'envoi de
+// documents pour son propriétaire, en silence.
+//
+// D'où le journal ci-dessous plutôt qu'une suppression à l'aveugle : au lieu de
+// deviner, on saura. S'il ne s'allume jamais d'ici trois semaines, la fonction
+// part à son tour.
+
+
 export default async function handler(req) {
+  // Trace de survie — voir le bandeau ci-dessus. `console.warn` et non `log` :
+  // elle doit ressortir dans les journaux Vercel sans qu'on la cherche.
+  console.warn("[upload-document] APPELÉE — cette fonction était réputée morte. "
+    + "Ne pas la supprimer avant d'avoir compris d'où vient cet appel. "
+    + `méthode=${req.method} ua=${String(req.headers.get("user-agent") || "").slice(0, 120)}`);
+
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }

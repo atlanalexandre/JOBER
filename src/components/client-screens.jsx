@@ -6262,7 +6262,6 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // de mission » : un client chez lui voyait « à 30 km du lieu de mission » d'un
   // prestataire pourtant déjà sur place.
   const [missionCoords, setMissionCoords] = useState(null);
-  const [clientCoords, setClientCoords] = useState(null);
   const trackingPollRef = useRef(null);
   const approachNotifSentRef = useRef(new Set());
   const endNotifSentRef = useRef(new Set());
@@ -6452,7 +6451,10 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
         if (Date.now() < debut - 60 * 60 * 1000) return;
       } catch { /* date illisible → on laisse le suivi actif */ }
     }
-    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => setClientCoords({ lat: p.coords.latitude, lng: p.coords.longitude }), () => {});
+    // La position GPS du client n'est plus demandée ici : elle ne servait qu'à
+    // mesurer l'approche du prestataire, qui se mesure désormais depuis le lieu
+    // de la prestation. Demander une géolocalisation dont on ne fait rien est
+    // une permission arrachée pour rien.
     const pollPosition = async () => {
       const { data: sd } = await supabase.auth.getSession();
       const token = sd?.session?.access_token;
@@ -6466,22 +6468,30 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
       const d = await r.json().catch(() => null);
       if (d?.lat && d?.lng) {
         setPrestaPosition({ lat: d.lat, lng: d.lng, updated_at: d.updated_at });
-        // "Arrive bientôt" notification quand distance < 500m (Notification API, fonctionne onglet arrière-plan)
-        setClientCoords(prev => {
-          // Ne pas envoyer si prestataire déjà arrivé ou mission déjà démarrée
-          const alreadyOnSite = selected.arrived_at || selected.started_at;
-          if (prev && !alreadyOnSite && !approachNotifSentRef.current.has(selected.id)) {
-            const dLat = (d.lat - prev.lat) * Math.PI / 180;
-            const dLon = (d.lng - prev.lng) * Math.PI / 180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(d.lat*Math.PI/180)*Math.sin(dLon/2)**2;
-            const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            if (dist < 0.5 && "Notification" in window && Notification.permission === "granted") {
-              approachNotifSentRef.current.add(selected.id);
-              new Notification("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m de chez vous.", icon: "/icon-192.png" });
-            }
+        // « Arrive bientôt » sous 500 m, par l'API Notification — elle
+        // fonctionne onglet en arrière-plan.
+        //
+        // LA DISTANCE SE MESURE DEPUIS LE LIEU DE LA PRESTATION (11/09/2026).
+        //
+        // Elle se mesurait depuis `clientCoords`, c'est-à-dire la position GPS
+        // du TÉLÉPHONE du client. Un client au bureau pendant qu'un ménage a
+        // lieu chez lui ne recevait donc rien — et s'il se trouvait par hasard
+        // à moins de 500 m du prestataire ailleurs, l'alerte partait à tort.
+        // Pire : le verrou `approachNotifSentRef` étant alors consommé, la
+        // vraie arrivée n'était plus jamais annoncée.
+        //
+        // La correction avait été faite dix lignes plus bas, sur l'affichage
+        // « à environ X km du lieu de prestation », et oubliée ici. Le texte de
+        // la notification, lui, décrivait déjà le comportement voulu : « il est
+        // à moins de 500 m de chez vous ».
+        const alreadyOnSite = selected.arrived_at || selected.started_at;
+        if (missionCoords && !alreadyOnSite && !approachNotifSentRef.current.has(selected.id)) {
+          const dist = haversineKm(missionCoords.lat, missionCoords.lng, d.lat, d.lng);
+          if (dist < 0.5 && "Notification" in window && Notification.permission === "granted") {
+            approachNotifSentRef.current.add(selected.id);
+            new Notification("🏃 Votre prestataire arrive !", { body: "Il est à moins de 500 m du lieu de la prestation.", icon: "/icon-192.png" });
           }
-          return prev;
-        });
+        }
       }
     };
     pollPosition();

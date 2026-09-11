@@ -399,7 +399,12 @@ export const METIERS_TARIFS = {
     //   • ce qui est proposé est une prestation À DOMICILE ou en événement.
     //     Tenir un poste dans un salon relèverait d'une mise à disposition de
     //     personnel, exclue par l'article 4.1 des CGPS.
-    "Coiffeur(se) à domicile":              { min:18,   max:32,   default:23, rome:"D1202" },
+    // Fourchette relevée en septembre 2026 sur le marché de la coiffure à
+    // domicile : coupe femme 20 à 45 € (médiane 31 €), coupe + brushing autour
+    // de 37 €, coupe homme 18 à 45 €. Une prestation de ce type occupe à peu
+    // près l'heure, déplacement compris — d'où une fourchette horaire proche
+    // des prix à la prestation. Paris tire vers le haut, la province vers le bas.
+    "Coiffeur(se) à domicile":              { min:25,   max:45,   default:35, rome:"D1202" },
   },
 };
 
@@ -578,7 +583,7 @@ export const METIERS = Object.fromEntries(
 // Les qualifications obligatoires vivent dans `api/_qualifications.js` : le
 // back-office refuse d'ouvrir l'accès aux prestations sans le justificatif, et
 // cette règle-là s'applique côté serveur. Une copie ici aurait divergé.
-export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour } from "../../api/_qualifications.js";
+export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier } from "../../api/_qualifications.js";
 import { qualificationsPour } from "../../api/_qualifications.js";
 
 export const DOCS_REQUIS = [
