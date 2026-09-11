@@ -506,9 +506,11 @@ export function PrestaOnboarding({ onComplete, onBack }) {
   const [submitting,setSubmitting]=useState(false);
   const [submitError,setSubmitError]=useState("");
   const [cguAccepted,setCguAccepted]=useState(false);
-  // La liste dépend de la nationalité : le titre de séjour n'est exigé que des
-  // ressortissants hors UE.
-  const docsAttendus=docsRequisPour(infos.nationalite);
+  // La liste dépend de la nationalité ET des métiers déclarés : le titre de
+  // séjour n'est exigé que des ressortissants hors UE, et le justificatif de
+  // qualification que des métiers dont l'exercice suppose un titre — carte
+  // CNAPS pour la sécurité, CAP pour les métiers de bouche, carte VTC…
+  const docsAttendus=docsRequisPour(infos.nationalite, metiers);
   const docsOk=docsAttendus.filter(d=>d.required).every(d=>docs[d.id]);
   const dispoStep=6;
   const recapStep=8;
@@ -1852,7 +1854,10 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
 
   if (dismissed || !meta || !profil || nbDocs === null) return null;
 
-  const requis = DOCS_REQUIS.filter(d => d.required).length;
+  // Le compte dépend du prestataire : titre de séjour hors UE, justificatif de
+  // qualification pour les métiers réglementés. Compter `DOCS_REQUIS` brut
+  // annonçait « 7/7 déposés » à quelqu'un à qui il en manquait un.
+  const requis = docsRequisPour(meta.nationalite, meta.metiers_list).filter(d => d.required).length;
   const items = [
     { id:"docs",    label:"Documents justificatifs déposés",
       aide:`${nbDocs}/${requis} déposés — sans eux, votre profil reste invisible`,
@@ -3597,6 +3602,12 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
   const [profilPct,setProfilPct]=useState(0);
   const [_missingDocs,setMissingDocs]=useState([]);
   const [uploadedDocIds,setUploadedDocIds]=useState([]);
+  // La liste des documents attendus dépend du prestataire : nationalité pour le
+  // titre de séjour, métiers déclarés pour le justificatif de qualification.
+  // L'onglet « Docs » affichait `DOCS_REQUIS` brut, donc la même liste pour
+  // tout le monde — un agent de sécurité y lisait « Diplômes & certifications,
+  // facultatif ».
+  const [docsAttendus,setDocsAttendus]=useState(DOCS_REQUIS);
   const [verifiedDocIds,setVerifiedDocIds]=useState([]);
   const [launchPhaseActive,setLaunchPhaseActive]=useState(isLaunchPhase());
   const [dashPhotoUrl,setDashPhotoUrl]=useState(null);
@@ -3760,7 +3771,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       // Même règle que dans l'inscription : le titre de séjour n'est réclamé
       // qu'aux ressortissants hors UE. Le lire depuis user_metadata évite un
       // aller-retour et suit la déclaration faite à l'inscription.
-      const required = docsRequisPour(u?.user_metadata?.nationalite).filter(d=>d.required).map(d=>d.id);
+      const attendus = docsRequisPour(u?.user_metadata?.nationalite, u?.user_metadata?.metiers_list);
+      setDocsAttendus(attendus);
+      const required = attendus.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     })();
     // Les places de l'offre se comptent à l'ouverture de l'accès aux
@@ -4112,7 +4125,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
             </div>
             <span style={{ color:C.textMuted, fontSize:16 }}>›</span>
           </div>
-          {DOCS_REQUIS.map((doc,i)=>(
+          {docsAttendus.map((doc,i)=>(
             <DocRowItem key={i} doc={doc} isSent={uploadedDocIds.includes(doc.id)} isVerified={verifiedDocIds.includes(doc.id)} onUploaded={(newType)=>{
               setUploadedDocIds(prev => prev.includes(newType) ? prev : [...prev, newType]);
               // Un renvoi repasse le document en attente de vérification

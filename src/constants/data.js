@@ -575,6 +575,12 @@ export const METIERS = Object.fromEntries(
 // lui-même. Les écrans lisent désormais `p.cv` et rien d'autre : sans parcours
 // saisi, ils n'en affichent aucun.
 
+// Les qualifications obligatoires vivent dans `api/_qualifications.js` : le
+// back-office refuse d'ouvrir l'accès aux prestations sans le justificatif, et
+// cette règle-là s'applique côté serveur. Une copie ici aurait divergé.
+export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour } from "../../api/_qualifications.js";
+import { qualificationsPour } from "../../api/_qualifications.js";
+
 export const DOCS_REQUIS = [
   { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Photo professionnelle de face, fond neutre (JPG ou PNG uniquement)" },
   { id:"kbis",     label:"Extrait KBIS / INSEE",       icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
@@ -597,11 +603,31 @@ export const DOCS_REQUIS = [
 // que les ressortissants hors UE. L'afficher à tous ferait renoncer des candidats
 // français qui n'ont rien à fournir ; ne l'exiger de personne laisse ALANE mettre
 // en relation des professionnels sans droit d'exercer.
-export function docsRequisPour(nationalite) {
+export function docsRequisPour(nationalite, metiers) {
   const horsUE = String(nationalite || "").toLowerCase().includes("hors");
+
+  // Le document « Diplômes & certifications » devient OBLIGATOIRE dès qu'un
+  // métier déclaré suppose un titre, et son intitulé nomme alors ce qui est
+  // attendu. « Fournissez un diplôme » fait envoyer n'importe quoi ;
+  // « Fournissez votre carte professionnelle CNAPS » fait envoyer la carte.
+  const qualifications = qualificationsPour(metiers);
+
   return DOCS_REQUIS
     .filter(d => d.id !== "titre_sejour" || horsUE)
-    .map(d => (d.id === "titre_sejour" ? { ...d, required: true } : d));
+    .map(d => {
+      if (d.id === "titre_sejour") return { ...d, required: true };
+      if (d.id === "diplomes" && qualifications.length > 0) {
+        return {
+          ...d,
+          required: true,
+          label: qualifications.length === 1 ? qualifications[0].titre : "Titres professionnels",
+          info: qualifications
+            .map(q => `${q.titre} — exigé pour « ${q.metiers.join(" », « ")} » (${q.texte})`)
+            .join("\n"),
+        };
+      }
+      return d;
+    });
 }
 
 export const DOCS_REQUIS_CLIENT_PRO = [
