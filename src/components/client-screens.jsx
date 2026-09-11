@@ -7011,11 +7011,22 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName || "Prestataire"}</div>
                   <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}</div>
-                  {/* Le repli silencieux sur les initiales laissait croire qu'il
-                      n'y avait rien à comparer. On le dit. */}
-                  {!prestaDetails?.photo_url && (
+                  {/* Une photo vérifiée par ALANE et une photo que le
+                      prestataire a choisie lui-même ne valent pas la même
+                      chose. Le client doit pouvoir faire la différence : sans
+                      cette mention, on lui donnerait une assurance que rien ne
+                      fonde. Et le repli sur les initiales était muet. */}
+                  {!prestaDetails?.photo_url ? (
                     <div style={{ color:"#F0B429", fontSize:11, marginTop:4, lineHeight:1.4 }}>
                       Aucune photo disponible — vérifiez son identité en lui demandant son nom.
+                    </div>
+                  ) : selected.prestataire_photo_verifiee ? (
+                    <div style={{ color:"#10D98F", fontSize:11, marginTop:4, fontWeight:700 }}>
+                      ✓ Photo vérifiée par ALANE
+                    </div>
+                  ) : (
+                    <div style={{ color:"#F0B429", fontSize:11, marginTop:4, lineHeight:1.4 }}>
+                      Photo déclarative, non vérifiée — demandez-lui aussi son nom.
                     </div>
                   )}
                 </div>
