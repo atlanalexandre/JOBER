@@ -384,6 +384,22 @@ export const METIERS_TARIFS = {
     "Professeur de musique":                { min:18,   max:35,   default:25, rome:"K2105" },
     "Formateur professionnel":              { min:22,   max:45,   default:30, rome:"K2111" },
     "Formateur bureautique / informatique": { min:22,   max:45,   default:30, rome:"K2111" },
+    // Coiffure à domicile — ajouté le 11/09/2026. « Coiffeur » ne renvoyait
+    // aucun résultat, alors que la coiffure à domicile est l'une des activités
+    // les plus répandues en micro-entreprise.
+    //
+    // Deux réserves à connaître, qui tiennent au métier et non à la plateforme :
+    //
+    //   • la coiffure est une activité RÉGLEMENTÉE (loi du 23 mai 1946) :
+    //     l'exercice suppose un CAP coiffure, ou un BP, ou trois ans de
+    //     pratique professionnelle. La plateforme ne vérifie pas ce diplôme —
+    //     comme elle ne vérifie ni le SSIAP ni le BAFA. C'est au prestataire de
+    //     s'y conformer, et le document « Diplômes & certifications » de
+    //     `DOCS_REQUIS` est l'endroit prévu pour le produire ;
+    //   • ce qui est proposé est une prestation À DOMICILE ou en événement.
+    //     Tenir un poste dans un salon relèverait d'une mise à disposition de
+    //     personnel, exclue par l'article 4.1 des CGPS.
+    "Coiffeur(se) à domicile":              { min:18,   max:32,   default:23, rome:"D1202" },
   },
 };
 
@@ -508,6 +524,12 @@ const ALIAS_METIERS = {
   "Agent d'entretien des bureaux": ["femme de ménage bureaux", "ménage bureaux"],
   "Agent de sécurité":        ["vigile", "videur"],
   "Professeur particulier / Soutien scolaire": ["enseignant", "instituteur", "cours particuliers", "prof"],
+  // « coiffeuse » est déjà trouvé par la normalisation des terminaisons
+  // (euse → eur). « coiffure » et « barbier », non : ce sont pourtant les mots
+  // que les gens tapent. On rapproche, on n'élargit pas — « esthéticienne » ou
+  // « manucure » sont d'autres métiers, qui n'existent pas au catalogue et
+  // doivent rester sans résultat.
+  "Coiffeur(se) à domicile":  ["coiffure", "barbier", "coiffeur a domicile"],
 };
 
 /**
@@ -710,6 +732,7 @@ export const COMPETENCES_PAR_METIER = {
   "Agent de sécurité":                    ["CQP APS","Surveillance vidéo","Contrôle accès","Ronde de sécurité","Gestion de crise","Main courante","SST"],
   "Hôte(sse) d'accueil":                 ["Accueil physique","Standard téléphonique","Orientation visiteurs","Gestion badges","Tenue professionnelle","Langues étrangères"],
   "Animateur événementiel":              ["Animation","Prise de parole","Gestion foule","Microphone","Dynamisme","Gestion du temps","BAFA"],
+  "Coiffeur(se) à domicile":              ["CAP coiffure","Coupe homme","Coupe femme","Coupe enfant","Coloration","Mèches / balayage","Brushing","Coiffure de mariée","Barbe et rasage","Soins capillaires","Matériel personnel","Hygiène du matériel"],
   "Chauffeur VTC":                        ["Permis B","Carte VTC","Connaissance Paris","Discrétion","Anglais de base","Application VTC","Véhicule haut de gamme"],
 };
 

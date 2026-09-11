@@ -43,7 +43,12 @@ describe("recherche d'un métier écrit en écriture inclusive", () => {
   it("trouve aussi les féminins des libellés SANS parenthèses", () => {
     expect(trouve("vendeuse").length).toBeGreaterThan(0);
     expect(trouve("chauffeuse").length).toBeGreaterThan(0);
-    expect(trouve("coiffeuse")).toHaveLength(0);   // ce métier n'existe pas
+    // « coiffeuse » tenait ce rôle jusqu'au 11/09/2026 — le métier a été ajouté
+    // depuis. « soudeuse » et « couvreuse » le remplacent : le bâtiment reste
+    // volontairement hors catalogue (garantie décennale, assurances que la
+    // RC Pro demandée à l'inscription ne couvre pas).
+    expect(trouve("soudeuse")).toHaveLength(0);
+    expect(trouve("couvreuse")).toHaveLength(0);
   });
 
   it("une recherche vide n'exclut personne", () => {
@@ -100,5 +105,25 @@ describe("enseignement et formation", () => {
     expect(trouve("formateur").length).toBeGreaterThanOrEqual(2);
     expect(trouve("formatrice").length).toBeGreaterThanOrEqual(2);
     expect(trouve("soutien scolaire")).toContain("Professeur particulier / Soutien scolaire");
+  });
+});
+
+// Ajouté le 11/09/2026 : « coiffeur » ne renvoyait rien, alors que la coiffure
+// à domicile est l'une des activités les plus répandues en micro-entreprise.
+describe("coiffure", () => {
+  it("se trouve sous toutes les formes réellement tapées", () => {
+    for (const q of ["coiffeur", "coiffeuse", "coiffure", "barbier", "COIFFEUR",
+                     "coiffeur a domicile", "coiffeuse à domicile"]) {
+      expect(trouve(q), `« ${q} »`).toContain("Coiffeur(se) à domicile");
+    }
+  });
+
+  // Toujours la même règle : on rapproche, on n'élargit pas. Les métiers
+  // voisins n'existent pas au catalogue et doivent rester introuvables, plutôt
+  // que d'envoyer quelqu'un vers un coiffeur pour une manucure.
+  it("n'attire pas les métiers voisins de la beauté", () => {
+    for (const q of ["esthéticienne", "manucure", "maquilleuse", "prothésiste ongulaire"]) {
+      expect(trouve(q), `« ${q} »`).toHaveLength(0);
+    }
   });
 });
