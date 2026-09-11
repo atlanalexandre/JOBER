@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabase.js";
-import { C, font, r, shadow } from "../constants/colors.js";
+import { useState, useEffect } from "react";
+import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
-import { Btn, Input, Badge, SectionHeader, Card, MiniBar, DonutChart, Stars, showToast, showConfirm, showPrompt } from "./ui.jsx";
+import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Libellés des types de documents. Déclarés une seule fois : deux copies locales
 // coexistaient dans le rendu, et celle de la liste des comptes avait oublié `tva`,

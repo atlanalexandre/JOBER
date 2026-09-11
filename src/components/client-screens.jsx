@@ -4,13 +4,13 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
-import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, tarifInterim, economiePct, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, genMissionCode, DOCS_REQUIS_CLIENT_PRO, correspondRecherche } from "../constants/data.js";
+import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
+import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement } from "../constants/editeur.js";
-import { Btn, Badge, Input, Card, SectionHeader, StepHeader, Stars, Select, Divider, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -2798,7 +2798,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const isUrgent = p.urgentMode || localUrgent || false;
   const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
-  const [payMethod,setPayMethod]=useState("carte");
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
   const [startDate, setStartDate] = useState("");
@@ -6252,7 +6251,6 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // Le sort des journées suivantes, sur une prestation récurrente. Par défaut
   // on ne touche qu'à la journée en cours.
   const [annulerReste, setAnnulerReste] = useState(false);
-  const [accessToken, setAccessToken] = useState(null);
   const [showDisputeModal, setShowDisputeModal] = useState(null);
   const [disputeMsg, setDisputeMsg] = useState("");
   const [disputing, setDisputing] = useState(false);
@@ -6312,7 +6310,6 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
     const [{ data }, { data: sd }] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
     const user = data?.user; if (!user) return;
     const token = sd?.session?.access_token;
-    if (token) setAccessToken(token);
     const res = await fetch("/api/missions", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
@@ -8916,7 +8913,6 @@ export function AbonnementPrestaScreen({ onBack }) {
   const [current,setCurrent]=useState("free");
   const [billing,setBilling]=useState("monthly");
   const [saving,setSaving]=useState(false);
-  const [loaded,setLoaded]=useState(false);
   const [missionsUsed,setMissionsUsed]=useState(0);
   const [pendingPlan,setPendingPlan]=useState(null);
   const [endDate,setEndDate]=useState(null);
@@ -8933,7 +8929,6 @@ export function AbonnementPrestaScreen({ onBack }) {
       const u=data?.user; if(!u) return;
       setCurrent(u.user_metadata?.plan_abonnement||"free");
       setEndDate(u.user_metadata?.subscription_end_date||null);
-      setLoaded(true);
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       supabase.from("missions").select("id",{count:"exact",head:true})

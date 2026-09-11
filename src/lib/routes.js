@@ -60,7 +60,6 @@ export const SCREEN_TO_PATH = {
   abonnement_presta:   "/provider/subscription",
   doc_upload:          "/provider/documents",
   presta_profile_edit: "/provider/profile",
-  presta_pointage:     "/provider/check-in",
   micro_entreprise:    "/provider/micro-entreprise",
   payslip:             "/provider/payslip",
 
@@ -85,7 +84,7 @@ export const NEEDS_DATA = new Set([
   "profile", "cv", "booking", "team_booking", "stripe_pay", "sector_detail",
   "mission_request", "mission_broadcast", "mission_pending", "tracking",
   "validation", "cancellation", "payslip", "chat", "rating",
-  "contract", "presta_pointage",
+  "contract",
 ]);
 
 // Écrans accessibles sans session.
@@ -97,8 +96,6 @@ export const PUBLIC_SCREENS = new Set([
 
 // Écrans de connexion : un utilisateur déjà authentifié n'a rien à y faire.
 export const AUTH_SCREENS = new Set(["role", "auth_client", "auth_presta"]);
-
-export const SIGNIN_PATH = "/auth/signin";
 
 export function normalizePath(pathname) {
   if (!pathname) return "/";

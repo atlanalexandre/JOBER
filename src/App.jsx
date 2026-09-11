@@ -12,7 +12,7 @@ import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fet
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
-import { PrestaOnboarding, PrestaProfileEditScreen, PrestaPointageScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
+import { PrestaOnboarding, PrestaProfileEditScreen, PrestaDashboard, MicroEntrepriseScreen } from "./components/presta-screens.jsx";
 import { ContactSupportScreen, SettingsScreen, ResetPasswordScreen, HomeScreen, CatalogueScreen, SectorDetailScreen, SearchFiltersScreen, CVScreen, ProfileScreen, BookingScreen, TrackingScreen, ValidationScreen, ChatScreen, FavoritesScreen, FAQScreen, ReferralScreen, CalendarScreen, TeamBookingScreen, HowItWorksScreen, ClientOnboarding, ContractScreen, LegalScreen, PayslipScreen, MissionHistoryScreen, CashbackWalletScreen, NotificationsScreen, RatingScreen, DocUploadScreen, ClientProDocScreen, AbonnementPrestaScreen, MissionRequestScreen, MissionBroadcastScreen, OnboardingScreen, useProviders } from "./components/client-screens.jsx";
 setUseProviders(useProviders);
 
@@ -1553,7 +1553,7 @@ export default function App() {
     setScreen("role");
   };
 
-  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","presta_pointage","micro_entreprise"];
+  const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
   // ── Synchronisation écran ↔ URL ─────────────────────────────────────────────
@@ -1614,7 +1614,7 @@ export default function App() {
   const navigate=(to,data)=>{
     if(role==="client"    && PRESTA_SCREENS.includes(to)) return;
     if(role==="prestataire" && CLIENT_SCREENS.includes(to)) return;
-    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="presta_pointage"||to==="rating") setSelectedProvider(data?.provider||data);
+    if(to==="profile"||to==="chat"||to==="tracking"||to==="validation"||to==="cancellation"||to==="contract"||to==="rating") setSelectedProvider(data?.provider||data);
     if(to==="tracking" && data?._missionId) setSelectedMissionId(data._missionId);
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
@@ -2014,7 +2014,6 @@ export default function App() {
       {screen==="doc_upload"           && <DocUploadScreen onBack={()=>{ setDocsRefreshKey(k=>k+1); setScreen("p_dashboard"); }} />}
       {screen==="micro_entreprise"     && <MicroEntrepriseScreen onBack={()=>setScreen("p_dashboard")} />}
       {screen==="presta_profile_edit"  && <PrestaProfileEditScreen onBack={()=>setScreen("p_dashboard")} />}
-      {screen==="presta_pointage"      && <PrestaPointageScreen provider={{...selectedProvider, _pointageType:undefined}} type={selectedProvider?._pointageType||"in"} onSuccess={()=>setScreen("p_missions")} onBack={()=>setScreen("p_missions")} />}
       {screen==="calendar"          && <CalendarScreen />}
       {screen==="legal"             && <LegalScreen type={legalType} onBack={()=>setScreen(role==="prestataire"?"p_home":role?"dashboard":"splash")} />}
       {/* Écran distinct du précédent parce qu'il a sa PROPRE adresse : les

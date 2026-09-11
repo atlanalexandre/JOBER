@@ -28,12 +28,15 @@ describe("effacerPremiereVisite()", () => {
       .toEqual(["alane_booking_draft", "alane_stay_logged_in"]);
   });
 
-  it("les quatre repères connus sont bien ceux de la liste", () => {
-    expect(CLES_PREMIERE_VISITE).toHaveLength(5);
+  it("les repères connus sont bien tous dans la liste", () => {
+    expect(CLES_PREMIERE_VISITE).toHaveLength(6);
     expect(CLES_PREMIERE_VISITE).toContain("alane_onboarded");
-    // Le guide des onglets du tableau de bord prestataire : oublié au premier
-    // jet, il n'était alors relançable par aucun bouton.
+    // Les deux guides des onglets, prestataire ET client. Le premier avait été
+    // oublié au premier jet ; le second l'est resté après sa correction, si
+    // bien que « Réinitialiser le tutoriel client » effaçait tout SAUF la clé
+    // qui marque ce tutoriel comme déjà vu. Il ne se rejouait jamais.
     expect(CLES_PREMIERE_VISITE).toContain("alane_presta_tour_done");
+    expect(CLES_PREMIERE_VISITE).toContain("alane_tour_done");
   });
 
   it("renvoie -1 si le stockage est inaccessible (navigation privée)", () => {

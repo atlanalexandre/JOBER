@@ -13,17 +13,18 @@ export function cpToCoords(cp) {
   return CP_COORDS[dept] || null;
 }
 
-// Génère un code à 4 chiffres déterministe basé sur l'ID du prestataire + date du jour
-// Les deux parties (client et presta) calculent le même code sans communication
-export function genMissionCode(provId, type) {
-  const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
-  const idStr = String(provId || "");
-  let h = 0;
-  for (let i = 0; i < idStr.length; i++) { h = (Math.imul(31, h) + idStr.charCodeAt(i)) | 0; }
-  const base = (Math.abs(h) + parseInt(today.slice(-4)) * 31) % 9000;
-  const offset = type === "out" ? 4567 : 0;
-  return String(((Math.abs(base) + offset) % 9000) + 1000).slice(-4);
-}
+// `genMissionCode` vivait ici : un code à quatre chiffres que le prestataire et
+// le client étaient censés comparer au pointage. Supprimé le 11/09/2026, avec
+// l'écran qui s'en servait.
+//
+// Il n'a jamais rien prouvé. Le code se calcule à partir de l'identifiant du
+// prestataire et de la date du jour : le prestataire le génère seul, sans
+// jamais voir le client. Et l'écran qui le demandait était injoignable — aucune
+// navigation n'y menait, et sa validation n'écrivait qu'une clé de navigateur,
+// sans le moindre appel serveur.
+//
+// La vérification d'identité passe désormais par la photo validée par ALANE et
+// par le bouton de refus, à l'arrivée du prestataire (voir DOCUMENTATION.md §4).
 
 export const SECTORS = [
   { id:"proprete",     label:"Propreté",        icon:"🧹", color:"#4FC3F7", bg:"#E3F7FF", count:15, banner:"🏢", marge:0.20 },

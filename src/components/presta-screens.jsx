@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, cpToCoords, genMissionCode, niveauGlobal, experienceGlobale } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
@@ -1718,133 +1718,16 @@ export function PrestaProfileEditScreen({ onBack }) {
   );
 }
 
-export function PrestaPointageScreen({ provider, type, onSuccess, onBack }) {
-  const p = provider || {};
-  const expectedCode = provider ? genMissionCode(p.id, type) : "";
-  const isIn = type === "in";
-
-  const [gpsStatus, setGpsStatus] = useState("loading"); // loading | ok | warning | error
-  const [gpsDistance, setGpsDistance] = useState(null);
-  const [code, setCode] = useState("");
-  const [codeError, setCodeError] = useState("");
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    if (!provider || !navigator.geolocation) { setGpsStatus("error"); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const missionCoords = cpToCoords(p.code_postal || "75");
-        if (missionCoords) {
-          const dist = haversineKm(pos.coords.latitude, pos.coords.longitude, missionCoords[0], missionCoords[1]);
-          setGpsDistance(dist);
-          setGpsStatus(dist <= 0.5 ? "ok" : "warning");
-        } else {
-          setGpsStatus("ok");
-        }
-      },
-      () => setGpsStatus("error"),
-      { timeout: 8000, enableHighAccuracy: true }
-    );
-  }, []);
-
-  if (!provider) return <div style={{ padding:40, textAlign:"center", color:C.textSub }}>Prestation introuvable.</div>;
-
-  const handleValidate = () => {
-    if (code.trim() !== expectedCode) {
-      setCodeError("Code incorrect. Vérifiez avec le client.");
-      return;
-    }
-    setDone(true);
-    const key = `alane_pointage_${p.id}_${new Date().toISOString().slice(0,10)}`;
-    try { localStorage.setItem(key, isIn ? "checkin" : "checkout"); } catch { /* ignore */ }
-    setTimeout(() => onSuccess && onSuccess(), 2000);
-  };
-
-  if (done) return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1a7a40)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
-      <div style={{ fontSize:72, marginBottom:16 }}>{isIn ? "✅" : "🏁"}</div>
-      <h2 style={{ color:C.white, fontSize:24, fontWeight:800, margin:"0 0 10px", fontFamily:font.display }}>{isIn ? "Arrivée confirmée !" : "Départ confirmé !"}</h2>
-      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:14, lineHeight:1.8, maxWidth:280, margin:"0 auto" }}>
-        {isIn ? "Votre présence est enregistrée. Bonne prestation !" : "Prestation terminée. En attente de validation."}
-      </p>
-    </div>
-  );
-
-  return (
-    <div style={{ minHeight:"100%", background:`linear-gradient(180deg,#0A1628,#0D1B3E)`, paddingBottom:40 }}>
-      <div style={{ background:"linear-gradient(135deg,#0A1628,#162547)", borderBottom:`1px solid ${C.border}`, padding:"52px 22px 24px" }}>
-        <button onClick={onBack} style={{ background:"transparent", border:"none", color:C.textSub, cursor:"pointer", fontSize:13, marginBottom:14 }}>← Retour</button>
-        <h2 style={{ color:C.text, fontSize:22, fontWeight:700, margin:"0 0 4px", fontFamily:font.display }}>{isIn ? "📍 Pointer mon arrivée" : "🏁 Pointer mon départ"}</h2>
-        {/* Cette ligne annonçait « Cariste CACES 1 · Entrepôt XYZ » EN DUR, quelle
-            que soit la prestation : une femme de chambre pointant son arrivée
-            dans un hôtel lisait qu'elle était cariste dans un entrepôt. Elle ne
-            montre plus que ce qui est réellement connu, et rien sinon. */}
-        <p style={{ color:C.textSub, fontSize:13, margin:0 }}>
-          {[p.name, p.metier || p.titre, p.ville || p.adresse].filter(Boolean).join(" · ") || "Prestation en cours"}
-        </p>
-      </div>
-
-      <div style={{ padding:"22px 18px" }}>
-        {/* Étape 1 — GPS */}
-        <div style={{ background:"#0D1B3E", border:`1px solid ${gpsStatus==="ok"?C.success:gpsStatus==="warning"?"#FFA500":C.border}`, borderRadius:r, padding:"16px", marginBottom:16 }}>
-          <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-            <div style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22,
-              background: gpsStatus==="ok" ? `${C.success}22` : gpsStatus==="warning" ? "rgba(255,165,0,0.15)" : "rgba(255,255,255,0.05)" }}>
-              {gpsStatus==="loading" ? "📡" : gpsStatus==="ok" ? "✅" : gpsStatus==="warning" ? "⚠️" : "❌"}
-            </div>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>Vérification GPS</div>
-              <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>
-                {gpsStatus==="loading" && "Localisation en cours…"}
-                {gpsStatus==="ok" && `Vous êtes sur place (${gpsDistance !== null ? gpsDistance+" km" : "< 500m"} du lieu de prestation)`}
-                {gpsStatus==="warning" && `Vous semblez éloigné du lieu (${gpsDistance} km). Vérifiez votre position.`}
-                {gpsStatus==="error" && "GPS indisponible. Continuez avec le code client."}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Étape 2 — Code client */}
-        <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:20 }}>
-          <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>🔢 Code client</div>
-          <p style={{ color:C.textSub, fontSize:12, margin:"0 0 16px", lineHeight:1.6 }}>
-            Demandez au client le code {isIn ? "d'arrivée" : "de départ"} affiché dans son application.
-          </p>
-          <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:16 }}>
-            {[0,1,2,3].map(i => (
-              <div key={i} style={{ width:56, height:64, borderRadius:r, border:`2px solid ${code[i] ? C.violet : C.border}`, background: code[i] ? `${C.violet}18` : "rgba(255,255,255,0.03)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontWeight:900, color:C.text, fontFamily:"monospace" }}>
-                {code[i] || "—"}
-              </div>
-            ))}
-          </div>
-          {/* Pavé numérique */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, maxWidth:240, margin:"0 auto" }}>
-            {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((k,i) => (
-              <button key={i} disabled={k===""} onClick={() => {
-                if (k === "⌫") { setCode(c => c.slice(0,-1)); setCodeError(""); }
-                else if (code.length < 4) { setCode(c => c + k); setCodeError(""); }
-              }} style={{ padding:"14px", borderRadius:r, border:`1px solid ${C.border}`, background: k===""?"transparent":"#162547", color:C.text, fontSize:18, fontWeight:700, cursor:k===""?"default":"pointer", fontFamily:"monospace", opacity:k===""?0:1 }}>
-                {k}
-              </button>
-            ))}
-          </div>
-          {codeError && <p style={{ color:C.accent, fontSize:12, textAlign:"center", marginTop:10 }}>{codeError}</p>}
-        </div>
-
-        <Btn full disabled={code.length < 4 || gpsStatus==="loading"}
-          onClick={handleValidate}
-          style={{ fontSize:15, padding:"16px", background: isIn ? C.success : C.accentGold, boxShadow:`0 8px 24px ${isIn?C.success:C.accentGold}44` }}>
-          {isIn ? "✅ Confirmer mon arrivée" : "🏁 Confirmer mon départ"}
-        </Btn>
-        {gpsStatus === "warning" && (
-          <p style={{ color:"#FFA500", fontSize:11, textAlign:"center", marginTop:8, lineHeight:1.5 }}>
-            ⚠️ Votre position GPS est éloignée. L'alerte sera enregistrée.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
+// `PrestaPointageScreen` vivait ici — supprimé le 11/09/2026.
+//
+// Écran de pointage par code à quatre chiffres, strictement injoignable :
+// aucune navigation n'y menait, et il n'était même pas listé dans le panneau de
+// test du back-office. Sa validation n'écrivait qu'une clé de navigateur, sans
+// aucun appel serveur — le vrai pointage passe par l'action `checkin_mission`
+// de `/api/missions`.
+//
+// Le code lui-même ne prouvait rien : dérivé de l'identifiant du prestataire et
+// de la date, il se générait sans jamais voir le client.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configurer ses virements (Stripe Connect)
@@ -2032,53 +1915,6 @@ export function PrestaOnboardingChecklist({ onNavigate }) {
           Vous recevrez une notification dès que l'accès aux prestations sera ouvert — vous n'avez rien d'autre à faire.
         </div>
       )}
-    </div>
-  );
-}
-export function TrialExhaustedPaywall({ onUpgrade, onUnblocked }) {
-  const [checking, setChecking] = useState(false);
-  const handleRetry = async () => {
-    setChecking(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { setChecking(false); return; }
-      // Appel backend : vérifie Stripe + guérit DB si plan payant
-      const res = await fetch("/api/missions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-        body: JSON.stringify({ action: "refresh_plan" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (!data.trial_exhausted || (data.plan && data.plan !== "free")) {
-          onUnblocked?.();
-          return;
-        }
-      }
-    } catch { /* ignore */ }
-    setChecking(false);
-  };
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#050E20", zIndex:8000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:28, textAlign:"center" }}>
-      <div style={{ fontSize:64, marginBottom:20 }}>🔒</div>
-      <h2 style={{ color:"#fff", fontSize:22, fontWeight:900, margin:"0 0 10px", fontFamily:"inherit" }}>Accès suspendu</h2>
-      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:14, lineHeight:1.7, maxWidth:300, margin:"0 auto 8px" }}>
-        Votre offre gratuite a été entièrement utilisée ce mois-ci.
-      </p>
-      <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, maxWidth:280, margin:"0 auto 32px" }}>
-        Pour continuer à accéder aux prestations, choisissez un abonnement Premium ou Elite. Le quota gratuit se réinitialise le 1er de chaque mois.
-      </p>
-      <div style={{ display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 }}>
-        <button onClick={onUpgrade} style={{ padding:"16px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C6FE0,#5B4FCF)", color:"#fff", fontWeight:800, fontSize:16, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 20px rgba(124,111,224,0.4)" }}>
-          💎 Voir les abonnements
-        </button>
-        <button onClick={handleRetry} disabled={checking} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(16,217,143,0.3)", background:"rgba(16,217,143,0.06)", color:"#10D98F", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit", opacity:checking?0.6:1 }}>
-          {checking ? "Vérification…" : "🔄 Vérifier mon accès"}
-        </button>
-        <button onClick={async()=>{ await supabase.auth.signOut(); }} style={{ padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"rgba(255,255,255,0.6)", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-          Se déconnecter
-        </button>
-      </div>
     </div>
   );
 }

@@ -19,6 +19,13 @@ export const CLES_PREMIERE_VISITE = [
   // tutoriel mais laissait le guide marqué comme déjà vu, et il n'existait
   // aucun moyen de le revoir. C'est pourtant le même genre de repère.
   "alane_presta_tour_done",
+  // Et son équivalent CLIENT, qui manquait lui aussi (11/09/2026). Le défaut
+  // avait été corrigé pour le prestataire et pas pour le client, alors que
+  // c'est exactement le même repère : « Réinitialiser le tutoriel client »
+  // effaçait tout sauf la clé qui marque le tutoriel client comme déjà vu, et
+  // il ne se rejouait donc jamais. Une règle appliquée sur un chemin et pas sur
+  // l'autre — le défaut récurrent de ce projet.
+  "alane_tour_done",
 ];
 
 // Renvoie le nombre de clés effacées, ou -1 si le stockage est inaccessible
