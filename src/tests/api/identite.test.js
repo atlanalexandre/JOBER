@@ -121,6 +121,42 @@ describe("la photo suit la prestation, pas le catalogue", () => {
   });
 });
 
+describe("la photo montrée au client est celle qu'ALANE a validée", () => {
+  // `profiles.avatar_url` est choisi par le prestataire et modifiable à tout
+  // moment APRÈS validation de son dossier : personne ne le contrôle. Le
+  // document `photo` de DOCS_REQUIS, lui, est validé une pièce à la fois depuis
+  // le back-office.
+  it("sert le document photo validé, par URL signée", () => {
+    expect(missions).toContain("type=eq.photo&verified=eq.true");
+    expect(missions).toContain("/storage/v1/object/sign/Documents/");
+    expect(missions).toContain("photosVerifiees[m.prestataire_id]");
+  });
+
+  // La pièce d'identité porte la date et le lieu de naissance, la nationalité
+  // et un numéro de document. Rien de tout cela n'aide à reconnaître un visage.
+  it("ne transmet JAMAIS la pièce d'identité", () => {
+    const bloc = missions.slice(missions.indexOf("photosVerifiees"), missions.indexOf("const enriched"));
+    expect(bloc).not.toContain("type=eq.cni");
+    expect(bloc).not.toContain("titre_sejour");
+  });
+
+  it("dit au client si la photo est vérifiée ou seulement déclarative", () => {
+    expect(missions).toContain("prestataire_photo_verifiee");
+    expect(client).toMatch(/Photo vérifiée par ALANE/);
+    expect(client).toMatch(/Photo déclarative, non vérifiée/);
+  });
+
+  // Une URL signée en échec ne doit pas faire disparaître la liste des
+  // prestations : l'écran se replie sur l'avatar, et le dit.
+  it("ne fait pas échouer la liste si la photo est illisible", () => {
+    const bloc = missions.slice(missions.indexOf("photosVerifiees"), missions.indexOf("const enriched"));
+    expect(bloc).toContain("console.error");
+    // Et le repli existe : la photo validée d'abord, l'avatar ensuite.
+    expect(missions).toContain(
+      "photosVerifiees[m.prestataire_id] || profileMap[m.prestataire_id]?.avatar_url");
+  });
+});
+
 describe("l'écran de refus", () => {
   it("demande une confirmation avant de refuser", () => {
     expect(client).toContain("confirmRefusIdentite");

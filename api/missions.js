@@ -878,6 +878,69 @@ export default async function handler(req, res) {
       }
 
       // Enrich missions: candidatures + prestataire name directly on mission (for direct assignments without candidatures)
+      // ── LA PHOTO D'IDENTIFICATION EST CELLE QU'ALANE A VALIDÉE (11/09/2026)
+      //
+      // Deux photos coexistent, et rien ne les rapprochait :
+      //
+      //   • `profiles.avatar_url` — que le prestataire choisit et modifie quand
+      //     il veut depuis l'édition de son profil, APRÈS validation de son
+      //     dossier. Personne ne la contrôle. C'était pourtant la seule que le
+      //     client voyait ;
+      //   • le document `photo` de `DOCS_REQUIS` — « photo professionnelle de
+      //     face, fond neutre », déposée dans le bucket privé `Documents` et
+      //     validée une par une depuis le back-office.
+      //
+      // Montrer la première à quelqu'un qui va ouvrir sa porte, c'est lui
+      // donner une assurance que rien ne fonde. On sert donc la seconde, par
+      // URL signée d'une heure, et on DIT laquelle est affichée : une photo
+      // vérifiée et une photo déclarative ne valent pas la même chose, et le
+      // client doit pouvoir faire la différence.
+      //
+      // Ce n'est PAS la pièce d'identité. Elle reste dans le bucket privé,
+      // lisible du seul back-office : elle porte la date et le lieu de
+      // naissance, la nationalité et un numéro de document, dont le client n'a
+      // aucun besoin pour reconnaître un visage. On ne transmet que ce qui sert
+      // (RGPD, art. 5.1.c).
+      //
+      // Seules les prestations EN COURS sont concernées : c'est là que la
+      // question se pose, et cela borne le nombre d'URL signées à générer.
+      const prestasActifs = [...new Set(
+        missions
+          .filter(m => m.prestataire_id && ["assigned", "pending_acceptance"].includes(m.status))
+          .map(m => m.prestataire_id)
+      )];
+      const photosVerifiees = {};
+      if (prestasActifs.length > 0) {
+        try {
+          const dRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/documents?prestataire_id=in.(${prestasActifs.join(",")})`
+            + `&type=eq.photo&verified=eq.true&select=prestataire_id,storage_path`,
+            { headers }
+          );
+          const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
+          if (Array.isArray(dRows)) {
+            await Promise.all(dRows.map(async (d) => {
+              if (!d.storage_path) return;
+              try {
+                const sr = await fetch(
+                  `${SUPABASE_URL}/storage/v1/object/sign/Documents/${d.storage_path}`,
+                  { method: "POST", headers, body: JSON.stringify({ expiresIn: 3600 }) }
+                );
+                const sj = await sr.json().catch(() => ({}));
+                if (sj?.signedURL) photosVerifiees[d.prestataire_id] = `${SUPABASE_URL}/storage/v1${sj.signedURL}`;
+                else console.error(`[list_client] URL signée refusée pour ${d.storage_path} (${sr.status})`);
+              } catch (e) {
+                console.error(`[list_client] URL signée impossible pour ${d.storage_path} :`, e.message);
+              }
+            }));
+          }
+        } catch (e) {
+          // La photo manquante ne doit pas faire échouer la liste des
+          // prestations : l'écran se replie sur l'avatar, et le dit.
+          console.error("[list_client] photos validées illisibles :", e.message);
+        }
+      }
+
       //
       // LA PHOTO SUIT LA PRESTATION, PAS LE CATALOGUE (11/09/2026)
       //
@@ -898,7 +961,10 @@ export default async function handler(req, res) {
         candidatures: candByMission[m.id] || [],
         prestataire_prenom: m.prestataire_id ? (profileMap[m.prestataire_id]?.prenom || "") : "",
         prestataire_nom:    m.prestataire_id ? (profileMap[m.prestataire_id]?.nom    || "") : "",
-        prestataire_photo:  m.prestataire_id ? (profileMap[m.prestataire_id]?.avatar_url || null) : null,
+        prestataire_photo:  m.prestataire_id
+          ? (photosVerifiees[m.prestataire_id] || profileMap[m.prestataire_id]?.avatar_url || null)
+          : null,
+        prestataire_photo_verifiee: m.prestataire_id ? Boolean(photosVerifiees[m.prestataire_id]) : false,
       }));
       return res.status(200).json(enriched);
     }

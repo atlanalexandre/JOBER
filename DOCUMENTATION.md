@@ -191,13 +191,30 @@ n'importe qui regarde, mais la photo devient nécessaire à l'exécution du cont
 sécurité de quelqu'un qui va ouvrir sa porte. Quand aucune photo n'existe, l'écran **le dit**
 au lieu de replier silencieusement sur des initiales.
 
-> **Ce que cela ne règle pas.** La photo affichée (`profiles.avatar_url`) **n'est validée par
-> personne**. Le back-office valide la pièce `photo` de la table `documents`, qui est un
-> stockage distinct et jamais rapproché : un prestataire peut changer son avatar quand il veut,
-> après validation de son dossier. Le drapeau `isVirtual`, censé l'empêcher, est lu sept fois
-> dans `backoffice.jsx` et **jamais affecté** — il ne fait rien. Tant que ce n'est pas corrigé,
-> la photo aide le client mais ne prouve rien ; le nom et le bouton de refus font l'essentiel
-> du travail.
+**La photo d'identification est celle qu'ALANE a validée.** Deux photos coexistent, et rien ne
+les rapprochait :
+
+| | D'où elle vient | Qui la contrôle |
+|---|---|---|
+| `profiles.avatar_url` | le prestataire la choisit et la change quand il veut, **après** validation de son dossier | personne |
+| document `photo` de `DOCS_REQUIS` | déposé dans le bucket privé `Documents`, validé pièce par pièce depuis le back-office | l'administration |
+
+C'est la seconde qui est servie au client, par **URL signée d'une heure**, et seulement pour
+les prestations **en cours** (`assigned`, `pending_acceptance`) — c'est là que la question se
+pose, et cela borne le nombre d'URL à générer. `prestataire_photo_verifiee` dit laquelle est
+affichée, et l'écran l'annonce : « ✓ Photo vérifiée par ALANE » ou « Photo déclarative, non
+vérifiée ». Une assurance sans fondement est pire que pas d'assurance.
+
+> **Ce n'est pas la pièce d'identité**, et ce ne doit jamais l'être. La CNI porte la date et le
+> lieu de naissance, la nationalité et un numéro de document : rien de tout cela n'aide à
+> reconnaître un visage, et le transmettre au client dépasserait de loin le nécessaire
+> (RGPD art. 5.1.c), en exposant le prestataire à l'usurpation d'identité. Elle reste dans le
+> bucket privé, lisible du seul back-office — qui, lui, compare la photo à la pièce au moment
+> de valider le dossier. C'est là que se fait le rapprochement, une fois, par un humain.
+
+Le drapeau `isVirtual` de `backoffice.jsx` est lu sept fois et **jamais affecté** : il décrit
+une époque où la photo venait de `user_metadata`. Il ne bloque rien — le document `photo` est
+bien validable — mais son commentaire dit le contraire, et il est à retirer.
 
 Reste également sans emploi : `genMissionCode()` (`src/constants/data.js`) et l'écran
 `presta_pointage`, vestige d'un code à quatre chiffres. Aucun écran n'y mène, rien n'est envoyé
