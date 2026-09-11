@@ -784,7 +784,10 @@ export default async function handler(req, res) {
       const allPrestaIds = [...new Set([...rawAll.map(c => c.prestataire_id).filter(Boolean), ...directPrestaIds])];
       const profileMap = {};
       if (allPrestaIds.length > 0) {
-        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom`, { headers });
+        // `avatar_url` est lu ICI, et pas seulement dans le catalogue public :
+        // c'est la seule chose qui permette au client de reconnaître, sur son
+        // palier, la personne qu'il a réservée.
+        const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=in.(${allPrestaIds.join(",")})&select=id,prenom,nom,avatar_url`, { headers });
         const profiles = await pr.json().catch(() => []);
         if (Array.isArray(profiles)) profiles.forEach(p => { profileMap[p.id] = p; });
 
@@ -875,11 +878,27 @@ export default async function handler(req, res) {
       }
 
       // Enrich missions: candidatures + prestataire name directly on mission (for direct assignments without candidatures)
+      //
+      // LA PHOTO SUIT LA PRESTATION, PAS LE CATALOGUE (11/09/2026)
+      //
+      // Elle ne venait jusqu'ici que de `/api/prestataires`, le catalogue
+      // public — filtré sur `status=approved`, `missions_enabled=true`, les
+      // secteurs ouverts, et masqué si le prestataire n'avait pas coché
+      // « j'autorise l'affichage de ma photo ». Un client dont le prestataire
+      // sortait de ce filtre entre la réservation et la prestation ne voyait
+      // plus, le jour venu, que des initiales — sans que rien ne le lui dise.
+      //
+      // Le consentement d'affichage garde tout son sens pour le CATALOGUE, où
+      // n'importe qui regarde. Il n'en a plus une fois la prestation attribuée :
+      // la photo devient nécessaire à l'exécution du contrat et à la sécurité
+      // de quelqu'un qui va ouvrir sa porte. Elle n'est transmise qu'au client
+      // de CETTE prestation, et seulement tant qu'elle est en cours.
       const enriched = missions.map(m => ({
         ...m,
         candidatures: candByMission[m.id] || [],
         prestataire_prenom: m.prestataire_id ? (profileMap[m.prestataire_id]?.prenom || "") : "",
         prestataire_nom:    m.prestataire_id ? (profileMap[m.prestataire_id]?.nom    || "") : "",
+        prestataire_photo:  m.prestataire_id ? (profileMap[m.prestataire_id]?.avatar_url || null) : null,
       }));
       return res.status(200).json(enriched);
     }
@@ -3692,7 +3711,7 @@ export default async function handler(req, res) {
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
       const { mission_id } = payload;
       if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
-      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,metier,titre,arrived_at,heure_debut,hours,date`, { headers });
+      const mr = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&prestataire_id=eq.${caller.id}&status=eq.assigned&select=id,client_id,prestataire_id,metier,titre,arrived_at,heure_debut,hours,date`, { headers });
       const mData = await mr.json();
       const m = Array.isArray(mData) && mData[0];
       if (!m) return res.status(404).json({ error: "Prestation introuvable" });
@@ -3739,23 +3758,347 @@ export default async function handler(req, res) {
 
       if (m.client_id) {
         const label = m.titre || m.metier || "la prestation";
+
+        // LE NOM DU PRESTATAIRE FIGURE DANS LE MESSAGE (11/09/2026).
+        //
+        // L'annonce disait « Votre prestataire est arrivé(e) », sans nommer
+        // personne. C'est pourtant l'instant précis où le client doit vérifier
+        // QUI se présente : lui donner le nom au moment où il va ouvrir sa
+        // porte est le minimum, et cela ne coûte qu'une lecture de profil.
+        let nomPresta = "";
+        if (m.prestataire_id) {
+          try {
+            const pRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/profiles?id=eq.${m.prestataire_id}&select=prenom,nom&limit=1`, { headers });
+            const pRows = pRes.ok ? await pRes.json().catch(() => []) : [];
+            const p = Array.isArray(pRows) && pRows[0];
+            if (p) nomPresta = [p.prenom, p.nom].filter(Boolean).join(" ").trim();
+          } catch (e) {
+            console.error("[checkin] nom du prestataire illisible :", e.message);
+          }
+        }
+        const qui = nomPresta ? `${nomPresta}` : "Votre prestataire";
+
         let notifTitle, notifBody;
         if (hasDelay) {
           const [sh, smn] = m.heure_debut.split(":").map(Number);
           const endMins = sh * 60 + smn + Math.round((m.hours || 0) * 60) + delayMinutes;
           const newEndStr = `${String(Math.floor(endMins / 60) % 24).padStart(2,"0")}h${String(endMins % 60).padStart(2,"0")}`;
           const arrivedStr = new Date(arrivedAt).toLocaleString("fr-FR", { hour:"2-digit", minute:"2-digit", timeZone:"Europe/Paris" });
-          notifTitle = `Prestataire arrivé(e) — ${delayMinutes} min de retard ⏰`;
-          notifBody = `Votre prestataire est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. Acceptez-vous le décalage ?`;
+          notifTitle = `${nomPresta || "Prestataire"} est arrivé(e) — ${delayMinutes} min de retard ⏰`;
+          notifBody = `${qui} est arrivé(e) à ${arrivedStr} pour « ${label} » (${delayMinutes} min de retard). Fin proposée à ${newEndStr}. Vérifiez qu'il s'agit bien de cette personne, puis répondez au décalage.`;
         } else {
-          notifTitle = "Prestataire arrivé(e) sur place 📍";
-          notifBody = `Votre prestataire est arrivé(e) pour « ${label} ». La prestation démarre.`;
+          notifTitle = `${nomPresta || "Prestataire"} est arrivé(e) 📍`;
+          notifBody = `${qui} est arrivé(e) pour « ${label} ». Ouvrez la prestation pour vérifier qu'il s'agit bien de la personne que vous avez réservée.`;
         }
         await notifier({ user_id: m.client_id, type: "mission", title: notifTitle, body: notifBody}, SUPABASE_URL, headers).catch(() => {});
         sendPushToUser(m.client_id, { title: notifTitle, body: notifBody, url: "/" }, SUPABASE_URL, headers).catch(() => {});
       }
 
       return res.status(200).json({ arrived_at: arrivedAt, delay_minutes: delayMinutes });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // « Est-ce bien la personne que j'ai réservée ? »
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // Rien ne permettait au client de le vérifier, ni de dire non. Le pointage
+    // d'arrivée est déclaratif : le prestataire appuie sur un bouton, et c'est
+    // tout. Un prestataire qui envoyait quelqu'un d'autre à sa place n'était
+    // arrêté par rien, et le client n'avait pour recours que l'annulation
+    // ordinaire — frais de service retenus, alors qu'il n'y est pour rien — ou
+    // le litige, dont le bouton n'apparaît qu'APRÈS la prestation.
+    //
+    // Ce n'est pas une question de confort : quelqu'un entre au domicile d'un
+    // particulier, parfois en présence d'enfants.
+
+    if (action === "confirmer_identite" || action === "refuser_identite") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id requis" });
+
+      const refuse = action === "refuser_identite";
+
+      // Le client de CETTE prestation, et lui seul. L'identité vient du jeton,
+      // jamais du corps de la requête.
+      const mIdRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&client_id=eq.${caller.id}`
+        + `&select=id,client_id,prestataire_id,status,arrived_at,identite_statut,metier,titre,date,`
+        + `montant_total,stripe_payment_intent,cashback_applique&limit=1`,
+        { headers }
+      );
+      const mIdRows = await mIdRes.json().catch(() => []);
+      const mid = Array.isArray(mIdRows) && mIdRows[0];
+      if (!mid) return res.status(404).json({ error: "Prestation introuvable" });
+
+      // La question ne se pose qu'une fois quelqu'un présenté, et tant que la
+      // prestation court. Après, c'est un litige, pas une vérification.
+      if (mid.status !== "assigned") {
+        return res.status(400).json({ error: "Cette prestation n'est plus en cours." });
+      }
+      if (!mid.arrived_at) {
+        return res.status(400).json({ error: "Votre prestataire n'a pas encore signalé son arrivée." });
+      }
+      if (mid.identite_statut) {
+        // Idempotent : un double clic ne doit pas rembourser deux fois.
+        return res.status(200).json({ identite_statut: mid.identite_statut, deja_repondu: true });
+      }
+
+      const libelleId = mid.titre || mid.metier || "la prestation";
+      const maintenant = new Date().toISOString();
+
+      // ── Cas simple : c'est bien la bonne personne ────────────────────────
+      if (!refuse) {
+        const okRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ identite_statut: "confirmee", identite_repondu_at: maintenant }),
+        });
+        const okRows = await okRes.json().catch(() => []);
+        if (!okRes.ok || !Array.isArray(okRows) || okRows.length === 0) {
+          console.error(`[identite] confirmation NON enregistrée pour ${mission_id} (${okRes.status}) : `
+            + `${JSON.stringify(okRows).slice(0, 300)}`);
+          return res.status(500).json({ error: "La confirmation n'a pas pu être enregistrée. Réessayez." });
+        }
+        return res.status(200).json({ identite_statut: "confirmee" });
+      }
+
+      // ── Refus : ce n'est pas la personne réservée ────────────────────────
+      //
+      // REMBOURSEMENT INTÉGRAL, FRAIS DE SERVICE COMPRIS.
+      //
+      // Partout ailleurs, les frais restent acquis parce qu'ils rémunèrent une
+      // mise en relation déjà effectuée. Ici, précisément, elle ne l'a pas
+      // été : la personne annoncée ne s'est pas présentée. Facturer une mise en
+      // relation qui n'a produit personne serait indéfendable — c'est le même
+      // raisonnement que la défaillance du prestataire aux CGPS art. 8.2.
+      const montantDu = Math.max(0, Math.round((Number(mid.montant_total) || 0) * 100)); // centimes
+      const walletPaye = typeof mid.stripe_payment_intent === "string"
+        && mid.stripe_payment_intent.startsWith("wallet_");
+
+      // Déclarée ICI, dans le bloc qui s'en sert. La lire depuis une portée
+      // voisine est le défaut qui avait rendu l'annulation impossible pendant
+      // des semaines — eslint (`no-use-before-define`) le refuse désormais.
+      const STRIPE_KEY_IDENTITE = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+
+      let rembourseWallet = false;
+      let refundIdentiteId = null;
+      let refundIdentiteErreur = null;
+
+      if (montantDu > 0 && walletPaye) {
+        try {
+          const pRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=prepaid_balance`, { headers });
+          const pRows = await pRes.json().catch(() => []);
+          const soldeActuel = Number((Array.isArray(pRows) && pRows[0]?.prepaid_balance) || 0);
+          const nouveauSolde = Math.round((soldeActuel + montantDu / 100) * 100) / 100;
+          const majSolde = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ prepaid_balance: nouveauSolde }),
+          });
+          if (!majSolde.ok) throw new Error(`PATCH refusé (${majSolde.status})`);
+          rembourseWallet = true;
+        } catch (e) {
+          refundIdentiteErreur = e.message;
+          console.error("[identite] remboursement wallet impossible :", e.message);
+        }
+      } else if (montantDu > 0 && mid.stripe_payment_intent && STRIPE_KEY_IDENTITE) {
+        try {
+          const rRes = await fetch("https://api.stripe.com/v1/refunds", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${STRIPE_KEY_IDENTITE}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              // Une prestation = un remboursement, jamais de doublon.
+              "Idempotency-Key": `refund-identite-${mission_id}`,
+            },
+            body: new URLSearchParams({
+              payment_intent: mid.stripe_payment_intent,
+              amount: String(montantDu),
+              reason: "fraudulent",
+            }).toString(),
+          });
+          const rData = await rRes.json().catch(() => ({}));
+          if (rRes.ok && rData?.id) refundIdentiteId = rData.id;
+          else {
+            refundIdentiteErreur = rData?.error?.message || `Stripe (${rRes.status})`;
+            console.error("[identite] remboursement Stripe refusé :", refundIdentiteErreur);
+          }
+        } catch (e) {
+          refundIdentiteErreur = e.message;
+          console.error("[identite] remboursement Stripe impossible :", e.message);
+        }
+      }
+
+      // La prestation est annulée, que le remboursement ait abouti ou non : on
+      // ne laisse personne travailler chez un client qui vient de dire que ce
+      // n'est pas la bonne personne. Un remboursement en échec est rattrapé à
+      // la main — le ticket ci-dessous le dit — mais il ne bloque pas l'arrêt.
+      const majRefus = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          identite_statut: "refusee",
+          identite_repondu_at: maintenant,
+          status: "cancelled",
+          cancellation_reason: "Identité refusée par le client : la personne présentée n'est pas le prestataire réservé",
+        }),
+      });
+      const rowsRefus = await majRefus.json().catch(() => []);
+      if (!majRefus.ok || !Array.isArray(rowsRefus) || rowsRefus.length === 0) {
+        console.error(`[identite] REFUS non enregistré pour ${mission_id} (${majRefus.status}) : `
+          + `${JSON.stringify(rowsRefus).slice(0, 300)} — remboursement de `
+          + `${(montantDu / 100).toFixed(2)} € ${refundIdentiteId || rembourseWallet ? "DÉJÀ PARTI" : "non effectué"}. `
+          + "À reprendre à la main.");
+        return res.status(500).json({
+          error: "Le refus n'a pas pu être enregistré. Écrivez immédiatement à "
+               + "direction@alane.fr, et ne laissez pas cette personne intervenir.",
+        });
+      }
+
+      // ── Le prestataire est suspendu le temps de la vérification ──────────
+      //
+      // `missions_enabled = false` le retire du catalogue et lui ferme l'accès
+      // aux prestations. C'est le levier existant, et il est RÉVERSIBLE d'un
+      // clic depuis le back-office : il ne s'agit pas d'une sanction, mais
+      // d'une mise en attente le temps qu'Alexandre entende les deux parties.
+      //
+      // Suspendre sur la seule parole du client se discute. L'alternative —
+      // laisser quelqu'un continuer à intervenir chez des particuliers après un
+      // tel signalement — se discute beaucoup moins.
+      if (mid.prestataire_id) {
+        const susp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${mid.prestataire_id}`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ missions_enabled: false }),
+        }).catch(e => { console.error("[identite] suspension impossible :", e.message); return null; });
+        if (!susp || !susp.ok) {
+          console.error(`[identite] prestataire ${mid.prestataire_id} NON suspendu `
+            + `(${susp?.status}) — à faire à la main depuis le back-office.`);
+        }
+      }
+
+      // ── Tout le monde est prévenu, tout de suite ─────────────────────────
+      const RESEND_KEY_ID  = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+      const RESEND_FROM_ID = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+      const ADMIN_MAIL_ID  = process.env.ADMIN_EMAIL;
+
+      let emailPresta = null, nomPrestaRefus = "";
+      if (mid.prestataire_id) {
+        try {
+          const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${mid.prestataire_id}`, { headers });
+          const u = await uRes.json();
+          emailPresta = u?.email || null;
+          nomPrestaRefus = [u?.user_metadata?.prenom, u?.user_metadata?.nom].filter(Boolean).join(" ");
+        } catch (e) { console.error("[identite] coordonnées du prestataire illisibles :", e.message); }
+      }
+      let emailClientRefus = null;
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers });
+        const u = await uRes.json();
+        emailClientRefus = u?.email || null;
+      } catch (e) { console.error("[identite] email du client illisible :", e.message); }
+
+      const montantFr = (montantDu / 100).toFixed(2).replace(".", ",");
+
+      // Le prestataire doit l'apprendre de la plateforme, et savoir qu'il peut
+      // s'expliquer : il est peut-être de bonne foi, et le signalement peut
+      // être une méprise.
+      if (mid.prestataire_id) {
+        await notifier({
+          user_id: mid.prestataire_id,
+          type: "mission",
+          title: "Prestation arrêtée — identité non reconnue ⛔",
+          body: `Le client de « ${libelleId} » a signalé que la personne présentée n'était pas vous. `
+              + "La prestation est annulée et votre accès aux prestations est suspendu le temps de la "
+              + "vérification. Écrivez à direction@alane.fr pour faire valoir votre version.",
+        }, SUPABASE_URL, headers).catch(e => console.error("[identite] notification prestataire :", e.message));
+      }
+
+      if (RESEND_KEY_ID && emailPresta) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_KEY_ID}`, "Content-Type": "application/json" },
+          body: resendBody({
+            from: RESEND_FROM_ID,
+            to: emailPresta,
+            subject: "⛔ Prestation arrêtée — identité non reconnue",
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+              <h2 style="color:#050E20">Prestation arrêtée</h2>
+              <p style="color:#444">Bonjour ${esc(nomPrestaRefus || "")},</p>
+              <p style="color:#444">Le client de la prestation <strong>${esc(libelleId)}</strong> a signalé que
+              la personne qui s'est présentée chez lui n'était pas vous. La prestation est annulée et le client remboursé.</p>
+              <p style="color:#444">Votre accès aux prestations est <strong>suspendu le temps de la vérification</strong>.
+              Il ne s'agit pas d'une décision définitive : s'il y a méprise, écrivez-nous et nous rétablirons votre accès.</p>
+              <p style="color:#444;font-size:13px">Pour répondre : <a href="mailto:direction@alane.fr" style="color:#7C6FE0">direction@alane.fr</a></p>
+              <p style="color:#888;font-size:12px;margin-top:24px">L'équipe ALANE · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">www.alane.fr</a></p>
+            </div>`,
+          }),
+        }).catch(e => console.error("[identite] email prestataire :", e.message));
+      }
+
+      // Le ticket, pour qu'aucun de ces incidents ne se perde.
+      await fetch(`${SUPABASE_URL}/rest/v1/support_tickets`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({
+          subject: `[IDENTITÉ REFUSÉE] ${libelleId} — ${mission_id.slice(0, 8)}`,
+          message: `Le client a signalé que la personne présentée n'était pas le prestataire réservé.\n\n`
+            + `Prestation : ${libelleId}\nDate : ${mid.date || "—"}\n`
+            + `Prestataire : ${nomPrestaRefus || "—"} (${emailPresta || mid.prestataire_id})\n`
+            + `Client : ${emailClientRefus || caller.id}\n\n`
+            + `Montant remboursé : ${montantFr} € (frais de service COMPRIS)\n`
+            + `Remboursement : ${refundIdentiteId ? `✅ Stripe ${refundIdentiteId}`
+                : rembourseWallet ? "✅ recrédité sur le wallet"
+                : montantDu === 0 ? "aucun (rien n'avait été encaissé)"
+                : `⚠️ ÉCHEC — ${refundIdentiteErreur || "cause inconnue"} — À TRAITER À LA MAIN`}\n`
+            + `PaymentIntent : ${mid.stripe_payment_intent || "—"}\n\n`
+            + `Le prestataire est SUSPENDU (missions_enabled = false).\n\n`
+            + `À faire :\n`
+            + `1. Entendre les deux parties — un signalement peut être une méprise.\n`
+            + `2. Si la méprise est établie : rétablir l'accès du prestataire depuis le back-office.\n`
+            + `3. Si les faits sont confirmés : décider de la suite (avertissement, exclusion).\n`
+            + `4. Vérifier au passage que la photo du profil correspond bien à la pièce d'identité déposée.`,
+          user_email: emailClientRefus,
+          user_id: caller.id,
+          status: "open",
+        }),
+      }).catch(e => console.error("[identite] ticket non créé :", e.message));
+
+      if (RESEND_KEY_ID && ADMIN_MAIL_ID) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_KEY_ID}`, "Content-Type": "application/json" },
+          body: resendBody({
+            from: RESEND_FROM_ID,
+            to: ADMIN_MAIL_ID,
+            subject: `[URGENT] Identité refusée — ${libelleId} — ${nomPrestaRefus || mid.prestataire_id}`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#f4f4f7;border-radius:12px">
+              <h2 style="color:#B4472F">⛔ Un client a refusé la personne présentée</h2>
+              <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td style="padding:6px 0;color:#666">Prestation</td><td style="font-weight:700">${esc(libelleId)}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Date</td><td>${esc(String(mid.date || "—"))}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Prestataire</td><td style="font-weight:700">${esc(nomPrestaRefus || "—")} — ${esc(emailPresta || "—")}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Client</td><td>${esc(emailClientRefus || caller.id)}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Remboursé</td><td style="font-weight:700;color:#10D98F">${montantFr} € (frais compris)</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Prestataire suspendu</td><td style="font-weight:700">oui — réversible depuis le back-office</td></tr>
+              </table>
+              <p style="margin-top:16px;font-size:13px;color:#666">
+                ${refundIdentiteId || rembourseWallet || montantDu === 0
+                  ? "Le remboursement est parti."
+                  : `⚠️ <strong>Le remboursement a ÉCHOUÉ</strong> (${esc(refundIdentiteErreur || "cause inconnue")}) — à traiter à la main.`}
+                <br>Entendez les deux parties avant de trancher : un signalement peut être une méprise.
+              </p>
+            </div>`,
+          }),
+        }).catch(e => console.error("[identite] email admin :", e.message));
+      }
+
+      return res.status(200).json({
+        identite_statut: "refusee",
+        rembourse: refundIdentiteId !== null || rembourseWallet || montantDu === 0,
+        montant_rembourse: montantDu / 100,
+      });
     }
 
     if (action === "respond_delay") {
