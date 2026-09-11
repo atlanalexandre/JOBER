@@ -4,10 +4,11 @@ import { finPrestationMs, debutPrestationMs, echeanceVersementMs } from "./_temp
 import { creerProfilSiAbsent, roleDeclare } from "./_profil.js";
 import { montantsDeCloture } from "./_cloture.js";
 import { accordRepute, executerResolution, libelleResolution } from "./_resolution.js";
-import { aPurger, etatRcPro, TYPES_A_PURGER } from "./_conservation.js";
+import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
+import { VALIDITE_DOCUMENTS, EXPIRATION_BLOQUANTE, etatExpiration } from "./_documents.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -155,10 +156,10 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // Valider le paramètre ?action — seule la valeur "reminders" est acceptée
+  // Valider le paramètre ?action
   const queryAction = req.query?.action;
-  if (queryAction !== undefined && queryAction !== "reminders") {
-    return res.status(400).json({ error: "Action inconnue — valeur acceptée : reminders" });
+  if (queryAction !== undefined && !["reminders", "documents"].includes(queryAction)) {
+    return res.status(400).json({ error: "Action inconnue — valeurs acceptées : reminders, documents" });
   }
 
   const SUPABASE_URL     = (process.env.VITE_SUPABASE_URL || "").replace(/\s/g, "");
@@ -736,7 +737,7 @@ export default async function handler(req, res) {
   // passage suivant minuit, pour ne pas relancer douze fois le même prestataire.
   {
     const heureUTC = new Date().getUTCHours();
-    let purges = 0, rcRelances = 0, rcSuspendus = 0, resiliations = 0;
+    let purges = 0, resiliations = 0;
     if (heureUTC < 2) {
       // ── Purge des positions GPS ──
       //
@@ -888,84 +889,16 @@ export default async function handler(req, res) {
         console.error("[resiliation] traitement interrompu :", e.message);
       }
 
-      // ── Attestations RC Pro (art. 19.1) ──
-      try {
-        const rcRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/documents?type=eq.rc_pro&expires_at=not.is.null`
-          + `&select=id,prestataire_id,expires_at&order=expires_at&limit=500`,
-          { headers }
-        );
-        if (rcRes.ok) {
-          const rcs = await rcRes.json().catch(() => []);
-          // Une seule attestation par prestataire et par type (contrainte
-          // unique), mais on garde la plus lointaine par sécurité : un
-          // renouvellement déposé ne doit pas être ignoré au profit de l'ancien.
-          const parPresta = new Map();
-          for (const rc of (Array.isArray(rcs) ? rcs : [])) {
-            if (!rc.prestataire_id) continue;
-            const prec = parPresta.get(rc.prestataire_id);
-            if (!prec || String(rc.expires_at) > String(prec.expires_at)) parPresta.set(rc.prestataire_id, rc);
-          }
-
-          for (const [prestataireId, rc] of parPresta) {
-            const etat = etatRcPro(rc.expires_at);
-            if (etat === "valide" || etat === "inconnue") continue;
-
-            const pRes = await fetch(
-              `${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}&select=missions_enabled,rc_pro_relance_at`,
-              { headers }
-            ).catch(() => null);
-            const pRows = pRes?.ok ? await pRes.json().catch(() => []) : [];
-            const prof = Array.isArray(pRows) && pRows[0];
-            if (!prof) continue;
-
-            // Une relance tous les sept jours au plus : on prévient, on ne harcèle pas.
-            const derniere = prof.rc_pro_relance_at ? new Date(prof.rc_pro_relance_at).getTime() : 0;
-            const relancable = Date.now() - derniere >= 7 * 86400000;
-
-            const finLe = new Date(`${String(rc.expires_at).slice(0,10)}T12:00:00Z`)
-              .toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
-
-            // La suspension ne dépend PAS de la relance : elle intervient au
-            // terme des trente jours de tolérance, que l'e-mail soit parti ou non.
-            if (etat === "suspendable" && prof.missions_enabled === true) {
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}`, {
-                method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-                body: JSON.stringify({ missions_enabled: false }),
-              }).catch(e => console.error(`[rc_pro] suspension impossible ${prestataireId} :`, e.message));
-              await notifier({ user_id: prestataireId, type: "system",
-                  title: "Accès suspendu — attestation RC Pro expirée",
-                  body: `Votre attestation de responsabilité civile professionnelle a expiré le ${finLe} et n'a pas été renouvelée `
-                      + `dans les trente jours (CGPS art. 19.1). Vous ne recevez plus de propositions de prestation. `
-                      + `Déposez une attestation à jour depuis votre espace Documents pour rétablir votre accès.`}, SUPABASE_URL, headers).catch(() => {});
-              rcSuspendus++;
-              console.log(`[rc_pro] prestataire ${prestataireId} suspendu — attestation expirée le ${rc.expires_at}`);
-              continue;
-            }
-
-            if (!relancable) continue;
-            await notifier({ user_id: prestataireId, type: "system",
-                title: etat === "expiree" ? "Attestation RC Pro expirée" : "Attestation RC Pro bientôt expirée",
-                body: etat === "expiree"
-                  ? `Votre attestation RC Pro a expiré le ${finLe}. Sans renouvellement sous trente jours, votre accès aux `
-                    + `propositions sera suspendu (CGPS art. 19.1). Déposez la nouvelle depuis votre espace Documents.`
-                  : `Votre attestation RC Pro expire le ${finLe}. Pensez à déposer la nouvelle depuis votre espace Documents `
-                    + `pour continuer à recevoir des propositions.`}, SUPABASE_URL, headers).catch(() => {});
-            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestataireId}`, {
-              method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
-              body: JSON.stringify({ rc_pro_relance_at: new Date().toISOString() }),
-            }).catch(() => {});
-            rcRelances++;
-          }
-          if (rcRelances || rcSuspendus) {
-            console.log(`[rc_pro] ${rcRelances} relance(s), ${rcSuspendus} suspension(s)`);
-          }
-        } else if (rcRes.status !== 400) {
-          console.error(`[rc_pro] lecture impossible (${rcRes.status})`);
-        }
-      } catch (e) {
-        console.error("[rc_pro] traitement interrompu :", e.message);
-      }
+      // Les attestations RC Pro étaient surveillées ICI, seules de tous les
+      // documents. Le traitement est passé le 11/09/2026 dans le balayage
+      // quotidien `?action=documents`, qui applique la même règle — même
+      // préavis de trente jours, même tolérance de trente jours, article 19.1
+      // des CGPS — à TOUTES les pièces datées : URSSAF, titre de séjour, carte
+      // professionnelle, pièce d'identité.
+      //
+      // Le laisser ici en plus aurait fait partir deux relances pour la même
+      // attestation, et c'est précisément le défaut que ce projet paie le plus
+      // cher : une règle appliquée sur deux chemins qui finissent par diverger.
     }
   }
 
@@ -1289,6 +1222,174 @@ export default async function handler(req, res) {
       }
     } catch (e) {
       console.error("[inscriptions] balayage interrompu :", e.message);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Mode « documents » — la péremption des pièces du dossier
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // Une attestation URSSAF vaut six mois, une RC Pro s'arrête à une date, une
+  // carte CNAPS dure cinq ans. Rien ne surveillait ces dates : un prestataire
+  // validé en janvier avec une assurance expirant en mars restait actif
+  // indéfiniment, et la plateforme continuait de l'envoyer chez des clients.
+  //
+  // Ce balayage fait deux choses, et deux seulement :
+  //   • il PRÉVIENT quand l'échéance approche — au plus une fois par semaine,
+  //     parce qu'une relance quotidienne finit par être filtrée ;
+  //   • il RETIRE l'accès aux prestations quand un document bloquant est
+  //     périmé. « Bloquant » ne veut pas dire « tous » : un justificatif de
+  //     domicile de quatre mois ne met personne en danger, une RC Pro périmée
+  //     si. Suspendre pour un motif disproportionné pousse à désactiver la
+  //     règle entière — et c'est alors l'assurance qui n'est plus surveillée.
+  //
+  // Ce qu'il ne fait PAS : toucher aux prestations déjà attribuées.
+  // `missions_enabled` ferme l'accès aux NOUVELLES prestations ; celles qui
+  // sont en cours vont à leur terme. Annuler la prestation de demain parce
+  // qu'une attestation expire aujourd'hui punirait le client.
+  if (queryAction === "documents") {
+    // Déclarés ici, dans le bloc qui s'en sert.
+    const RESEND_API_KEY_DOCS = (process.env.RESEND_API_KEY || "").replace(/\s/g, "");
+    const RESEND_FROM_DOCS    = process.env.RESEND_FROM || "ALANE <onboarding@resend.dev>";
+
+    /** L'adresse d'un compte, ou null — un échec de lecture ne doit pas
+     *  interrompre le balayage des autres prestataires. */
+    const emailDe = async (userId) => {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers });
+        const u = r.ok ? await r.json().catch(() => null) : null;
+        return u?.email || null;
+      } catch (e) {
+        console.error(`[documents] adresse de ${userId} illisible :`, e.message);
+        return null;
+      }
+    };
+
+    let prevenus = 0, suspendus = 0;
+
+    try {
+      const dRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/documents?expires_at=not.is.null`
+        + `&select=id,prestataire_id,type,expires_at,relance_expiration_at`
+        + `&order=expires_at.asc&limit=1000`,
+        { headers }
+      );
+      if (!dRes.ok) throw new Error(`lecture refusée (${dRes.status})`);
+      const docs = await dRes.json().catch(() => []);
+      if (!Array.isArray(docs)) throw new Error("réponse illisible");
+
+      // Regroupés par prestataire : on ne suspend pas cinq fois quelqu'un dont
+      // cinq pièces expirent, et on ne lui écrit pas cinq courriels.
+      const parPresta = new Map();
+      for (const d of docs) {
+        if (!d.prestataire_id) continue;
+        const etat = etatExpiration(d.expires_at);
+        if (!etat || etat.etat === "valide") continue;
+        if (!parPresta.has(d.prestataire_id)) parPresta.set(d.prestataire_id, []);
+        parPresta.get(d.prestataire_id).push({ ...d, etat });
+      }
+
+      const nomDoc = (t) => VALIDITE_DOCUMENTS[t]?.libelle || t;
+      const leJour = (d) => new Date(`${String(d).slice(0, 10)}T12:00:00Z`)
+        .toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
+
+      for (const [prestaId, pieces] of parPresta) {
+        // Seules les pièces BLOQUANTES suspendent, et seulement passé la
+        // tolérance. Un justificatif de domicile de quatre mois ne met personne
+        // en danger ; une RC Pro périmée, si. Suspendre pour un motif
+        // disproportionné pousse à désactiver la règle entière — et c'est alors
+        // l'assurance qui n'est plus surveillée.
+        const aSuspendre = pieces.filter(d => d.etat.etat === "suspendable" && EXPIRATION_BLOQUANTE.has(d.type));
+
+        const pRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestaId}&select=missions_enabled&limit=1`, { headers }
+        ).catch(() => null);
+        const pRows = pRes?.ok ? await pRes.json().catch(() => []) : [];
+        const prof = Array.isArray(pRows) && pRows[0];
+        if (!prof) continue;
+
+        if (aSuspendre.length > 0 && prof.missions_enabled === true) {
+          const liste = aSuspendre.map(d => `${nomDoc(d.type)} (expiré le ${leJour(d.expires_at)})`).join(", ");
+          const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${prestaId}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ missions_enabled: false }),
+          }).catch(e => { console.error(`[documents] suspension impossible ${prestaId} :`, e.message); return null; });
+
+          if (!maj || !maj.ok) {
+            // Ne pas le taire : quelqu'un continue alors d'intervenir avec un
+            // document périmé, et personne ne le sait.
+            console.error(`[documents] ${prestaId} NON suspendu (${maj?.status}) — ${liste}. À faire à la main.`);
+          } else {
+            suspendus++;
+            console.log(`[documents] ${prestaId} suspendu — ${liste}`);
+            await notifier({
+              user_id: prestaId, type: "system",
+              title: "Accès aux prestations suspendu — document expiré ⛔",
+              body: `${liste}. Déposez la pièce à jour depuis l'onglet Docs : votre accès est rétabli dès qu'elle est validée. `
+                  + "Les prestations que vous avez déjà acceptées ne sont pas annulées.",
+            }, SUPABASE_URL, headers).catch(e => console.error("[documents] notification :", e.message));
+
+            if (RESEND_API_KEY_DOCS) {
+              const emailPresta = await emailDe(prestaId);
+              if (emailPresta) {
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Authorization": `Bearer ${RESEND_API_KEY_DOCS}`, "Content-Type": "application/json" },
+                  body: resendBody({
+                    from: RESEND_FROM_DOCS, to: emailPresta,
+                    subject: "⛔ Votre accès aux prestations est suspendu — document expiré",
+                    html: emailHtml(`
+                      <p>Bonjour,</p>
+                      <p>Un document de votre dossier a expiré : <strong>${escEmail(liste)}</strong>.</p>
+                      <p>Votre accès aux <strong>nouvelles</strong> prestations est suspendu le temps de le mettre à jour.
+                      Les prestations que vous avez déjà acceptées <strong>ne sont pas annulées</strong> : vous les assurez normalement.</p>
+                      <p>Déposez la pièce à jour depuis l'onglet <strong>Docs</strong> de votre espace. Votre accès est rétabli dès qu'elle est validée.</p>
+                      <p style="text-align:center;margin:26px 0"><a href="${appUrl()}" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">Mettre à jour mon dossier →</a></p>
+                    `),
+                  }),
+                }).catch(e => console.error("[documents] email suspension :", e.message));
+              }
+            }
+          }
+          continue;   // suspendu : la relance « ça approche » n'a plus d'objet
+        }
+
+        // ── Relance, au plus une fois par semaine ────────────────────────
+        //
+        // On prévient, on ne harcèle pas : une relance quotidienne finit par
+        // être filtrée, et c'est alors la vraie alerte qui se perd.
+        const aRelancer = pieces.filter(d => {
+          if (!d.relance_expiration_at) return true;
+          return Date.now() - new Date(d.relance_expiration_at).getTime() >= 7 * 86400000;
+        });
+        if (aRelancer.length === 0) continue;
+
+        const deja = aRelancer.some(d => d.etat.etat !== "bientot");
+        const liste = aRelancer
+          .map(d => `${nomDoc(d.type)} — ${d.etat.etat === "bientot" ? "expire" : "a expiré"} le ${leJour(d.expires_at)}`)
+          .join("\n");
+        const bloquant = aRelancer.some(d => EXPIRATION_BLOQUANTE.has(d.type));
+
+        await notifier({
+          user_id: prestaId, type: "system",
+          title: deja ? "Document expiré — à renouveler 📄" : "Un document de votre dossier arrive à échéance 📄",
+          body: `${liste}\n\nMettez-le à jour depuis l'onglet Docs.`
+              + (bloquant ? " Passé trente jours après l'échéance, votre accès aux prestations est suspendu." : ""),
+        }, SUPABASE_URL, headers).catch(e => console.error("[documents] relance :", e.message));
+        prevenus++;
+
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/documents?id=in.(${aRelancer.map(d => d.id).join(",")})`,
+          { method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ relance_expiration_at: new Date().toISOString() }) }
+        ).catch(e => console.error("[documents] horodatage de relance :", e.message));
+      }
+
+      console.log(`[documents] ${docs.length} pièce(s) datée(s) — ${prevenus} prestataire(s) prévenu(s), ${suspendus} suspendu(s)`);
+      return res.status(200).json({ success: true, datees: docs.length, prevenus, suspendus });
+    } catch (e) {
+      console.error("[documents] balayage interrompu :", e.message);
+      return res.status(500).json({ error: "Balayage des documents interrompu" });
     }
   }
 
