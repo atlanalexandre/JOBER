@@ -284,6 +284,56 @@ un indépendant n'en a pas. De même, servir ou vendre n'est pas *préparer* : l
 boulangerie ne sont pas concernés, les boulangers le sont. Une exigence sans fondement finit
 par être contournée, et décrédibilise les autres.
 
+**La péremption des pièces est surveillée, pour tous les types** (11/09/2026). Une attestation
+URSSAF vaut six mois, une RC Pro s'arrête à une date, une carte CNAPS dure cinq ans, un titre
+de séjour expire. **Seule la RC Pro était surveillée** : un prestataire validé en janvier avec
+une attestation de vigilance de décembre restait actif indéfiniment, et la plateforme
+continuait de l'envoyer chez des clients.
+
+Le mécanisme existant — `documents.expires_at`, relance, puis suspension au terme des trente
+jours de tolérance de l'article 19.1 des CGPS — **n'a pas été doublé, il a été généralisé**.
+L'ancien traitement RC Pro a été retiré : deux traitements pour la même attestation, c'est deux
+relances, puis deux règles qui divergent.
+
+| | |
+|---|---|
+| Où | `api/_documents.js` (les règles) + `?action=documents` de `cron-reset-monthly` (le balayage, tous les jours à 7 h UTC) |
+| Colonne ajoutée | `documents.relance_expiration_at` — la relance est désormais suivie **par document**, là où `profiles.rc_pro_relance_at` ne valait que pour un type |
+| Cycle | valide → bientôt (J-30) → expiré → **suspendable** (J+30) |
+| Relance | au plus une fois par semaine — une relance quotidienne finit par être filtrée, et c'est alors la vraie alerte qui se perd |
+
+**Ce qui suspend, et ce qui ne suspend pas.** `EXPIRATION_BLOQUANTE` ne retient que ce qui met
+quelqu'un en danger : RC Pro, URSSAF, pièce d'identité, titre de séjour, justificatif de
+qualification. Un justificatif de domicile de quatre mois ne met personne en danger — on
+relance, on n'exclut pas. Suspendre pour un motif disproportionné pousse à désactiver la règle
+entière, et c'est alors l'assurance qui n'est plus surveillée.
+
+**La suspension ne touche pas aux prestations déjà acceptées.** `missions_enabled` ferme
+l'accès aux **nouvelles** prestations ; celles qui sont en cours vont à leur terme. Annuler la
+prestation de demain parce qu'une attestation expire aujourd'hui punirait le client, qui n'y
+est pour rien.
+
+**Les dates qui se déduisent sont calculées, les autres sont saisies.** Une attestation URSSAF
+vaut six mois à compter de son émission : la date se calcule. La période de garantie d'une
+RC Pro est écrite sur l'attestation et n'a aucun rapport avec le jour du dépôt : la déduire
+donnerait une fausse date — et **une fausse date rassure à tort, ce qui est pire que pas de
+date du tout**. Le back-office porte un champ de saisie à côté de chaque pièce concernée.
+
+**Les trois vérifications officielles, gratuites, sont dans le back-office** à côté de la pièce
+correspondante :
+
+| Document | Service | Ce qu'il prouve |
+|---|---|---|
+| Attestation URSSAF | `urssaf.fr` — code de sécurité | Distingue une vraie attestation d'une reconstitution graphique |
+| Diplôme Éducation nationale | CycladesVerif — QR code depuis 2025 | Authenticité du CAP, BTS, bac |
+| Carte professionnelle CNAPS | téléservice du ministère | La carte est-elle toujours active |
+
+Aucune plateforme payante de conformité ne fait mieux : la plupart se contentent d'appeler ces
+mêmes services. Le lien affiché **suit le métier** — pour un agent de sécurité, « diplômes »
+renvoie au CNAPS ; pour un pâtissier, à CycladesVerif. Les liens pointent toujours vers le site
+officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur classique de la
+fausse attestation.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |

@@ -343,6 +343,22 @@ function BOComptes() {
     setDocVerifying(null);
   };
 
+  // Renseigner ou corriger la date de fin de validité d'une pièce.
+  //
+  // Elle passe par le serveur, comme la validation : une date repoussée depuis
+  // le navigateur, ce serait une assurance périmée qui reste réputée valide.
+  const handleSetExpiration = async (profileId, docId, date) => {
+    try {
+      const r = await boFetch({ action:"set_expiration", profileId, docId, date: date || null });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || `Erreur ${r.status}`, "error"); return; }
+      // On relit la liste plutôt que de recalculer l'état ici : le serveur sait
+      // seul si la date rend la pièce « bientôt expirée » ou « suspendable ».
+      loadDocs(profileId);
+      showToast(date ? "Date enregistrée" : "Date retirée", "success");
+    } catch(e) { showToast(e?.message || "Erreur réseau", "error"); }
+  };
+
   // Refus d'un document : le motif est obligatoire, il est envoyé au prestataire
   // dans la notification qui lui demande d'en redéposer un.
   const handleRejectDoc = async (profileId, docId, label) => {
@@ -940,6 +956,22 @@ function BOComptes() {
                         <div style={{ flex:"1 1 130px", minWidth:0 }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{DOC_LABEL[doc.type]||doc.type}</div>
                           <div style={{ fontSize:10, color: doc.verified ? C.success : C.accentGold, fontWeight:700, marginTop:1 }}>{doc.verified ? "✓ Vérifié" : "⏳ En attente"}</div>
+                          {/* La péremption. Un vrai document devenu caduc est le
+                              risque le plus concret d'un dossier : personne ne
+                              rouvre jamais une pièce validée. */}
+                          {doc.expiration && (
+                            <div style={{ fontSize:10, marginTop:2, fontWeight:700, color:
+                              doc.expiration.etat === "valide" ? "rgba(255,255,255,0.45)"
+                              : doc.expiration.etat === "bientot" ? C.accentGold : C.danger }}>
+                              {doc.expiration.etat === "valide"   && `valide ${doc.expiration.jours} j`}
+                              {doc.expiration.etat === "bientot"  && `⏳ expire dans ${doc.expiration.jours} j`}
+                              {doc.expiration.etat === "expire"   && `⚠️ expiré depuis ${-doc.expiration.jours} j`}
+                              {doc.expiration.etat === "suspendable" && `⛔ expiré depuis ${-doc.expiration.jours} j — accès retiré`}
+                            </div>
+                          )}
+                          {!doc.expiration && doc.regleValidite && doc.regleValidite.mois !== null && !doc.isVirtual && (
+                            <div style={{ fontSize:10, marginTop:2, color:C.accentGold }}>date d'expiration à renseigner</div>
+                          )}
                         </div>
                         <div onClick={e=>e.stopPropagation()} style={{ display:"flex", gap:5, flexShrink:0, marginLeft:"auto" }}>
                           {doc.signedUrl && (
@@ -954,6 +986,26 @@ function BOComptes() {
                             <button title="Refuser ce document" onClick={()=>handleRejectDoc(p.id, doc.id, DOC_LABEL[doc.type]||doc.type)} disabled={docVerifying===doc.id||validatingAll===p.id} style={{ fontSize:10, color:C.danger, fontWeight:700, background:`${C.danger}15`, border:`1px solid ${C.danger}44`, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontFamily:"inherit", opacity:(docVerifying===doc.id||validatingAll===p.id)?0.5:1 }}>
                               ✕
                             </button>
+                          )}
+                          {/* Le service OFFICIEL de vérification, à côté de la
+                              pièce. Trois existent, gratuits, et personne ne s'en
+                              servait faute de savoir qu'ils existent : le code de
+                              sécurité d'une attestation URSSAF, la validité d'une
+                              carte CNAPS, le QR code des diplômes. Regarder le PDF
+                              ne distingue pas une vraie attestation d'une
+                              reconstitution graphique ; eux, si. */}
+                          {doc.verification && (
+                            <a href={doc.verification.url} target="_blank" rel="noopener noreferrer"
+                               title={doc.verification.mode}
+                               style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, borderRadius:6, padding:"4px 8px", textDecoration:"none", whiteSpace:"nowrap" }}>
+                              🔎 {doc.verification.nom}
+                            </a>
+                          )}
+                          {!doc.isVirtual && doc.regleValidite && doc.regleValidite.mois !== null && (
+                            <input type="date" defaultValue={doc.expires_at ? String(doc.expires_at).slice(0,10) : ""}
+                              title={doc.regleValidite.note || "Date de fin de validité"}
+                              onChange={e=>handleSetExpiration(p.id, doc.id, e.target.value)}
+                              style={{ fontSize:10, color:"rgba(255,255,255,0.8)", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:6, padding:"3px 6px", fontFamily:"inherit", colorScheme:"dark" }} />
                           )}
                           {doc.verified && <span style={{ fontSize:14 }}>✅</span>}
                         </div>

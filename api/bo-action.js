@@ -4,7 +4,8 @@ import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
-import { qualificationsPour } from "./_qualifications.js";
+import { qualificationsPour, qualificationRequise } from "./_qualifications.js";
+import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, expirationDeduite } from "./_documents.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
@@ -1339,8 +1340,59 @@ export default async function handler(req, res) {
         } catch (e) { void e; return { ...doc, signedUrl: null }; }
       }));
 
-      const result = photoEntry ? [photoEntry, ...withUrls] : withUrls;
-      return res.status(200).json(result);
+      // ── Ce qu'il faut pour vérifier VRAIMENT, et non regarder le PDF ──
+      //
+      // Trois services officiels et gratuits permettent de contrôler ce qu'on
+      // ne peut pas contrôler à l'œil : le code de sécurité d'une attestation
+      // URSSAF, la validité d'une carte professionnelle CNAPS, le QR code des
+      // diplômes de l'Éducation nationale. Ils n'étaient utilisés nulle part,
+      // faute d'être connus. Le back-office les porte désormais à côté de
+      // chaque pièce.
+      //
+      // La cible du lien dépend parfois du prestataire : pour un agent de
+      // sécurité, « diplômes » veut dire carte CNAPS ; pour un pâtissier, CAP.
+      let qualifs = [];
+      try {
+        const uRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
+        const uData = uRes.ok ? await uRes.json().catch(() => null) : null;
+        qualifs = qualificationsPour(uData?.user_metadata?.metiers_list);
+      } catch (e) {
+        console.error(`[list_docs] métiers de ${profileId} illisibles :`, e.message);
+      }
+      const qualifPrincipale = qualifs[0] || null;
+
+      const enrichis = (photoEntry ? [photoEntry, ...withUrls] : withUrls).map(doc => ({
+        ...doc,
+        verification: verificationPour(doc.type, qualifPrincipale),
+        expiration: etatExpiration(doc.date_expiration),
+        regleValidite: VALIDITE_DOCUMENTS[doc.type] || null,
+      }));
+      return res.status(200).json(enrichis);
+    }
+
+    // ── Renseigner la date de fin de validité d'une pièce ────────────────
+    //
+    // Réservée au back-office, comme la validation elle-même : une date
+    // repoussée à la main par l'intéressé, c'est une assurance périmée qui
+    // reste réputée valide.
+    if (action === "set_expiration") {
+      const { docId, date } = req.body;
+      if (!docId) return res.status(400).json({ error: "docId requis" });
+      // `null` est une valeur légitime : le document ne périme pas, ou la date
+      // est retirée parce qu'elle avait été saisie par erreur.
+      if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) {
+        return res.status(400).json({ error: "Date attendue au format AAAA-MM-JJ, ou vide." });
+      }
+      const maj = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${encodeURIComponent(docId)}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({ date_expiration: date || null, relance_expiration_at: null }),
+      });
+      const lignes = await maj.json().catch(() => []);
+      if (!maj.ok || !Array.isArray(lignes) || lignes.length === 0) {
+        console.error(`[set_expiration] ${docId} non enregistrée (${maj.status}) : ${JSON.stringify(lignes).slice(0, 200)}`);
+        return res.status(500).json({ error: "La date n'a pas pu être enregistrée." });
+      }
+      return res.status(200).json({ success: true, document: lignes[0] });
     }
 
     if (action === "list_all_docs") {
