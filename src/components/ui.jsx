@@ -392,19 +392,6 @@ export const SectionHeader = ({ title, action, onAction }) => (
   </div>
 );
 
-export const Divider = () => <div style={{ height:1, background:C.border, margin:"16px 0" }} />;
-
-export const MiniBar = ({ data, color, height=40 }) => {
-  const max = Math.max(...data);
-  return (
-    <div style={{ display:"flex", gap:4, alignItems:"flex-end", height }}>
-      {data.map((v,i) => (
-        <div key={i} style={{ flex:1, background: i===data.length-1 ? color : color+"66", borderRadius:"3px 3px 0 0", height:`${(v/max)*100}%`, minHeight:4, transition:"height 0.3s" }} />
-      ))}
-    </div>
-  );
-};
-
 export const DonutChart = ({ sectors, size=120 }) => {
   const rad=40, cx=60, cy=60, circ=2*Math.PI*rad;
   let offset=0;

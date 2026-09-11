@@ -212,15 +212,21 @@ vérifiée ». Une assurance sans fondement est pire que pas d'assurance.
 > bucket privé, lisible du seul back-office — qui, lui, compare la photo à la pièce au moment
 > de valider le dossier. C'est là que se fait le rapprochement, une fois, par un humain.
 
-Le drapeau `isVirtual` de `backoffice.jsx` est lu sept fois et **jamais affecté** : il décrit
-une époque où la photo venait de `user_metadata`. Il ne bloque rien — le document `photo` est
-bien validable — mais son commentaire dit le contraire, et il est à retirer.
+Le drapeau `isVirtual` sert bien : `api/bo-action.js` (action `list_docs`) injecte en tête de
+liste un document *synthétique* représentant la photo de `user_metadata`, qui n'a pas de ligne
+en table `documents`, et le marque `isVirtual: true` pour l'exclure des boutons Valider et
+Refuser. `backoffice.jsx` le lit à sept endroits, et le flux est cohérent.
 
-Reste également sans emploi : `genMissionCode()` (`src/constants/data.js`) et l'écran
-`presta_pointage`, vestige d'un code à quatre chiffres. Aucun écran n'y mène, rien n'est envoyé
-au serveur, le client ne voit ce code nulle part — et il est de toute façon dérivé de
-l'identifiant du prestataire et de la date, donc générable sans jamais voir le client. **À
-supprimer plutôt qu'à réparer.**
+**L'asymétrie à connaître** : l'onglet « Documents » global s'alimente de `list_all_docs`, qui
+**n'injecte pas** ce document synthétique. Les gardes `!d.isVirtual` n'y filtrent donc jamais
+rien. Sans effet aujourd'hui, mais c'est le genre d'écart entre deux chemins qui finit par
+produire un défaut.
+
+`genMissionCode()` et l'écran `presta_pointage` — un code à quatre chiffres censé être comparé
+au pointage — ont été **supprimés le 11/09/2026**. L'écran était strictement injoignable
+(aucune navigation, absent même du panneau de test du back-office) et sa validation n'écrivait
+qu'une clé de navigateur, sans aucun appel serveur. Le code, dérivé de l'identifiant du
+prestataire et de la date, se générait sans jamais voir le client : il ne prouvait rien.
 
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 

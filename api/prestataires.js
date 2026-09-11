@@ -61,17 +61,19 @@ export default async function handler(req, res) {
 
   try {
     // Fetch approved prestataires + verified doc IDs in parallel
-    const [profilesRes, verifiedDocsRes] = await Promise.all([
+    // La liste des documents validés était chargée ici, et son résultat jeté :
+    // un aller-retour complet vers Supabase, à CHAQUE chargement du catalogue,
+    // pour rien. Le filtre qu'elle servait a été retiré volontairement (voir le
+    // commentaire plus bas) ; la requête, elle, avait été oubliée.
+    const [profilesRes] = await Promise.all([
       // `missions_enabled` est le second verrou du backoffice, posé après vérification
       // des documents (bouton « Activer l'accès aux prestations »). Il n'était lu que
       // par l'interface du prestataire : un compte non activé restait proposé aux
       // clients et pouvait être réservé. Il est désormais exclu du catalogue, et
       // l'affectation le refuse également côté /api/missions.
       fetch(`${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved&missions_enabled=is.true&select=id,prenom,nom,created_at,trial_exhausted,avatar_url,plan_abonnement`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/documents?verified=eq.true&select=prestataire_id`, { headers }),
     ]);
-    const profiles     = await profilesRes.json();
-    const verifiedDocs = await verifiedDocsRes.json();
+    const profiles = await profilesRes.json();
 
     if (!Array.isArray(profiles) || profiles.length === 0) {
       return res.status(200).json({ prestataires: [] });
@@ -80,7 +82,6 @@ export default async function handler(req, res) {
     // All BO-approved prestataires are shown — verified docs is a badge, not a gate
     // (KBIS/RIB collected at registration go to user_metadata, not the documents table)
     const approvedProfiles = profiles;
-    const verifiedIds = new Set(Array.isArray(verifiedDocs) ? verifiedDocs.map(d => d.prestataire_id) : []);
 
     // Fetch all ratings + completed missions count in parallel
     const prestaIdList = approvedProfiles.map(p => p.id);
