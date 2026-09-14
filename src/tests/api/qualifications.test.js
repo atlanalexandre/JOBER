@@ -149,3 +149,55 @@ describe("les notes d'information", () => {
     expect(doublons).toEqual([]);
   });
 });
+
+// Le courriel de validation disait « déposez vos documents justificatifs » sans
+// dire lesquels, ni que rien ne se passerait tant qu'ils manqueraient. Le
+// prestataire lisait « compte activé », se connectait, ne trouvait aucune
+// prestation et écrivait au support.
+describe("le courriel de validation du compte", () => {
+  const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+  const mail = bo.slice(bo.indexOf("Bienvenue sur ALANE"), bo.indexOf("Votre demande de compte ALANE"));
+
+  it("dit que l'accès aux prestations n'est PAS encore ouvert", () => {
+    expect(mail).toMatch(/ne vous donne pas encore accès aux prestations/);
+    expect(mail).toMatch(/vous ne recevrez aucune proposition/);
+  });
+
+  it("énumère les pièces de CE prestataire, pas une liste générique", () => {
+    expect(bo).toContain("docsRequisPour(userData.user_metadata?.nationalite, userData.user_metadata?.metiers_list)");
+    expect(mail).toContain("docsAttendusPresta.map");
+  });
+
+  it("distingue l'obligatoire du facultatif", () => {
+    expect(mail).toContain("docsFacultatifsPresta");
+    expect(mail).toMatch(/Facultatif/);
+  });
+
+  // Les mandats conditionnent l'ouverture de l'accès au même titre que les
+  // documents : les taire renvoie le prestataire au support une seconde fois.
+  it("rappelle les mandats", () => {
+    expect(mail).toMatch(/mandats de facturation et d'encaissement/);
+  });
+
+  it("ne s'adresse qu'aux prestataires", () => {
+    expect(mail).toContain('role === "prestataire"');
+  });
+});
+
+// Les libellés des pièces existaient en double — dans DOCS_REQUIS et dans
+// VALIDITE_DOCUMENTS. Deux listes de libellés finissent par diverger.
+describe("une seule définition des pièces d'un dossier", () => {
+  it("les libellés ne vivent qu'à un endroit", async () => {
+    const { VALIDITE_DOCUMENTS, libelleDoc } = await import("../../../api/_documents.js");
+    for (const regle of Object.values(VALIDITE_DOCUMENTS)) {
+      expect(regle).not.toHaveProperty("libelle");
+    }
+    expect(libelleDoc("urssaf")).toBe("Attestation URSSAF");
+    expect(libelleDoc("inconnu")).toBe("inconnu");
+  });
+
+  it("le catalogue est servi par le module partagé", async () => {
+    const data = readFileSync(new URL("../../constants/data.js", import.meta.url), "utf8");
+    expect(data).toContain('export { DOCS_REQUIS, docsRequisPour } from "../../api/_documents.js"');
+  });
+});

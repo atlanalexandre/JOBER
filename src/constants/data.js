@@ -584,56 +584,12 @@ export const METIERS = Object.fromEntries(
 // back-office refuse d'ouvrir l'accès aux prestations sans le justificatif, et
 // cette règle-là s'applique côté serveur. Une copie ici aurait divergé.
 export { QUALIFICATIONS_OBLIGATOIRES, qualificationRequise, qualificationsPour, NOTES_METIERS, noteMetier } from "../../api/_qualifications.js";
-import { qualificationsPour } from "../../api/_qualifications.js";
 
-export const DOCS_REQUIS = [
-  { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Photo professionnelle de face, fond neutre (JPG ou PNG uniquement)" },
-  { id:"kbis",     label:"Extrait KBIS / INSEE",       icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
-  { id:"urssaf",   label:"Attestation URSSAF",         icon:"📋", required:true,  info:"Prouve que vous êtes à jour de vos cotisations" },
-  { id:"cni",      label:"Pièce d'identité",           icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },
-  { id:"domicile", label:"Justificatif de domicile",   icon:"🏠", required:true,  info:"Facture EDF ou quittance de loyer -3 mois" },
-  { id:"rib",      label:"RIB / IBAN",                 icon:"🏦", required:true,  info:"Pour le virement de vos paiements" },
-  { id:"rc_pro",   label:"Attestation RC Pro",         icon:"🛡️", required:true,  info:"Assurance RC Professionnelle en cours de validité (obligatoire)" },
-  { id:"diplomes", label:"Diplômes & Certifications",  icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
-  // Exigé des seuls ressortissants hors Union européenne. Un indépendant
-  // étranger doit disposer d'un titre l'autorisant à exercer une activité NON
-  // SALARIÉE en France : la nationalité était déclarée à l'inscription, aucun
-  // justificatif n'était demandé. Voir `docsRequisPour()`.
-  { id:"titre_sejour", label:"Titre de séjour",         icon:"🛂", required:false, info:"Autorisant l'exercice d'une activité non salariée en France (hors UE uniquement)" },
-];
-
-// Documents exigés d'un prestataire donné.
-//
-// La liste n'est pas la même pour tout le monde : le titre de séjour ne concerne
-// que les ressortissants hors UE. L'afficher à tous ferait renoncer des candidats
-// français qui n'ont rien à fournir ; ne l'exiger de personne laisse ALANE mettre
-// en relation des professionnels sans droit d'exercer.
-export function docsRequisPour(nationalite, metiers) {
-  const horsUE = String(nationalite || "").toLowerCase().includes("hors");
-
-  // Le document « Diplômes & certifications » devient OBLIGATOIRE dès qu'un
-  // métier déclaré suppose un titre, et son intitulé nomme alors ce qui est
-  // attendu. « Fournissez un diplôme » fait envoyer n'importe quoi ;
-  // « Fournissez votre carte professionnelle CNAPS » fait envoyer la carte.
-  const qualifications = qualificationsPour(metiers);
-
-  return DOCS_REQUIS
-    .filter(d => d.id !== "titre_sejour" || horsUE)
-    .map(d => {
-      if (d.id === "titre_sejour") return { ...d, required: true };
-      if (d.id === "diplomes" && qualifications.length > 0) {
-        return {
-          ...d,
-          required: true,
-          label: qualifications.length === 1 ? qualifications[0].titre : "Titres professionnels",
-          info: qualifications
-            .map(q => `${q.titre} — exigé pour « ${q.metiers.join(" », « ")} » (${q.texte})`)
-            .join("\n"),
-        };
-      }
-      return d;
-    });
-}
+// `DOCS_REQUIS` et `docsRequisPour()` vivent dans `api/_documents.js` : le
+// serveur en a besoin pour dire, dans le courriel de validation, exactement ce
+// qu'il attend — et pour refuser d'ouvrir l'accès sans. Une copie ici aurait
+// divergé, et les libellés y étaient déjà en double.
+export { DOCS_REQUIS, docsRequisPour } from "../../api/_documents.js";
 
 export const DOCS_REQUIS_CLIENT_PRO = [
   { id:"kbis",      label:"Extrait KBIS / Sirene",                icon:"🏢", required:true, info:"Justificatif d'existence légale de votre société" },
