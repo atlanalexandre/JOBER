@@ -284,6 +284,22 @@ un indépendant n'en a pas. De même, servir ou vendre n'est pas *préparer* : l
 boulangerie ne sont pas concernés, les boulangers le sont. Une exigence sans fondement finit
 par être contournée, et décrédibilise les autres.
 
+**Le courriel de validation nomme les pièces attendues** (14/09/2026). Il disait « déposez vos
+documents justificatifs », sans dire lesquels, ni que rien ne se passerait tant qu'ils
+manqueraient. Le prestataire lisait « compte activé », se connectait, ne trouvait aucune
+prestation, et écrivait au support.
+
+Il énumère désormais les pièces **de ce prestataire** — le titre de séjour n'est réclamé qu'aux
+ressortissants hors UE, le justificatif de qualification qu'aux métiers réglementés, et il y
+est nommé précisément (« Carte professionnelle CNAPS » plutôt que « Diplômes »). Il distingue
+l'obligatoire du facultatif, rappelle les deux mandats, et dit d'emblée que **le compte ne
+donne pas encore accès aux prestations**.
+
+**`DOCS_REQUIS` et `docsRequisPour()` ont rejoint [`api/_documents.js`](api/_documents.js)** à
+cette occasion, `src/constants/data.js` les ré-exportant : le serveur en a besoin pour rédiger
+ce courriel, et les libellés s'y trouvaient déjà en double depuis la surveillance de
+péremption. Deux listes de libellés finissent par diverger.
+
 **La péremption des pièces est surveillée, pour tous les types** (11/09/2026). Une attestation
 URSSAF vaut six mois, une RC Pro s'arrête à une date, une carte CNAPS dure cinq ans, un titre
 de séjour expire. **Seule la RC Pro était surveillée** : un prestataire validé en janvier avec

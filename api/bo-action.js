@@ -4,8 +4,8 @@ import { esc, hashPii, emailHtml, sendEmail } from "./_email.js";
 import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_dependance.js";
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
-import { qualificationsPour, qualificationRequise } from "./_qualifications.js";
-import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, expirationDeduite } from "./_documents.js";
+import { qualificationsPour } from "./_qualifications.js";
+import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour } from "./_documents.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
@@ -345,6 +345,25 @@ export default async function handler(req, res) {
       if (userEmail) {
         if (status === "approved") {
           const prenom = userData.user_metadata?.prenom || "";
+
+          // ── Le courriel NOMME les pièces attendues (14/09/2026) ──────────
+          //
+          // Il disait « déposez vos documents justificatifs », sans dire
+          // lesquels, ni que rien ne se passerait tant qu'ils manqueraient. Le
+          // prestataire lisait « compte activé », se connectait, ne trouvait
+          // aucune prestation et écrivait au support.
+          //
+          // La liste est celle de CE prestataire : le titre de séjour n'est
+          // réclamé qu'aux ressortissants hors UE, et le justificatif de
+          // qualification qu'aux métiers réglementés — où il est nommé
+          // précisément (« Carte professionnelle CNAPS » plutôt que
+          // « Diplômes »). Une liste générique se lit en diagonale ; une liste
+          // qui nomme ce qu'on attend de vous se lit.
+          const tousDocsPresta = role === "prestataire"
+            ? docsRequisPour(userData.user_metadata?.nationalite, userData.user_metadata?.metiers_list)
+            : [];
+          const docsAttendusPresta   = tousDocsPresta.filter(d => d.required);
+          const docsFacultatifsPresta = tousDocsPresta.filter(d => !d.required);
           await sendEmail({
             to: userEmail,
             subject: "Bienvenue sur ALANE — Votre compte est activé ! 🎉",
@@ -352,7 +371,18 @@ export default async function handler(req, res) {
               <p>Bonjour${prenom ? ` <strong>${esc(prenom)}</strong>` : ""},</p>
               <p>Bonne nouvelle ! 🎉 Votre compte <strong>ALANE</strong> a été validé par notre équipe.</p>
               ${role === "prestataire" ? `
-              <p style="margin-top:20px;">Prochaine étape : déposez vos documents justificatifs depuis votre espace. Une fois votre dossier vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
+              <p style="margin-top:20px;"><strong>Ce compte ne vous donne pas encore accès aux prestations.</strong>
+              Il vous reste une étape : déposer les pièces ci-dessous depuis l'onglet <strong>Docs</strong> de votre espace.
+              Tant qu'elles ne sont pas toutes déposées et vérifiées par notre équipe, vous ne recevrez aucune proposition.</p>
+              <div style="background:#f4f4f7;border-left:3px solid #7C6FE0;border-radius:8px;padding:14px 16px;margin:18px 0">
+                <div style="font-weight:700;color:#050E20;font-size:14px;margin-bottom:8px">Les pièces à déposer</div>
+                <ul style="margin:0;padding-left:18px;color:#444;font-size:13px;line-height:1.7">
+                  ${docsAttendusPresta.map(d => `<li><strong>${esc(d.label)}</strong>${d.info ? ` — ${esc(String(d.info).split("\n")[0])}` : ""}</li>`).join("")}
+                </ul>
+                ${docsFacultatifsPresta.length > 0 ? `<div style="color:#888;font-size:12px;margin-top:10px">Facultatif : ${docsFacultatifsPresta.map(d => esc(d.label)).join(", ")}.</div>` : ""}
+              </div>
+              <p style="color:#444;font-size:13px;">Pensez aussi à accepter les <strong>mandats de facturation et d'encaissement</strong> depuis l'onglet Revenus : sans eux, aucune facture ne peut être émise à votre nom.</p>
+              <p style="color:#444;font-size:13px;">Une fois votre dossier complet et vérifié, nous vous ouvrirons l'accès aux prestations et vous enverrons le lien pour configurer vos virements.</p>
               ` : ""}
               <p>Vous pouvez dès maintenant vous connecter et commencer à utiliser ALANE.</p>
               <p style="text-align:center;margin:28px 0;"><a href='${appUrl()}' style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Accéder à ALANE →</a></p>

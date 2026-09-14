@@ -8,7 +8,7 @@ import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
-import { VALIDITE_DOCUMENTS, EXPIRATION_BLOQUANTE, etatExpiration } from "./_documents.js";
+import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc } from "./_documents.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -1289,7 +1289,7 @@ export default async function handler(req, res) {
         parPresta.get(d.prestataire_id).push({ ...d, etat });
       }
 
-      const nomDoc = (t) => VALIDITE_DOCUMENTS[t]?.libelle || t;
+      const nomDoc = libelleDoc;
       const leJour = (d) => new Date(`${String(d).slice(0, 10)}T12:00:00Z`)
         .toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long", year: "numeric" });
 

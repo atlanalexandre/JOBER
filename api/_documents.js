@@ -1,3 +1,5 @@
+import { qualificationsPour } from "./_qualifications.js";
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Les pièces d'un dossier : combien de temps elles valent, et où les vérifier
 // ═══════════════════════════════════════════════════════════════════════════
@@ -22,6 +24,61 @@
 // se comblent ici avec une colonne et trois liens.
 // ═══════════════════════════════════════════════════════════════════════════
 
+export const DOCS_REQUIS = [
+  { id:"photo",    label:"Photo de profil",            icon:"📸", required:true,  info:"Photo professionnelle de face, fond neutre (JPG ou PNG uniquement)" },
+  { id:"kbis",     label:"Extrait KBIS / INSEE",       icon:"🏢", required:true,  info:"Attestation existence légale de votre auto-entreprise" },
+  { id:"urssaf",   label:"Attestation URSSAF",         icon:"📋", required:true,  info:"Prouve que vous êtes à jour de vos cotisations" },
+  { id:"cni",      label:"Pièce d'identité",           icon:"🪪", required:true,  info:"CNI ou passeport en cours de validité" },
+  { id:"domicile", label:"Justificatif de domicile",   icon:"🏠", required:true,  info:"Facture EDF ou quittance de loyer -3 mois" },
+  { id:"rib",      label:"RIB / IBAN",                 icon:"🏦", required:true,  info:"Pour le virement de vos paiements" },
+  { id:"rc_pro",   label:"Attestation RC Pro",         icon:"🛡️", required:true,  info:"Assurance RC Professionnelle en cours de validité (obligatoire)" },
+  { id:"diplomes", label:"Diplômes & Certifications",  icon:"🎓", required:false, info:"CACES, habilitations, diplômes pro…" },
+  // Exigé des seuls ressortissants hors Union européenne. Un indépendant
+  // étranger doit disposer d'un titre l'autorisant à exercer une activité NON
+  // SALARIÉE en France : la nationalité était déclarée à l'inscription, aucun
+  // justificatif n'était demandé. Voir `docsRequisPour()`.
+  { id:"titre_sejour", label:"Titre de séjour",         icon:"🛂", required:false, info:"Autorisant l'exercice d'une activité non salariée en France (hors UE uniquement)" },
+];
+
+// Documents exigés d'un prestataire donné.
+//
+// La liste n'est pas la même pour tout le monde : le titre de séjour ne concerne
+// que les ressortissants hors UE. L'afficher à tous ferait renoncer des candidats
+// français qui n'ont rien à fournir ; ne l'exiger de personne laisse ALANE mettre
+// en relation des professionnels sans droit d'exercer.
+export function docsRequisPour(nationalite, metiers) {
+  const horsUE = String(nationalite || "").toLowerCase().includes("hors");
+
+  // Le document « Diplômes & certifications » devient OBLIGATOIRE dès qu'un
+  // métier déclaré suppose un titre, et son intitulé nomme alors ce qui est
+  // attendu. « Fournissez un diplôme » fait envoyer n'importe quoi ;
+  // « Fournissez votre carte professionnelle CNAPS » fait envoyer la carte.
+  const qualifications = qualificationsPour(metiers);
+
+  return DOCS_REQUIS
+    .filter(d => d.id !== "titre_sejour" || horsUE)
+    .map(d => {
+      if (d.id === "titre_sejour") return { ...d, required: true };
+      if (d.id === "diplomes" && qualifications.length > 0) {
+        return {
+          ...d,
+          required: true,
+          label: qualifications.length === 1 ? qualifications[0].titre : "Titres professionnels",
+          // Quand le libellé porte déjà le titre, l'information ne le répète
+          // pas : « Carte professionnelle CNAPS — Carte professionnelle CNAPS
+          // — exigé pour… » se lit mal et donne l'air d'un texte engendré.
+          info: qualifications.length === 1
+            ? `${qualifications[0].detail ? `${qualifications[0].detail}. ` : ""}`
+              + `Exigé pour « ${qualifications[0].metiers.join(" », « ")} » (${qualifications[0].texte}).`
+            : qualifications
+                .map(q => `${q.titre} — exigé pour « ${q.metiers.join(" », « ")} » (${q.texte})`)
+                .join("\n"),
+        };
+      }
+      return d;
+    });
+}
+
 /**
  * Durée de validité par type de document, en MOIS.
  *
@@ -35,20 +92,20 @@
  * donnerait une fausse date, et une fausse date rassure à tort.
  */
 export const VALIDITE_DOCUMENTS = {
-  photo:        { mois: null, libelle: "Photo de profil" },
-  kbis:         { mois: 3,    libelle: "Extrait KBIS / INSEE",
+  photo:        { mois: null },
+  kbis:         { mois: 3,
                   note: "Un KBIS de plus de trois mois n'est plus accepté par la plupart des donneurs d'ordre." },
-  urssaf:       { mois: 6,    libelle: "Attestation de vigilance URSSAF",
+  urssaf:       { mois: 6,
                   note: "Validité légale de six mois. Au-delà, elle ne prouve plus rien." },
-  cni:          { mois: 0,    libelle: "Pièce d'identité",
+  cni:          { mois: 0,
                   note: "Saisir la date de fin de validité portée sur la pièce." },
-  domicile:     { mois: 3,    libelle: "Justificatif de domicile" },
-  rib:          { mois: null, libelle: "RIB / IBAN" },
-  rc_pro:       { mois: 0,    libelle: "Attestation RC Pro",
+  domicile:     { mois: 3 },
+  rib:          { mois: null },
+  rc_pro:       { mois: 0,
                   note: "Saisir la date de fin de la période de garantie écrite sur l'attestation — elle n'a aucun rapport avec la date de dépôt." },
-  diplomes:     { mois: 0,    libelle: "Diplômes & certifications",
+  diplomes:     { mois: 0,
                   note: "Un diplôme ne périme pas, mais une carte professionnelle ou un recyclage, si. Laisser vide pour un diplôme, saisir la date pour une carte." },
-  titre_sejour: { mois: 0,    libelle: "Titre de séjour",
+  titre_sejour: { mois: 0,
                   note: "Saisir la date de fin de validité portée sur le titre." },
 };
 
@@ -145,6 +202,11 @@ export const PREAVIS_JOURS = 30;
  *
  * @returns {{etat:"valide"|"bientot"|"expire"|"suspendable", jours:number}|null}
  */
+/** Le libellé d'un type de pièce — une seule source, `DOCS_REQUIS`. */
+export function libelleDoc(type) {
+  return DOCS_REQUIS.find(d => d.id === type)?.label || type;
+}
+
 export function etatExpiration(expiresAt, maintenant = Date.now()) {
   if (!expiresAt) return null;
   const fin = new Date(`${String(expiresAt).slice(0, 10)}T23:59:59Z`).getTime();
