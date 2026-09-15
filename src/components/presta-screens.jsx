@@ -3809,13 +3809,14 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const required = attendus.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     })();
-    // Les places se comptent sur les offres réellement DÉCLENCHÉES — une
-    // première prestation acceptée (15/09/2026) —, exactement comme la règle
-    // serveur. Compter autre chose annoncerait des places qui n'existent pas,
-    // ou en cacherait qui existent : c'est le défaut corrigé le 24/08/2026, et
-    // il se reproduirait à chaque changement de règle si les deux comptes ne
-    // lisaient pas la même chose.
-    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").not("offre_lancement_at","is",null)
+    // Les places se comptent sur l'ÉLIGIBILITÉ — les comptes dont l'accès aux
+    // prestations est ouvert —, exactement comme la règle serveur. C'est la
+    // question que se pose celui qui lit : reste-t-il de la place pour moi ?
+    // Compter autre chose annoncerait des places qui n'existent pas, ou en
+    // cacherait qui existent : c'est le défaut corrigé le 24/08/2026, et il se
+    // reproduirait à chaque changement de règle si les deux comptes ne lisaient
+    // pas la même chose.
+    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("missions_enabled",true)
       .then(({count,error})=>{
         if(error) { console.error("[offre] places illisibles :", error.message); return; }
         if(count!=null) setSpotsLeft(Math.max(0,100-count));

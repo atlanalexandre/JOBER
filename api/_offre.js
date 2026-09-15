@@ -18,9 +18,27 @@
 // fond restait : un prestataire validé qui ne travaille jamais consommait une
 // place, et l'offre s'épuisait sans avoir produit une seule prestation.
 //
-// Décision d'Alexandre du 15/09/2026 : elle se déclenche à la PREMIÈRE
-// PRESTATION ACCEPTÉE. Seul quelqu'un qui travaille réellement consomme une
-// place — c'est le sens même d'une offre de lancement.
+// Décision d'Alexandre du 15/09/2026, en deux temps :
+//
+//   • L'ÉLIGIBILITÉ tient à l'ancienneté. Elle est réservée aux 100 premiers
+//     prestataires dont l'accès aux prestations a été ouvert, classés par leur
+//     DATE D'INSCRIPTION. C'est la promesse faite depuis le début — « les 100
+//     premiers inscrits » — et le filtre sur l'accès ouvert la protège des
+//     inscriptions fantômes : cent faux comptes créés en une soirée ne peuvent
+//     pas fermer l'offre, puisqu'ils ne passeront jamais la validation.
+//
+//   • LE DÉCLENCHEMENT tient au travail. L'offre ne s'active qu'à la première
+//     prestation acceptée. Un prestataire éligible qui ne travaille jamais ne
+//     consomme donc rien : il garde son éligibilité tant que son ancienneté le
+//     place dans les 100, et l'offre l'attend.
+//
+// L'ÉLIGIBILITÉ NE S'ÉVALUE QU'UNE FOIS
+//
+// Au moment du déclenchement, et jamais après. C'est ce qui rend le classement
+// stable : ouvrir l'accès à quelqu'un inscrit de longue date le fait entrer
+// dans les 100 et en pousse un autre dehors. Si l'on réévaluait à chaque
+// lecture, ce dernier perdrait en cours de mois une offre déjà accordée et déjà
+// utilisée. Une fois `offre_lancement_at` posée, le mois est acquis.
 //
 // COMBIEN DE TEMPS ELLE DURE
 //
@@ -33,12 +51,13 @@
 // qu'un autre. La règle est délibérée, elle n'est pas un oubli — ne pas la
 // « corriger » sans le lui demander.
 //
-// LA PLACE, ELLE, RESTE PRISE
+// ET APRÈS ?
 //
-// Les 100 places sont un plafond cumulatif : une fois déclenchée, la place
-// n'est pas rendue à la fin du mois. Cent prestataires en bénéficient, une
-// fois chacun. Rendre les places ferait redeviendrait l'offre permanente, ce
-// qui n'est pas ce qui est annoncé.
+// À la fin du mois, le prestataire repasse au quota du plan Gratuit — 2
+// prestations — SAUF s'il a souscrit un abonnement. C'est automatique et il n'y
+// a rien à coder pour cela : `quotaPrestations` rend directement la limite du
+// plan dès qu'il n'est plus `free`, sans même consulter l'offre. Un abonné
+// Premium ou Elite n'est donc jamais concerné par tout ce qui précède.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Nombre de places de l'offre de lancement. */
@@ -75,6 +94,38 @@ export function offreActive(offreLancementAt, maintenant = Date.now()) {
 }
 
 /**
+ * Ce prestataire fait-il partie des 100 premiers inscrits dont l'accès aux
+ * prestations est ouvert ?
+ *
+ * Le filtre porte sur l'accès ouvert, le tri sur la date d'INSCRIPTION. Les
+ * deux comptent : l'ancienneté est ce qui a été promis, l'accès ouvert est ce
+ * qui empêche des inscriptions fantômes de consommer l'offre.
+ *
+ * En cas de doute — lecture impossible, migration non passée —, renvoie `false`
+ * plutôt que `true` : accorder l'offre à tort est une promesse qu'il faudra
+ * retirer, ce qui est pire que de ne pas l'accorder.
+ */
+export async function estEligible(prestataireId, supabaseUrl, headers) {
+  if (!prestataireId) return false;
+  const r = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&missions_enabled=is.true`
+    + `&select=id&order=created_at.asc&limit=${PLACES_OFFRE}`,
+    { headers }
+  );
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    console.error(`[offre] classement d'éligibilité illisible (${r.status}) : ${detail.slice(0, 200)}`);
+    return false;
+  }
+  const lignes = await r.json().catch(() => null);
+  if (!Array.isArray(lignes)) {
+    console.error("[offre] classement d'éligibilité illisible : réponse inattendue");
+    return false;
+  }
+  return lignes.some(p => p.id === prestataireId);
+}
+
+/**
  * Déclenche l'offre pour ce prestataire, si elle ne l'est pas déjà.
  *
  * Appelée à CHAQUE prestation acceptée, par tous les chemins d'affectation :
@@ -83,11 +134,10 @@ export function offreActive(offreLancementAt, maintenant = Date.now()) {
  * chemin d'affectation, s'il faut penser à l'appeler. Un oubli ici priverait
  * quelqu'un de son offre en silence.
  *
- * Elle ne vérifie PAS s'il reste des places : le classement des 100 premiers se
- * fait à la lecture, par horodatage. Quelqu'un qui déclenche en 101ᵉ position
- * porte donc une date sans effet, et c'est sans conséquence — alors qu'un
- * décompte fait ici serait sujet aux courses entre deux acceptations
- * simultanées.
+ * L'éligibilité est vérifiée ICI, et une seule fois dans la vie du compte :
+ * quelqu'un qui n'est pas dans les 100 premiers inscrits ne reçoit pas de date,
+ * et le quota ne consulte donc plus le classement à chaque lecture. C'est ce
+ * qui rend l'offre stable une fois accordée.
  *
  * Ne lève jamais : une offre non déclenchée ne doit pas faire échouer
  * l'acceptation d'une prestation. Mais elle se journalise.
@@ -97,6 +147,13 @@ export function offreActive(offreLancementAt, maintenant = Date.now()) {
 export async function declencherOffreLancement(prestataireId, supabaseUrl, headers) {
   if (!prestataireId) return false;
   try {
+    // L'ancienneté d'abord : inutile d'écrire une date à quelqu'un qui n'y a
+    // pas droit. Et on ne la vérifie qu'ici, jamais à la lecture.
+    if (!(await estEligible(prestataireId, supabaseUrl, headers))) {
+      console.log(`[offre] ${prestataireId} hors des ${PLACES_OFFRE} premiers inscrits — offre non déclenchée`);
+      return false;
+    }
+
     // `offre_lancement_at=is.null` dans le filtre : c'est la base qui garantit
     // qu'on n'écrase pas une date existante, et non une lecture préalable qui
     // laisserait une fenêtre entre le test et l'écriture.

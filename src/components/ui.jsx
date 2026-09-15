@@ -420,18 +420,22 @@ export const DonutChart = ({ sectors, size=120 }) => {
 
 export function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
-  // Le libellé suit la règle, à la lettre. Il a dit « inscrits », puis
-  // « validés » (24/08/2026), et dit maintenant ce qui est vrai depuis le
-  // 15/09/2026 : l'offre se déclenche à la PREMIÈRE PRESTATION ACCEPTÉE, et
-  // vaut jusqu'à la fin de ce mois-là. Annoncer autre chose que ce que le
-  // serveur applique, c'est une pratique commerciale trompeuse (art. L121-2 du
-  // Code de la consommation) — et c'est déjà arrivé deux fois ici.
+  // Le libellé suit la règle, à la lettre. Annoncer autre chose que ce que le
+  // serveur applique est une pratique commerciale trompeuse (art. L121-2 du
+  // Code de la consommation), et c'est déjà arrivé deux fois sur cette offre.
+  //
+  // Depuis le 15/09/2026 elle tient en deux temps, et les DEUX doivent être
+  // dits : réservée aux 100 premiers inscrits validés — c'est l'éligibilité —,
+  // elle ne se déclenche qu'à la première prestation acceptée et vaut jusqu'à
+  // la fin de ce mois-là. Ne dire que le premier laisserait croire à une offre
+  // permanente ; ne dire que le second laisserait croire qu'elle est ouverte à
+  // tous.
   const spotsText = spotsLeft !== null
     ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
-    : "Réservé aux 100 premiers prestataires à accepter une prestation";
+    : "Réservé aux 100 premiers prestataires validés";
   const msgs = {
     home:    { icon:"🎉", title:"Offre de lancement", sub:`8 prestations le mois de votre 1re prestation · ${spotsText}` },
-    presta:  { icon:"🚀", title:"8 prestations le mois de votre 1re prestation", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · l'offre se déclenche à votre 1re prestation acceptée` : "Réservé aux 100 premiers prestataires à accepter une prestation" },
+    presta:  { icon:"🚀", title:"8 prestations le mois de votre 1re prestation", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · l'offre se déclenche à votre 1re prestation acceptée` : "Réservé aux 100 premiers prestataires validés · se déclenche à votre 1re prestation" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;

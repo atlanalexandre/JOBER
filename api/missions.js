@@ -3,7 +3,7 @@ import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
-import { declencherOffreLancement, offreActive, PLACES_OFFRE } from "./_offre.js";
+import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
@@ -367,35 +367,29 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
       return limite;
     }
 
-    // Les 100 premiers prestataires à avoir ACCEPTÉ UNE PRESTATION.
+    // L'offre est-elle DÉCLENCHÉE, et encore dans son mois ?
     //
-    // La place s'est attribuée successivement à l'inscription — un compte
-    // refusé la gardait —, puis à l'ouverture de l'accès aux prestations. Ce
-    // second état valait mieux, mais un prestataire validé qui ne travaillait
-    // jamais consommait quand même une place : l'offre s'épuisait sans avoir
-    // produit une seule prestation.
-    //
-    // Décision d'Alexandre du 15/09/2026 : elle se déclenche à la première
-    // prestation acceptée, et ne vaut que jusqu'à la fin du mois civil de ce
-    // déclenchement. Voir `api/_offre.js`, qui porte la règle.
-    const cr = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&offre_lancement_at=not.is.null`
-      + `&select=id,offre_lancement_at&order=offre_lancement_at.asc&limit=${PLACES_OFFRE}`,
+    // Le classement des 100 premiers ne se refait PAS ici. Il a été fait une
+    // fois, au déclenchement (`api/_offre.js`), et le résultat tient dans la
+    // présence de `offre_lancement_at`. Le refaire à chaque lecture rendrait
+    // l'offre instable : ouvrir l'accès à quelqu'un inscrit de longue date le
+    // ferait entrer dans les 100 et en pousserait un autre dehors, qui perdrait
+    // en cours de mois une offre déjà accordée et déjà utilisée.
+    const pr = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?id=eq.${prestataireId}&select=offre_lancement_at&limit=1`,
       { headers }
     );
-    if (!cr.ok) {
+    if (!pr.ok) {
       // Colonne inconnue → migration non appliquée. Sans elle, personne ne
       // bénéficie de l'offre et personne ne sait pourquoi.
-      const detail = await cr.text().catch(() => "");
-      console.error(`[quota] classement de l'offre illisible (${cr.status}) : ${detail.slice(0, 200)}`
+      const detail = await pr.text().catch(() => "");
+      console.error(`[quota] offre de lancement illisible (${pr.status}) : ${detail.slice(0, 200)}`
         + " — vérifier que la migration 2026-09-15_offre_lancement_a_la_premiere_prestation.sql est appliquée.");
       return limite;
     }
-    const cd = await cr.json();
-    const place = Array.isArray(cd) ? cd.find(p => p.id === prestataireId) : null;
-    // Être dans les 100 ne suffit pas : la place reste prise à vie, l'offre ne
-    // dure que le mois du déclenchement.
-    if (place && offreActive(place.offre_lancement_at)) {
+    const lignes = await pr.json().catch(() => []);
+    const profil = Array.isArray(lignes) ? lignes[0] : null;
+    if (profil && offreActive(profil.offre_lancement_at)) {
       return Math.max(limite, Number(limites.premium) || 8);
     }
   } catch (e) {

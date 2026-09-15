@@ -92,16 +92,50 @@ describe("le déclenchement, côté serveur", () => {
     expect(offre).not.toMatch(/throw new/);
   });
 
-  it("classe les 100 premiers sur la date de déclenchement", () => {
-    expect(missions).toContain("offre_lancement_at=not.is.null");
-    expect(missions).toContain("order=offre_lancement_at.asc");
+  // L'éligibilité tient à l'ANCIENNETÉ : les 100 premiers inscrits dont
+  // l'accès est ouvert. Le filtre sur l'accès ouvert protège des inscriptions
+  // fantômes ; le tri sur la date d'inscription est ce qui a été promis.
+  it("classe l'éligibilité sur l'ancienneté, parmi les comptes ouverts", () => {
+    expect(offre).toContain("missions_enabled=is.true");
+    expect(offre).toContain("order=created_at.asc");
     expect(PLACES_OFFRE).toBe(100);
   });
 
-  // Être dans les 100 ne suffit pas : la place reste prise à vie, l'offre ne
-  // dure que le mois du déclenchement.
-  it("exige d'être dans les 100 ET dans le mois", () => {
-    expect(missions).toContain("offreActive(place.offre_lancement_at)");
+  it("vérifie l'ancienneté AVANT d'écrire la date", () => {
+    const bloc = offre.slice(offre.indexOf("export async function declencherOffreLancement"));
+    expect(bloc.indexOf("estEligible")).toBeLessThan(bloc.indexOf("offre_lancement_at=is.null"));
+  });
+
+  // Accorder l'offre à tort est une promesse qu'il faudra retirer : en cas de
+  // doute, on n'accorde pas.
+  it("refuse l'éligibilité quand le classement est illisible", () => {
+    const bloc = offre.slice(offre.indexOf("export async function estEligible"), offre.indexOf("export async function declencherOffreLancement"));
+    expect(bloc).toContain("return false");
+    expect(bloc).not.toContain("return true;");
+  });
+
+  // Le classement ne se refait PAS à la lecture : le refaire ferait perdre en
+  // cours de mois une offre déjà accordée à celui qu'un inscrit plus ancien
+  // pousse hors des 100.
+  it("ne rejoue pas le classement à chaque calcul de quota", () => {
+    expect(missions).toContain("offreActive(profil.offre_lancement_at)");
+    expect(missions).not.toContain("order=offre_lancement_at.asc");
+    expect(missions).not.toContain("order=created_at.asc&limit=");
+  });
+});
+
+// « Dès la fin du mois il perd l'offre et passe en Gratuit, SAUF s'il souscrit
+// un abonnement. » C'est acquis sans une ligne de code : le quota rend
+// directement la limite du plan dès qu'il n'est plus `free`, sans consulter
+// l'offre. Ce test verrouille ce court-circuit.
+describe("un abonnement prime sur l'offre", () => {
+  const missions = readFileSync(new URL("../../../api/missions.js", import.meta.url), "utf8");
+
+  it("un abonné ne passe jamais par l'offre de lancement", () => {
+    const bloc = missions.slice(missions.indexOf("const limite = Number(limites[plan]"));
+    const courtCircuit = bloc.indexOf('if (plan !== "free"');
+    expect(courtCircuit, "le court-circuit des abonnés a disparu").toBeGreaterThanOrEqual(0);
+    expect(courtCircuit).toBeLessThan(bloc.indexOf("offre_lancement_at"));
   });
 });
 
@@ -113,13 +147,19 @@ describe("ce qui est annoncé correspond à ce qui est appliqué", () => {
   const presta = readFileSync(new URL("../../components/presta-screens.jsx", import.meta.url), "utf8");
   const api = readFileSync(new URL("../../../api/prestataires.js", import.meta.url), "utf8");
 
-  it("le libellé ne promet plus l'offre aux seuls « validés »", () => {
-    expect(ui).not.toContain("Réservé aux 100 premiers prestataires validés");
-    expect(ui).toMatch(/accepter une prestation/);
+  // La règle tient en DEUX temps, et les deux doivent être annoncés. Ne dire
+  // que l'éligibilité laisserait croire à une offre permanente ; ne dire que le
+  // déclenchement laisserait croire qu'elle est ouverte à tous.
+  it("annonce l'éligibilité ET le déclenchement", () => {
+    expect(ui).toMatch(/100 premiers prestataires validés/);
+    expect(ui).toMatch(/1re prestation/);
   });
 
-  it("les deux compteurs de places comptent la même chose que le serveur", () => {
-    expect(api).toContain("offre_lancement_at=not.is.null");
-    expect(presta).toContain('not("offre_lancement_at","is",null)');
+  // L'éligibilité tient à l'ouverture de l'accès aux prestations. Les deux
+  // compteurs affichés doivent compter cela, et rien d'autre : l'écart entre le
+  // compteur et la règle serveur est le défaut corrigé le 24/08/2026.
+  it("les deux compteurs de places comptent l'éligibilité, comme le serveur", () => {
+    expect(api).toContain("missions_enabled=is.true&select=id");
+    expect(presta).toContain('eq("missions_enabled",true)');
   });
 });
