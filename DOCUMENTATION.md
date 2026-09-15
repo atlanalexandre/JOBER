@@ -350,6 +350,46 @@ renvoie au CNAPS ; pour un pâtissier, à CycladesVerif. Les liens pointent touj
 officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur classique de la
 fausse attestation.
 
+**L'offre de lancement se déclenche à la PREMIÈRE PRESTATION ACCEPTÉE** (15/09/2026). Les 100
+premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de 2 — sans
+payer l'abonnement.
+
+Le fait générateur a changé trois fois, toujours pour la même raison : une place consommée par
+quelqu'un qui ne travaille pas.
+
+| Depuis | La place se prenait… | Le défaut |
+|---|---|---|
+| l'origine | à l'**inscription** | un compte refusé la gardait, un compte sans documents aussi |
+| 24/08/2026 | à l'**ouverture de l'accès** (`missions_enabled_at`) | un compte validé qui ne travaillait jamais la gardait |
+| **15/09/2026** | à la **première prestation acceptée** (`offre_lancement_at`) | — |
+
+**L'offre dure jusqu'à la fin du mois civil du déclenchement, et pas au-delà.** Accepter sa
+première prestation le 3 septembre donne 8 prestations jusqu'au 30 septembre, puis retour à 2.
+
+> ⚠️ **Effet connu et assumé par Alexandre** : accepter sa première prestation le 28 ne laisse
+> que trois jours d'offre, pour la même place consommée qu'un autre. La règle est délibérée,
+> elle n'est pas un oubli — ne pas la « corriger » sans le lui demander. Un test le verrouille.
+
+**La place, elle, reste prise.** Les 100 places sont un plafond cumulatif : elle n'est pas
+rendue à la fin du mois. Cent prestataires en bénéficient, une fois chacun. Les rendre
+ferait redevenir l'offre permanente, ce qui n'est pas ce qui est annoncé.
+
+La règle vit dans [`api/_offre.js`](api/_offre.js). `declencherOffreLancement()` est appelée
+sur **les quatre chemins** par lesquels une prestation peut être acceptée — lien d'un courriel,
+action `accept` de l'application, réponse à une demande directe, reprise d'un remplacement. Elle
+est idempotente et n'écrit que si la date est vide : l'appeler à chaque acceptation évite
+d'avoir à se demander, à chaque nouveau chemin, s'il faut y penser. Le mois se compte **en heure
+de Paris** — le 31 août à 22 h UTC, il est déjà le 1er septembre en France.
+
+**Ce qui est annoncé doit correspondre à ce qui est appliqué.** Le libellé public a dit
+« inscrits », puis « validés », et dit maintenant « à accepter une prestation ». L'écart entre
+l'annonce et la règle serveur est une pratique commerciale trompeuse (art. L121-2 du Code de la
+consommation), et il s'est déjà produit deux fois sur cette offre : les deux compteurs de places
+affichés lisent donc exactement ce que lit le serveur, et c'est testé.
+
+`missions_enabled_at` **n'est pas supprimée** : elle garde son sens propre — la date d'ouverture
+de l'accès aux prestations — et sert au suivi. Elle ne commande simplement plus l'offre.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |

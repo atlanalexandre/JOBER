@@ -3809,10 +3809,13 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
       const required = attendus.filter(d=>d.required).map(d=>d.id);
       setMissingDocs(required.filter(id=>!uploaded.includes(id)));
     })();
-    // Les places de l'offre se comptent à l'ouverture de l'accès aux
-    // prestations, comme la règle serveur — et non au nombre d'approuvés, qui
-    // annonçait des places déjà prises.
-    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("missions_enabled",true)
+    // Les places se comptent sur les offres réellement DÉCLENCHÉES — une
+    // première prestation acceptée (15/09/2026) —, exactement comme la règle
+    // serveur. Compter autre chose annoncerait des places qui n'existent pas,
+    // ou en cacherait qui existent : c'est le défaut corrigé le 24/08/2026, et
+    // il se reproduirait à chaque changement de règle si les deux comptes ne
+    // lisaient pas la même chose.
+    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").not("offre_lancement_at","is",null)
       .then(({count,error})=>{
         if(error) { console.error("[offre] places illisibles :", error.message); return; }
         if(count!=null) setSpotsLeft(Math.max(0,100-count));
