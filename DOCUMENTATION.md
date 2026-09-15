@@ -318,6 +318,26 @@ relances, puis deux règles qui divergent.
 | Cycle | valide → bientôt (J-30) → expiré → **suspendable** (J+30) |
 | Relance | au plus une fois par semaine — une relance quotidienne finit par être filtrée, et c'est alors la vraie alerte qui se perd |
 
+**Qui est prévenu, et comment** (15/09/2026). Le balayage prévenait le prestataire, et personne
+d'autre : le seul endroit où une suspension apparaissait, c'étaient les journaux Vercel.
+
+| Événement | Le prestataire | L'administration |
+|---|---|---|
+| Relance (J-30, puis 1×/semaine) | notification + push | récapitulatif **du lundi**, s'il y a matière |
+| Suspension (J+30) | notification + **courriel** | **alerte le jour même** |
+| Rien à signaler | — | **aucun envoi** |
+
+Le back-office porte en tête de l'onglet **Documents** la liste de ce qui expire, **triée par
+urgence**, avec le nom du prestataire et le lien d'ouverture de la pièce. L'état s'affichait
+déjà sur chaque document, mais il fallait ouvrir la fiche de chaque prestataire pour le voir :
+sur trois, cela va ; sur trente, personne ne le fait. Les pièces qui ne suspendent pas y sont
+signalées comme telles, pour ne pas se lire comme une urgence.
+
+**Aucun envoi quotidien « tout va bien ».** Un courriel qu'on classe sans lire ne prévient plus
+de rien le jour où il compte — c'est le raisonnement qui limite déjà les relances du prestataire
+à une par semaine. Pour distinguer « rien à signaler » de « le traitement ne s'exécute plus », le
+balayage horodate son passage dans `platform_settings.derniere_surveillance_documents`.
+
 **Ce qui suspend, et ce qui ne suspend pas.** `EXPIRATION_BLOQUANTE` ne retient que ce qui met
 quelqu'un en danger : RC Pro, URSSAF, pièce d'identité, titre de séjour, justificatif de
 qualification. Un justificatif de domicile de quatre mois ne met personne en danger — on

@@ -1265,7 +1265,25 @@ export default async function handler(req, res) {
       }
     };
 
+    /** Le nom lisible d'un prestataire — « Prestataire » si illisible. Un échec
+     *  de lecture ne doit pas interrompre le balayage des autres. */
+    const nomDe = async (userId) => {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=prenom,nom&limit=1`, { headers });
+        const l = r.ok ? await r.json().catch(() => []) : [];
+        const p0 = Array.isArray(l) && l[0];
+        return (p0 ? [p0.prenom, p0.nom].filter(Boolean).join(" ") : "").trim() || "Prestataire";
+      } catch (e) {
+        console.error(`[documents] nom de ${userId} illisible :`, e.message);
+        return "Prestataire";
+      }
+    };
+
     let prevenus = 0, suspendus = 0;
+    // De quoi rendre compte à l'administration : le balayage prévenait le
+    // prestataire, et personne d'autre.
+    const resumeSuspensions = [];
+    const resumeEcheances = [];
 
     try {
       const dRes = await fetch(
@@ -1321,6 +1339,7 @@ export default async function handler(req, res) {
             console.error(`[documents] ${prestaId} NON suspendu (${maj?.status}) — ${liste}. À faire à la main.`);
           } else {
             suspendus++;
+            resumeSuspensions.push({ nom: await nomDe(prestaId), liste });
             console.log(`[documents] ${prestaId} suspendu — ${liste}`);
             await notifier({
               user_id: prestaId, type: "system",
@@ -1377,6 +1396,7 @@ export default async function handler(req, res) {
               + (bloquant ? " Passé trente jours après l'échéance, votre accès aux prestations est suspendu." : ""),
         }, SUPABASE_URL, headers).catch(e => console.error("[documents] relance :", e.message));
         prevenus++;
+        resumeEcheances.push({ nom: await nomDe(prestaId), liste: liste.replace(/\n/g, " · ") });
 
         await fetch(
           `${SUPABASE_URL}/rest/v1/documents?id=in.(${aRelancer.map(d => d.id).join(",")})`,
@@ -1386,6 +1406,75 @@ export default async function handler(req, res) {
       }
 
       console.log(`[documents] ${docs.length} pièce(s) datée(s) — ${prevenus} prestataire(s) prévenu(s), ${suspendus} suspendu(s)`);
+
+      // ── Rendre compte à l'administration ──────────────────────────────
+      //
+      // Le balayage prévenait le prestataire, et personne d'autre : le seul
+      // endroit où une suspension apparaissait, c'étaient les journaux Vercel —
+      // que personne ne lit tous les matins.
+      //
+      // DEUX ENVOIS, ET PAS UN DE PLUS.
+      //
+      // Une ALERTE le jour où quelqu'un est suspendu : c'est le seul événement
+      // qui demande une décision — entendre l'intéressé, vérifier la pièce,
+      // rétablir l'accès.
+      //
+      // Un RÉCAPITULATIF le lundi, s'il y a quelque chose à dire.
+      //
+      // Pas d'envoi quotidien « tout va bien » : un courriel qu'on classe sans
+      // lire ne prévient plus de rien le jour où il compte. C'est le même
+      // raisonnement qui limite les relances du prestataire à une par semaine.
+      // Pour savoir que la surveillance tourne, le back-office affiche la date
+      // du dernier passage — c'est plus fiable qu'un courriel vide.
+      const ADMIN_DOCS = process.env.ADMIN_EMAIL;
+      const lundi = new Date().getUTCDay() === 1;
+
+      if (RESEND_API_KEY_DOCS && ADMIN_DOCS && (resumeSuspensions.length > 0 || (lundi && resumeEcheances.length > 0))) {
+        const ligne = (x) => `<li style="margin-bottom:6px"><strong>${escEmail(x.nom)}</strong> — ${escEmail(x.liste)}</li>`;
+        const urgent = resumeSuspensions.length > 0;
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY_DOCS}`, "Content-Type": "application/json" },
+          body: resendBody({
+            from: RESEND_FROM_DOCS,
+            to: ADMIN_DOCS,
+            subject: urgent
+              ? `⛔ ${resumeSuspensions.length} prestataire${resumeSuspensions.length > 1 ? "s" : ""} suspendu${resumeSuspensions.length > 1 ? "s" : ""} — document expiré`
+              : `📄 Documents à surveiller — ${resumeEcheances.length} prestataire${resumeEcheances.length > 1 ? "s" : ""}`,
+            html: emailHtml(`
+              ${resumeSuspensions.length > 0 ? `
+                <p><strong style="color:#B4472F">Accès aux prestations suspendu</strong> — un document obligatoire a dépassé de trente jours son échéance.</p>
+                <ul style="font-size:14px;line-height:1.6;padding-left:18px">${resumeSuspensions.map(ligne).join("")}</ul>
+                <p style="font-size:13px;color:#555">Ils ont été prévenus par courriel et par notification. L'accès se rétablit dès que la pièce à jour est déposée et validée — depuis l'onglet <strong>Documents</strong> du back-office.</p>
+              ` : ""}
+              ${lundi && resumeEcheances.length > 0 ? `
+                <p style="margin-top:${resumeSuspensions.length > 0 ? "22px" : "0"}"><strong>Échéances de la semaine</strong> — relancés automatiquement, pas encore suspendus.</p>
+                <ul style="font-size:14px;line-height:1.6;padding-left:18px">${resumeEcheances.map(ligne).join("")}</ul>
+              ` : ""}
+              <p style="text-align:center;margin:26px 0"><a href="${appUrl()}" style="background:#7C6FE0;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700">Ouvrir le back-office →</a></p>
+              <p style="color:#888;font-size:12px">Ce message ne part que lorsqu'il y a quelque chose à signaler — une suspension, ou le récapitulatif du lundi.</p>
+            `),
+          }),
+        }).catch(e => console.error("[documents] courriel d'administration :", e.message));
+      }
+
+      // La date du dernier passage, pour que le back-office puisse dire que la
+      // surveillance tourne — et distinguer « rien à signaler » de « le
+      // traitement ne s'exécute plus ».
+      await fetch(`${SUPABASE_URL}/rest/v1/platform_settings?key=eq.derniere_surveillance_documents`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ value: { at: new Date().toISOString(), datees: docs.length, prevenus, suspendus } }),
+      }).then(r => {
+        // La ligne n'existe pas encore au premier passage : on la crée.
+        if (r.status === 404 || r.headers.get("content-range") === "*/0") {
+          return fetch(`${SUPABASE_URL}/rest/v1/platform_settings`, {
+            method: "POST", headers: { ...headers, "Prefer": "return=minimal,resolution=merge-duplicates" },
+            body: JSON.stringify({ key: "derniere_surveillance_documents",
+              value: { at: new Date().toISOString(), datees: docs.length, prevenus, suspendus } }),
+          });
+        }
+      }).catch(e => console.error("[documents] horodatage du passage :", e.message));
+
       return res.status(200).json({ success: true, datees: docs.length, prevenus, suspendus });
     } catch (e) {
       console.error("[documents] balayage interrompu :", e.message);
