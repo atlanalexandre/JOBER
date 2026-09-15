@@ -420,15 +420,18 @@ export const DonutChart = ({ sectors, size=120 }) => {
 
 export function LaunchBadge({ context="home", spotsLeft=null }) {
   if(!isLaunchPhase()) return null;
-  // « inscrits » est devenu « validés » le 24/08/2026 : la place s'attribue à
-  // l'ouverture de l'accès aux prestations, pas au remplissage du formulaire.
-  // Annoncer l'inverse promettrait une offre à des gens qui ne l'auraient pas.
+  // Le libellé suit la règle, à la lettre. Il a dit « inscrits », puis
+  // « validés » (24/08/2026), et dit maintenant ce qui est vrai depuis le
+  // 15/09/2026 : l'offre se déclenche à la PREMIÈRE PRESTATION ACCEPTÉE, et
+  // vaut jusqu'à la fin de ce mois-là. Annoncer autre chose que ce que le
+  // serveur applique, c'est une pratique commerciale trompeuse (art. L121-2 du
+  // Code de la consommation) — et c'est déjà arrivé deux fois ici.
   const spotsText = spotsLeft !== null
     ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
-    : "Réservé aux 100 premiers prestataires validés";
+    : "Réservé aux 100 premiers prestataires à accepter une prestation";
   const msgs = {
-    home:    { icon:"🎉", title:"Offre de lancement", sub:`8 prestations gratuites · ${spotsText}` },
-    presta:  { icon:"🚀", title:"8 prestations offertes", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · Inscrivez-vous maintenant` : "Réservé aux 100 premiers prestataires validés" },
+    home:    { icon:"🎉", title:"Offre de lancement", sub:`8 prestations le mois de votre 1re prestation · ${spotsText}` },
+    presta:  { icon:"🚀", title:"8 prestations le mois de votre 1re prestation", sub: spotsLeft !== null ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""} sur 100 · l'offre se déclenche à votre 1re prestation acceptée` : "Réservé aux 100 premiers prestataires à accepter une prestation" },
     booking: { icon:"💡", title:"Tarif transparent", sub:"Le prix affiché est le prix réel — aucune surprise" },
   };
   const m = msgs[context] || msgs.home;

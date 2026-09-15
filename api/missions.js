@@ -3,6 +3,7 @@ import { sendPushToUser, sendWebPush, notifier } from "./_push.js";
 import { debiterCashback, restituerCashback, plafonnerRemboursement } from "./_cashback.js";
 import { frenchOffsetMs, finPrestationMs, debutPrestationMs, echeanceVersementMs, retardMinutes, fenetrePartagePosition, fenetrePointage, fenetreHeuresSupp, dateDuJourFr } from "./_temps.js";
 import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
+import { declencherOffreLancement, offreActive, PLACES_OFFRE } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
@@ -366,26 +367,20 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
       return limite;
     }
 
-    // Les 100 premiers prestataires dont l'ACCÈS AUX PRESTATIONS a été ouvert.
+    // Les 100 premiers prestataires à avoir ACCEPTÉ UNE PRESTATION.
     //
-    // Le classement portait sur la date d'INSCRIPTION, tous profils confondus :
-    // la place était prise en remplissant le formulaire, avant toute
-    // vérification. Un compte refusé la gardait, un compte sans documents
-    // aussi, et cinquante inscriptions fantômes auraient consommé la moitié de
-    // l'offre.
+    // La place s'est attribuée successivement à l'inscription — un compte
+    // refusé la gardait —, puis à l'ouverture de l'accès aux prestations. Ce
+    // second état valait mieux, mais un prestataire validé qui ne travaillait
+    // jamais consommait quand même une place : l'offre s'épuisait sans avoir
+    // produit une seule prestation.
     //
-    // Décision d'Alexandre du 24/08/2026 : elle s'attribue à l'ouverture de
-    // l'accès aux prestations, seul moment qui atteste d'un dossier complet et
-    // vérifié — et que l'intéressé ne peut pas provoquer lui-même.
-    //
-    // Le tri porte sur `missions_enabled_at` et non sur `created_at` : trier
-    // les ouverts par leur date d'inscription rendrait le classement instable,
-    // puisqu'ouvrir l'accès à quelqu'un inscrit de longue date le ferait entrer
-    // dans les 100 en poussant dehors un autre, qui perdrait une offre déjà
-    // accordée.
+    // Décision d'Alexandre du 15/09/2026 : elle se déclenche à la première
+    // prestation acceptée, et ne vaut que jusqu'à la fin du mois civil de ce
+    // déclenchement. Voir `api/_offre.js`, qui porte la règle.
     const cr = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&missions_enabled=is.true`
-      + `&select=id&order=missions_enabled_at.asc.nullslast&limit=100`,
+      `${supabaseUrl}/rest/v1/profiles?role=eq.prestataire&offre_lancement_at=not.is.null`
+      + `&select=id,offre_lancement_at&order=offre_lancement_at.asc&limit=${PLACES_OFFRE}`,
       { headers }
     );
     if (!cr.ok) {
@@ -393,11 +388,14 @@ async function limitePlanMensuelle(plan, prestataireId, supabaseUrl, headers) {
       // bénéficie de l'offre et personne ne sait pourquoi.
       const detail = await cr.text().catch(() => "");
       console.error(`[quota] classement de l'offre illisible (${cr.status}) : ${detail.slice(0, 200)}`
-        + " — vérifier que la migration 2026-08-24_offre_lancement_a_la_validation.sql est appliquée.");
+        + " — vérifier que la migration 2026-09-15_offre_lancement_a_la_premiere_prestation.sql est appliquée.");
       return limite;
     }
     const cd = await cr.json();
-    if (Array.isArray(cd) && cd.some(p => p.id === prestataireId)) {
+    const place = Array.isArray(cd) ? cd.find(p => p.id === prestataireId) : null;
+    // Être dans les 100 ne suffit pas : la place reste prise à vie, l'offre ne
+    // dure que le mois du déclenchement.
+    if (place && offreActive(place.offre_lancement_at)) {
       return Math.max(limite, Number(limites.premium) || 8);
     }
   } catch (e) {
@@ -621,6 +619,15 @@ async function handleEmailAction(req, res) {
     if (!rembMail.ok) console.error(`[refus-email] remboursement à reprendre manuellement — prestation ${missionId}`);
   }
   await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${missionId}`, { method: "PATCH", headers: { ...hdrs, "Prefer": "return=minimal" }, body: JSON.stringify(patchBody) });
+
+  // L'offre de lancement se déclenche à la première prestation acceptée, quel
+  // que soit le chemin — courriel, application, demande directe. Appelée à
+  // chaque acceptation : la fonction n'écrit que si la date est vide, et cela
+  // évite d'avoir à y penser à chaque nouveau chemin d'affectation. Un oubli
+  // priverait quelqu'un de son offre sans que personne ne s'en aperçoive.
+  if (action === "accept" && prestaId) {
+    await declencherOffreLancement(prestaId, SUPABASE_URL, hdrs);
+  }
 
   if (mission.client_id) {
     const isAccepted = action === "accept";
@@ -1236,6 +1243,10 @@ export default async function handler(req, res) {
         body: JSON.stringify(missionPatch),
       });
       const assignedRows = await assignRes.json().catch(() => []);
+      if (Array.isArray(assignedRows) && assignedRows.length > 0) {
+        const beneficiaire = verified_prestataire_id || assignedRows[0]?.prestataire_id;
+        if (beneficiaire) await declencherOffreLancement(beneficiaire, SUPABASE_URL, headers);
+      }
       if (!Array.isArray(assignedRows) || assignedRows.length === 0) {
         return res.status(409).json({ error: "Prestation déjà assignée à un autre prestataire" });
       }
@@ -4721,6 +4732,9 @@ export default async function handler(req, res) {
       if (!Array.isArray(respondedRows) || respondedRows.length === 0) {
         return res.status(409).json({ error: "La prestation n'est plus en attente — délai dépassé ou déjà assignée." });
       }
+      if (response === "accept") {
+        await declencherOffreLancement(caller.id, SUPABASE_URL, headers);
+      }
 
       // Prestation affectée par la plateforme (CGPS art. 5.2) : un refus n'annule
       // rien, il fait passer au candidat suivant. Le client n'a désigné personne, il
@@ -5574,6 +5588,12 @@ export default async function handler(req, res) {
         method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
         body: JSON.stringify({ statut: "accepte", execute_at: new Date().toISOString() }),
       });
+
+      // Reprendre la prestation d'un confrère est bien accepter une prestation :
+      // le remplaçant l'exécute et la facture en son nom. Ne pas déclencher son
+      // offre ici la lui refuserait pour un motif purement technique — le chemin
+      // par lequel la prestation lui est arrivée.
+      await declencherOffreLancement(dem.entrant_id, SUPABASE_URL, headers);
 
       const messages = [
         [dem.entrant_id, "✅ Vous reprenez une prestation", `Le remplacement est validé : « ${libelle} »${mission.ville ? " à " + mission.ville : ""}${quand ? " le " + quand : ""} vous revient. Les détails sont dans votre espace.`],

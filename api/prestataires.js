@@ -27,8 +27,13 @@ export default async function handler(req, res) {
   // la règle disent enfin la même chose.
   if (req.query.action === "places") {
     try {
+      // Les places prises sont celles réellement DÉCLENCHÉES, c'est-à-dire par
+      // une première prestation acceptée (15/09/2026). Compter les comptes dont
+      // l'accès est ouvert annoncerait des places déjà perdues pour des gens
+      // qui n'ont jamais travaillé — et l'écart entre le compteur affiché et la
+      // règle du serveur est exactement ce qui a été corrigé le 24/08/2026.
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&missions_enabled=is.true&select=id`,
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&offre_lancement_at=not.is.null&select=id`,
         { method: "HEAD", headers: { ...headers, "Prefer": "count=exact" } }
       );
       const entete = r.headers.get("content-range");
