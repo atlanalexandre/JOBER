@@ -164,3 +164,58 @@ describe("le balayage quotidien", () => {
     expect(cronDocs.schedule).toMatch(/^\d+ \d+ \* \* \*$/);
   });
 });
+
+// Le balayage prévenait le prestataire, et personne d'autre : le seul endroit
+// où une suspension apparaissait, c'étaient les journaux Vercel — que personne
+// ne lit tous les matins.
+describe("rendre compte à l'administration", () => {
+  const cron = readFileSync(new URL("../../../api/cron-reset-monthly.js", import.meta.url), "utf8");
+  const bloc = cron.slice(cron.indexOf('queryAction === "documents"'));
+
+  it("alerte le jour d'une suspension", () => {
+    expect(bloc).toContain("ADMIN_DOCS");
+    expect(bloc).toContain("resumeSuspensions.length > 0");
+  });
+
+  it("récapitule le lundi", () => {
+    expect(bloc).toContain("getUTCDay() === 1");
+    expect(bloc).toContain("resumeEcheances");
+  });
+
+  // Un courriel qu'on classe sans lire ne prévient plus de rien le jour où il
+  // compte. Rien ne part quand il n'y a rien à dire.
+  it("n'envoie rien quand il n'y a rien à signaler", () => {
+    expect(bloc).toMatch(/resumeSuspensions\.length > 0 \|\| \(lundi && resumeEcheances\.length > 0\)/);
+  });
+
+  // Sans trace du passage, on ne distingue pas « rien à signaler » de « le
+  // traitement ne s'exécute plus ».
+  it("horodate son passage", () => {
+    expect(bloc).toContain("derniere_surveillance_documents");
+  });
+});
+
+describe("le panneau du back-office", () => {
+  const bo = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+
+  it("rassemble les échéances en tête de l'onglet Documents", () => {
+    expect(bo).toContain("const echeances = docs");
+    expect(bo).toContain("etatExpiration(d.expires_at)");
+  });
+
+  // La plus pressante d'abord : la liste répond à « de quoi dois-je m'occuper
+  // aujourd'hui ? ».
+  it("trie par urgence", () => {
+    expect(bo).toContain("a.exp.jours - b.exp.jours");
+  });
+
+  // Une pièce qui ne suspend pas ne doit pas se lire comme une urgence.
+  it("distingue ce qui suspend de ce qui ne suspend pas", () => {
+    expect(bo).toContain("EXPIRATION_BLOQUANTE.has(d.type)");
+    expect(bo).toMatch(/ne suspend pas/);
+  });
+
+  it("lit la même règle que le serveur", () => {
+    expect(bo).toContain('from "../../api/_documents.js"');
+  });
+});

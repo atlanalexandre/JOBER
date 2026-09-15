@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
 import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
+import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
 // Libellés des types de documents. Déclarés une seule fois : deux copies locales
@@ -3213,8 +3214,61 @@ export function BODocuments() {
   const types = [...new Set(docs.map(d => d.type))];
   const pendingCount = docs.filter(d => !d.verified).length;
 
+  // ── Ce qui expire, rassemblé en tête ──────────────────────────────────
+  //
+  // L'état d'expiration s'affichait déjà sur chaque pièce, mais il fallait
+  // ouvrir la fiche de chaque prestataire pour le voir. Sur trois prestataires
+  // ça va ; sur trente, personne ne le fait. Le balayage quotidien, lui,
+  // prévient le prestataire — et personne d'autre.
+  //
+  // Cette liste répond à la seule question utile : de quoi dois-je m'occuper
+  // aujourd'hui ? Elle est triée par urgence, la plus pressante d'abord.
+  const echeances = docs
+    .map(d => ({ ...d, exp: etatExpiration(d.expires_at) }))
+    .filter(d => d.exp && d.exp.etat !== "valide")
+    .sort((a, b) => a.exp.jours - b.exp.jours);
+
+  const nomDe = (d) => [d.prenom, d.nom].filter(Boolean).join(" ") || d.email || "Prestataire";
+  const couleurEtat = (e) => e === "suspendable" ? C.danger : e === "expire" ? "#F25E5E" : C.accentGold;
+  const texteEtat = (exp) => exp.etat === "suspendable" ? `expiré depuis ${-exp.jours} j — accès retiré`
+    : exp.etat === "expire" ? `expiré depuis ${-exp.jours} j`
+    : `expire dans ${exp.jours} j`;
+
   return (
     <div>
+      {echeances.length > 0 && (
+        <div style={{ background:"rgba(240,180,41,0.08)", border:"1px solid rgba(240,180,41,0.35)", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
+          <div style={{ fontWeight:800, color:C.accentGold, fontSize:14, marginBottom:3 }}>
+            ⏳ {echeances.length} document{echeances.length>1?"s":""} à surveiller
+          </div>
+          <div style={{ color:C.textSub, fontSize:11, marginBottom:10, lineHeight:1.5 }}>
+            Le prestataire est relancé automatiquement, une fois par semaine. Passé trente jours après
+            l'échéance, son accès aux prestations est suspendu — pour les pièces qui le justifient.
+          </div>
+          {echeances.map(d => (
+            <div key={d.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0", borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+              <span style={{ fontSize:14 }}>{DOC_ICON[d.type] || "📄"}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.text, fontSize:12.5, fontWeight:600 }}>
+                  {nomDe(d)} — {libelleDoc(d.type)}
+                  {!EXPIRATION_BLOQUANTE.has(d.type) && (
+                    <span style={{ color:C.textMuted, fontWeight:400, fontSize:11 }}> · ne suspend pas</span>
+                  )}
+                </div>
+                <div style={{ color:couleurEtat(d.exp.etat), fontSize:11, fontWeight:700, marginTop:1 }}>
+                  {texteEtat(d.exp)}{d.expires_at ? ` · échéance ${String(d.expires_at).slice(0,10)}` : ""}
+                </div>
+              </div>
+              {d.signedUrl && (
+                <a href={d.signedUrl} target="_blank" rel="noopener noreferrer"
+                   style={{ fontSize:10, color:C.violet, fontWeight:700, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, borderRadius:6, padding:"4px 9px", textDecoration:"none", whiteSpace:"nowrap" }}>
+                  Ouvrir
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, gap:10, flexWrap:"wrap" }}>
         <div>
           <div style={{ fontWeight:800, fontSize:16, color:C.text }}>📂 Documents prestataires</div>
