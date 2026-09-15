@@ -15,12 +15,21 @@
 --
 -- CE QUE DÉCIDE CETTE MIGRATION
 --
--- Décision d'Alexandre du 15/09/2026 : l'offre se déclenche à la PREMIÈRE
--- PRESTATION ACCEPTÉE, et dure jusqu'à la fin du mois civil de ce
--- déclenchement.
+-- Décision d'Alexandre du 15/09/2026, en deux temps :
 --
--- Seul quelqu'un qui travaille réellement consomme une place — c'est le sens
--- même d'une offre de lancement.
+--   • L'ÉLIGIBILITÉ tient à l'ANCIENNETÉ. L'offre reste réservée aux 100
+--     premiers prestataires dont l'accès aux prestations est ouvert, classés
+--     par leur date d'inscription. C'est la promesse faite depuis le début, et
+--     le filtre sur l'accès ouvert la protège des inscriptions fantômes.
+--
+--   • LE DÉCLENCHEMENT tient au TRAVAIL. L'offre ne s'active qu'à la première
+--     prestation acceptée, et dure jusqu'à la fin du mois civil de cette date.
+--     Passé ce mois, retour au quota Gratuit — sauf abonnement souscrit.
+--
+-- L'éligibilité n'est évaluée qu'UNE FOIS, au déclenchement : c'est ce qui rend
+-- le classement stable. La réévaluer à chaque lecture ferait perdre en cours de
+-- mois une offre déjà accordée à celui que l'arrivée d'un inscrit plus ancien
+-- pousse hors des 100.
 --
 -- `missions_enabled_at` N'EST PAS SUPPRIMÉE
 --
@@ -45,7 +54,14 @@ COMMENT ON COLUMN public.profiles.offre_lancement_at IS
 -- l'ordre d'arrivée — ce qui est tout ce que le classement demande.
 --
 -- Ceux qui n'ont jamais accepté restent à NULL : ils déclencheront l'offre en
--- travaillant, ce qui est exactement la nouvelle règle.
+-- travaillant, ce qui est exactement la nouvelle règle. Leur éligibilité, elle,
+-- ne dépend que de leur ancienneté et reste acquise tant qu'ils figurent parmi
+-- les 100 premiers comptes ouverts.
+--
+-- La reprise ne vérifie PAS l'éligibilité : ceux qui ont déjà travaillé
+-- bénéficiaient de l'offre sous l'ancienne règle, et la leur retirer
+-- rétroactivement serait leur reprendre quelque chose d'acquis. Le contrôle
+-- d'ancienneté ne vaut donc que pour les déclenchements à venir.
 --
 -- ⚠️ CONSÉQUENCE À CONNAÎTRE AVANT DE LANCER
 --

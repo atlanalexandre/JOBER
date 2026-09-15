@@ -350,45 +350,58 @@ renvoie au CNAPS ; pour un pâtissier, à CycladesVerif. Les liens pointent touj
 officiel, jamais vers un lien fourni par le prestataire, qui est le vecteur classique de la
 fausse attestation.
 
-**L'offre de lancement se déclenche à la PREMIÈRE PRESTATION ACCEPTÉE** (15/09/2026). Les 100
-premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de 2 — sans
-payer l'abonnement.
+**L'offre de lancement : éligible par l'ancienneté, déclenchée par le travail** (15/09/2026).
+Les 100 premiers prestataires bénéficient du quota Premium — 8 prestations par mois au lieu de
+2 — sans payer l'abonnement. La règle tient en deux temps, à ne pas confondre.
+
+| | Ce qui la détermine | Ce qui l'enregistre |
+|---|---|---|
+| **L'éligibilité** | les **100 premiers inscrits** dont l'accès aux prestations est ouvert, classés par date d'inscription | rien — elle se calcule |
+| **Le déclenchement** | la **première prestation acceptée** | `profiles.offre_lancement_at` |
 
 Le fait générateur a changé trois fois, toujours pour la même raison : une place consommée par
-quelqu'un qui ne travaille pas.
+quelqu'un qui ne travaille pas. À l'inscription, un compte refusé la gardait ; à l'ouverture de
+l'accès (24/08/2026), un compte validé qui ne travaillait jamais la gardait aussi. Aujourd'hui,
+l'ancienneté donne le **droit** à l'offre, et le travail la **déclenche**.
 
-| Depuis | La place se prenait… | Le défaut |
-|---|---|---|
-| l'origine | à l'**inscription** | un compte refusé la gardait, un compte sans documents aussi |
-| 24/08/2026 | à l'**ouverture de l'accès** (`missions_enabled_at`) | un compte validé qui ne travaillait jamais la gardait |
-| **15/09/2026** | à la **première prestation acceptée** (`offre_lancement_at`) | — |
+Le filtre sur l'accès ouvert protège des inscriptions fantômes : cent faux comptes créés en une
+soirée ne peuvent pas fermer l'offre, puisqu'ils ne passeront jamais la validation.
 
-**L'offre dure jusqu'à la fin du mois civil du déclenchement, et pas au-delà.** Accepter sa
-première prestation le 3 septembre donne 8 prestations jusqu'au 30 septembre, puis retour à 2.
+**L'éligibilité n'est évaluée qu'une fois, au déclenchement.** C'est ce qui rend le classement
+stable : ouvrir l'accès à quelqu'un inscrit de longue date le fait entrer dans les 100 et en
+pousse un autre dehors. Réévaluée à chaque lecture, cette bascule ferait perdre en cours de mois
+une offre déjà accordée et déjà utilisée. Une fois `offre_lancement_at` posée, le mois est
+acquis — le quota ne consulte plus aucun classement.
+
+**L'offre dure jusqu'à la fin du mois civil du déclenchement.** Première prestation acceptée le
+3 septembre : 8 prestations jusqu'au 30 septembre, puis retour au quota Gratuit.
 
 > ⚠️ **Effet connu et assumé par Alexandre** : accepter sa première prestation le 28 ne laisse
-> que trois jours d'offre, pour la même place consommée qu'un autre. La règle est délibérée,
-> elle n'est pas un oubli — ne pas la « corriger » sans le lui demander. Un test le verrouille.
+> que trois jours d'offre. La règle est délibérée, elle n'est pas un oubli — ne pas la
+> « corriger » sans le lui demander. Un test le verrouille.
 
-**La place, elle, reste prise.** Les 100 places sont un plafond cumulatif : elle n'est pas
-rendue à la fin du mois. Cent prestataires en bénéficient, une fois chacun. Les rendre
-ferait redevenir l'offre permanente, ce qui n'est pas ce qui est annoncé.
+**Sauf abonnement souscrit**, et cela ne coûte aucune ligne de code : `quotaPrestations` rend
+directement la limite du plan dès qu'il n'est plus `free`, sans même consulter l'offre. Un
+abonné Premium ou Elite n'est donc jamais concerné. Un test verrouille ce court-circuit.
 
-La règle vit dans [`api/_offre.js`](api/_offre.js). `declencherOffreLancement()` est appelée
-sur **les quatre chemins** par lesquels une prestation peut être acceptée — lien d'un courriel,
+La règle vit dans [`api/_offre.js`](api/_offre.js). `declencherOffreLancement()` est appelée sur
+**les quatre chemins** par lesquels une prestation peut être acceptée — lien d'un courriel,
 action `accept` de l'application, réponse à une demande directe, reprise d'un remplacement. Elle
-est idempotente et n'écrit que si la date est vide : l'appeler à chaque acceptation évite
-d'avoir à se demander, à chaque nouveau chemin, s'il faut y penser. Le mois se compte **en heure
-de Paris** — le 31 août à 22 h UTC, il est déjà le 1er septembre en France.
+est idempotente, écrit sous condition `is.null` **en base** plutôt que de lire puis écrire, et
+ne lève jamais : une offre non déclenchée ne doit pas faire échouer l'acceptation d'une
+prestation. Le mois se compte **en heure de Paris** — le 31 août à 22 h UTC, il est déjà le
+1er septembre en France.
 
-**Ce qui est annoncé doit correspondre à ce qui est appliqué.** Le libellé public a dit
-« inscrits », puis « validés », et dit maintenant « à accepter une prestation ». L'écart entre
-l'annonce et la règle serveur est une pratique commerciale trompeuse (art. L121-2 du Code de la
-consommation), et il s'est déjà produit deux fois sur cette offre : les deux compteurs de places
-affichés lisent donc exactement ce que lit le serveur, et c'est testé.
+**Ce qui est annoncé doit correspondre à ce qui est appliqué**, et les deux temps doivent être
+dits. Ne dire que l'éligibilité laisserait croire à une offre permanente ; ne dire que le
+déclenchement laisserait croire qu'elle est ouverte à tous. L'écart entre l'annonce et la règle
+serveur est une pratique commerciale trompeuse (art. L121-2 du Code de la consommation), et il
+s'est déjà produit deux fois sur cette offre. **Les compteurs de places affichés comptent
+l'éligibilité** — les comptes dont l'accès est ouvert —, car c'est la question que se pose celui
+qui lit : reste-t-il de la place pour moi ? C'est testé des deux côtés.
 
 `missions_enabled_at` **n'est pas supprimée** : elle garde son sens propre — la date d'ouverture
-de l'accès aux prestations — et sert au suivi. Elle ne commande simplement plus l'offre.
+de l'accès — et sert au suivi. Elle ne commande plus l'offre.
 
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
