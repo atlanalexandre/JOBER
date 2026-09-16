@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
-import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, formatMontant } from "../constants/plans.js";
+import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
 import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone } from "./ui.jsx";
 
@@ -32,6 +32,32 @@ async function posterInscription(action, headers, corps) {
 import { CGPS } from "../constants/cgps.js";
 
 export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
+  // L'offre de lancement est annoncée SI ET SEULEMENT SI le serveur l'applique.
+  //
+  // Ces deux écrans lisaient une CONSTANTE DU CODE, jamais le réglage
+  // `platform_settings.launch_phase` que le serveur consulte pour accorder le
+  // quota. Le réglage a été passé à `false` : les écrans d'inscription ont donc
+  // continué de promettre « 8 prestations/mois gratuites aux 100 premiers »
+  // pendant que le serveur en accordait 2.
+  //
+  // Annoncer une caractéristique que le service ne fournit pas est une pratique
+  // commerciale trompeuse (art. L121-2 du Code de la consommation). C'est le
+  // troisième écart de ce type sur cette même offre.
+  //
+  // Le repli suit le serveur : une ligne ABSENTE vaut offre active — c'est ce
+  // que fait `quotaPrestations` —, et seul un `false` explicite la ferme. En cas
+  // d'échec de lecture on n'annonce rien : ne pas promettre une offre qui existe
+  // est un moindre mal que d'en promettre une qui n'existe pas.
+  const [offreLancement, setOffreLancement] = useState(false);
+  useEffect(() => {
+    supabase.from("platform_settings").select("value").eq("key", "launch_phase").maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { console.error("[offre] reglage illisible :", error.message); return; }
+        setOffreLancement(data?.value == null ? true : Boolean(data.value));
+      });
+  }, []);
+
+
   const TOTAL = 7;
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
@@ -727,7 +753,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
                 </div>
               );
             })}
-            {isLaunchPhase() && (
+            {offreLancement && (
               <div style={{ background:`${C.violet}15`, border:`1px solid ${C.violet}44`, borderRadius:r, padding:"11px 14px", marginTop:6, fontSize:12, color:C.text }}>
                 🚀 <strong>Offre de lancement</strong> — Les <strong style={{ color:C.violetLight }}>100 premiers prestataires validés</strong> → <strong style={{ color:C.accentGold }}>8 prestations/mois gratuites</strong> !<br/>
                 <span style={{ color:C.textSub }}>2 prestations/mois ensuite pour le plan Gratuit.</span>
@@ -1231,6 +1257,32 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
 
 
 export function AuthScreen({ role, onLogin, onRegister, onBack }) {
+  // L'offre de lancement est annoncée SI ET SEULEMENT SI le serveur l'applique.
+  //
+  // Ces deux écrans lisaient une CONSTANTE DU CODE, jamais le réglage
+  // `platform_settings.launch_phase` que le serveur consulte pour accorder le
+  // quota. Le réglage a été passé à `false` : les écrans d'inscription ont donc
+  // continué de promettre « 8 prestations/mois gratuites aux 100 premiers »
+  // pendant que le serveur en accordait 2.
+  //
+  // Annoncer une caractéristique que le service ne fournit pas est une pratique
+  // commerciale trompeuse (art. L121-2 du Code de la consommation). C'est le
+  // troisième écart de ce type sur cette même offre.
+  //
+  // Le repli suit le serveur : une ligne ABSENTE vaut offre active — c'est ce
+  // que fait `quotaPrestations` —, et seul un `false` explicite la ferme. En cas
+  // d'échec de lecture on n'annonce rien : ne pas promettre une offre qui existe
+  // est un moindre mal que d'en promettre une qui n'existe pas.
+  const [offreLancement, setOffreLancement] = useState(false);
+  useEffect(() => {
+    supabase.from("platform_settings").select("value").eq("key", "launch_phase").maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { console.error("[offre] reglage illisible :", error.message); return; }
+        setOffreLancement(data?.value == null ? true : Boolean(data.value));
+      });
+  }, []);
+
+
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1440,7 +1492,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
         </div>
       </div>
 
-      {isLaunchPhase() && (
+      {offreLancement && (
         <div style={{ padding:"0 24px 8px" }}>
           <div style={{
             background:"linear-gradient(135deg, rgba(16,217,143,0.10), rgba(16,217,143,0.04))",
