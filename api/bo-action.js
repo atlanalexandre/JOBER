@@ -1351,7 +1351,7 @@ export default async function handler(req, res) {
         console.error("[prix] réglage d'affichage illisible :", e.message); return [];
       });
       const grille = Array.isArray(affiches) && affiches[0]?.value ? affiches[0].value : null;
-      const resultat = await comparerPrix(grille, process.env.STRIPE_SECRET_KEY);
+      const resultat = await comparerPrix(grille, (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""));
       return res.status(200).json({
         ...resultat,
         resumes: resultat.lignes.map(l => ({ etat: l.etat, texte: resumeEcart(l) })),
