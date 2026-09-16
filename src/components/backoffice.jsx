@@ -2878,6 +2878,24 @@ export function BOSettingsTab() {
   const [saved, setSaved]     = useState({});
   const [localPl,  setLocalPl]  = useState({ free:2, premium:10, elite:999 });
   const [localSp,  setLocalSp]  = useState({ premium:{ monthly:29, yearly:290 }, elite:{ monthly:79, yearly:790 } });
+  // Comparaison entre le prix AFFICHÉ (ce réglage) et le prix PRÉLEVÉ (Stripe).
+  const [prixVerif, setPrixVerif] = useState(null);
+  const verifierPrix = async () => {
+    setPrixVerif("chargement");
+    try {
+      const r = await fetch("/api/bo-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sessionStorage.getItem("bo_token") || ""}` },
+        body: JSON.stringify({ action: "verifier_prix" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(j.error || `Erreur ${r.status}`, "error"); setPrixVerif(null); return; }
+      setPrixVerif(j);
+    } catch (e) {
+      showToast(e?.message || "Erreur réseau", "error");
+      setPrixVerif(null);
+    }
+  };
   const [localUs,  setLocalUs]  = useState("5");
   const [localFs,  setLocalFs]  = useState({ single:"4.90", range:"2.90", urgent:"9.90" });
   const [localDs,  setLocalDs]  = useState([]);
@@ -2981,6 +2999,47 @@ export function BOSettingsTab() {
           ]));
           save("subscription_prices", parsed);
         }} />
+
+        {/* ── Le prix affiché correspond-il au prix prélevé ? ───────────────
+            Ces montants commandent l'AFFICHAGE. Le PRÉLÈVEMENT vient des
+            tarifs Stripe, réglés ailleurs, et rien ne rapproche les deux :
+            modifier ce champ sans modifier Stripe fait afficher un prix et en
+            prélever un second — sur un abonnement récurrent, la réclamation
+            n'arrive qu'au premier relevé bancaire. */}
+        <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <button onClick={verifierPrix} disabled={prixVerif === "chargement"} style={{ fontSize:11, padding:"7px 14px", borderRadius:8, background:`${C.violet}18`, border:`1px solid ${C.violet}55`, color:C.violet, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              {prixVerif === "chargement" ? "Vérification…" : "🔎 Comparer avec les tarifs Stripe"}
+            </button>
+            <span style={{ color:C.textSub, fontSize:11 }}>
+              Ces montants sont affichés aux prestataires ; le prélèvement vient de Stripe.
+            </span>
+          </div>
+          {prixVerif && prixVerif !== "chargement" && (
+            <div style={{ marginTop:10, borderRadius:10, padding:"11px 13px",
+              background: prixVerif.ok ? "rgba(31,122,90,0.10)" : prixVerif.ecarts?.length ? "rgba(240,80,80,0.10)" : "rgba(240,180,41,0.10)",
+              border: `1px solid ${prixVerif.ok ? "rgba(31,122,90,0.35)" : prixVerif.ecarts?.length ? "rgba(240,80,80,0.35)" : "rgba(240,180,41,0.35)"}` }}>
+              <div style={{ fontWeight:800, fontSize:12, marginBottom:6,
+                color: prixVerif.ok ? C.success : prixVerif.ecarts?.length ? C.danger : C.accentGold }}>
+                {prixVerif.ok ? "✅ Les quatre tarifs concordent"
+                  : prixVerif.ecarts?.length ? `⚠️ ${prixVerif.ecarts.length} écart${prixVerif.ecarts.length>1?"s":""} entre l'affichage et le prélèvement`
+                  : "Vérification incomplète"}
+              </div>
+              {(prixVerif.resumes || []).map((l, i) => (
+                <div key={i} style={{ fontSize:11.5, lineHeight:1.7,
+                  color: l.etat === "conforme" ? C.textSub : l.etat === "ecart" ? C.danger : C.accentGold }}>
+                  {l.etat === "conforme" ? "· " : l.etat === "ecart" ? "⚠️ " : "— "}{l.texte}
+                </div>
+              ))}
+              {!prixVerif.ok && (
+                <div style={{ color:C.textMuted, fontSize:10.5, marginTop:8, lineHeight:1.5 }}>
+                  Rien n'est corrigé automatiquement : baisser le prélèvement léserait l'entreprise,
+                  relever l'affichage léserait le prestataire. C'est un arbitrage, pas une réparation.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Secteurs ── */}

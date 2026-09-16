@@ -454,6 +454,27 @@ qui lit : reste-t-il de la place pour moi ? C'est testé des deux côtés.
 `missions_enabled_at` **n'est pas supprimée** : elle garde son sens propre — la date d'ouverture
 de l'accès — et sert au suivi. Elle ne commande plus l'offre.
 
+**Le prix affiché et le prix prélevé sont comparés** (16/09/2026). Ils viennent de deux sources
+qui ne se parlent pas : le prestataire voit `platform_settings.subscription_prices`, réglable
+depuis le back-office, et il est prélevé du montant du tarif Stripe désigné par les variables
+`STRIPE_PRICE_*`, réglable depuis le tableau de bord Stripe. **Rien ne les rapprochait.**
+Modifier l'un sans l'autre fait afficher un prix et en prélever un second — et sur un
+prélèvement récurrent, la réclamation n'arrive qu'au premier relevé bancaire.
+
+[`api/_prix.js`](api/_prix.js) lit les deux et les compare, sur les quatre tarifs vendus
+(Premium et Elite, mensuel et annuel). Le contrôle est branché **des deux côtés** : un bouton
+« Comparer avec les tarifs Stripe » dans les réglages du back-office, et un passage automatique
+dans le balayage quotidien, qui alerte par courriel.
+
+**Il ne corrige rien, et c'est délibéré** : baisser le prélèvement léserait l'entreprise,
+relever l'affichage léserait le prestataire. C'est un arbitrage, pas une réparation — un test
+interdit d'ailleurs toute écriture depuis ce module.
+
+**« Je n'ai pas pu vérifier » n'est pas « tout va bien ».** Une clé Stripe absente, un tarif
+introuvable ou un tarif à paliers rendent `indisponible` et non `ok` : ils se journalisent sans
+déclencher d'alerte — ils relèvent de l'exploitation, pas d'une promesse trompeuse. Seul un
+écart constaté réveille quelqu'un.
+
 **Deux compteurs mensuels, à ne pas confondre** (séparés le 27/08/2026) :
 
 | Colonne | À qui elle sert | Incrémentée quand |
