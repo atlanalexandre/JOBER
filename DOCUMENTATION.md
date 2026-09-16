@@ -205,6 +205,26 @@ pose, et cela borne le nombre d'URL à générer. `prestataire_photo_verifiee` d
 affichée, et l'écran l'annonce : « ✓ Photo vérifiée par ALANE » ou « Photo déclarative, non
 vérifiée ». Une assurance sans fondement est pire que pas d'assurance.
 
+**La qualité de la photo se contrôle à deux endroits** (16/09/2026), et aucun des deux ne juge
+un visage.
+
+Au **dépôt** : un contrôle des dimensions, au moins 400 × 400 pixels, pour la seule pièce
+`photo`. Il **ne bloque jamais s'il ne peut pas s'exécuter** — iOS Safari échoue à décoder les
+photos de la pellicule (HEIC déguisés en JPEG, Live Photos), et un contrôle qui refuse quand il
+ne sait pas empêcherait la moitié des prestataires iPhone de déposer leur dossier. Un minuteur
+de trois secondes évite qu'une image qui ne se charge pas laisse le dépôt bloqué sur
+« Envoi… ». L'intitulé de la pièce dit désormais à quoi elle sert : *« c'est cette photo que vos
+clients verront pour vous reconnaître à leur porte »*.
+
+> **Pas d'heuristique de netteté ni de luminosité.** Un contrôle de « qualité » fondé sur la
+> clarté de l'image écarterait les peaux foncées : ce serait discriminatoire, et faux. Le
+> contrôle automatique ne porte que sur les dimensions. Un test l'interdit explicitement.
+
+Au **back-office** : la photo et la pièce d'identité s'ouvrent **côte à côte**, dans les deux
+sens. C'est le seul moment où quelqu'un vérifie que la photo montrée aux clients est bien celle
+du titulaire du dossier — et il fallait jusqu'ici ouvrir les deux pièces l'une après l'autre, de
+mémoire. Personne ne le faisait. **Le rapprochement se fait là, une fois, par un humain.**
+
 > **Ce n'est pas la pièce d'identité**, et ce ne doit jamais l'être. La CNI porte la date et le
 > lieu de naissance, la nationalité et un numéro de document : rien de tout cela n'aide à
 > reconnaître un visage, et le transmettre au client dépasserait de loin le nécessaire
