@@ -1477,7 +1477,7 @@ export default async function handler(req, res) {
         );
         const grRows = gr.ok ? await gr.json().catch(() => []) : [];
         const grille = Array.isArray(grRows) && grRows[0]?.value ? grRows[0].value : null;
-        const prix = await comparerPrix(grille, process.env.STRIPE_SECRET_KEY);
+        const prix = await comparerPrix(grille, (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, ""));
 
         if (prix.ecarts.length > 0) {
           const details = prix.ecarts.map(resumeEcart);
