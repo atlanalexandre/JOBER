@@ -10,7 +10,7 @@ import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-c
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
 import { MAJ_MENTIONS, blocEditeur, blocHebergeurs, blocResponsableTraitement } from "../constants/editeur.js";
-import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchPlacesLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, Card, StepHeader, Stars, AddressAutocomplete, LaunchBadge, formatPhone, IbanInput, showToast, showPrompt, showConfirm, fetchOffreLancement, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { useResponsive } from "../hooks/useResponsive.js";
 import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
@@ -839,9 +839,9 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
   // l'ouverture de l'accès aux prestations, pas au nombre d'approuvés.
   const [placesHome, setPlacesHome] = useState(null);
   useEffect(() => {
-    supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
-      .then(({ data }) => { if (data?.value != null) setLaunchPhaseHome(Boolean(data.value)); });
-    fetchPlacesLancement().then(n => { if (n != null) setPlacesHome(n); });
+    // Une seule question, une seule réponse : le serveur dit si l'offre est
+    // annonçable — réglage ouvert ET places restantes.
+    fetchOffreLancement().then(o => { setLaunchPhaseHome(o.ouverte); setPlacesHome(o.restantes); });
   }, []);
   const tier = getCashbackTier(walletMissions);
   const nextTier = CASHBACK_TIERS[CASHBACK_TIERS.indexOf(tier) + 1];
@@ -1150,7 +1150,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
         </div>
       </div>
 
-      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={placesHome} /></div>}
+      {launchPhaseHome && <div style={{ padding:"0 22px" }}><LaunchBadge context="home" spotsLeft={placesHome} ouverte={launchPhaseHome} /></div>}
 
       {showPwaBanner && (
         <div style={{ margin:"0 22px 12px", background:"linear-gradient(135deg,#1a1060,#2d1b69)", border:"1px solid rgba(124,111,224,0.4)", borderRadius:14, padding:"13px 15px", display:"flex", gap:12, alignItems:"center" }}>
@@ -5231,7 +5231,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
     ]).then(([l, p, lp]) => {
       setPlanSettings({ limits: l.data?.value || null, prices: p.data?.value || null, launchPhase: lp.data?.value != null ? Boolean(lp.data.value) : true });
     });
-    fetchPlacesLancement().then(n => { if (n != null) setPrestaCountHIW(n); });
+    fetchOffreLancement().then(o => { if (o.restantes != null) setPrestaCountHIW(o.restantes); });
   }, []);
   const effectivePlanCards = ABONNEMENTS_PRESTA.map(p => {
     const price = planSettings.prices?.[p.id]?.monthly ?? p.price;

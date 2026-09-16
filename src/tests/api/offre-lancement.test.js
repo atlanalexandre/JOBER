@@ -158,9 +158,14 @@ describe("ce qui est annoncé correspond à ce qui est appliqué", () => {
   // L'éligibilité tient à l'ouverture de l'accès aux prestations. Les deux
   // compteurs affichés doivent compter cela, et rien d'autre : l'écart entre le
   // compteur et la règle serveur est le défaut corrigé le 24/08/2026.
-  it("les deux compteurs de places comptent l'éligibilité, comme le serveur", () => {
+  // Les écrans ne comptent plus rien eux-mêmes : ils posent la question au
+  // serveur, qui compte l'éligibilité — les comptes dont l'accès est ouvert.
+  // Compter chacun de son côté est la divergence qui s'est produite trois fois.
+  it("le décompte n'existe qu'à un seul endroit", () => {
     expect(api).toContain("missions_enabled=is.true&select=id");
-    expect(presta).toContain('eq("missions_enabled",true)');
+    expect(presta).toContain("fetchOffreLancement()");
+    expect(presta, "l'écran prestataire recompte les places de son côté")
+      .not.toContain('eq("missions_enabled",true)');
   });
 });
 
@@ -172,25 +177,63 @@ describe("l'annonce suit le réglage du serveur", () => {
   const auth = readFileSync(new URL("../../components/auth.jsx", import.meta.url), "utf8");
   const ui   = readFileSync(new URL("../../components/ui.jsx", import.meta.url), "utf8");
 
-  it("les écrans d'inscription lisent le réglage, pas une constante", () => {
+  it("les écrans d'inscription ne lisent plus de constante", () => {
     const code = auth.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
-    expect(code, "un écran d'inscription annonce encore l'offre sans lire le réglage")
+    expect(code, "un écran d'inscription annonce encore l'offre sans demander au serveur")
       .not.toContain("isLaunchPhase");
-    expect(auth).toContain('eq("key", "launch_phase")');
+    expect(auth).toContain("fetchOffreLancement()");
   });
 
-  // Une ligne absente vaut offre active — c'est ce que fait `quotaPrestations`.
-  // Mais en cas d'échec de lecture, on n'annonce rien : ne pas promettre une
-  // offre qui existe est un moindre mal que d'en promettre une qui n'existe pas.
-  it("n'annonce rien quand le réglage est illisible", () => {
+  // En cas d'échec de lecture, on n'annonce rien : ne pas promettre une offre
+  // qui existe est un moindre mal que d'en promettre une qui n'existe pas.
+  it("n'annonce rien quand l'état est illisible", () => {
     const bloc = auth.slice(auth.indexOf("const [offreLancement"));
     expect(bloc).toContain("useState(false)");
-    expect(bloc).toContain("data?.value == null ? true : Boolean(data.value)");
+    expect(ui).toContain("ouverte: false, restantes: null");
+  });
+});
+
+// « Une fois que les 100 prestataires ont bénéficié de l'offre, elle doit
+// disparaître : elle n'aura plus lieu d'être. » — décision du 16/09/2026.
+describe("une offre épuisée disparaît", () => {
+  const api  = readFileSync(new URL("../../../api/prestataires.js", import.meta.url), "utf8");
+  const ui   = readFileSync(new URL("../../components/ui.jsx", import.meta.url), "utf8");
+
+  // Trois endroits répondaient à la question, chacun à sa façon — une constante
+  // du code, le réglage, le décompte des places. Ils ont divergé trois fois.
+  it("le serveur tranche, et lui seul", () => {
+    expect(api).toContain("ouverte: reglageOuvert && restantes > 0");
+    expect(ui).toContain("export function fetchOffreLancement");
   });
 
-  // Les trois autres emplacements du badge sont déjà conditionnés par le
-  // réglage chez leurs appelants ; ce test garde la trace de cette dépendance.
-  it("le badge reste gouverné par ses appelants", () => {
-    expect(ui).toContain("isLaunchPhase()");
+  it("le badge ne s'affiche plus quand l'offre est fermée", () => {
+    expect(ui).toContain('if (context !== "booking" && ouverte === false) return null;');
+  });
+
+  // Une offre épuisée ne s'annonce pas « terminée », elle disparaît.
+  it("ne mentionne plus « offre terminée »", () => {
+    // Hors commentaires : le fichier explique justement pourquoi cette mention
+    // a disparu, et cette explication ne doit pas faire échouer le test.
+    const code = ui.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+    expect(code).not.toContain("offre terminée");
+  });
+
+  // Le contexte « booking » parle de la transparence du prix, pas de l'offre :
+  // il n'a pas à disparaître avec elle.
+  it("épargne le message qui ne promet pas l'offre", () => {
+    expect(ui).toContain('context !== "booking"');
+  });
+
+  // Taire une offre qui existe est un moindre mal que d'en promettre une qui
+  // n'existe pas : en cas de doute, fermé.
+  it("répond « fermée » quand elle ne sait pas", () => {
+    expect(api).toContain('prises: null, restantes: null, ouverte: false');
+    expect(api).toContain("reglageOuvert = false;");
+  });
+
+  // Une ligne absente vaut ouverte, comme dans `quotaPrestations` : l'absence
+  // n'est pas une décision.
+  it("traite l'absence de réglage comme une offre ouverte", () => {
+    expect(api).toContain('brut === null || (brut !== false && brut !== "false")');
   });
 });

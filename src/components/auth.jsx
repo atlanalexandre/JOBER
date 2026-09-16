@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
-import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone } from "./ui.jsx";
+import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
 //
@@ -44,17 +44,18 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   // commerciale trompeuse (art. L121-2 du Code de la consommation). C'est le
   // troisième écart de ce type sur cette même offre.
   //
-  // Le repli suit le serveur : une ligne ABSENTE vaut offre active — c'est ce
-  // que fait `quotaPrestations` —, et seul un `false` explicite la ferme. En cas
-  // d'échec de lecture on n'annonce rien : ne pas promettre une offre qui existe
-  // est un moindre mal que d'en promettre une qui n'existe pas.
+  // Deux conditions, désormais tranchées par le serveur : le réglage n'est pas
+  // fermé, ET il reste des places. Une offre épuisée ne s'annonce pas — les 100
+  // premiers inscrits étant servis, un nouveau venu ne peut plus en faire
+  // partie, et le lui promettre serait lui vendre ce qu'il n'aura pas.
+  //
+  // En cas d'échec de lecture on n'annonce rien : ne pas promettre une offre
+  // qui existe est un moindre mal que d'en promettre une qui n'existe pas.
   const [offreLancement, setOffreLancement] = useState(false);
   useEffect(() => {
-    supabase.from("platform_settings").select("value").eq("key", "launch_phase").maybeSingle()
-      .then(({ data, error }) => {
-        if (error) { console.error("[offre] reglage illisible :", error.message); return; }
-        setOffreLancement(data?.value == null ? true : Boolean(data.value));
-      });
+    // Le serveur répond à la question entière : réglage ouvert ET places
+    // restantes. Lire le seul réglage laissait annoncer une offre épuisée.
+    fetchOffreLancement().then(o => setOffreLancement(o.ouverte));
   }, []);
 
 
@@ -1269,17 +1270,18 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
   // commerciale trompeuse (art. L121-2 du Code de la consommation). C'est le
   // troisième écart de ce type sur cette même offre.
   //
-  // Le repli suit le serveur : une ligne ABSENTE vaut offre active — c'est ce
-  // que fait `quotaPrestations` —, et seul un `false` explicite la ferme. En cas
-  // d'échec de lecture on n'annonce rien : ne pas promettre une offre qui existe
-  // est un moindre mal que d'en promettre une qui n'existe pas.
+  // Deux conditions, désormais tranchées par le serveur : le réglage n'est pas
+  // fermé, ET il reste des places. Une offre épuisée ne s'annonce pas — les 100
+  // premiers inscrits étant servis, un nouveau venu ne peut plus en faire
+  // partie, et le lui promettre serait lui vendre ce qu'il n'aura pas.
+  //
+  // En cas d'échec de lecture on n'annonce rien : ne pas promettre une offre
+  // qui existe est un moindre mal que d'en promettre une qui n'existe pas.
   const [offreLancement, setOffreLancement] = useState(false);
   useEffect(() => {
-    supabase.from("platform_settings").select("value").eq("key", "launch_phase").maybeSingle()
-      .then(({ data, error }) => {
-        if (error) { console.error("[offre] reglage illisible :", error.message); return; }
-        setOffreLancement(data?.value == null ? true : Boolean(data.value));
-      });
+    // Le serveur répond à la question entière : réglage ouvert ET places
+    // restantes. Lire le seul réglage laissait annoncer une offre épuisée.
+    fetchOffreLancement().then(o => setOffreLancement(o.ouverte));
   }, []);
 
 

@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useRef } from "react";
 import { C, font, r, shadow } from "../constants/colors.js";
-import { isLaunchPhase } from "../constants/plans.js";
 
 export const Stars = ({ rating, size=13 }) => (
   <span style={{ fontSize:size, letterSpacing:1 }}>
@@ -418,8 +417,10 @@ export const DonutChart = ({ sectors, size=120 }) => {
   );
 };
 
-export function LaunchBadge({ context="home", spotsLeft=null }) {
-  if(!isLaunchPhase()) return null;
+export function LaunchBadge({ context="home", spotsLeft=null, ouverte=null }) {
+  // Le contexte « booking » ne promet rien de l'offre — il parle de la
+  // transparence du prix. Il n'a donc pas à disparaître avec elle.
+  if (context !== "booking" && ouverte === false) return null;
   // Le libellé suit la règle, à la lettre. Annoncer autre chose que ce que le
   // serveur applique est une pratique commerciale trompeuse (art. L121-2 du
   // Code de la consommation), et c'est déjà arrivé deux fois sur cette offre.
@@ -430,8 +431,10 @@ export function LaunchBadge({ context="home", spotsLeft=null }) {
   // la fin de ce mois-là. Ne dire que le premier laisserait croire à une offre
   // permanente ; ne dire que le second laisserait croire qu'elle est ouverte à
   // tous.
-  const spotsText = spotsLeft !== null
-    ? (spotsLeft > 0 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100` : "100/100 places — offre terminée")
+  // Plus de mention « offre terminée » : une offre épuisée ne s'annonce pas,
+  // elle disparaît. Le composant n'est plus rendu dans ce cas.
+  const spotsText = spotsLeft !== null && spotsLeft > 0
+    ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""} sur 100`
     : "Réservé aux 100 premiers prestataires validés";
   const msgs = {
     home:    { icon:"🎉", title:"Offre de lancement", sub:`8 prestations le mois de votre 1re prestation · ${spotsText}` },
@@ -548,16 +551,38 @@ export function PromptModal() {
 // même chose, et l'écran pouvait annoncer des places qui n'existaient plus.
 // Depuis le 24/08/2026 la place s'attribue à l'ouverture de l'accès aux
 // prestations, et c'est ce que cette fonction compte — une seule vérité.
-let _placesCache = null;
-let _placesPending = null;
-export function fetchPlacesLancement() {
-  if (_placesCache !== null) return Promise.resolve(_placesCache);
-  if (_placesPending) return _placesPending;
-  _placesPending = fetch("/api/prestataires?action=places")
+let _offreCache = null;
+let _offrePending = null;
+
+/**
+ * L'état de l'offre de lancement, tel que le SERVEUR le décide.
+ *
+ * `{ ouverte, restantes, prises, total }`. En cas d'échec, `ouverte` vaut
+ * `false` : taire une offre qui existe est un moindre mal que d'en promettre
+ * une qui n'existe pas.
+ *
+ * La question se posait autrefois à trois endroits, chacun à sa façon — une
+ * constante du code ici, le réglage là, le décompte des places ailleurs. Ils
+ * ont divergé trois fois, et trois fois la plateforme a annoncé une offre
+ * qu'elle refusait ensuite. Il n'y a plus qu'une seule réponse, et elle vient
+ * du serveur.
+ */
+export function fetchOffreLancement() {
+  if (_offreCache !== null) return Promise.resolve(_offreCache);
+  if (_offrePending) return _offrePending;
+  _offrePending = fetch("/api/prestataires?action=places")
     .then(r => r.json())
-    .then(d => { _placesCache = d?.restantes ?? null; _placesPending = null; return _placesCache; })
-    .catch(() => { _placesPending = null; return null; });
-  return _placesPending;
+    .then(d => {
+      _offreCache = { ouverte: Boolean(d?.ouverte), restantes: d?.restantes ?? null,
+                      prises: d?.prises ?? null, total: d?.total ?? 100 };
+      _offrePending = null;
+      return _offreCache;
+    })
+    .catch(() => {
+      _offrePending = null;
+      return { ouverte: false, restantes: null, prises: null, total: 100 };
+    });
+  return _offrePending;
 }
 
 // `fetchPrestaCount()` a été retirée le 27/08/2026.

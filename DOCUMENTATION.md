@@ -432,6 +432,21 @@ ne lève jamais : une offre non déclenchée ne doit pas faire échouer l'accept
 prestation. Le mois se compte **en heure de Paris** — le 31 août à 22 h UTC, il est déjà le
 1er septembre en France.
 
+**Une offre épuisée disparaît** (16/09/2026). Les 100 places servies, l'offre n'est plus
+annoncée nulle part — ni badge, ni mention à l'inscription, ni « 100/100 places, offre
+terminée ». Un nouveau venu ne peut plus figurer parmi les 100 premiers inscrits : le lui
+annoncer serait lui vendre ce qu'il n'aura pas.
+
+**La décision est prise par le serveur, à un seul endroit.** `/api/prestataires?action=places`
+renvoie `ouverte`, vrai si **les deux** conditions sont réunies : le réglage `launch_phase`
+n'est pas explicitement fermé — une ligne absente vaut ouverte, comme dans `quotaPrestations` —
+**et** il reste des places. En cas de doute, `ouverte` vaut `false`.
+
+Côté écrans, `fetchOffreLancement()` est la seule source. Auparavant la question se posait à
+trois endroits, chacun à sa façon — une constante du code, le réglage, le décompte des places —
+et ils ont divergé **trois fois**. Seul le message « Tarif transparent » du tunnel de
+réservation subsiste indépendamment : il ne promet rien de l'offre.
+
 **Le réglage `launch_phase` gouverne l'annonce, pas seulement le quota** (16/09/2026). Constaté
 en relevant les réglages réels : `launch_phase` valait `false`, et les deux écrans d'inscription
 annonçaient pourtant « 8 prestations/mois gratuites aux 100 premiers » — ils lisaient

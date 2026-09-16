@@ -1,4 +1,5 @@
 import { lireReglagesSecteurs, etatDesSecteurs } from "./_secteurs.js";
+import { PLACES_OFFRE } from "./_offre.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -40,13 +41,52 @@ export default async function handler(req, res) {
       const entete = r.headers.get("content-range");
       const prises = entete ? parseInt(entete.split("/")[1], 10) : null;
       if (prises === null || isNaN(prises)) {
-        console.error("[places] décompte illisible — le compteur de l'offre restera muet.");
-        return res.status(200).json({ prises: null, restantes: null });
+        console.error("[places] décompte illisible — l'offre ne sera pas annoncée.");
+        return res.status(200).json({ prises: null, restantes: null, ouverte: false });
       }
-      return res.status(200).json({ prises, restantes: Math.max(0, 100 - prises) });
+      const restantes = Math.max(0, PLACES_OFFRE - prises);
+
+      // ── L'offre est-elle ANNONÇABLE ? Une seule réponse, pour tous ──────
+      //
+      // La question se posait jusqu'ici à trois endroits, chacun à sa façon :
+      // l'un lisait une constante du code, l'autre le réglage, le troisième
+      // comptait les places. Ils ont divergé trois fois, et trois fois la
+      // plateforme a promis une offre qu'elle refusait ensuite.
+      //
+      // Deux conditions, et les deux sont nécessaires :
+      //   • le réglage `launch_phase` n'est pas explicitement fermé. Une ligne
+      //     ABSENTE vaut ouverte, comme dans `quotaPrestations` — l'absence
+      //     n'est pas une décision ;
+      //   • il reste des places. Les 100 se comptent sur les comptes dont
+      //     l'accès aux prestations est ouvert : au-delà, un nouveau venu ne
+      //     peut plus figurer parmi les 100 premiers inscrits, et lui annoncer
+      //     l'offre serait lui promettre ce qu'il n'aura pas.
+      //
+      // En cas de doute — décompte ou réglage illisible —, on n'annonce rien.
+      // Taire une offre qui existe est un moindre mal que d'en promettre une
+      // qui n'existe pas.
+      let reglageOuvert = true;
+      try {
+        const sr = await fetch(
+          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.launch_phase&select=value&limit=1`,
+          { headers }
+        );
+        if (!sr.ok) throw new Error(`lecture refusée (${sr.status})`);
+        const lignes = await sr.json().catch(() => []);
+        const brut = Array.isArray(lignes) && lignes.length ? lignes[0].value : null;
+        reglageOuvert = brut === null || (brut !== false && brut !== "false");
+      } catch (e) {
+        console.error("[places] réglage launch_phase illisible :", e.message);
+        reglageOuvert = false;
+      }
+
+      return res.status(200).json({
+        prises, restantes, total: PLACES_OFFRE,
+        ouverte: reglageOuvert && restantes > 0,
+      });
     } catch (e) {
       console.error("[places] décompte impossible :", e.message);
-      return res.status(200).json({ prises: null, restantes: null });
+      return res.status(200).json({ prises: null, restantes: null, ouverte: false });
     }
   }
 
