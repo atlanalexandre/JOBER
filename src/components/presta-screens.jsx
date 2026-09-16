@@ -72,7 +72,7 @@ function validateDocSync(file) {
   return null;
 }
 
-async function validateDoc(file) {
+async function validateDoc(file, typeDoc) {
   const ext = file.name.split(".").pop().toLowerCase();
   if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTS.has(ext)) {
     return "Format non accepté — envoyez un PDF ou une photo (JPG, PNG, HEIC).";
@@ -89,11 +89,65 @@ async function validateDoc(file) {
     return null;
   }
 
-  // Pas de test <img> : URL.createObjectURL échoue silencieusement sur iOS Safari
-  // pour les photos de la pellicule (HEIC déguisés en JPEG, Live Photos…).
-  // Les vérifications type/taille sont suffisantes ; le serveur rejette les fichiers invalides.
+  // Pas de test <img> BLOQUANT : URL.createObjectURL échoue silencieusement sur
+  // iOS Safari pour les photos de la pellicule (HEIC déguisés en JPEG, Live
+  // Photos…). Les vérifications type/taille sont suffisantes ; le serveur
+  // rejette les fichiers invalides.
+  //
+  // LA PHOTO DE PROFIL FAIT EXCEPTION (16/09/2026), et seulement elle.
+  //
+  // C'est la seule pièce que le CLIENT verra, sur son palier, pour reconnaître
+  // la personne qui sonne. Une vignette de 120 pixels ne sert à rien là.
+  //
+  // Le contrôle est donc tenté, mais il NE BLOQUE JAMAIS S'IL NE PEUT PAS
+  // S'EXÉCUTER : sur les appareils où le décodage échoue, on laisse passer.
+  // Un contrôle qui refuse quand il ne sait pas empêcherait la moitié des
+  // prestataires iPhone de déposer leur dossier — et c'est exactement le piège
+  // que le commentaire ci-dessus documentait.
+  //
+  // Il ne porte que sur les DIMENSIONS. Pas de netteté, pas de luminosité : une
+  // heuristique de « qualité » fondée sur la clarté de l'image écarterait les
+  // peaux foncées, ce qui serait discriminatoire — et faux. La qualité se juge
+  // à l'œil, par le back-office, à côté de la pièce d'identité.
+  if (typeDoc === "photo") {
+    const dimensions = await dimensionsImage(file);
+    if (dimensions && (dimensions.largeur < PHOTO_MIN_PX || dimensions.hauteur < PHOTO_MIN_PX)) {
+      return `Photo trop petite (${dimensions.largeur}×${dimensions.hauteur} px). `
+           + `Il en faut au moins ${PHOTO_MIN_PX}×${PHOTO_MIN_PX} : c'est cette photo que vos clients verront pour vous reconnaître.`;
+    }
+  }
 
   return null;
+}
+
+/** Côté le plus court exigé d'une photo de profil. */
+const PHOTO_MIN_PX = 400;
+
+/**
+ * Les dimensions d'une image, ou `null` si le navigateur ne sait pas la lire.
+ *
+ * `null` ne veut pas dire « mauvaise » : il veut dire « je ne sais pas ». Les
+ * appelants doivent laisser passer dans ce cas.
+ */
+async function dimensionsImage(file) {
+  if (typeof URL?.createObjectURL !== "function") return null;
+  const url = URL.createObjectURL(file);
+  try {
+    return await new Promise((resolve) => {
+      const img = new Image();
+      // Une image qui ne se charge pas en trois secondes ne se chargera pas :
+      // sans ce garde-fou, le dépôt resterait bloqué sur « Envoi… ».
+      const minuteur = setTimeout(() => resolve(null), 3000);
+      img.onload = () => { clearTimeout(minuteur); resolve({ largeur: img.naturalWidth, hauteur: img.naturalHeight }); };
+      img.onerror = () => { clearTimeout(minuteur); resolve(null); };
+      img.src = url;
+    });
+  } catch (e) {
+    console.error("[document] dimensions illisibles :", e.message);
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 async function notifyDocUpload(docType, isRenewal = false) {
@@ -409,7 +463,7 @@ export function DocUploadCard({ doc, value, onChange, required }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadErr(null);
-    const validErr = await validateDoc(file);
+    const validErr = await validateDoc(file, doc.id);
     if (validErr) { setUploadErr(validErr); if (inputRef.current) inputRef.current.value = ""; return; }
     setUploading(true);
     try {

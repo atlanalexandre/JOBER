@@ -188,3 +188,65 @@ describe("la migration", () => {
     expect(migration).toContain("REVOKE UPDATE (identite_repondu_at)");
   });
 });
+
+// La photo de profil est la seule pièce que le client verra, sur son palier,
+// pour reconnaître qui sonne. Une vignette de 120 pixels n'y sert à rien.
+describe("la qualité de la photo de profil", () => {
+  const presta = readFileSync(new URL("../../components/presta-screens.jsx", import.meta.url), "utf8");
+
+  it("exige une taille minimale, pour la photo seulement", () => {
+    expect(presta).toContain("PHOTO_MIN_PX = 400");
+    expect(presta).toContain('typeDoc === "photo"');
+  });
+
+  // iOS Safari échoue à décoder les photos de la pellicule (HEIC déguisés en
+  // JPEG, Live Photos). Un contrôle qui refuse quand il ne sait pas
+  // empêcherait la moitié des prestataires iPhone de déposer leur dossier.
+  it("ne bloque jamais quand le décodage échoue", () => {
+    const bloc = presta.slice(presta.indexOf("async function dimensionsImage"));
+    expect(bloc).toContain("resolve(null)");
+    const appel = presta.slice(presta.indexOf('typeDoc === "photo"'));
+    expect(appel).toContain("if (dimensions &&");
+  });
+
+  // Sans minuteur, une image qui ne se charge jamais laisse le dépôt bloqué
+  // sur « Envoi… ».
+  it("abandonne au bout de trois secondes", () => {
+    expect(presta).toContain("setTimeout(() => resolve(null), 3000)");
+  });
+
+  // Une heuristique de « qualité » fondée sur la clarté de l'image écarterait
+  // les peaux foncées. Le contrôle ne porte QUE sur les dimensions.
+  it("ne juge ni la netteté ni la luminosité", () => {
+    // La fonction seule, et non tout ce qui la suit : `onBlur` et les filtres
+    // CSS du reste du fichier feraient échouer le test sans rien prouver.
+    const deb = presta.indexOf("async function dimensionsImage");
+    const bloc = presta.slice(deb, presta.indexOf("\n}", deb)).toLowerCase();
+    for (const interdit of ["luminance", "brightness", "getimagedata", "canvas"]) {
+      expect(bloc, `heuristique interdite : ${interdit}`).not.toContain(interdit);
+    }
+  });
+
+  it("dit au prestataire à quoi la photo sert", () => {
+    const docs = readFileSync(new URL("../../../api/_documents.js", import.meta.url), "utf8");
+    expect(docs).toMatch(/vos clients verront pour vous reconnaître/);
+    expect(docs).toMatch(/400×400/);
+  });
+});
+
+describe("la comparaison photo / pièce d'identité", () => {
+  const bo = readFileSync(new URL("../../components/backoffice.jsx", import.meta.url), "utf8");
+
+  it("ouvre les deux pièces côte à côte, dans les deux sens", () => {
+    expect(bo).toContain("const pieceEnRegard");
+    expect(bo).toContain('doc.type === "photo" ? "cni" : doc.type === "cni" ? "photo" : null');
+    expect(bo).toContain("compareUrl");
+  });
+
+  // Un PDF ne s'affiche pas en regard d'une image : mieux vaut l'aperçu simple
+  // que deux cadres dont un vide.
+  it("ne compare que ce qui est affichable", () => {
+    const bloc = bo.slice(bo.indexOf("const pieceEnRegard"));
+    expect(bloc.slice(0, 600)).toContain("estImage");
+  });
+});

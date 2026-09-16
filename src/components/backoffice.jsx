@@ -344,6 +344,26 @@ function BOComptes() {
     setDocVerifying(null);
   };
 
+  // La photo de profil et la pièce d'identité s'ouvrent CÔTE À CÔTE.
+  //
+  // C'est le seul moment où quelqu'un vérifie que la photo montrée aux clients
+  // est bien celle du titulaire du dossier — et jusqu'ici il fallait ouvrir les
+  // deux pièces l'une après l'autre, de mémoire. Personne ne le faisait.
+  //
+  // Le rapprochement se fait ici, une fois, par un humain. La pièce d'identité,
+  // elle, ne quitte jamais le back-office : elle porte la date et le lieu de
+  // naissance, la nationalité et un numéro de document, dont le client n'a
+  // aucun besoin pour reconnaître un visage.
+  const pieceEnRegard = (doc, pieces) => {
+    const regard = doc.type === "photo" ? "cni" : doc.type === "cni" ? "photo" : null;
+    if (!regard || !Array.isArray(pieces)) return {};
+    const autre = pieces.find(d => d.type === regard && d.signedUrl);
+    if (!autre) return {};
+    const estImage = !/\.pdf($|\?)/i.test(autre.signedUrl);
+    if (!estImage) return {};
+    return { compareUrl: autre.signedUrl, compareLabel: DOC_LABELS[regard] || regard };
+  };
+
   // Renseigner ou corriger la date de fin de validité d'une pièce.
   //
   // Elle passe par le serveur, comme la validation : une date repoussée depuis
@@ -952,7 +972,7 @@ function BOComptes() {
                     // à la ligne : les boutons descendent sous le libellé plutôt que de
                     // l'écraser, et le libellé s'abrège proprement.
                     return (
-                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄" }) : undefined} style={{ display:"flex", alignItems:"center", flexWrap:"wrap", rowGap:6, gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
+                      <div key={doc.id} onClick={doc.signedUrl ? ()=>setPreviewDoc({ url:doc.signedUrl, isImg, label:DOC_LABEL[doc.type]||doc.type, icon:DOC_ICON[doc.type]||"📄", ...pieceEnRegard(doc, docs[p.id]) }) : undefined} style={{ display:"flex", alignItems:"center", flexWrap:"wrap", rowGap:6, gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.04)", borderRadius:8, marginBottom:5, border:`1px solid ${doc.verified?"rgba(34,197,94,0.2)":"rgba(255,255,255,0.06)"}`, cursor:doc.signedUrl?"pointer":"default" }}>
                         <span style={{ fontSize:16, flexShrink:0 }}>{DOC_ICON[doc.type]||"📄"}</span>
                         <div style={{ flex:"1 1 130px", minWidth:0 }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.85)", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{DOC_LABEL[doc.type]||doc.type}</div>
@@ -1153,6 +1173,19 @@ function BOComptes() {
             <div style={{ flex:1, overflow:"auto", padding:8, minHeight:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
               {previewDoc.isDemo ? (
                 <DemoDocPreview type={previewDoc.docType} />
+              ) : previewDoc.isImg && previewDoc.compareUrl ? (
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent:"center", width:"100%" }}>
+                  {[[previewDoc.label, previewDoc.url], [previewDoc.compareLabel, previewDoc.compareUrl]].map(([titre, url]) => (
+                    <div key={titre} style={{ flex:"1 1 260px", minWidth:0 }}>
+                      <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11, fontWeight:700, marginBottom:5, textAlign:"center" }}>{titre}</div>
+                      <img src={url} alt={titre} style={{ width:"100%", maxHeight:"62vh", objectFit:"contain", display:"block", borderRadius:8, background:"rgba(255,255,255,0.04)" }} />
+                    </div>
+                  ))}
+                  <div style={{ flexBasis:"100%", color:"rgba(255,255,255,0.5)", fontSize:11, textAlign:"center", marginTop:4, lineHeight:1.5 }}>
+                    Est-ce la même personne, et la photo est-elle exploitable ? C'est elle que vos clients verront
+                    pour reconnaître qui sonne à leur porte.
+                  </div>
+                </div>
               ) : previewDoc.isImg ? (
                 <img src={previewDoc.url} alt={previewDoc.label} style={{ maxWidth:"100%", maxHeight:"75vh", display:"block", margin:"0 auto", borderRadius:8 }} />
               ) : (
