@@ -432,6 +432,17 @@ ne lève jamais : une offre non déclenchée ne doit pas faire échouer l'accept
 prestation. Le mois se compte **en heure de Paris** — le 31 août à 22 h UTC, il est déjà le
 1er septembre en France.
 
+**Le réglage `launch_phase` gouverne l'annonce, pas seulement le quota** (16/09/2026). Constaté
+en relevant les réglages réels : `launch_phase` valait `false`, et les deux écrans d'inscription
+annonçaient pourtant « 8 prestations/mois gratuites aux 100 premiers » — ils lisaient
+`isLaunchPhase()`, une **constante du code**, et non le réglage que consulte le serveur. Le
+prestataire lisait une promesse que la plateforme refusait ensuite d'honorer.
+
+C'était le **troisième écart de ce type sur cette même offre**. Les deux écrans lisent désormais
+`platform_settings.launch_phase`, avec le même repli que le serveur — une ligne absente vaut
+offre active, seul un `false` explicite la ferme. En cas d'échec de lecture, rien n'est annoncé :
+ne pas promettre une offre qui existe est un moindre mal que d'en promettre une qui n'existe pas.
+
 **Ce qui est annoncé doit correspondre à ce qui est appliqué**, et les deux temps doivent être
 dits. Ne dire que l'éligibilité laisserait croire à une offre permanente ; ne dire que le
 déclenchement laisserait croire qu'elle est ouverte à tous. L'écart entre l'annonce et la règle

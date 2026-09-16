@@ -163,3 +163,34 @@ describe("ce qui est annoncé correspond à ce qui est appliqué", () => {
     expect(presta).toContain('eq("missions_enabled",true)');
   });
 });
+
+// Le réglage `launch_phase` a été passé à `false` le 16/09/2026, et les écrans
+// d'inscription ont continué d'annoncer « 8 prestations/mois gratuites aux 100
+// premiers » pendant que le serveur en accordait 2. Les deux écrans lisaient une
+// CONSTANTE DU CODE au lieu du réglage que le serveur consulte.
+describe("l'annonce suit le réglage du serveur", () => {
+  const auth = readFileSync(new URL("../../components/auth.jsx", import.meta.url), "utf8");
+  const ui   = readFileSync(new URL("../../components/ui.jsx", import.meta.url), "utf8");
+
+  it("les écrans d'inscription lisent le réglage, pas une constante", () => {
+    const code = auth.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+    expect(code, "un écran d'inscription annonce encore l'offre sans lire le réglage")
+      .not.toContain("isLaunchPhase");
+    expect(auth).toContain('eq("key", "launch_phase")');
+  });
+
+  // Une ligne absente vaut offre active — c'est ce que fait `quotaPrestations`.
+  // Mais en cas d'échec de lecture, on n'annonce rien : ne pas promettre une
+  // offre qui existe est un moindre mal que d'en promettre une qui n'existe pas.
+  it("n'annonce rien quand le réglage est illisible", () => {
+    const bloc = auth.slice(auth.indexOf("const [offreLancement"));
+    expect(bloc).toContain("useState(false)");
+    expect(bloc).toContain("data?.value == null ? true : Boolean(data.value)");
+  });
+
+  // Les trois autres emplacements du badge sont déjà conditionnés par le
+  // réglage chez leurs appelants ; ce test garde la trace de cette dépendance.
+  it("le badge reste gouverné par ses appelants", () => {
+    expect(ui).toContain("isLaunchPhase()");
+  });
+});
