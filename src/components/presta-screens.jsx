@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
-import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
+import { Btn, Badge, Input, StepHeader, Select, IbanInput, LaunchBadge, fetchOffreLancement, AddressAutocomplete, formatPhone, showToast, showConfirm, BlocPropositionResolution, ouvrirFacture } from "./ui.jsx";
 import { fenetrePointage, fenetrePartagePosition, finPrestationMs } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { nombreDeJours } from "../../api/_montant.js";
@@ -3870,11 +3870,9 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
     // cacherait qui existent : c'est le défaut corrigé le 24/08/2026, et il se
     // reproduirait à chaque changement de règle si les deux comptes ne lisaient
     // pas la même chose.
-    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("role","prestataire").eq("missions_enabled",true)
-      .then(({count,error})=>{
-        if(error) { console.error("[offre] places illisibles :", error.message); return; }
-        if(count!=null) setSpotsLeft(Math.max(0,100-count));
-      });
+    // Le serveur décide et compte : réglage ouvert ET places restantes. Compter
+    // ici de son côté, c'est la divergence qui s'est produite trois fois.
+    fetchOffreLancement().then(o => { setLaunchPhaseActive(o.ouverte); setSpotsLeft(o.restantes); });
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({data})=>{ if(data?.value!=null) setLaunchPhaseActive(Boolean(data.value)); });
   },[docsRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4110,7 +4108,7 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         })()}
       </div>
       <div style={{ padding:"18px 18px 0" }}>
-        {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} />}
+        {launchPhaseActive && <LaunchBadge context="presta" spotsLeft={spotsLeft} ouverte={launchPhaseActive} />}
         <div style={{ display:"flex", background:"#162547", borderRadius:12, padding:4, marginBottom:18, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
           {[{id:"prestations",l:"Prestations"},{id:"profil",l:"Profil"},{id:"docs",l:"Docs"},{id:"revenus",l:"Revenus"},{id:"historique",l:"Historique"},{id:"clients",l:"Clients"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex:"1 0 auto", padding:"9px 4px", border:"none", borderRadius:10, cursor:"pointer", background:tab===t.id?C.white:"transparent", color:tab===t.id?C.navy:C.gray, fontWeight:tab===t.id?700:500, fontSize:11, fontFamily:"inherit", boxShadow:tab===t.id?"0 2px 8px rgba(0,0,0,0.1)":"none" }}>{t.l}</button>

@@ -8,7 +8,7 @@ import { SECTORS, METIERS } from "./constants/data.js";
 import { effacerPremiereVisite } from "./constants/premiere-visite.js";
 import { nouvelleVersionDisponible, rechargerVersion } from "./lib/version.js";
 import { useResponsive } from "./hooks/useResponsive.js";
-import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchPlacesLancement } from "./components/ui.jsx";
+import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchOffreLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
 import { BackofficeLogin, BackofficeDashboard } from "./components/backoffice.jsx";
 import { MissionPendingScreen, StripePaymentScreen, CancellationScreen, setUseProviders } from "./components/payment.jsx";
@@ -116,7 +116,7 @@ function SplashScreen({ onNext, onMentions }) {
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{ const t=setTimeout(()=>setV(true),100); return ()=>clearTimeout(t); },[]);
   useEffect(()=>{
-    fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
+    fetchOffreLancement().then(o=>{ setPlacesLeft(o.ouverte ? o.restantes : 0); });
   },[]);
   // Les places de l'offre ne se déduisent PLUS du nombre de prestataires
   // approuvés : elles se comptent à l'ouverture de l'accès aux prestations,
@@ -272,7 +272,7 @@ function RoleScreen({ onSelect, onBack, notice }) {
   const [showCGU,setShowCGU]=useState(false);
   const [placesLeft,setPlacesLeft]=useState(null);
   useEffect(()=>{
-    fetchPlacesLancement().then(n=>{ if(n!=null) setPlacesLeft(n); });
+    fetchOffreLancement().then(o=>{ setPlacesLeft(o.ouverte ? o.restantes : 0); });
   },[]);
   // Les places de l'offre ne se déduisent PLUS du nombre de prestataires
   // approuvés : elles se comptent à l'ouverture de l'accès aux prestations,
