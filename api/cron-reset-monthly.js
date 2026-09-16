@@ -9,6 +9,7 @@ import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORM
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc } from "./_documents.js";
+import { comparerPrix, resumeEcart } from "./_prix.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -1456,6 +1457,58 @@ export default async function handler(req, res) {
             `),
           }),
         }).catch(e => console.error("[documents] courriel d'administration :", e.message));
+      }
+
+      // ── Le prix affiché correspond-il au prix prélevé ? ───────────────
+      //
+      // Deux sources qui ne se parlent pas : le réglage du back-office commande
+      // l'affichage, le tarif Stripe commande le prélèvement. Un écart n'est
+      // visible nulle part tant que personne ne le cherche — et sur un
+      // abonnement récurrent, la réclamation n'arrive qu'au premier relevé.
+      //
+      // Contrôlé ici parce que ce balayage passe tous les jours. On n'alerte
+      // que sur un ÉCART CONSTATÉ : une clé Stripe absente ou un tarif
+      // illisible relèvent de l'exploitation, pas d'une promesse trompeuse, et
+      // s'écrivent dans les journaux sans réveiller personne.
+      try {
+        const gr = await fetch(
+          `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.subscription_prices&select=value&limit=1`,
+          { headers }
+        );
+        const grRows = gr.ok ? await gr.json().catch(() => []) : [];
+        const grille = Array.isArray(grRows) && grRows[0]?.value ? grRows[0].value : null;
+        const prix = await comparerPrix(grille, process.env.STRIPE_SECRET_KEY);
+
+        if (prix.ecarts.length > 0) {
+          const details = prix.ecarts.map(resumeEcart);
+          console.error(`[prix] ${prix.ecarts.length} écart(s) entre l'affichage et le prélèvement : `
+            + details.join(" | "));
+          if (RESEND_API_KEY_DOCS && process.env.ADMIN_EMAIL) {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${RESEND_API_KEY_DOCS}`, "Content-Type": "application/json" },
+              body: resendBody({
+                from: RESEND_FROM_DOCS, to: process.env.ADMIN_EMAIL,
+                subject: `⚠️ Prix affiché ≠ prix prélevé — ${prix.ecarts.length} écart${prix.ecarts.length > 1 ? "s" : ""}`,
+                html: emailHtml(`
+                  <p>Le prix annoncé aux prestataires ne correspond pas au montant réellement prélevé par Stripe.</p>
+                  <ul style="font-size:14px;line-height:1.7;padding-left:18px">
+                    ${details.map(d => `<li>${escEmail(d)}</li>`).join("")}</ul>
+                  <p style="font-size:13px;color:#555">Annoncer un prix et en prélever un autre est une pratique
+                  commerciale trompeuse. Rien n'a été corrigé automatiquement : baisser le prélèvement léserait
+                  l'entreprise, relever l'affichage léserait le prestataire — l'arbitrage vous revient.</p>
+                  <p style="font-size:13px;color:#555">Les deux réglages : <strong>Réglages → Prix des abonnements</strong>
+                  dans le back-office, et les tarifs correspondants dans Stripe.</p>
+                `),
+              }),
+            }).catch(e => console.error("[prix] alerte non envoyée :", e.message));
+          }
+        } else if (prix.indisponible) {
+          console.warn("[prix] comparaison incomplète : "
+            + prix.lignes.filter(l => l.etat !== "conforme").map(resumeEcart).join(" | "));
+        }
+      } catch (e) {
+        console.error("[prix] contrôle impossible :", e.message);
       }
 
       // La date du dernier passage, pour que le back-office puisse dire que la

@@ -6,6 +6,7 @@ import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 import { qualificationsPour } from "./_qualifications.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour } from "./_documents.js";
+import { comparerPrix, resumeEcart } from "./_prix.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
 const hoteDe = (url) => { try { return new URL(url).host; } catch { return "adresse illisible"; } };
@@ -1335,6 +1336,26 @@ export default async function handler(req, res) {
         `),
       });
       return res.status(200).json({ success: true });
+    }
+
+    // ── Le prix affiché correspond-il au prix prélevé ? ──────────────────
+    //
+    // Deux sources qui ne se parlent pas : le réglage du back-office commande
+    // l'affichage, le tarif Stripe commande le prélèvement. Modifier l'un sans
+    // l'autre fait afficher un prix et en prélever un second.
+    if (action === "verifier_prix") {
+      const affiches = await fetch(
+        `${SUPABASE_URL}/rest/v1/platform_settings?key=eq.subscription_prices&select=value&limit=1`,
+        { headers }
+      ).then(r => r.ok ? r.json() : []).catch(e => {
+        console.error("[prix] réglage d'affichage illisible :", e.message); return [];
+      });
+      const grille = Array.isArray(affiches) && affiches[0]?.value ? affiches[0].value : null;
+      const resultat = await comparerPrix(grille, process.env.STRIPE_SECRET_KEY);
+      return res.status(200).json({
+        ...resultat,
+        resumes: resultat.lignes.map(l => ({ etat: l.etat, texte: resumeEcart(l) })),
+      });
     }
 
     if (action === "list_docs") {
