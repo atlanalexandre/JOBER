@@ -3199,7 +3199,19 @@ export function BOSettingsTab() {
       {/* ── Phase de lancement ── */}
       <SectionTitle>🚀 Phase de lancement</SectionTitle>
       <div style={{ background:"#0D1B3E", borderRadius:12, padding:16, marginBottom:8 }}>
-        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.5 }}>Active les badges "Offre de lancement" et la mention des 8 prestations gratuites sur toute la plateforme.</div>
+        {/* Ce libellé ne parlait que des badges et de la mention — il donnait à penser
+    que l'interrupteur était cosmétique. Il commande en réalité l'OCTROI du
+    quota : le couper retire 8 prestations mensuelles à cent prestataires, et
+    c'est très probablement ainsi que l'offre s'est retrouvée désactivée sans
+    que ce soit voulu. Un réglage dont le libellé sous-estime la portée finit
+    par être actionné à la légère. */}
+        <div style={{ color:C.textSub, fontSize:12, marginBottom:12, lineHeight:1.6 }}>
+          Commande l&apos;offre elle-même, et pas seulement son affichage.
+          <br/><strong style={{ color:C.text }}>Activée</strong> : les 100 premiers prestataires validés reçoivent 8 prestations
+          le mois de leur première prestation acceptée, au lieu de 2. Les badges et mentions apparaissent sur la plateforme.
+          <br/><strong style={{ color:C.text }}>Désactivée</strong> : tout le monde reste à 2 prestations par mois sur le plan Gratuit,
+          et plus rien n&apos;est annoncé.
+        </div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <button onClick={()=>setLaunchPhase(v=>!v)} style={{ width:48, height:28, borderRadius:99, border:"none", cursor:"pointer", background:launchPhase?"#4CC99B":"rgba(255,255,255,0.15)", transition:"background 0.2s", position:"relative" }}>
             <div style={{ position:"absolute", top:4, left:launchPhase?22:4, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
