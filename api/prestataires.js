@@ -1,4 +1,4 @@
-import { lireReglagesSecteurs, etatDesSecteurs } from "./_secteurs.js";
+import { lireReglagesSecteurs, etatDesSecteurs, secteursDuProfil } from "./_secteurs.js";
 import { PLACES_OFFRE } from "./_offre.js";
 
 export default async function handler(req, res) {
@@ -182,6 +182,9 @@ export default async function handler(req, res) {
         langues:          meta.langues          || [],
         bio:              meta.bio              || null,
         metiers_list:     meta.metiers_list     || [],
+        // Tous les secteurs déclarés — le filtrage ci-dessous en a besoin, et
+        // `secteur` ci-dessus ne porte que le premier.
+        secteurs:         secteursDuProfil(meta),
         dispon_jours:          meta.dispon_jours          || null,
         dispon_jours_creneaux: meta.dispon_jours_creneaux || null,
         dispo_immediat:        meta.dispo_immediat        || false,
@@ -236,19 +239,54 @@ export default async function handler(req, res) {
 
       const effectifs = {};
       for (const p of enriched) {
-        if (p.secteur) effectifs[p.secteur] = (effectifs[p.secteur] || 0) + 1;
+        for (const s of p.secteurs) effectifs[s] = (effectifs[s] || 0) + 1;
       }
       const etats = etatDesSecteurs(effectifs, reglages);
 
       // Un secteur inconnu du module n'est pas masqué : la liste des secteurs
       // connus vit dans le code, et filtrer sur cette base viderait le
       // catalogue le jour où un secteur est ajouté sans mise à jour du module.
-      const visibles = enriched.filter(p => !p.secteur || etats[p.secteur]?.open !== false);
+      const ouvert = (s) => !s || etats[s]?.open !== false;
+
+      // FERMER UN SECTEUR NE FERME QUE CELUI-LÀ.
+      //
+      // Le filtre portait sur `p.secteur`, c'est-à-dire le premier métier
+      // déclaré : fermer la propreté faisait disparaître du catalogue ENTIER
+      // un prestataire qui y était inscrit en premier et faisait de la
+      // logistique en second — logistique ouverte comprise.
+      //
+      // Un prestataire reste donc visible dès qu'UN de ses secteurs est
+      // ouvert, et sa liste de métiers est ramenée aux seuls secteurs
+      // ouverts : sans cette coupe, le catalogue l'afficherait sous un secteur
+      // fermé, puisqu'il range les prestataires d'après `metiers_list`.
+      const visibles = [];
+      let tailles = 0;
+      for (const p of enriched) {
+        const secteursOuverts = p.secteurs.filter(ouvert);
+        if (p.secteurs.length > 0 && secteursOuverts.length === 0) continue;
+
+        const listeCoupee = (Array.isArray(p.metiers_list) ? p.metiers_list : [])
+          .filter(m => ouvert(typeof m === "string" ? null : (m?.sector || m?.secteur)));
+        if (listeCoupee.length !== (p.metiers_list || []).length) tailles++;
+
+        // `secteur` et `metier` servent de repli à plusieurs écrans : les
+        // réaligner sur le premier métier ENCORE visible, sans quoi ils
+        // désigneraient un secteur fermé.
+        const premier = listeCoupee.find(m => typeof m !== "string" && (m?.sector || m?.secteur));
+        visibles.push({
+          ...p,
+          secteurs: secteursOuverts,
+          metiers_list: listeCoupee,
+          secteur: ouvert(p.secteur) ? p.secteur : (premier?.sector || premier?.secteur || null),
+          metier:  ouvert(p.secteur) ? p.metier  : (premier?.metier || null),
+        });
+      }
 
       const masques = enriched.length - visibles.length;
-      if (masques > 0) {
+      if (masques > 0 || tailles > 0) {
         const fermes = Object.entries(etats).filter(([, e]) => !e.open).map(([id]) => id);
-        console.log(`[prestataires] ${masques} prestataire(s) masqué(s) — secteur(s) fermé(s) : ${fermes.join(", ")}`);
+        console.log(`[prestataires] secteur(s) fermé(s) : ${fermes.join(", ") || "aucun"} — `
+          + `${masques} prestataire(s) masqué(s), ${tailles} dont la liste de métiers a été réduite.`);
       }
       return res.status(200).json({ prestataires: visibles });
     } catch (e) {

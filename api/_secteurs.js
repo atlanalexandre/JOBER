@@ -46,6 +46,38 @@ export const SECTEURS_CONNUS = [
 export const SEUIL_PAR_DEFAUT = 20;
 
 /**
+ * Tous les secteurs déclarés par un prestataire, d'après son `user_metadata`.
+ *
+ * `secteur` (ou `sector`) au premier niveau ne porte que le PREMIER métier
+ * déclaré. S'en contenter a deux conséquences, toutes deux silencieuses :
+ *
+ *   • au comptage, un prestataire polyvalent ne compte que pour un secteur,
+ *     et les autres restent sous le seuil d'ouverture plus longtemps ;
+ *   • à l'affichage, fermer son premier secteur le faisait disparaître du
+ *     catalogue ENTIER, y compris des secteurs ouverts où il travaille.
+ *
+ * Les entrées de `metiers_list` portent `sector`, en anglais ; le champ de
+ * premier niveau s'appelle `secteur`. Les deux sont acceptées.
+ *
+ * @returns {string[]} secteurs distincts, jamais de doublon, jamais de vide.
+ */
+export function secteursDuProfil(meta) {
+  const vus = new Set();
+  const liste = Array.isArray(meta?.metiers_list) ? meta.metiers_list : [];
+  for (const m of liste) {
+    const s = typeof m === "string" ? null : (m?.sector || m?.secteur);
+    if (s) vus.add(String(s));
+  }
+  // Profil antérieur à `metiers_list`, ou liste sans secteur : on retombe sur
+  // le champ unique.
+  if (vus.size === 0) {
+    const s = meta?.secteur || meta?.sector;
+    if (s) vus.add(String(s));
+  }
+  return [...vus];
+}
+
+/**
  * Lit les trois réglages. Ne lève jamais : un réglage illisible ne doit pas
  * empêcher la plateforme de répondre.
  *
@@ -206,11 +238,15 @@ export async function etatSecteursAvecCache(supabaseUrl, headers) {
     page++;
   }
 
+  // Un prestataire compte dans CHACUN des secteurs qu'il a déclarés : il y est
+  // réellement disponible. Ne le compter que dans le premier retardait
+  // l'ouverture des autres sans raison.
   const counts = {};
   for (const u of allUsers) {
     if (!approvedIds.has(u.id)) continue;
-    const sector = u.user_metadata?.secteur || u.user_metadata?.sector;
-    if (sector) counts[sector] = (counts[sector] || 0) + 1;
+    for (const sector of secteursDuProfil(u.user_metadata)) {
+      counts[sector] = (counts[sector] || 0) + 1;
+    }
   }
 
   globalThis.__alaneSectorCounts = { ts: Date.now(), counts };

@@ -149,10 +149,31 @@ recherche de `SearchFiltersScreen` couvre aussi tous les métiers, ainsi que la 
 postal — en comparaison littérale normalisée pour ces deux derniers, qui n'ont pas de
 terminaison inclusive.
 
-> Ce que ce correctif ne touche pas : `/api/prestataires` masque un prestataire dont le
-> **premier** secteur est fermé, même si un autre de ses secteurs est ouvert. Le catalogue ne
-> peut donc pas le montrer. C'est conservateur — jamais l'inverse — mais c'est une asymétrie à
-> connaître.
+**Fermer un secteur ne ferme que celui-là** (22/09/2026). `/api/prestataires` filtrait sur
+`user_metadata.secteur`, c'est-à-dire le premier métier déclaré : fermer la propreté faisait
+disparaître du **catalogue entier** un prestataire inscrit en propreté puis en logistique —
+logistique ouverte comprise. Le même champ servait au comptage, si bien qu'un prestataire
+polyvalent ne comptait que pour un secteur et retardait l'ouverture automatique des autres.
+
+`secteursDuProfil()` (`api/_secteurs.js`) rend désormais **tous** les secteurs déclarés. Elle
+sert aux quatre endroits qui lisaient le champ unique :
+
+| Endroit | Ce qui était raté |
+|---|---|
+| `etatSecteursAvecCache` | l'effectif d'un secteur second n'était jamais compté |
+| `/api/prestataires` | un secteur fermé masquait le prestataire partout |
+| `missions.js` — affectation | le test du métier passait, celui du secteur échouait, pour le même métier |
+| `missions.js` — diffusion urgente et relance | aucune offre pour un secteur second |
+
+Un prestataire reste visible **dès qu'un de ses secteurs est ouvert**, et sa `metiers_list` est
+alors **ramenée aux seuls secteurs ouverts** : sans cette coupe, le catalogue l'afficherait sous
+un secteur fermé, puisqu'il range les prestataires d'après cette liste. `secteur` et `metier`,
+qui servent de repli à plusieurs écrans, sont réalignés sur le premier métier encore visible.
+
+> **Conséquence à connaître** : un prestataire compte maintenant dans chacun de ses secteurs.
+> Les effectifs montent, et un secteur peut franchir le seuil d'ouverture automatique plus tôt
+> qu'avant. C'est la bonne sémantique — il y est réellement disponible — mais le chiffre affiché
+> au back-office change sans que personne ne se soit inscrit.
 
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
