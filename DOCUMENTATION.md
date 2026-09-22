@@ -131,6 +131,29 @@ Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers 
 Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
 qu'une entrée.
 
+**Côté client, un prestataire apparaît dans TOUS ses secteurs** (22/09/2026). Le catalogue et
+l'écran de secteur rangeaient les prestataires sur `p.sector` et `p.jobTitle`, c'est-à-dire sur
+le premier métier déclaré : **un cariste qui fait aussi de la propreté était invisible dans la
+propreté**, alors qu'il s'y était inscrit. Une réservation perdue, et sans trace.
+
+`useProviders()` expose désormais `metiers`, la liste complète normalisée par
+`metiersDuProfil()`. Trois prédicats s'appuient dessus dans `client-screens.jsx` :
+`exerceSecteur()`, `exerceMetier()` et `metierDansSecteur()` — ce dernier affiche sur la fiche
+le métier **du secteur consulté**, et non le premier déclaré, qui peut relever d'un tout autre
+secteur.
+
+Le comptage par secteur, le comptage par métier et le filtre « métier » suivent la même règle.
+Un **filtre par ville** s'ajoute aux filtres de l'écran de secteur, alimenté par les villes où
+ce secteur a réellement des prestataires ; il n'apparaît qu'à partir de deux villes. La
+recherche de `SearchFiltersScreen` couvre aussi tous les métiers, ainsi que la ville et le code
+postal — en comparaison littérale normalisée pour ces deux derniers, qui n'ont pas de
+terminaison inclusive.
+
+> Ce que ce correctif ne touche pas : `/api/prestataires` masque un prestataire dont le
+> **premier** secteur est fermé, même si un autre de ses secteurs est ouvert. Le catalogue ne
+> peut donc pas le montrer. C'est conservateur — jamais l'inverse — mais c'est une asymétrie à
+> connaître.
+
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
 bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son

@@ -5,7 +5,7 @@ import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
 import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
-import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche } from "../constants/data.js";
+import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
 import { CGU } from "../constants/cgu.js";
@@ -16,6 +16,22 @@ import { etatAccueil, debutMs, finMs } from "../lib/accueil.js";
 import { fenetreHeuresSupp } from "../../api/_temps.js";
 import { prixHeuresSupp } from "../../api/_heures_supp.js";
 import { StripePaymentScreen } from "./payment.jsx";
+
+// Un prestataire exerce-t-il dans ce secteur, ce métier ?
+//
+// On interroge `metiers`, pas `sector` ni `jobTitle` : ces deux-là ne portent
+// que le premier métier déclaré.
+export const exerceSecteur = (p, secteurId) =>
+  (p.metiers || []).some(e => e.secteur === secteurId);
+export const exerceMetier  = (p, metier) =>
+  (p.metiers || []).some(e => e.metier === metier);
+
+// Le métier à afficher pour un prestataire dans un secteur donné : celui par
+// lequel il y figure, et non son premier métier — qui peut relever d'un tout
+// autre secteur.
+export const metierDansSecteur = (p, secteurId) =>
+  (p.metiers || []).find(e => e.secteur === secteurId)?.metier || p.jobTitle || null;
+
 
 const PENDING_DOCS_KEY = 'jober_pending_docs_v1';
 
@@ -1388,7 +1404,7 @@ export function HomeScreen({ onNavigate, notifCount=0 }) {
                       problème était d'afficher l'effectif : `messageSecteurFerme`
                       s'interdit délibérément de le dire au client, pour ne pas
                       lui donner la mesure exacte de la faiblesse du réseau. */}
-                  {isOpen ? `${providers.filter(p=>p.sector===s.id).length} pros` : "Bientôt"}
+                  {isOpen ? `${providers.filter(p=>exerceSecteur(p, s.id)).length} pros` : "Bientôt"}
                 </div>
               </div>
             );
@@ -1535,7 +1551,7 @@ export function CatalogueScreen({ onNavigate }) {
       {/* Sections par secteur */}
       <div style={{ padding:"8px 0" }}>
         {SECTORS.map(sector=>{
-          const sectorProviders = realProviders.filter(p=>p.sector===sector.id);
+          const sectorProviders = realProviders.filter(p=>exerceSecteur(p, sector.id));
           const ss = sectorStatus[sector.id];
           const isOpen = !ss || ss.open;
           return (
@@ -1642,6 +1658,11 @@ export function useProviders() {
                 (m.certifs || "").split(",").map(c => c.trim()).filter(Boolean)
               ),
               metiers_list: p.metiers_list || [],
+              // Tous les métiers exercés, normalisés une fois pour toutes.
+              // `sector` et `jobTitle` ci-dessus ne portent que le premier :
+              // s'en contenter rendait un prestataire invisible dans ses
+              // autres secteurs, alors qu'il s'y est déclaré.
+              metiers:      metiersDuProfil(p),
               photo_url:       p.photo_url || null,
               missions_count:  p.missions_count || 0,
               zone_km:         p.zone_km || 50,
@@ -1794,6 +1815,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [filterTarifMax, setFilterTarifMax] = useState(50);
   const [filterNoteMin, setFilterNoteMin] = useState(0);
   const [filterCertified, setFilterCertified] = useState(false);
+  const [filterVille, setFilterVille] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
   const [showMap, setShowMap] = useState(false);
   const filterKey = `alane_filters_${s.id}`;
@@ -1805,14 +1827,15 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
       if(saved.filterTarifMax!==undefined) setFilterTarifMax(saved.filterTarifMax);
       if(saved.filterNoteMin!==undefined) setFilterNoteMin(saved.filterNoteMin);
       if(saved.filterCertified!==undefined) setFilterCertified(saved.filterCertified);
+      if(saved.filterVille!==undefined) setFilterVille(saved.filterVille);
       if(saved.sortBy!==undefined) setSortBy(saved.sortBy);
     } catch(_) {}
   }, []);
   useEffect(() => {
     try {
-      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy }));
+      sessionStorage.setItem(filterKey, JSON.stringify({ selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, filterVille, sortBy }));
     } catch(_) {}
-  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, sortBy]);
+  }, [selectedJob, filterDispo, filterTarifMax, filterNoteMin, filterCertified, filterVille, sortBy]);
   const [showFilters, setShowFilters] = useState(false);
   const [jobSearch, setJobSearch] = useState("");
   const [missionDate, setMissionDate] = useState("");
@@ -1826,9 +1849,25 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const { providers } = useProviders();
 
 
+  // Les villes où ce secteur a des prestataires, avec leur effectif.
+  const villesDuSecteur = (() => {
+    const m = new Map();
+    for (const p of providers) {
+      if (!exerceSecteur(p, s.id) || !p.ville) continue;
+      const cle = cleVille(p.ville);
+      if (!cle) continue;
+      if (!m.has(cle)) m.set(cle, { libelle: String(p.ville).trim(), n: 0 });
+      m.get(cle).n += 1;
+    }
+    return [...m.entries()].map(([cle, v]) => [cle, v.libelle, v.n])
+      .sort((a, b) => a[1].localeCompare(b[1], "fr"));
+  })();
+
   const allServices = (METIERS[s.id]||[]).map(name => {
-    const count = providers.filter(p=>p.sector===s.id && p.jobTitle===name).length;
-    const availCount = providers.filter(p=>p.sector===s.id && p.jobTitle===name && p.available).length;
+    const dansLeMetier = providers.filter(p => exerceMetier(p, name)
+      && (filterVille === "all" || cleVille(p.ville) === filterVille));
+    const count = dansLeMetier.length;
+    const availCount = dansLeMetier.filter(p => p.available).length;
     const tarif = METIERS_TARIFS[s.id]?.[name];
     const base = tarif ? prixClient(tarif.default, s.id) : 12;
     const price = urgentMode ? base + surcharge : base;
@@ -1868,7 +1907,8 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   }, [pointRef, providers]);
 
   const filteredProviders = providers
-    .filter(p => p.sector===s.id && (!selectedJob || p.jobTitle===selectedJob))
+    .filter(p => exerceSecteur(p, s.id) && (!selectedJob || exerceMetier(p, selectedJob)))
+    .filter(p => filterVille === "all" || cleVille(p.ville) === filterVille)
     .filter(p => !filterDispo || p.available)
     .filter(p => !selectedDay || (p.dispon_jours||[]).includes(selectedDay))
     .filter(p => p.rateNum <= filterTarifMax)
@@ -2012,6 +2052,23 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             </div>
             {showFilters && (
               <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px 16px" }}>
+                {/* Ville d'intervention. Le rayon déclaré masque déjà les
+                    prestataires trop éloignés ; ce filtre sert à viser une
+                    ville précise — « je veux quelqu'un de Lyon ». Les villes
+                    proposées sont celles où ce secteur a réellement du monde. */}
+                {villesDuSecteur.length > 1 && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Ville</div>
+                    <select value={filterVille} onChange={e=>setFilterVille(e.target.value)}
+                      style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1px solid ${filterVille!=="all"?s.color:C.border}`, background:"#0D1B3E", color:C.text, fontSize:13, fontFamily:"inherit", boxSizing:"border-box", outline:"none" }}>
+                      <option value="all">📍 Toutes les villes</option>
+                      {villesDuSecteur.map(([cle, libelle, n]) => (
+                        <option key={cle} value={cle}>{libelle} ({n})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div style={{ marginBottom:14 }}>
                   <div style={{ color:C.textSub, fontSize:12, marginBottom:6, fontWeight:600 }}>Date de la prestation</div>
                   <input type="date" value={missionDate} onChange={e=>setMissionDate(e.target.value)} min={new Date().toISOString().slice(0,10)} placeholder="AAAA-MM-JJ"
@@ -2046,7 +2103,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                   </div>
                 </div>
                 {(filterDispo||filterNoteMin>0||filterTarifMax<50||missionDate||filterCertified) && (
-                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); setFilterCertified(false); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
+                  <button onClick={()=>{ setFilterDispo(false); setFilterNoteMin(0); setFilterTarifMax(50); setMissionDate(""); setFilterCertified(false); setFilterVille("all"); }} style={{ width:"100%", marginTop:12, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Réinitialiser les filtres</button>
                 )}
               </div>
             )}
@@ -2186,7 +2243,10 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                           {p.plan==="premium" && <span style={{ fontSize:10, fontWeight:700, color:"#7C6FE0", background:"#7C6FE018", borderRadius:6, padding:"1px 6px" }}>✓ Certifié</span>}
                           {hasCv && <Badge color={C.violet} small>Parcours</Badge>}
                         </div>
-                        <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>{p.jobTitle}</div>
+                        <div style={{ color:C.textSub, fontSize:12, marginBottom:3 }}>
+                          {metierDansSecteur(p, s.id)}
+                          {p.ville ? <span style={{ opacity:0.7 }}> · 📍 {p.ville}</span> : null}
+                        </div>
                         <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                           <Stars rating={p.rating} size={12}/>
                           <span style={{ color:C.textSub, fontSize:11 }}>{(()=>{ if(clientCoords && p.code_postal){ const coords=cpToCoords(p.code_postal); if(coords){ const km=haversineKm(clientCoords.lat,clientCoords.lng,coords[0],coords[1]); return `🚗 ${travelTimeStr(km)} · ${km} km`; } } return p.distance||"—"; })()}</span>
@@ -2275,13 +2335,23 @@ export function SearchFiltersScreen({ onNavigate }) {
       // `correspondRecherche` plutôt qu'un `includes` sur le texte brut : les
       // libellés en écriture inclusive — « Hôte(sse) de caisse », « Serveur(se) »
       // — ne répondaient à AUCUNE des deux formes que l'on tape réellement.
-      const champs = [p.name, p.prenom, p.nom, p.jobTitle, ...(p.skills||[])].filter(Boolean);
-      if (!champs.some(f => correspondRecherche(f, search))) return false;
+      // Tous les métiers déclarés, pas seulement le premier : chercher
+      // « cariste » ne trouvait pas un prestataire dont c'est le second métier.
+      const champs = [p.name, p.prenom, p.nom, p.jobTitle,
+                      ...(p.metiers||[]).map(e => e.metier).filter(Boolean),
+                      ...(p.skills||[])].filter(Boolean);
+      // La ville et le code postal, eux, n'ont pas de terminaison inclusive :
+      // une comparaison littérale normalisée y suffit, et fait correspondre
+      // « Saint-Étienne » à « saint etienne ».
+      const lieu = cleVille([p.ville, p.code_postal].filter(Boolean).join(" "));
+      const trouve = champs.some(f => correspondRecherche(f, search))
+                  || (lieu && lieu.includes(cleVille(search)));
+      if (!trouve) return false;
     }
     if(p.rating < ratingMin) return false;
     if(p.rateNum > tarifMax) return false;
     if(dispoNow && !p.available) return false;
-    if(ville && (p.ville || "").trim().toLowerCase() !== ville.toLowerCase()) return false;
+    if(ville && cleVille(p.ville) !== cleVille(ville)) return false;
     return true;
   }).sort((a,b) => (b.planRank||0) - (a.planRank||0));
 

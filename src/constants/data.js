@@ -550,6 +550,37 @@ export function correspondRecherche(libelle, recherche) {
   return termes.every(t => foin.includes(t));
 }
 
+/**
+ * Les métiers d'un prestataire — TOUS ses métiers.
+ *
+ * `secteur` et `metier`, au premier niveau du profil, ne sont que la PREMIÈRE
+ * entrée de `metiers_list` (voir `auth.jsx`). Filtrer ou compter dessus fait
+ * disparaître un prestataire dont le métier cherché est le deuxième — or il en
+ * déclare couramment trois ou quatre. Un cariste qui fait aussi de la propreté
+ * était invisible dans la propreté : une réservation perdue, sans trace.
+ *
+ * Les entrées de `metiers_list` portent `sector`, en anglais, tandis que le
+ * champ de premier niveau s'appelle `secteur` : les deux sont acceptées.
+ */
+export function metiersDuProfil(p) {
+  const liste = Array.isArray(p?.metiers_list) ? p.metiers_list : [];
+  const entrees = liste
+    .map(m => (typeof m === "string"
+      ? { secteur: null, metier: m }
+      : { secteur: m?.sector || m?.secteur || null, metier: m?.metier || null }))
+    .filter(e => e.secteur || e.metier);
+  // Profils antérieurs à `metiers_list` : on retombe sur les champs uniques.
+  if (entrees.length === 0) {
+    const secteur = p?.secteur || p?.sector || null;
+    const metier  = p?.metier  || p?.jobTitle || null;
+    if (secteur || metier) entrees.push({ secteur, metier });
+  }
+  return entrees;
+}
+
+/** Regrouper « Paris », « paris » et « PARIS » sous une seule entrée. */
+export function cleVille(v) { return normaliserTexte(v); }
+
 export const METIERS = Object.fromEntries(
   Object.entries(METIERS_TARIFS).map(([k,v]) => [k, Object.keys(v)])
 );
