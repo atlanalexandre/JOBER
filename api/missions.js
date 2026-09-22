@@ -54,7 +54,7 @@ async function appelantMajeur(userId, supabaseUrl, headers) {
     return { ok: true, raison: "erreur" };
   }
 }
-import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache } from "./_secteurs.js";
+import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache, secteursDuProfil } from "./_secteurs.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 
@@ -466,7 +466,12 @@ async function candidatsPourMission(mission, supabaseUrl, headers, exclure = [])
     const metiers = [m.metier, ...(Array.isArray(m.metiers_list) ? m.metiers_list.map(x => x?.metier || x) : [])]
       .filter(Boolean).map(x => String(x).toLowerCase());
     if (mission.metier && metiers.length && !metiers.includes(String(mission.metier).toLowerCase())) continue;
-    if (mission.sector && (m.secteur || m.sector) && String(m.secteur || m.sector) !== String(mission.sector)) continue;
+    // Secteur : principal OU secondaire, comme le métier deux lignes plus
+    // haut. Le contrôle ne lisait que `m.secteur`, donc le premier métier
+    // déclaré : un prestataire qui passait le test du métier échouait sur
+    // celui du secteur, pour le même métier.
+    const secteursSiens = secteursDuProfil(m);
+    if (mission.sector && secteursSiens.length && !secteursSiens.includes(String(mission.sector))) continue;
 
     // Tarif : le prestataire ne peut être affecté en dessous de ce qu'il demande.
     const tarifSien = Number(m.tarif_net) || 0;
@@ -2479,8 +2484,8 @@ export default async function handler(req, res) {
               const ur = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${p.id}`, { headers });
               const ud = await ur.json();
               const meta = ud.user_metadata || {};
-              const prestaSector = meta.secteur || meta.sector;
-              if (mission.sector && prestaSector && prestaSector !== mission.sector) return;
+              const siens = secteursDuProfil(meta);
+              if (mission.sector && siens.length && !siens.includes(mission.sector)) return;
               await notifier({
                   user_id: p.id,
                   type: "mission",
@@ -5852,10 +5857,10 @@ export default async function handler(req, res) {
 
         const cibles = (Array.isArray(candidats) ? candidats : []).filter(c => {
           const meta = metaMap[c.id]?.user_metadata || {};
-          const secteurPresta = meta.secteur || meta.sector;
+          const siens = secteursDuProfil(meta);
           // Sans secteur renseigné côté prestataire, on ne l'exclut pas : mieux vaut
           // une notification de trop qu'une prestation qui ne trouve personne.
-          return !mission.sector || !secteurPresta || secteurPresta === mission.sector;
+          return !mission.sector || siens.length === 0 || siens.includes(mission.sector);
         });
 
         if (cibles.length) {
