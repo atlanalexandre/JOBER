@@ -12,8 +12,7 @@
 //      terminaison entre parenthèses, et « femme de ménage » ne se trouve par
 //      aucun `includes`.
 import { describe, it, expect } from "vitest";
-import { metiersDuProfil } from "../components/backoffice.jsx";
-import { correspondRecherche } from "../constants/data.js";
+import { metiersDuProfil, correspondRecherche, cleVille } from "../constants/data.js";
 
 const presta = (extra) => ({ role: "prestataire", ...extra });
 
@@ -72,6 +71,55 @@ describe("le filtre par métier porte sur TOUS les métiers déclarés", () => {
 
   it("ne trouve personne sur un métier que nul n'exerce", () => {
     expect(parMetier("Plombier")).toHaveLength(0);
+  });
+});
+
+// Côté client, le catalogue range les prestataires par secteur. Les prédicats
+// de `client-screens.jsx` reposent sur la même lecture : on les rejoue ici sur
+// `metiersDuProfil`, sans importer l'écran entier.
+describe("la visibilité d'un prestataire dans le catalogue client", () => {
+  const polyvalent = {
+    sector: "proprete", jobTitle: "Agent de propreté",
+    metiers_list: [
+      { sector: "proprete",   metier: "Agent de propreté" },
+      { sector: "logistique", metier: "Cariste" },
+    ],
+  };
+  const metiers = metiersDuProfil(polyvalent);
+  const exerceSecteur = (id) => metiers.some(e => e.secteur === id);
+  const metierDansSecteur = (id) => metiers.find(e => e.secteur === id)?.metier || null;
+
+  it("le montre dans son premier secteur", () => {
+    expect(exerceSecteur("proprete")).toBe(true);
+  });
+
+  it("le montre AUSSI dans son second secteur — c'est la réservation perdue", () => {
+    expect(exerceSecteur("logistique")).toBe(true);
+  });
+
+  it("ne le montre pas dans un secteur où il ne s'est pas déclaré", () => {
+    expect(exerceSecteur("restauration")).toBe(false);
+  });
+
+  it("affiche le métier du secteur consulté, pas le premier déclaré", () => {
+    expect(metierDansSecteur("logistique")).toBe("Cariste");
+    expect(metierDansSecteur("proprete")).toBe("Agent de propreté");
+  });
+});
+
+describe("le regroupement des villes", () => {
+  it("réunit les graphies d'une même ville", () => {
+    expect(cleVille("Paris")).toBe(cleVille("PARIS"));
+    expect(cleVille("Saint-Étienne")).toBe(cleVille("saint etienne"));
+  });
+
+  it("distingue deux villes différentes", () => {
+    expect(cleVille("Lyon")).not.toBe(cleVille("Lille"));
+  });
+
+  it("rend une clé vide quand la ville manque", () => {
+    expect(cleVille(null)).toBe("");
+    expect(cleVille("")).toBe("");
   });
 });
 

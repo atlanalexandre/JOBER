@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
-import { SECTOR_LABELS, SECTORS, correspondRecherche, normaliserTexte } from "../constants/data.js";
+import { SECTOR_LABELS, SECTORS, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
@@ -20,32 +20,6 @@ const DOC_ICONS = {
   kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
   photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄",
 };
-
-// Les métiers d'un prestataire, tous ses métiers.
-//
-// `profiles.secteur` et `profiles.metier` ne sont que la PREMIÈRE entrée de
-// `metiers_list` (voir `src/components/auth.jsx`). Filtrer dessus ferait
-// disparaître un prestataire dont le métier cherché est le deuxième — or un
-// prestataire en déclare couramment trois ou quatre.
-//
-// Les entrées portent `sector`, en anglais, tandis que le champ de premier
-// niveau s'appelle `secteur` : les deux orthographes sont donc acceptées.
-export function metiersDuProfil(p) {
-  const liste = Array.isArray(p?.metiers_list) ? p.metiers_list : [];
-  const entrees = liste
-    .map(m => (typeof m === "string"
-      ? { secteur: null, metier: m }
-      : { secteur: m?.sector || m?.secteur || null, metier: m?.metier || null }))
-    .filter(e => e.secteur || e.metier);
-  // Profils antérieurs à `metiers_list` : on retombe sur les champs uniques.
-  if (entrees.length === 0 && (p?.secteur || p?.metier)) {
-    entrees.push({ secteur: p.secteur || null, metier: p.metier || null });
-  }
-  return entrees;
-}
-
-// Regrouper « Paris », « paris » et « PARIS » sous une seule entrée.
-const cleVille = (v) => normaliserTexte(v);
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
