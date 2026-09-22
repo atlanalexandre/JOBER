@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { C, font, r } from "../constants/colors.js";
-import { SECTOR_LABELS, SECTORS } from "../constants/data.js";
+import { SECTOR_LABELS, SECTORS, correspondRecherche, normaliserTexte } from "../constants/data.js";
 import { origineApp } from "../constants/premiere-visite.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
@@ -20,6 +20,32 @@ const DOC_ICONS = {
   kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
   photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄",
 };
+
+// Les métiers d'un prestataire, tous ses métiers.
+//
+// `profiles.secteur` et `profiles.metier` ne sont que la PREMIÈRE entrée de
+// `metiers_list` (voir `src/components/auth.jsx`). Filtrer dessus ferait
+// disparaître un prestataire dont le métier cherché est le deuxième — or un
+// prestataire en déclare couramment trois ou quatre.
+//
+// Les entrées portent `sector`, en anglais, tandis que le champ de premier
+// niveau s'appelle `secteur` : les deux orthographes sont donc acceptées.
+export function metiersDuProfil(p) {
+  const liste = Array.isArray(p?.metiers_list) ? p.metiers_list : [];
+  const entrees = liste
+    .map(m => (typeof m === "string"
+      ? { secteur: null, metier: m }
+      : { secteur: m?.sector || m?.secteur || null, metier: m?.metier || null }))
+    .filter(e => e.secteur || e.metier);
+  // Profils antérieurs à `metiers_list` : on retombe sur les champs uniques.
+  if (entrees.length === 0 && (p?.secteur || p?.metier)) {
+    entrees.push({ secteur: p.secteur || null, metier: p.metier || null });
+  }
+  return entrees;
+}
+
+// Regrouper « Paris », « paris » et « PARIS » sous une seule entrée.
+const cleVille = (v) => normaliserTexte(v);
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
 export function boFetch(body) {
@@ -229,6 +255,9 @@ function BOComptes() {
   const [loading, setLoading]     = useState(true);
   const [filter, setFilter]       = useState("pending");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [secteurFilter, setSecteurFilter] = useState("all");
+  const [metierFilter, setMetierFilter]   = useState("all");
+  const [villeFilter, setVilleFilter]     = useState("all");
   const [actioning, setActioning] = useState(null);
   const [expanded, setExpanded]   = useState(null);
   const [verifs, setVerifs]       = useState({});
@@ -570,15 +599,61 @@ function BOComptes() {
   const statusColor = { pending:"#FCD34D", approved:C.success, rejected:"#F25E5E" };
   const statusLabel = { pending:"En attente", approved:"Approuvé", rejected:"Refusé" };
   const searchLow = search.toLowerCase().trim();
+
+  // Les valeurs proposées viennent des comptes réellement présents : proposer
+  // un secteur ou une ville sans personne dedans ne rend service à personne.
+  const optionsFiltres = (() => {
+    const secteurs = new Map(), metiers = new Map(), villes = new Map();
+    for (const p of profiles) {
+      if (p.role !== "prestataire") continue;
+      for (const { secteur, metier } of metiersDuProfil(p)) {
+        if (secteur) secteurs.set(secteur, (secteurs.get(secteur) || 0) + 1);
+        if (metier)  metiers.set(metier,  (metiers.get(metier)  || 0) + 1);
+      }
+      if (p.ville) {
+        const cle = cleVille(p.ville);
+        if (cle && !villes.has(cle)) villes.set(cle, { libelle: String(p.ville).trim(), n: 0 });
+        if (cle) villes.get(cle).n += 1;
+      }
+    }
+    const parNom = (a, b) => a[0].localeCompare(b[0], "fr");
+    return {
+      secteurs: [...secteurs.entries()].sort(parNom),
+      metiers:  [...metiers.entries()].sort(parNom),
+      villes:   [...villes.entries()].map(([cle, v]) => [cle, v.libelle, v.n])
+                  .sort((a, b) => a[1].localeCompare(b[1], "fr")),
+    };
+  })();
+
   const filtered = profiles.filter(p => {
     if (filter !== "all" && p.status !== filter) return false;
     if (roleFilter !== "all" && p.role !== roleFilter) return false;
+
+    const exerce = metiersDuProfil(p);
+    if (secteurFilter !== "all" && !exerce.some(e => e.secteur === secteurFilter)) return false;
+    if (metierFilter  !== "all" && !exerce.some(e => e.metier  === metierFilter))  return false;
+    if (villeFilter   !== "all" && cleVille(p.ville) !== villeFilter)              return false;
+
     if (searchLow) {
-      const hay = [p.email, p.prenom, p.nom, p.telephone, p.societe_nom].filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(searchLow)) return false;
+      // Identité, coordonnées, localisation : comparaison littérale.
+      const hay = [p.email, p.prenom, p.nom, p.telephone, p.societe_nom,
+                   p.ville, p.code_postal, p.cp]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (hay.includes(searchLow)) return true;
+      // Les libellés de métier, eux, passent par correspondRecherche :
+      // « femme de ménage » ou « gouvernante » ne se trouvent pas par un
+      // `includes` sur « Gouvernant(e) d'étage » (CLAUDE.md §4).
+      const parMetier = exerce.some(e =>
+        (e.metier  && correspondRecherche(e.metier, search)) ||
+        (e.secteur && correspondRecherche(SECTOR_LABELS[e.secteur] || e.secteur, search)));
+      if (parMetier) return true;
+      return false;
     }
     return true;
   });
+
+  const filtresActifs = secteurFilter !== "all" || metierFilter !== "all" || villeFilter !== "all";
+  const razFiltres = () => { setSecteurFilter("all"); setMetierFilter("all"); setVilleFilter("all"); };
 
   return (
     <div style={{ padding:"16px 18px" }}>
@@ -601,10 +676,60 @@ function BOComptes() {
         ))}
       </div>
 
+      {/* Tri des prestataires par métier, secteur ou localisation.
+          Masqué quand la vue ne montre que des clients : ces trois champs ne
+          sont renseignés que pour les prestataires. */}
+      {roleFilter !== "client" && (
+        <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
+          {[
+            ["🗂️", secteurFilter, setSecteurFilter, "Tous les secteurs",
+             optionsFiltres.secteurs.map(([id, n]) => [id, `${SECTOR_LABELS[id] || id} (${n})`])],
+            ["💼", metierFilter, setMetierFilter, "Tous les métiers",
+             optionsFiltres.metiers.map(([m, n]) => [m, `${m} (${n})`])],
+            ["📍", villeFilter, setVilleFilter, "Toutes les villes",
+             optionsFiltres.villes.map(([cle, lib, n]) => [cle, `${lib} (${n})`])],
+          ].map(([icone, valeur, setValeur, libelleTout, options]) => (
+            <select key={libelleTout} value={valeur} onChange={e => setValeur(e.target.value)}
+              disabled={options.length === 0}
+              style={{ padding:"6px 10px", borderRadius:10, fontSize:11, fontFamily:"inherit",
+                border:`1px solid ${valeur !== "all" ? C.violet : "rgba(255,255,255,0.15)"}`,
+                background: valeur !== "all" ? `${C.violet}22` : "#0D1B3E",
+                color: options.length === 0 ? "rgba(255,255,255,0.25)" : (valeur !== "all" ? C.violet : "rgba(255,255,255,0.6)"),
+                fontWeight: valeur !== "all" ? 700 : 400,
+                cursor: options.length === 0 ? "default" : "pointer", outline:"none", maxWidth:200 }}>
+              <option value="all">{icone} {libelleTout}</option>
+              {options.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+            </select>
+          ))}
+          {filtresActifs && (
+            <button onClick={razFiltres} style={{ padding:"6px 10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.15)",
+              background:"transparent", color:"rgba(255,255,255,0.5)", fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+              ✕ Effacer
+            </button>
+          )}
+        </div>
+      )}
+
+      {!loading && (
+        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:10 }}>
+          {filtered.length} compte{filtered.length > 1 ? "s" : ""}
+          {filtered.length !== profiles.length ? ` sur ${profiles.length}` : ""}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Chargement…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>Aucun compte dans cette catégorie</div>
+        <div style={{ textAlign:"center", color:"rgba(255,255,255,0.6)", padding:"32px 0", fontSize:13 }}>
+          Aucun compte ne correspond{filtresActifs || search ? " aux filtres" : " à cette catégorie"}.
+          {(filtresActifs || search) && (
+            <div style={{ marginTop:10 }}>
+              <button onClick={()=>{ razFiltres(); setSearch(""); }} style={{ padding:"7px 14px", borderRadius:10,
+                border:`1px solid ${C.violet}`, background:`${C.violet}22`, color:C.violet, fontSize:12,
+                cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Tout afficher</button>
+            </div>
+          )}
+        </div>
       ) : filtered.map(p => (
         <div key={p.id} style={{ background:"#0D1B3E", border:`1px solid rgba(255,255,255,0.07)`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>

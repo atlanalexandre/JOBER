@@ -107,6 +107,30 @@ compte, si bien qu'un prestataire ayant huit ans sur un métier et six mois sur 
 annonçait nécessairement un de faux. Une valeur dérivée ne peut pas contredire le détail dont
 elle est tirée.
 
+**Le back-office trie les prestataires par secteur, métier et ville** (22/09/2026). L'onglet
+« Validation des comptes » ne proposait que le statut, le rôle et une recherche libre sur
+l'identité. Retrouver « les caristes de Lyon » supposait de faire défiler toute la liste.
+
+Trois listes déroulantes s'ajoutent, **alimentées par les comptes réellement présents** — un
+secteur sans personne dedans ne s'affiche pas, et chaque entrée porte son effectif. Elles
+n'apparaissent pas quand la vue est restreinte aux clients, pour qui ces champs sont vides.
+
+Deux pièges les gouvernent, et ils valent pour tout code qui lira des métiers :
+
+- **`profiles.secteur` et `profiles.metier` ne sont que la PREMIÈRE entrée de
+  `metiers_list`.** Filtrer dessus fait disparaître un prestataire dont le métier cherché est
+  le deuxième — or il en déclare couramment trois. Le helper `metiersDuProfil()`
+  (`src/components/backoffice.jsx`) rend la liste complète, retombe sur les champs uniques
+  pour les profils antérieurs, et accepte `sector` comme `secteur` : les entrées de
+  `metiers_list` portent l'orthographe anglaise, le champ de premier niveau la française.
+- **La recherche libre sur un libellé métier passe par `correspondRecherche()`**, jamais par
+  un `includes` (voir CLAUDE.md §4) : « gouvernante » ne se trouve pas dans « Gouvernant(e)
+  d'étage », et « femme de ménage » ne se trouve nulle part sans `ALIAS_METIERS`. La recherche
+  reste littérale sur l'identité, les coordonnées, la ville et le code postal.
+
+Les villes sont regroupées par `normaliserTexte()` : « Paris », « paris » et « PARIS » ne font
+qu'une entrée.
+
 **Interrompre une prestation en cours n'arrête que la JOURNÉE EN COURS** (07/09/2026). Sur une
 prestation récurrente, `hours` est un nombre d'heures **par jour** et `date_debut` / `date_fin`
 bornent la période. Le client qui rentre plus tôt un mercredi n'annulait pas seulement son
