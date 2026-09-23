@@ -3227,6 +3227,14 @@ l'ancienne ligne, puis « Add New » sur l'autre. Vercel refuse deux lignes du m
 même environnement. Piège constaté : une variable `VITE_` enregistrée en type « Secret » ne
 peut plus être modifiée — il faut la supprimer et la recréer en type « Config ».
 
+**`CRON_SECRET` : Vercel refuse de construire si la valeur porte une espace.** Le 23/09/2026,
+deux constructions de Preview ont échoué en deux secondes (« contains leading or trailing
+whitespace, which is not allowed in HTTP header values ») : la valeur avait été collée depuis
+un iPhone avec un retour à la ligne final. Le nettoyage du code (`.replace(/\s/g, "")`) n'y
+peut rien, le contrôle a lieu avant. Le même jour, la ligne de production de `CRON_SECRET` a
+été supprimée par erreur au lieu d'être décochée : les tâches planifiées de production auraient
+été refusées dès la mise en ligne suivante. Elle a été recréée avec une valeur neuve.
+
 `alane-recette.vercel.app` est rattaché à une branche Preview (Settings → Domains), et
 protégé par la connexion Vercel. Les tests automatiques passent avec l'en-tête
 `x-vercel-protection-bypass` (secret « Protection Bypass for Automation »).
