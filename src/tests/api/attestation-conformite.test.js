@@ -94,9 +94,37 @@ const INSCRIT = "2026-01-01T09:00:00Z";
 const jourDe = (s) => new Date(s + "T12:00:00Z");
 
 describe("le délai de régularisation de l'attestation URSSAF", () => {
-  it("dure deux mois à compter de l'inscription", () => {
+  it("dure deux mois à compter de l'immatriculation", () => {
     expect(DELAI_REGULARISATION.urssaf).toBe(60);
-    expect(etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-01-02")).echeance).toBe("2026-03-02");
+    // Immatriculé le 1er février, inscrit sur ALANE le 1er janvier : le délai
+    // part de l'immatriculation, parce que c'est elle qui déclenche l'ouverture
+    // du compte URSSAF, donc l'attente de l'attestation.
+    expect(etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-02-02"), "2026-02-01").echeance)
+      .toBe("2026-04-02");
+  });
+
+  it("retombe sur l'inscription quand SIRENE n'a pas répondu", () => {
+    // Ne pas savoir n'est pas une raison de suspendre : à défaut de date, on
+    // reprend l'ancien calcul, plus généreux.
+    const e = etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-01-02"));
+    expect(e.echeance).toBe("2026-03-02");
+    expect(e.date_connue).toBe(false);
+  });
+
+  it("ne donne pas deux mois de sursis à un prestataire immatriculé de longue date", () => {
+    // Le cas majoritaire : immatriculé depuis trois ans, il a son attestation.
+    // Il lui reste le délai minimal de dépôt, pas deux mois.
+    const e = etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-01-20"), "2023-05-10");
+    expect(e.echeance).toBe("2026-01-16");
+    expect(e.depasse).toBe(true);
+    expect(e.date_connue).toBe(true);
+  });
+
+  it("laisse malgré tout le temps d'ouvrir l'écran des documents", () => {
+    // Même immatriculé depuis des années, personne n'est suspendu le
+    // lendemain de son inscription.
+    expect(etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-01-05"), "2023-05-10").depasse)
+      .toBe(false);
   });
 
   it("ne bloque pas pendant le délai", () => {

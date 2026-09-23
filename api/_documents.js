@@ -146,8 +146,17 @@ export const EXPIRATION_BLOQUANTE = new Set(["urssaf", "rc_pro", "cni", "titre_s
  * serait mentir dans un sens comme dans l'autre.
  */
 export const DELAI_REGULARISATION = {
-  urssaf: 60,   // jours à compter de l'inscription
+  urssaf: 60,   // jours à compter de l'IMMATRICULATION de l'auto-entreprise
 };
+
+/**
+ * Le délai minimal laissé à quiconque pour déposer une pièce qu'il détient
+ * déjà. Un prestataire immatriculé depuis trois ans n'a aucune raison
+ * d'attendre soixante jours : il a son attestation. Mais le suspendre le
+ * lendemain de son inscription, avant qu'il ait eu le temps d'ouvrir l'écran
+ * des documents, serait absurde.
+ */
+export const DELAI_DEPOT_MINIMAL = 15;
 
 /**
  * Où en est un prestataire sur une pièce à régulariser.
@@ -157,17 +166,36 @@ export const DELAI_REGULARISATION = {
  * @param {object|null} doc    la pièce déposée, s'il y en a une
  * @param {Date}   maintenant  l'instant de référence
  */
-export function etatRegularisation(type, inscritLe, doc, maintenant = new Date()) {
+export function etatRegularisation(type, inscritLe, doc, maintenant = new Date(), immatriculeLe = null) {
   const jours = DELAI_REGULARISATION[type];
   if (!jours || !inscritLe) return { concerne: false };
   const fourni = !!(doc && doc.verified === true);
-  const echeance = new Date(new Date(inscritLe).getTime() + jours * 86400000);
+
+  // Le délai court depuis l'IMMATRICULATION, pas depuis l'inscription sur
+  // ALANE. La raison d'être de ce délai est l'attente du compte URSSAF, qui
+  // suit l'immatriculation — un prestataire immatriculé depuis trois ans n'a
+  // rien à attendre, il a déjà son attestation. Lier le délai à l'arrivée sur
+  // ALANE offrait soixante jours sans pièce à TOUT LE MONDE, c'est-à-dire
+  // très majoritairement à des gens qui n'en avaient aucun besoin.
+  //
+  // Quand la date d'immatriculation est inconnue — SIRET illisible, service
+  // SIRENE indisponible — on retombe sur l'ancien calcul. À défaut de savoir,
+  // on ne suspend pas : le balayage est une surveillance, pas une sanction.
+  const depuisInscription = new Date(inscritLe).getTime() + DELAI_DEPOT_MINIMAL * 86400000;
+  const base = immatriculeLe
+    ? Math.max(new Date(immatriculeLe).getTime() + jours * 86400000, depuisInscription)
+    : new Date(inscritLe).getTime() + jours * 86400000;
+
+  const echeance = new Date(base);
   const restants = Math.ceil((echeance.getTime() - maintenant.getTime()) / 86400000);
   return {
     concerne: true,
     fourni,
     echeance: echeance.toISOString().slice(0, 10),
     jours_restants: restants,
+    // La date d'immatriculation a-t-elle été trouvée ? L'appelant en a besoin
+    // pour savoir s'il applique la vraie règle ou le repli.
+    date_connue: !!immatriculeLe,
     // Dépassé ne vaut que si la pièce manque : une pièce fournie clôt le sujet.
     depasse: !fourni && restants < 0,
   };
