@@ -219,3 +219,33 @@ describe("le panneau du back-office", () => {
     expect(bo).toContain('from "../../api/_documents.js"');
   });
 });
+
+// La date saisie à la main au back-office s'écrivait dans `date_expiration`,
+// une colonne qui n'a jamais existé — la migration du 14/08/2026 a créé
+// `expires_at`. PostgREST refusait la requête entière : chaque saisie échouait,
+// et le badge d'expiration de la fenêtre des documents, calculé sur le même
+// nom, ne s'affichait jamais. Une RC Pro dont la date n'était connue que par
+// cette saisie n'était donc surveillée par personne.
+describe("une seule colonne pour la fin de validité", () => {
+  const fichiers = ["bo-action.js", "cron-reset-monthly.js", "missions.js", "_documents.js"];
+
+  it("n'écrit ni ne lit jamais `date_expiration`", () => {
+    for (const f of fichiers) {
+      const code = readFileSync(new URL(`../../../api/${f}`, import.meta.url), "utf8")
+        // Les commentaires peuvent citer l'ancien nom pour expliquer l'erreur.
+        .split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+      expect(code, f).not.toMatch(/date_expiration/);
+    }
+  });
+
+  it("enregistre la date saisie dans `expires_at`", () => {
+    const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    const bloc = bo.slice(bo.indexOf('action === "set_expiration"'), bo.indexOf('action === "list_all_docs"'));
+    expect(bloc).toContain("expires_at: date || null");
+  });
+
+  it("affiche le badge d'après `expires_at`", () => {
+    const bo = readFileSync(new URL("../../../api/bo-action.js", import.meta.url), "utf8");
+    expect(bo).toContain("expiration: etatExpiration(doc.expires_at)");
+  });
+});
