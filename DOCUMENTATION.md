@@ -777,6 +777,13 @@ et les rôles d'administration sont exemptés. Il pose une **borne basse** sur l
 le calcul exact du tarif : reproduire la grille tarifaire en base finirait par diverger du
 tunnel de réservation et bloquerait des réservations légitimes.
 
+> **⚠️ Non actif en production au 23/09/2026.** La fonction existe, mais le déclencheur
+> `missions_creation_guard` (BEFORE INSERT sur `missions`) **n'est pas posé** : `missions` ne
+> porte que `missions_field_tamper_guard` (UPDATE). Retrait volontaire (le retour arrière
+> prévu par la migration) ou oubli : rien dans le dépôt ne le dit. Tant qu'il manque, seuls
+> les deux contrôles applicatifs ci-dessus protègent la création. La recette reproduit
+> fidèlement cet état.
+
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
 recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
@@ -3220,3 +3227,43 @@ Les fonctions `/api` ne s'exécutent pas avec `npm run dev` — elles n'existent
 déployées sur Vercel, ou via la commande `vercel dev`.
 
 Tout push sur `main` déclenche un déploiement en production.
+
+### La recette
+
+Une seconde base Supabase sert aux essais, pour ne plus jamais tester sur la production.
+
+| | Production | Recette |
+|---|---|---|
+| Projet | `dezxefweqesurqbqxsta` (West EU, Irlande) | `qoizrysxwjmhqwuteajj` « Alane recette » (West EU, Paris) |
+| Organisation | celle d'Alexandre | « Alane Recette », offre gratuite |
+| Données | réelles | aucune : structure et réglages seulement |
+
+**Copiée le 23/09/2026** avec `node scripts/recette.mjs copier` : tables, contraintes, index,
+fonctions, déclencheurs (dont `on_auth_user_created` sur `auth.users`), RLS et ses 29 règles,
+droits des tables, des colonnes et des fonctions, bucket privé `Documents` (sans fichiers),
+publication realtime (`missions`, `notifications`), et les douze clés de `platform_settings` —
+`invoice_sequence` remise à 0 pour que les factures d'essai ne suivent pas la numérotation
+réelle.
+
+**`node scripts/recette.mjs comparer`** confronte les deux bases, rubrique par rubrique. À
+passer après chaque migration : une migration jouée en production doit l'être aussi en
+recette, sinon les essais portent sur une base qui n'existe plus. Le script ne lit la
+production que par l'endpoint `read-only`, et refuse de viser la production en écriture.
+
+**Réglages Auth reportés** : `mailer_autoconfirm` à `true`, comme en production (voir plus
+bas). Liste des redirections autorisées : `https://*.vercel.app/**` et
+`http://localhost:5173/**`. `site_url` reste à régler avec les Preview Vercel. Les modèles
+d'e-mail n'ont **pas** pu être copiés — l'offre gratuite l'interdit sans SMTP personnalisé —
+mais ceux de la production ne sont que les modèles anglais d'origine de Supabase.
+
+**Les jetons** (variables de l'environnement Claude Code, pas de Vercel) :
+- `SUPABASE_ACCESS_TOKEN` — limité au projet de recette, lecture et écriture ;
+- `SUPABASE_PROD_READ_TOKEN` — limité à la production, dit « lecture seule ». **Il ne l'est
+  pas entièrement** (constaté le 23/09/2026) : le verrou SQL se lève d'un
+  `set transaction read write`, et le jeton peut lire la liste des clés API du projet. Seul
+  l'usage de l'endpoint `read-only` garantit qu'on n'écrit pas ;
+- `STRIPE_TEST_SECRET_KEY` — clé Stripe `sk_test_`.
+
+**La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
+un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à
+connaître — le texte ci-dessus sur `signUp()` évoque le cas où elle serait active.
