@@ -637,6 +637,26 @@ deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; 
 vérification, `expires_at` porte la fin de validité des attestations qui en ont une (RC Pro,
 URSSAF), `purged_at` marque la suppression du fichier.
 
+**L'attestation URSSAF se fournit sous deux mois, pas le jour de l'inscription** (23/09/2026).
+Elle ne s'obtient qu'une fois le compte URSSAF ouvert — quatre à six semaines après
+l'immatriculation. L'exiger au dépôt du dossier fermait la plateforme à tout auto-entrepreneur
+qui vient de se déclarer, c'est-à-dire précisément à ceux que la promesse « zéro commission »
+attire.
+
+`DELAI_REGULARISATION` (`api/_documents.js`) porte ce délai — 60 jours à compter de
+`profiles.created_at` — et `etatRegularisation()` en donne l'état. **Ce n'est pas une
+tolérance : c'est une échéance.** Passé le terme sans pièce vérifiée, l'accès aux prestations
+se ferme, comme pour une pièce périmée.
+
+| Où | Ce qui change |
+|---|---|
+| Balayage quotidien `?action=documents` | une **seconde passe** part des COMPTES et non des pièces : la première ne pouvait rien voir d'un document jamais déposé |
+| `enable_missions` | refuse de rouvrir l'accès si le délai est dépassé — sans quoi le back-office rouvrirait le matin ce que le balayage referme la nuit |
+| Attestation client | distingue « en cours d'obtention, à fournir avant le … » de « non vérifiée » |
+
+> Une pièce **déposée mais non vérifiée** ne compte pas comme fournie. Déposer n'est pas
+> prouver, et c'est la vérification qu'ALANE atteste.
+
 **Le client peut PROUVER les vérifications, pas seulement les croire** (23/09/2026). L'action
 `attestation_conformite` de `/api/missions` établit, à la demande du client et pour une
 prestation donnée, l'état des quatre pièces qui l'intéressent : attestation de vigilance

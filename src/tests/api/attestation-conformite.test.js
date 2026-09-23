@@ -78,3 +78,55 @@ describe("ce que l'attestation ne contient pas", () => {
     expect(Object.keys(rendu).sort()).toEqual(["expire_le", "valide", "verifie_le"]);
   });
 });
+
+// ── Le délai de régularisation ───────────────────────────────────────────
+//
+// L'attestation de vigilance ne s'obtient pas le jour de l'immatriculation :
+// l'URSSAF envoie les identifiants du compte quatre à six semaines après.
+// Exiger la pièce à l'inscription fermait donc la plateforme à tout
+// auto-entrepreneur qui vient de se déclarer — précisément ceux que la
+// promesse « zéro commission » attire.
+//
+// Le délai n'est pas une tolérance : passé le terme, l'accès se ferme.
+import { DELAI_REGULARISATION, etatRegularisation } from "../../../api/_documents.js";
+
+const INSCRIT = "2026-01-01T09:00:00Z";
+const jourDe = (s) => new Date(s + "T12:00:00Z");
+
+describe("le délai de régularisation de l'attestation URSSAF", () => {
+  it("dure deux mois à compter de l'inscription", () => {
+    expect(DELAI_REGULARISATION.urssaf).toBe(60);
+    expect(etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-01-02")).echeance).toBe("2026-03-02");
+  });
+
+  it("ne bloque pas pendant le délai", () => {
+    const e = etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-02-15"));
+    expect(e.depasse).toBe(false);
+    expect(e.jours_restants).toBeGreaterThan(0);
+  });
+
+  it("bloque une fois le terme passé", () => {
+    expect(etatRegularisation("urssaf", INSCRIT, null, jourDe("2026-03-10")).depasse).toBe(true);
+  });
+
+  it("ne bloque jamais si la pièce est vérifiée, même après le terme", () => {
+    const doc = { type: "urssaf", verified: true, verified_at: "2026-02-20" };
+    expect(etatRegularisation("urssaf", INSCRIT, doc, jourDe("2027-01-01")).depasse).toBe(false);
+  });
+
+  it("ne tient pas une pièce déposée mais non vérifiée pour fournie", () => {
+    // Déposer n'est pas prouver : un document que personne n'a regardé ne
+    // vaut pas une vérification.
+    const doc = { type: "urssaf", verified: false, verified_at: null };
+    expect(etatRegularisation("urssaf", INSCRIT, doc, jourDe("2026-03-10")).depasse).toBe(true);
+  });
+
+  it("ne concerne pas les pièces exigibles immédiatement", () => {
+    expect(etatRegularisation("rc_pro", INSCRIT, null, jourDe("2026-06-01")).concerne).toBe(false);
+    expect(etatRegularisation("cni", INSCRIT, null, jourDe("2026-06-01")).concerne).toBe(false);
+  });
+
+  it("ne calcule rien sans date d'inscription", () => {
+    expect(etatRegularisation("urssaf", null, null, jourDe("2026-06-01")).concerne).toBe(false);
+  });
+});

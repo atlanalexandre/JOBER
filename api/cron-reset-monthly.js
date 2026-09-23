@@ -8,7 +8,7 @@ import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
-import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc } from "./_documents.js";
+import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
 function verifyBoToken(token, secret) {
@@ -1510,6 +1510,81 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("[prix] contrôle impossible :", e.message);
       }
+
+      // ── Les pièces jamais fournies ────────────────────────────────
+      //
+      // La première passe part des DOCUMENTS : elle ne peut donc rien voir
+      // d'une pièce qui n'a jamais été déposée. Or c'est le cas le plus
+      // dangereux — un dossier sans attestation de vigilance n'est pas un
+      // dossier en retard, c'est un dossier sans la pièce qui justifie tout
+      // l'argumentaire vendu au client.
+      //
+      // L'attestation ne s'obtient pas le jour de l'immatriculation :
+      // l'URSSAF envoie les identifiants quatre à six semaines plus tard. Le
+      // délai de `DELAI_REGULARISATION` part donc de l'inscription, et il se
+      // ferme — il ne s'étire pas.
+      let regularises = 0;
+      try {
+        const types = Object.keys(DELAI_REGULARISATION);
+        const pRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved`
+          + `&missions_enabled=is.true&select=id,created_at&limit=2000`,
+          { headers }
+        );
+        if (!pRes.ok) throw new Error(`lecture des comptes refusée (${pRes.status})`);
+        const comptes = await pRes.json().catch(() => []);
+
+        // Une seule lecture des pièces concernées, pour tout le monde.
+        const dRes2 = await fetch(
+          `${SUPABASE_URL}/rest/v1/documents?type=in.(${types.join(",")})`
+          + `&select=prestataire_id,type,verified&limit=5000`,
+          { headers }
+        );
+        if (!dRes2.ok) throw new Error(`lecture des pièces refusée (${dRes2.status})`);
+        const piecesRows = await dRes2.json().catch(() => []);
+        const parCompte = new Map();
+        for (const d of (Array.isArray(piecesRows) ? piecesRows : [])) {
+          parCompte.set(`${d.prestataire_id}|${d.type}`, d);
+        }
+
+        for (const compte of (Array.isArray(comptes) ? comptes : [])) {
+          const manquantes = [];
+          for (const type of types) {
+            const etat = etatRegularisation(type, compte.created_at,
+                                            parCompte.get(`${compte.id}|${type}`), new Date());
+            if (etat.concerne && etat.depasse) manquantes.push(libelleDoc(type));
+          }
+          if (manquantes.length === 0) continue;
+
+          const maj = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${compte.id}`, {
+            method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ missions_enabled: false }),
+          });
+          if (!maj.ok) {
+            console.error(`[documents] suspension de ${compte.id} refusée (${maj.status}) — `
+              + `pièce(s) jamais fournie(s) : ${manquantes.join(", ")}`);
+            continue;
+          }
+          regularises++;
+          const nom = await nomDe(compte.id);
+          resumeSuspensions.push({ nom, liste: `${manquantes.join(", ")} — jamais fournie(s)` });
+          console.log(`[documents] ${compte.id} suspendu — délai de régularisation dépassé : ${manquantes.join(", ")}`);
+
+          await notifier({
+            user_id: compte.id,
+            type: "compte",
+            title: "Accès aux prestations suspendu",
+            body: `${manquantes.join(", ")} : le délai pour la fournir est dépassé. `
+                + `Déposez-la depuis vos documents, votre accès rouvre dès qu'elle est vérifiée.`,
+          }, SUPABASE_URL, headers).catch(e =>
+            console.error(`[documents] notification de ${compte.id} non envoyée :`, e.message));
+        }
+      } catch (e) {
+        // Un échec ici ne doit pas empêcher l'horodatage du passage ni le
+        // contrôle des prix : c'est un balayage, pas une transaction.
+        console.error("[documents] contrôle des pièces jamais fournies impossible :", e.message);
+      }
+      if (regularises > 0) suspendus += regularises;
 
       // La date du dernier passage, pour que le back-office puisse dire que la
       // surveillance tourne — et distinguer « rien à signaler » de « le
