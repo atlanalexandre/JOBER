@@ -3199,6 +3199,30 @@ ajoute le schéma s'il manque, retire la barre finale, et **journalise quand ell
 parce qu'une variable mal renseignée doit être réparée à la source. Éprouvée par
 `src/tests/api/url.test.js`.
 
+**Production et Preview n'ont pas les mêmes valeurs** (réglé le 23/09/2026). Chaque variable
+sensible existe en deux lignes dans Vercel : l'une cochée **Production** seule, l'autre
+**Preview** seule. Avant ce réglage, les Preview recevaient la vraie clé Stripe (un essai
+pouvait débiter une vraie carte) mais aucune variable Supabase.
+
+| Variable | En Preview |
+|---|---|
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | projet de **recette** (voir §9) |
+| `VITE_STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY` | clés Stripe **de test** |
+| `APP_URL` | `https://alane-recette.vercel.app` |
+| `BO_PASSWORD`, `BO_SESSION_SECRET`, `CRON_SECRET` | valeurs propres à la recette — un secret de session partagé rendrait une session de recette valable en production |
+| `RESEND_API_KEY`, `BREVO_API_KEY` | **absentes** : aucun e-mail ni SMS ne part vers les faux comptes |
+| `BO_ALLOWED_IPS`, `UPSTASH_*`, `VITE_SENTRY_DSN` | **absentes** |
+| `STRIPE_WEBHOOK_SECRET`, prix d'abonnement | **à poser** : webhook et produits de test pas encore créés |
+
+Pour modifier une variable sans toucher l'autre environnement : décocher l'environnement sur
+l'ancienne ligne, puis « Add New » sur l'autre. Vercel refuse deux lignes du même nom sur un
+même environnement. Piège constaté : une variable `VITE_` enregistrée en type « Secret » ne
+peut plus être modifiée — il faut la supprimer et la recréer en type « Config ».
+
+`alane-recette.vercel.app` est rattaché à une branche Preview (Settings → Domains), et
+protégé par la connexion Vercel. Les tests automatiques passent avec l'en-tête
+`x-vercel-protection-bypass` (secret « Protection Bypass for Automation »).
+
 Les variables préfixées `VITE_` sont **embarquées dans le code envoyé au navigateur** : elles
 sont publiques par construction. N'y mettre aucun secret. Les autres ne sont lisibles que
 depuis `/api`.
