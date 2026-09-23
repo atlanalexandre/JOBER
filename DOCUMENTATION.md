@@ -760,10 +760,10 @@ côté serveur à deux endroits, et il faut les deux :
 
 - `api/_montant.js` (`verifierMontant`) — le total moins la part horaire doit correspondre à
   l'un des trois frais de service du barème, sinon le paiement est refusé. Appelé par
-  **`stripe-intent.js` ET `wallet.js`** : il existe deux chemins d'encaissement, et le
-  portefeuille prépayé n'était pas contrôlé jusqu'au 06/08/2026. Un client pouvait créer sa
-  prestation avec `montant_total = tarif × heures`, la régler depuis son portefeuille et ne
-  payer aucun frais de service ;
+  **`stripe-intent.js`**, seul chemin d'encaissement depuis la suppression de `wallet.js`
+  (23/09/2026). Le portefeuille prépayé, second chemin, n'avait pas été contrôlé jusqu'au
+  06/08/2026 : un client pouvait créer sa prestation avec `montant_total = tarif × heures`, la
+  régler depuis son portefeuille et ne payer aucun frais de service ;
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
   inférieur au `tarif_net` réellement annoncé par le prestataire affecté.
 
@@ -949,7 +949,7 @@ Deux conséquences pratiques :
 
 ### Les fonctions serveur
 
-Les 27 fichiers de `/api`. Les principaux :
+Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfixés `_` (compte du 23/09/2026 ; ce paragraphe annonçait 27). Les principaux :
 
 | Fichier | Rôle |
 |---|---|
@@ -964,7 +964,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
-| `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js` et par `wallet.js` (ce second chemin n'est plus emprunté depuis la fermeture du portefeuille). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
+| `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 
@@ -3004,9 +3004,17 @@ recalcule si la durée réelle diffère de la durée prévue, en conservant les 
 Ne jamais y écrire la part du prestataire : la facture, le cashback et les remboursements en
 dépendent.
 
-Le **portefeuille prépayé est fermé depuis le 16/08/2026**. `pay_mission` et
-`rembourser_solde` subsistent dans `api/wallet.js` le temps de vérifier qu'aucun solde résiduel
-n'existe ; le tunnel ne propose plus que la carte et Apple Pay.
+Le **portefeuille prépayé est fermé depuis le 16/08/2026**, et **`api/wallet.js` est supprimé
+depuis le 23/09/2026**, après vérification sur la base qu'aucun solde prépayé ni aucune recharge
+non remboursée ne subsistait. Aucun écran ne l'appelait plus, mais le fichier restait en ligne :
+son action `rembourser_solde` émettait de vrais remboursements Stripe, hors du back-office et
+sans que personne ne la surveille. Le tunnel ne propose que la carte et Apple Pay.
+
+> Reste un cas théorique : une prestation payée par portefeuille **avant le 16/08** et annulée
+> aujourd'hui recréditerait le solde (`rembourserPrestation`, `api/missions.js`, intentions
+> `wallet_…`). Ce solde ne pourrait plus être retiré par le client. L'action back-office
+> `soldes_a_rembourser` le ferait apparaître ; le remboursement se ferait alors à la main,
+> depuis Stripe.
 
 **Le cashback s'impute en réduction du paiement par carte** (`api/_cashback.js`, migration
 `2026-08-17_cashback_en_reduction.sql`). Il l'était auparavant par `pay_mission`, seul code qui

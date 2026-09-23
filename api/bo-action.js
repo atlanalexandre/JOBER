@@ -1782,10 +1782,12 @@ export default async function handler(req, res) {
     // vouloir dire effacer les soldes : ce serait garder l'argent des clients.
     // Il faut le leur rendre.
     //
-    // Cette action liste les soldes restants. Le remboursement lui-même passe
-    // par le chemin déjà éprouvé (`/api/wallet` action `rembourser_solde`), que
-    // le client déclenche depuis son portefeuille — mais il faut d'abord savoir
-    // qui est concerné, et le leur dire.
+    // Cette action liste les soldes restants. `api/wallet.js`, qui permettait au
+    // client de se faire rembourser lui-même, est supprimé depuis le 23/09/2026 :
+    // la base ne portait plus aucun solde. Un solde qui réapparaîtrait — une
+    // prestation payée par portefeuille avant le 16/08 puis annulée — se
+    // rembourse désormais à la main, depuis Stripe. Cette liste est le moyen
+    // de le voir.
     if (action === "soldes_a_rembourser") {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?prepaid_balance=gt.0&select=id,prenom,nom,prepaid_balance&order=prepaid_balance.desc`,
