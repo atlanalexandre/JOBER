@@ -643,14 +643,30 @@ l'immatriculation. L'exiger au dépôt du dossier fermait la plateforme à tout 
 qui vient de se déclarer, c'est-à-dire précisément à ceux que la promesse « zéro commission »
 attire.
 
-`DELAI_REGULARISATION` (`api/_documents.js`) porte ce délai — 60 jours à compter de
-`profiles.created_at` — et `etatRegularisation()` en donne l'état. **Ce n'est pas une
-tolérance : c'est une échéance.** Passé le terme sans pièce vérifiée, l'accès aux prestations
-se ferme, comme pour une pièce périmée.
+`DELAI_REGULARISATION` (`api/_documents.js`) porte ce délai — 60 jours — et
+`etatRegularisation()` en donne l'état. **Ce n'est pas une tolérance : c'est une échéance.**
+Passé le terme sans pièce vérifiée, l'accès aux prestations se ferme, comme pour une pièce
+périmée.
+
+**Le délai part de l'IMMATRICULATION, pas de l'inscription sur ALANE** (23/09/2026). Sa raison
+d'être est l'attente du compte URSSAF, qui suit l'immatriculation. Le faire partir de l'arrivée
+sur ALANE donnait deux mois sans attestation à **tout le monde**, y compris — cas très
+majoritaire — à des prestataires immatriculés depuis des années, qui ont déjà la leur.
+`api/_sirene.js` lit `date_creation` dans la base SIRENE (`recherche-entreprises.api.gouv.fr`,
+service public, gratuit, sans clé) à partir de `profiles.siret`.
+
+Deux garde-fous encadrent ce calcul :
+
+- **Date inconnue = pas de sanction.** SIRET illisible, entreprise introuvable, service muet :
+  `etatRegularisation()` retombe sur l'ancien calcul (inscription + 60 jours). Le balayage est
+  une surveillance, pas une sanction — on ne suspend jamais faute de savoir.
+- **`DELAI_DEPOT_MINIMAL` = 15 jours.** Un prestataire immatriculé de longue date n'est pas
+  suspendu le lendemain de son inscription : il garde quinze jours pour ouvrir l'écran des
+  documents. L'échéance est donc `max(immatriculation + 60 j, inscription + 15 j)`.
 
 | Où | Ce qui change |
 |---|---|
-| Balayage quotidien `?action=documents` | une **seconde passe** part des COMPTES et non des pièces : la première ne pouvait rien voir d'un document jamais déposé |
+| Balayage quotidien `?action=documents` | une **seconde passe** part des COMPTES et non des pièces : la première ne pouvait rien voir d'un document jamais déposé. SIRENE n'est interrogé que pour les comptes à qui il manque réellement une pièce |
 | `enable_missions` | refuse de rouvrir l'accès si le délai est dépassé — sans quoi le back-office rouvrirait le matin ce que le balayage referme la nuit |
 | Attestation client | distingue « en cours d'obtention, à fournir avant le … » de « non vérifiée » |
 
@@ -942,6 +958,7 @@ Les 27 fichiers de `/api`. Les principaux :
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js` et par `wallet.js` (ce second chemin n'est plus emprunté depuis la fermeture du portefeuille). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
+| `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
 
 ### Comment l'appelant est vérifié
 

@@ -56,6 +56,7 @@ async function appelantMajeur(userId, supabaseUrl, headers) {
 }
 import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache, secteursDuProfil } from "./_secteurs.js";
 import { etatRegularisation } from "./_documents.js";
+import { dateImmatriculation } from "./_sirene.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 
@@ -800,7 +801,7 @@ export default async function handler(req, res) {
       // `created_at` sert au seul calcul du délai de régularisation.
       const pr = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}`
-        + `&select=prenom,nom,created_at`,
+        + `&select=prenom,nom,created_at,siret`,
         { headers }
       );
       const profil = (await pr.json().catch(() => []))[0] || {};
@@ -809,6 +810,11 @@ export default async function handler(req, res) {
       // l'attestation dit ce qui était vrai quand le prestataire est venu.
       const dateRef = mission.date_debut || mission.date || null;
       const jour = dateRef ? String(dateRef).slice(0, 10) : dateDuJourFr();
+
+      // La date d'immatriculation, qui fait courir le délai de dépôt de
+      // l'attestation URSSAF. Inconnue (SIRENE muet), le calcul retombe sur la
+      // date d'inscription — voir _documents.js.
+      const immatLe = await dateImmatriculation(profil.siret);
 
       const PIECES = ["urssaf", "kbis", "rc_pro", "cni"];
       const lignes = PIECES.map(type => {
@@ -825,7 +831,7 @@ export default async function handler(req, res) {
         // « manquante » dans les deux cas tromperait le client une fois sur
         // deux — dans un sens, puis dans l'autre.
         const reg = valide ? { concerne: false }
-                           : etatRegularisation(type, profil.created_at, d, new Date(jour + "T12:00:00Z"));
+                           : etatRegularisation(type, profil.created_at, d, new Date(jour + "T12:00:00Z"), immatLe);
         return {
           type, verifie_le: verifieLe, expire_le: expireLe, valide,
           en_cours_obtention: !!(reg.concerne && !reg.depasse && !valide),

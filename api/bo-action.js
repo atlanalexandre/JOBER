@@ -6,6 +6,7 @@ import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 import { qualificationsPour } from "./_qualifications.js";
 import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc } from "./_documents.js";
+import { dateImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
@@ -420,7 +421,7 @@ export default async function handler(req, res) {
       if (enabled) {
         const dRes = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`
-            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at,created_at`,
+            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at,created_at,siret`,
           { headers }
         );
         const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
@@ -504,8 +505,13 @@ export default async function handler(req, res) {
           const rows = await dr.json().catch(() => []);
           const parType = Object.fromEntries((Array.isArray(rows) ? rows : []).map(d => [d.type, d]));
 
+          // Le délai court depuis l'immatriculation — voir _documents.js. Si
+          // SIRENE ne répond pas, la date reste nulle et le calcul retombe sur
+          // l'inscription : on ne refuse jamais l'ouverture faute de savoir.
+          const immatLe = await dateImmatriculation(p0.siret);
+
           const echues = types
-            .map(t => ({ t, e: etatRegularisation(t, p0.created_at, parType[t], new Date()) }))
+            .map(t => ({ t, e: etatRegularisation(t, p0.created_at, parType[t], new Date(), immatLe) }))
             .filter(x => x.e.concerne && x.e.depasse)
             .map(x => libelleDoc(x.t));
 

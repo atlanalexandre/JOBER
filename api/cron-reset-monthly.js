@@ -9,6 +9,7 @@ import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORM
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
+import { datesImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
 function verifyBoToken(token, secret) {
@@ -1521,14 +1522,19 @@ export default async function handler(req, res) {
       //
       // L'attestation ne s'obtient pas le jour de l'immatriculation :
       // l'URSSAF envoie les identifiants quatre à six semaines plus tard. Le
-      // délai de `DELAI_REGULARISATION` part donc de l'inscription, et il se
-      // ferme — il ne s'étire pas.
+      // délai de `DELAI_REGULARISATION` part donc de l'IMMATRICULATION, lue
+      // dans SIRENE — pas de l'arrivée sur ALANE, qui donnerait deux mois de
+      // sursis à des prestataires immatriculés depuis des années et qui ont
+      // déjà leur attestation en main.
+      //
+      // Si SIRENE ne répond pas, la date reste inconnue et `etatRegularisation`
+      // retombe sur le calcul d'avant : on ne suspend jamais faute de savoir.
       let regularises = 0;
       try {
         const types = Object.keys(DELAI_REGULARISATION);
         const pRes = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?role=eq.prestataire&status=eq.approved`
-          + `&missions_enabled=is.true&select=id,created_at&limit=2000`,
+          + `&missions_enabled=is.true&select=id,created_at,siret&limit=2000`,
           { headers }
         );
         if (!pRes.ok) throw new Error(`lecture des comptes refusée (${pRes.status})`);
@@ -1547,11 +1553,23 @@ export default async function handler(req, res) {
           parCompte.set(`${d.prestataire_id}|${d.type}`, d);
         }
 
-        for (const compte of (Array.isArray(comptes) ? comptes : [])) {
+        // On n'interroge SIRENE que pour les comptes à qui il manque
+        // réellement une pièce : sur quatre-vingt-dix prestataires, cela fait
+        // une poignée d'appels au lieu de quatre-vingt-dix.
+        const liste = Array.isArray(comptes) ? comptes : [];
+        const aRegulariser = liste.filter(c => types.some(t => {
+          const d = parCompte.get(`${c.id}|${t}`);
+          return !(d && d.verified === true);
+        }));
+        const dates = await datesImmatriculation(aRegulariser.map(c => c.siret));
+        const dateDe = c => dates.get(String(c.siret || "").replace(/[\s.-]/g, "")) || null;
+
+        for (const compte of aRegulariser) {
           const manquantes = [];
           for (const type of types) {
             const etat = etatRegularisation(type, compte.created_at,
-                                            parCompte.get(`${compte.id}|${type}`), new Date());
+                                            parCompte.get(`${compte.id}|${type}`), new Date(),
+                                            dateDe(compte));
             if (etat.concerne && etat.depasse) manquantes.push(libelleDoc(type));
           }
           if (manquantes.length === 0) continue;
