@@ -3199,6 +3199,14 @@ ajoute le schéma s'il manque, retire la barre finale, et **journalise quand ell
 parce qu'une variable mal renseignée doit être réparée à la source. Éprouvée par
 `src/tests/api/url.test.js`.
 
+**La production encaisse en mode TEST de Stripe — c'est voulu** (confirmé par Alexandre le
+23/09/2026). Le compte Stripe ne peut être validé pour Stripe Connect qu'au nom de la société,
+qui n'est pas encore immatriculée. D'ici là, `VITE_STRIPE_PUBLIC_KEY` et `STRIPE_SECRET_KEY`
+de production sont des clés `pk_test_` / `sk_test_` : **aucun paiement réel n'est encaissé**.
+La bascule en clés `live` fait partie de la bascule du compte Stripe décrite dans
+[IMMATRICULATION.md](IMMATRICULATION.md) §7. Ne jamais passer une seule des deux clés en
+`live` : clé publique et clé secrète doivent être du même mode, sinon le paiement échoue.
+
 **Production et Preview n'ont pas les mêmes valeurs** (réglé le 23/09/2026). Chaque variable
 sensible existe en deux lignes dans Vercel : l'une cochée **Production** seule, l'autre
 **Preview** seule. Avant ce réglage, les Preview recevaient la vraie clé Stripe (un essai
