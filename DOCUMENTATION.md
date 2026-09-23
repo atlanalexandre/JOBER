@@ -637,6 +637,14 @@ deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; 
 vérification, `expires_at` porte la fin de validité des attestations qui en ont une (RC Pro,
 URSSAF), `purged_at` marque la suppression du fichier.
 
+> **La date saisie à la main au back-office ne s'enregistrait pas** (corrigé le 23/09/2026).
+> `set_expiration` écrivait dans `date_expiration`, une colonne qui n'a jamais existé.
+> PostgREST refusait la requête entière : chaque saisie finissait sur « La date n'a pas pu
+> être enregistrée », et le badge d'expiration de la fenêtre des documents, calculé sur le
+> même mauvais nom, ne s'affichait jamais. Une pièce dont la date n'était connue que par
+> cette saisie — typiquement une RC Pro — n'était surveillée par personne. `npm run colonnes`
+> l'aurait signalé : c'est la requête à passer après chaque migration.
+
 **L'attestation URSSAF se fournit sous deux mois, pas le jour de l'inscription** (23/09/2026).
 Elle ne s'obtient qu'une fois le compte URSSAF ouvert — quatre à six semaines après
 l'immatriculation. L'exiger au dépôt du dossier fermait la plateforme à tout auto-entrepreneur

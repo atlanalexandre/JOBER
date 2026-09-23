@@ -1459,7 +1459,7 @@ export default async function handler(req, res) {
       const enrichis = (photoEntry ? [photoEntry, ...withUrls] : withUrls).map(doc => ({
         ...doc,
         verification: verificationPour(doc.type, qualifPrincipale),
-        expiration: etatExpiration(doc.date_expiration),
+        expiration: etatExpiration(doc.expires_at),
         regleValidite: VALIDITE_DOCUMENTS[doc.type] || null,
       }));
       return res.status(200).json(enrichis);
@@ -1478,9 +1478,15 @@ export default async function handler(req, res) {
       if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) {
         return res.status(400).json({ error: "Date attendue au format AAAA-MM-JJ, ou vide." });
       }
+      // `expires_at`, et pas `date_expiration` : c'est la colonne créée par la
+      // migration du 14/08/2026, celle que lisent le balayage quotidien et
+      // l'attestation remise au client. `date_expiration` n'a jamais existé.
+      // PostgREST refusait donc la requête entière — chaque date saisie ici
+      // échouait, et le badge d'expiration de cette fenêtre, calculé sur le
+      // même mauvais nom, ne s'affichait jamais.
       const maj = await fetch(`${SUPABASE_URL}/rest/v1/documents?id=eq.${encodeURIComponent(docId)}`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({ date_expiration: date || null, relance_expiration_at: null }),
+        body: JSON.stringify({ expires_at: date || null, relance_expiration_at: null }),
       });
       const lignes = await maj.json().catch(() => []);
       if (!maj.ok || !Array.isArray(lignes) || lignes.length === 0) {
