@@ -3292,7 +3292,7 @@ production que par l'endpoint `read-only`, et refuse de viser la production en �
 
 **Réglages Auth reportés** : `mailer_autoconfirm` à `true`, comme en production (voir plus
 bas). Liste des redirections autorisées : `https://*.vercel.app/**` et
-`http://localhost:5173/**`. `site_url` reste à régler avec les Preview Vercel. Les modèles
+`http://localhost:5173/**`. `site_url` : `https://alane-recette.vercel.app`. Les modèles
 d'e-mail n'ont **pas** pu être copiés — l'offre gratuite l'interdit sans SMTP personnalisé —
 mais ceux de la production ne sont que les modèles anglais d'origine de Supabase.
 
