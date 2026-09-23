@@ -59,8 +59,18 @@ const COLONNES = [
   { table: "missions", col: "payout_hold_reason" },
   { table: "missions", col: "resolution_proposee" },
   { table: "profiles", col: "plan_abonnement" },
-  { table: "mission_remplacements", col: "statut" },
+  // `statut` est un mot générique : les créances, la vérification d'identité
+  // (`identite_statut`) et plusieurs valeurs de retour l'emploient aussi. Sans
+  // `contexte`, le relevé prêtait à cette table cinq valeurs qu'elle ne reçoit
+  // jamais — fausse alerte constatée le 23/09/2026 sur la base réelle. Seules
+  // comptent désormais les écritures situées juste après un appel à la table.
+  { table: "mission_remplacements", col: "statut", contexte: "mission_remplacements" },
 ];
+
+// Nombre de lignes, après la mention de la table, dans lesquelles une valeur
+// est rattachée à celle-ci. Une requête PostgREST tient en une dizaine de
+// lignes : au-delà, on lit déjà l'appel suivant.
+const PORTEE_CONTEXTE = 12;
 
 // Les tables dont on imprime TOUTES les contraintes, y compris celles des
 // colonnes trop ambiguës pour être relevées automatiquement.
@@ -83,17 +93,29 @@ const sources = [...fichiers("api"), ...fichiers("src")]
 // Une valeur « écrite » est un littéral affecté à la colonne, ou comparé à
 // elle. Les deux comptent : une comparaison à une valeur que la contrainte
 // refuse signale une branche morte, ce qui est aussi un défaut.
-function valeurs(col) {
+function valeurs(col, contexte = null) {
+  // `(?<![\\w])` : le nom de colonne ne doit pas être la fin d'un nom plus
+  // long — `identite_statut` n'est pas `statut`.
   const motifs = [
-    new RegExp(`${col}\\s*:\\s*["']([a-z_]+)["']`, "g"),
-    new RegExp(`${col}\\s*[=!]==\\s*["']([a-z_]+)["']`, "g"),
-    new RegExp(`${col}=eq\\.([a-z_]+)`, "g"),
-    new RegExp(`${col}=in\\.\\(([a-z_,]+)\\)`, "g"),
+    new RegExp(`(?<![\\w])${col}\\s*:\\s*["']([a-z_]+)["']`, "g"),
+    new RegExp(`(?<![\\w])${col}\\s*[=!]==\\s*["']([a-z_]+)["']`, "g"),
+    new RegExp(`(?<![\\w])${col}=eq\\.([a-z_]+)`, "g"),
+    new RegExp(`(?<![\\w])${col}=in\\.\\(([a-z_,]+)\\)`, "g"),
   ];
   const trouvees = new Map();
   for (const { p, texte } of sources) {
+    // Les lignes « couvertes » par une mention de la table visée.
+    let couvertes = null;
+    if (contexte) {
+      couvertes = new Set();
+      texte.split("\n").forEach((l, i) => {
+        if (l.includes(contexte)) for (let k = 0; k <= PORTEE_CONTEXTE; k++) couvertes.add(i + k);
+      });
+      if (couvertes.size === 0) continue;
+    }
     for (const m of motifs) {
       for (const r of texte.matchAll(m)) {
+        if (couvertes && !couvertes.has(texte.slice(0, r.index).split("\n").length - 1)) continue;
         for (const v of r[1].split(",")) {
           if (!v) continue;
           if (!trouvees.has(v)) trouvees.set(v, new Set());
@@ -111,8 +133,8 @@ console.log("═".repeat(75));
 console.log();
 
 const cibles = [];
-for (const { table, col } of COLONNES) {
-  const trouvees = valeurs(col);
+for (const { table, col, contexte } of COLONNES) {
+  const trouvees = valeurs(col, contexte);
   if (trouvees.size === 0) continue;
   cibles.push(`${table}.${col}`);
   const liste = [...trouvees.keys()].sort();
