@@ -786,7 +786,12 @@ justifié, ni rapproché des encaissements Stripe.
 Trois procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
-- `increment_cashback` — crédite le cashback de façon atomique.
+- `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
+  uniquement** : elle ne vérifie pas son appelant. Le 27/08/2026 une migration l'a supprimée
+  puis recréée, et le verrou a disparu avec elle (un `DROP FUNCTION` perd les droits, un
+  `CREATE OR REPLACE` les conserve) : n'importe qui pouvait créditer n'importe quel compte
+  jusqu'au 23/09/2026. Toute migration qui recrée une fonction `SECURITY DEFINER` refait
+  son `REVOKE` — voir `2026-09-23_secu_fermer_increment_cashback.sql`.
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
