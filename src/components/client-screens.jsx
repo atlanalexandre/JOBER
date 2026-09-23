@@ -6237,11 +6237,101 @@ export function RemplacementsAValider({ onValide }) {
   );
 }
 
+// L'attestation de conformité, telle que le client la montrera.
+//
+// Elle ne transmet aucune pièce : la date de vérification, la date de fin de
+// validité, et le constat de validité AU JOUR DE LA PRESTATION. La pièce
+// d'identité d'un prestataire n'a pas à circuler chez ses clients ; ce que le
+// client doit pouvoir prouver, c'est que la vérification a eu lieu.
+const LIBELLE_PIECE = {
+  urssaf: "Attestation de vigilance URSSAF",
+  kbis:   "Immatriculation (KBIS / INSEE)",
+  rc_pro: "Responsabilité civile professionnelle",
+  cni:    "Pièce d'identité",
+};
+const jourFr = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : null;
+
+export function AttestationConformite({ data, onFermer }) {
+  if (!data) return null;
+  return (
+    <div onClick={onFermer} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.white, color:"#0A1628", borderRadius:16, maxWidth:560, width:"100%", maxHeight:"88vh", overflowY:"auto", padding:"26px 26px 20px" }}>
+        <div style={{ fontSize:11, fontWeight:800, color:C.violet, letterSpacing:0.4 }}>ALANE — ATTESTATION DE CONFORMITÉ</div>
+        <h3 style={{ margin:"6px 0 14px", fontSize:18, fontWeight:800 }}>
+          Vérifications effectuées au {jourFr(data.prestation?.date)}
+        </h3>
+        <p style={{ fontSize:13, lineHeight:1.6, margin:"0 0 16px" }}>
+          ALANE atteste qu'au jour de la prestation <b>« {data.prestation?.intitule} »</b>
+          {data.prestation?.ville ? <> à {data.prestation.ville}</> : null}, le prestataire
+          {" "}<b>{data.prestataire}</b> avait déposé les pièces ci-dessous, vérifiées une par une
+          par nos services.
+        </p>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, marginBottom:16 }}>
+          <tbody>
+            {(data.pieces || []).map(pc => (
+              <tr key={pc.type} style={{ borderBottom:"1px solid #E6E8EE" }}>
+                <td style={{ padding:"9px 0", fontWeight:600 }}>{LIBELLE_PIECE[pc.type] || pc.type}</td>
+                <td style={{ padding:"9px 0", textAlign:"right", color:"#5A6473", whiteSpace:"nowrap" }}>
+                  {pc.verifie_le
+                    ? <>vérifiée le {jourFr(pc.verifie_le)}{pc.expire_le ? <> · valide jusqu'au {jourFr(pc.expire_le)}</> : null}</>
+                    : "non vérifiée"}
+                </td>
+                <td style={{ padding:"9px 0 9px 10px", textAlign:"right", fontWeight:700, color: pc.valide ? "#1F7A5A" : "#B4472F" }}>
+                  {pc.valide ? "✓" : "✕"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ background: data.conforme ? "#EAF7F1" : "#FBF3F1", borderLeft:`3px solid ${data.conforme ? "#1F7A5A" : "#B4472F"}`, padding:"11px 13px", borderRadius:8, fontSize:12.5, lineHeight:1.55, marginBottom:14 }}>
+          {data.conforme
+            ? <>Toutes les pièces exigées étaient <b>valides à la date de la prestation</b>. L'attestation de vigilance URSSAF est revérifiée tous les six mois ; un prestataire dont une pièce expire est automatiquement suspendu.</>
+            : <>Une ou plusieurs pièces n'étaient pas valides à cette date. Écrivez à direction@alane.fr : cette situation ne doit pas se produire.</>}
+        </div>
+        <p style={{ fontSize:10.5, color:"#5A6473", lineHeight:1.5, margin:"0 0 16px" }}>
+          Établie le {jourFr(data.etabli_le)}. Ce document atteste des vérifications opérées par
+          ALANE. Il ne préjuge pas de la qualification juridique de la relation entre le client et
+          le prestataire, qui dépend des conditions réelles d'exécution.
+        </p>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={()=>window.print()} style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:C.violet, color:C.white, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Imprimer</button>
+          <button onClick={onFermer} style={{ flex:1, padding:"11px", borderRadius:10, border:"1px solid #D5D8E0", background:"transparent", color:"#5A6473", fontWeight:600, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
   // Prolongation en attente de règlement. Le montant affiché vient de
   // `prixHeuresSupp`, la même fonction que le serveur : l'écran ne recalcule
   // rien de son côté.
   const [paiementSupp, setPaiementSupp] = useState(null);
+  const [attestation, setAttestation] = useState(null);
+  const [attestationEnCours, setAttestationEnCours] = useState(false);
+
+  // L'attestation est tirée à la demande : elle dit ce qui était vrai au jour
+  // de la prestation, et il n'y a aucune raison de l'établir pour toutes les
+  // prestations que le client ouvre.
+  const ouvrirAttestation = async (missionId) => {
+    setAttestationEnCours(true);
+    try {
+      const jwt = (await supabase.auth.getSession()).data?.session?.access_token;
+      const r = await fetch("/api/missions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ action: "attestation_conformite", mission_id: missionId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || "Attestation indisponible");
+      setAttestation(d);
+    } catch (e) {
+      console.error("[attestation] établissement impossible :", e.message);
+      showToast("Attestation indisponible pour le moment", "error");
+    } finally {
+      setAttestationEnCours(false);
+    }
+  };
   // Opposition à une proposition de résolution (CGPS art. 17.1). Passe par
   // `/api` : écrite depuis le navigateur, elle permettrait à une partie de
   // s'opposer au nom de l'autre.
@@ -7555,6 +7645,19 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
               >
                 📄 Télécharger la facture
               </button>
+              {/* Ce que le client produit en cas de contrôle. L'article
+                  L8222-1 du Code du travail n'impose la vigilance qu'à partir
+                  de 5 000 € HT ; en dessous, le client n'a rien à vérifier —
+                  mais il reste exposé à la solidarité financière de l'article
+                  L8222-2. ALANE vérifie de toute façon : encore faut-il que le
+                  client puisse le PROUVER, et non l'affirmer. */}
+              <button
+                onClick={() => ouvrirAttestation(selected.id)}
+                disabled={attestationEnCours}
+                style={{ width:"100%", padding:"13px", borderRadius:r, border:`1px solid ${C.success}55`, background:`${C.success}15`, color:C.success, fontWeight:700, fontSize:13, cursor: attestationEnCours ? "default" : "pointer", fontFamily:"inherit", opacity: attestationEnCours ? 0.6 : 1 }}
+              >
+                {attestationEnCours ? "Établissement…" : "🛡️ Attestation de conformité du prestataire"}
+              </button>
               {/* « Voir la facture dans l'app » retiré le 18/08/2026.
                   Il ouvrait un SECOND document pour la même prestation : un
                   numéro fabriqué par le navigateur (ALA-…), un montant recalculé
@@ -8128,6 +8231,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
           </div>
         </div>
       )}
+      {attestation && <AttestationConformite data={attestation} onFermer={()=>setAttestation(null)} />}
     </div>
   );
 }
