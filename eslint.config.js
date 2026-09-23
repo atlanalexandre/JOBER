@@ -7,7 +7,8 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // `public/leaflet.js` est une bibliothèque tierce minifiée, hébergée localement
   // pour ne plus dépendre d'un CDN. On ne la modifie pas, donc on ne l'analyse pas.
-  globalIgnores(['dist', 'public/leaflet.js', 'public/leaflet.css']),
+  // `e2e-rapport` et `e2e-resultats` sont produits par Playwright à chaque passage.
+  globalIgnores(['dist', 'public/leaflet.js', 'public/leaflet.css', 'e2e-rapport', 'e2e-resultats']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -51,6 +52,11 @@ export default defineConfig([
     // navigateur. Sans ces globales, `no-undef` les refusait et la CI restait
     // rouge — ce qui, à force, la rend inutile.
     files: ['src/tests/**/*.{js,jsx}'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // Scénarios de bout en bout : exécutés par Playwright sous Node.
+    files: ['e2e/**/*.js', 'playwright.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
   {
