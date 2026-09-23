@@ -1355,6 +1355,17 @@ rattrapent depuis le backoffice, onglet Comptes : « Valider les clients en atte
 prévenir » (action `valider_clients_en_attente`, qui envoie un e-mail annonçant l'ouverture
 prochaine de la plateforme).
 
+**Le navigateur complète le profil, il ne le crée pas** (`completerProfil`, auth.jsx). La ligne
+naît dans la base (`handle_new_user`) ; le navigateur n'y ajoute que des colonnes qu'il a le
+droit de modifier, et vérifie qu'une ligne a été écrite. Jusqu'au 23/09/2026, il faisait un
+`upsert` renvoyant aussi `role`, `status` et `plan_abonnement` : PostgreSQL refusait toute
+l'écriture, et adresse, ville, SIRET, IBAN et consentement étaient perdus sans un mot. En
+production, 87 des 88 prestataires inscrits depuis le 30/07 n'avaient aucun IBAN. Les champs
+encore présents dans `user_metadata` sont recopiés par
+`2026-09-23_rattrapage_profils_depuis_inscription.sql` ; l'IBAN des prestataires, lui, n'a
+été écrit nulle part ailleurs : il se retrouve sur la pièce « RIB » du dossier. La clé de
+contrôle de l'IBAN (MOD-97) est désormais vérifiée à la saisie.
+
 **L'IBAN vit dans `profiles.rib`, jamais dans `user_metadata`.** Il y était stocké, donc
 encodé dans le jeton d'authentification, transmis en en-tête HTTP à chaque requête et
 conservé dans le navigateur. Ce n'est pas un problème de taille — 27 caractères — mais
