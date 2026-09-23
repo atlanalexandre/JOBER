@@ -29,7 +29,8 @@ test.describe("inscription client", () => {
   });
 
   // DOCUMENTATION.md §6 : « un client créé à l'instant peut réserver immédiatement ».
-  // Échoue depuis le verrou `profiles_privileges_guard` du 30/07/2026 — voir le compte-rendu.
+  // Ce test a trouvé que c'était faux du 30/07 au 23/09/2026 (migration
+  // `inscription_client_validee_d_office`).
   test("un client nouvellement inscrit accède directement à son accueil", async ({ page }) => {
     const email = emailTest("client-acces");
     await inscrire(page, email);

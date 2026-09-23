@@ -633,6 +633,40 @@ function BOComptes() {
     <div style={{ padding:"16px 18px" }}>
       <h3 style={{ color:C.white, fontSize:15, fontWeight:800, margin:"0 0 14px" }}>Validation des comptes</h3>
 
+      {/* Rattrapage ponctuel : les clients inscrits entre le 30/07 et le 23/09/2026
+          sont restés « en attente » alors qu'un client est validé d'office. */}
+      {(() => {
+        const clientsEnAttente = profiles.filter(p => p.role === "client" && p.status === "pending").length;
+        if (!clientsEnAttente) return null;
+        return (
+          <button disabled={actioning === "clients_en_attente"} onClick={async () => {
+            const ok = await showConfirm(
+              `Valider les ${clientsEnAttente} compte(s) client en attente et leur envoyer cet e-mail ?\n\n`
+              + "« Votre compte client ALANE est désormais activé : vous pouvez vous connecter dès maintenant. "
+              + "La plateforme ouvre ses portes très bientôt. Pour l'instant, aucun prestataire n'est encore disponible : "
+              + "nous finalisons la vérification des premiers profils. Nous vous préviendrons dès qu'ils pourront intervenir. »"
+            );
+            if (!ok) return;
+            setActioning("clients_en_attente");
+            try {
+              const r = await boFetch({ action: "valider_clients_en_attente" });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) showToast(j.error || `Erreur ${r.status}`, "error");
+              else {
+                showToast(`${j.valides}/${j.total} compte(s) validé(s), ${j.emails} e-mail(s) envoyé(s)`
+                  + (j.echecs?.length ? ` — ${j.echecs.length} échec(s), voir les journaux` : ""), j.echecs?.length ? "error" : "success");
+                await load();
+              }
+            } catch (e) {
+              showToast(e?.message || "Erreur réseau", "error");
+            }
+            setActioning(null);
+          }} style={{ width:"100%", padding:"11px 14px", marginBottom:14, borderRadius:12, border:`1px solid ${C.success}55`, background:`${C.success}14`, color:C.success, fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+            {actioning === "clients_en_attente" ? "Validation…" : `✅ Valider les ${clientsEnAttente} client(s) en attente et les prévenir`}
+          </button>
+        );
+      })()}
+
       <input type="text" placeholder="🔍 Rechercher par email, prénom, nom, téléphone…" value={search} onChange={e=>setSearch(e.target.value)}
         style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${C.border}`, background:"rgba(255,255,255,0.05)", color:C.text, fontSize:13, fontFamily:"inherit", marginBottom:12, boxSizing:"border-box", outline:"none" }} />
 
@@ -1217,7 +1251,7 @@ function BOComptes() {
               </button>
             </>}
             {p.status==="approved" && (<>
-              <button onClick={async()=>{ const reason=await showPrompt("Motif de la suspension — OBLIGATOIRE, il est communiqué à l'intéressé qui doit pouvoir le contester (CGPS art. 16.2) :","Motif..."); if(reason===null) return; setActioning(p.id+"suspend"); await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ const reason=await showPrompt("Motif de la suspension — OBLIGATOIRE, il est communiqué à l'intéressé qui doit pouvoir le contester (CGPS art. 16.2) :","Motif..."); if(reason===null) return; setActioning(p.id+"suspend"); try { const r = await boFetch({ action:"suspend", profileId:p.id, reason:reason||"" }); const j = await r.json().catch(()=>({})); if (r.ok) setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"suspended"}:x)); else showToast(j.error || `Suspension refusée (${r.status})`, "error"); } catch(e) { showToast(e?.message || "Erreur réseau", "error"); } setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:"1px solid rgba(255,165,0,0.3)", background:"rgba(255,165,0,0.08)", color:"#FFA500", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"suspend"?"…":"🔒 Suspendre"}
               </button>
               <button onClick={async()=>{
@@ -1241,7 +1275,7 @@ function BOComptes() {
               </button>
             )}
             {p.status==="suspended" && (
-              <button onClick={async()=>{ if(!await showConfirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); await boFetch({ action:"unsuspend", profileId:p.id }); setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
+              <button onClick={async()=>{ if(!await showConfirm("Réactiver ce compte ?")) return; setActioning(p.id+"unsuspend"); try { const r = await boFetch({ action:"unsuspend", profileId:p.id }); const j = await r.json().catch(()=>({})); if (r.ok) setProfiles(ps=>ps.map(x=>x.id===p.id?{...x,status:"approved"}:x)); else showToast(j.error || `Réactivation refusée (${r.status})`, "error"); } catch(e) { showToast(e?.message || "Erreur réseau", "error"); } setActioning(null); }} disabled={!!actioning} style={{ padding:"9px 14px", borderRadius:10, border:`1px solid ${C.success}44`, background:`${C.success}12`, color:C.success, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"inherit", opacity:actioning?0.5:1, whiteSpace:"nowrap" }}>
                 {actioning===p.id+"unsuspend"?"…":"🔓 Réactiver"}
               </button>
             )}

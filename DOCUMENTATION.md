@@ -1344,6 +1344,17 @@ Backoffice → validation → status "approved" → email de confirmation
 Autrement dit : **seuls les prestataires passent par une validation manuelle.** Un client
 créé à l'instant peut réserver immédiatement.
 
+**C'est la base qui fixe ce statut, pas le navigateur.** `handle_new_user` crée le profil
+`approved` pour un client, `pending` pour un prestataire ; le verrou `profiles_privileges_guard`
+interdit ensuite toute modification de statut depuis le navigateur. Du 30/07 au 23/09/2026,
+le déclencheur ne fixait aucun statut : le client naissait `pending`, le navigateur tentait de
+le passer `approved`, le verrou refusait — et chaque client inscrit restait bloqué sur
+« Compte en attente » (cinq en production). Trouvé par les scénarios Playwright ; corrigé par
+la migration `2026-09-23_inscription_client_validee_d_office.sql`. Les comptes bloqués se
+rattrapent depuis le backoffice, onglet Comptes : « Valider les clients en attente et les
+prévenir » (action `valider_clients_en_attente`, qui envoie un e-mail annonçant l'ouverture
+prochaine de la plateforme).
+
 **L'IBAN vit dans `profiles.rib`, jamais dans `user_metadata`.** Il y était stocké, donc
 encodé dans le jeton d'authentification, transmis en en-tête HTTP à chaque requête et
 conservé dans le navigateur. Ce n'est pas un problème de taille — 27 caractères — mais
@@ -1387,7 +1398,11 @@ prestataire. Le contrôle est posé à l'ouverture de l'accès **et non au verse
 l'accès n'immobilise l'argent de personne, alors que bloquer un virement retiendrait une somme
 due à quelqu'un qui a déjà travaillé. Le prestataire signe depuis son espace, onglet Revenus.
 
-Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. Le dernier est
+Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. **Jusqu'au
+23/09/2026, la contrainte `profiles_status_check` ignorait `suspended`** : la suspension du
+backoffice était refusée par la base sans que personne ne le voie, et l'intéressé recevait
+l'e-mail de suspension en gardant tous ses accès. `api/bo-action.js` vérifie désormais
+l'écriture avant d'envoyer l'e-mail. Le dernier est
 traité à la connexion (`auth.jsx:1175`) et au démarrage (`App.jsx:1391`) : la session est
 fermée et l'utilisateur renvoyé à l'écran de choix de rôle.
 

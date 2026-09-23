@@ -18,17 +18,20 @@
  * l'inscription. Rien n'est deviné : tout vient de `user_metadata`, où le
  * navigateur l'a écrit au moment du `signUp`.
  *
- * Le profil naît TOUJOURS `pending`, plan `free`, sans accès aux prestations —
- * exactement comme une inscription normale. Réparer, ce n'est pas requalifier.
+ * Le profil naît plan `free`, sans accès aux prestations — exactement comme une
+ * inscription normale. Réparer, ce n'est pas requalifier. Le statut suit la règle
+ * de l'inscription : un client est validé d'office, un prestataire attend la
+ * validation de l'administration (même règle que `handle_new_user` en base).
  */
 export function profilDepuisMetadonnees(user) {
   const meta = user?.user_metadata || {};
+  const role = meta.role === "prestataire" ? "prestataire" : "client";
   const profil = {
     id: user?.id,
-    role: meta.role === "prestataire" ? "prestataire" : "client",
+    role,
     prenom: String(meta.prenom || "").trim() || null,
     nom: String(meta.nom || "").trim() || null,
-    status: "pending",
+    status: role === "client" ? "approved" : "pending",
     plan_abonnement: "free",
     adresse:     String(meta.adresse || "").trim() || null,
     code_postal: String(meta.code_postal || "").trim() || null,

@@ -832,7 +832,16 @@ export default async function handler(req, res) {
       const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const userData = await userRes.json();
       const userEmail = userData.email;
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"suspended" }) });
+      // Le résultat est vérifié AVANT l'e-mail. Jusqu'au 23/09/2026, la contrainte
+      // `profiles_status_check` ignorait « suspended » : la base refusait, l'écriture
+      // n'était pas relue, et l'intéressé recevait « votre compte est suspendu » en
+      // gardant tous ses accès.
+      const suspension = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"suspended" }) });
+      if (!suspension.ok) {
+        const detail = await suspension.text().catch(() => "");
+        console.error(`[suspend] ${profileId} NON suspendu (${suspension.status}) : ${detail.slice(0, 200)}`);
+        return res.status(500).json({ error: "La suspension n'a pas été enregistrée : aucun e-mail n'a été envoyé." });
+      }
       if (userEmail) {
         await sendEmail({
           to: userEmail,
@@ -942,7 +951,12 @@ export default async function handler(req, res) {
       const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${profileId}`, { headers });
       const userData = await userRes.json();
       const userEmail = userData.email;
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"approved" }) });
+      const reactivation = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`, { method:"PATCH", headers:{...headers,"Prefer":"return=minimal"}, body: JSON.stringify({ status:"approved" }) });
+      if (!reactivation.ok) {
+        const detail = await reactivation.text().catch(() => "");
+        console.error(`[unsuspend] ${profileId} NON réactivé (${reactivation.status}) : ${detail.slice(0, 200)}`);
+        return res.status(500).json({ error: "La réactivation n'a pas été enregistrée : aucun e-mail n'a été envoyé." });
+      }
       if (userEmail) {
         await sendEmail({ to: userEmail, subject: "Votre compte ALANE a été réactivé", html: emailHtml(`<p>Bonjour,</p><p>Votre compte <strong>ALANE</strong> a été réactivé. Vous pouvez à nouveau vous connecter normalement.</p>`) });
       }
@@ -1339,6 +1353,61 @@ export default async function handler(req, res) {
       }
       journaliser("send_global_comm", { details: { envoyes: sent, extrait: String(message).slice(0, 200) } });
       return res.status(200).json({ success: true, sent });
+    }
+
+    // Rattrapage des clients restés « en attente ».
+    //
+    // Du 30/07 au 23/09/2026, tout compte naissait `pending` — y compris les
+    // clients, que la documentation déclare validés d'office. Ils restaient
+    // bloqués sur « Compte en attente » sans que personne ne soit prévenu. La
+    // migration `inscription_client_validee_d_office` corrige les inscriptions
+    // à venir ; cette action rattrape celles qui ont eu lieu entre-temps, et
+    // prévient chaque client (décision d'Alexandre du 23/09/2026 : la
+    // plateforme ouvre bientôt, aucun prestataire n'est encore disponible).
+    if (action === "valider_clients_en_attente") {
+      const liste = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?role=eq.client&status=eq.pending&select=id,prenom`,
+        { headers },
+      );
+      if (!liste.ok) return res.status(502).json({ error: `Lecture des comptes impossible (${liste.status})` });
+      const clients = await liste.json();
+      const resultat = { valides: 0, emails: 0, echecs: [] };
+      for (const c of clients) {
+        const patch = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${c.id}&status=eq.pending`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=representation" },
+          body: JSON.stringify({ status: "approved" }),
+        });
+        const lignes = patch.ok ? await patch.json().catch(() => []) : [];
+        if (!patch.ok || !lignes.length) {
+          const detail = patch.ok ? "aucune ligne modifiée" : `${patch.status} ${(await patch.text().catch(() => "")).slice(0, 150)}`;
+          console.error(`[valider_clients_en_attente] ${c.id} non validé : ${detail}`);
+          resultat.echecs.push({ id: c.id, motif: detail });
+          continue;
+        }
+        resultat.valides++;
+        const u = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${c.id}`, { headers });
+        const email = u.ok ? (await u.json().catch(() => ({}))).email : null;
+        let envoye = false;
+        if (email) {
+          envoye = await sendEmail({
+            to: email,
+            subject: "Votre compte ALANE est activé",
+            html: emailHtml(
+              `<p>Bonjour${c.prenom ? ` <strong>${esc(c.prenom)}</strong>` : ""},</p>`
+              + `<p>Votre compte client <strong>ALANE</strong> est désormais activé : vous pouvez vous connecter dès maintenant.</p>`
+              + `<p>La plateforme ouvre ses portes très bientôt. Pour l'instant, aucun prestataire n'est encore disponible : `
+              + `nous finalisons la vérification des premiers profils. Nous vous préviendrons dès qu'ils pourront intervenir.</p>`
+              + `<p>Merci de votre patience et de votre confiance.</p>`
+              + `<p style="color:#888;font-size:13px;">L'équipe ALANE</p>`,
+            ),
+          });
+        }
+        if (envoye) resultat.emails++;
+        else resultat.echecs.push({ id: c.id, motif: email ? "e-mail non envoyé" : "adresse introuvable" });
+        await journaliser("valider_client_en_attente", { target_id: c.id, target_email: email || null, details: { email_envoye: !!envoye } });
+      }
+      return res.status(200).json({ ...resultat, total: clients.length });
     }
 
     if (action === "send_user_email") {
