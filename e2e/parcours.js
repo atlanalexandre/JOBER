@@ -75,3 +75,56 @@ export async function connexion(page, { espace = "client", email, motDePasse = M
   await page.locator('input[type="password"]').first().fill(motDePasse);
   await page.getByRole("button", { name: /Se connecter/ }).click();
 }
+
+/** Inscription prestataire complète (7 étapes), par l'écran. S'arrête avant « Créer mon compte ». */
+export async function remplirInscriptionPrestataire(page, { email, motDePasse = MOT_DE_PASSE, prenom = "Sam", iban = "FR7630006000011234567890189" } = {}) {
+  await ouvrir(page, "/auth/signin/provider");
+  await fermerBandeauCookies(page);
+  await page.getByText("Inscription", { exact: true }).first().click();
+
+  // 1 — identité
+  await page.getByPlaceholder("Jean").fill(prenom);
+  await page.getByPlaceholder("Dupont").fill("Recette");
+  await page.getByPlaceholder("06 12 34 56 78").fill("0698765432");
+  await page.locator('input[type="date"]').fill("1990-05-15");
+  await page.getByPlaceholder("12 rue de la Paix").fill("5 rue de Lyon");
+  await page.getByPlaceholder("75001").fill("75012");
+  await page.getByPlaceholder("Paris").fill("Paris");
+  await continuer(page);
+
+  // 2 — métier
+  await expect(page.getByText("ÉTAPE 2/7", { exact: false })).toBeVisible();
+  await page.locator("select").nth(0).selectOption({ label: "Propreté" });
+  await page.locator("select").nth(1).selectOption({ label: "Agent de propreté" });
+  await page.getByRole("button", { name: /Ajouter ce métier/ }).click();
+  await expect(page.getByText("Vos métiers (1)")).toBeVisible();
+  await continuer(page);
+
+  // 3 — expérience (rien d'obligatoire)
+  await expect(page.getByText("ÉTAPE 3/7", { exact: false })).toBeVisible();
+  await continuer(page);
+
+  // 4 — disponibilités : matin et après-midi, tous les jours
+  await expect(page.getByText("ÉTAPE 4/7", { exact: false })).toBeVisible();
+  for (let i = 0; i < 7; i++) {
+    await page.getByRole("button", { name: "Matin", exact: true }).nth(i).click();
+    await page.getByRole("button", { name: "Après-midi", exact: true }).nth(i).click();
+  }
+  await continuer(page);
+
+  // 5 — statut et paiement
+  await expect(page.getByText("ÉTAPE 5/7", { exact: false })).toBeVisible();
+  await page.getByPlaceholder("FR76 3000 4028 0000 0000 0000 000").fill(iban);
+  await page.getByText("Je m'engage à disposer d'une assurance RC", { exact: false }).click();
+  await continuer(page);
+
+  // 6 — abonnement : Gratuit, présélectionné
+  await expect(page.getByText("ÉTAPE 6/7", { exact: false })).toBeVisible();
+  await continuer(page);
+
+  // 7 — récapitulatif et compte
+  await expect(page.getByText("ÉTAPE 7/7", { exact: false })).toBeVisible();
+  await page.locator('input[type="email"]').fill(email);
+  await page.getByPlaceholder(/min\. 8 caractères/).fill(motDePasse);
+  await cocherCgps(page);
+}

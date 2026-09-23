@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
-import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
+import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement, checkIban } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
 //
@@ -27,6 +27,26 @@ async function posterInscription(action, headers, corps) {
     console.error(`[inscription] ${action} injoignable :`, e.message);
     return false;
   }
+}
+
+// Complète le profil créé par la base à l'inscription.
+//
+// Le déclencheur `handle_new_user` crée la ligne `profiles` au moment même du
+// `signUp`, avec le rôle et le statut. Le navigateur n'a plus qu'à y AJOUTER les
+// renseignements du formulaire : adresse, IBAN, consentement, société.
+//
+// Jusqu'au 23/09/2026, il faisait un `upsert` qui renvoyait aussi `role`, `status`
+// et `plan_abonnement`. La ligne existant déjà, c'était une mise à jour de colonnes
+// que le navigateur n'a pas le droit de modifier : PostgreSQL refusait TOUTE
+// l'écriture. Adresse, IBAN et consentement étaient perdus sans un mot — 87
+// prestataires sur 88 inscrits en production n'avaient aucun IBAN enregistré.
+// On n'envoie donc QUE des colonnes modifiables, et on vérifie qu'une ligne a bien
+// été écrite.
+async function completerProfil(userId, champs) {
+  const { data, error } = await supabase.from("profiles").update(champs).eq("id", userId).select("id");
+  if (error) return error;
+  if (!data?.length) return new Error("profil introuvable après l'inscription");
+  return null;
 }
 
 import { CGPS } from "../constants/cgps.js";
@@ -141,6 +161,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!ribIban.trim()) return "L'IBAN est obligatoire pour recevoir vos paiements";
       const ibanClean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
       if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
+      // Le format seul laissait passer une faute de frappe : le virement échouait
+      // ensuite, au moment de payer le prestataire. La clé de contrôle la détecte.
+      if (checkIban(ibanClean) !== true) return "IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas)";
       if (!rcProConfirmed) return "Vous devez vous engager à souscrire une RC Pro avant votre première prestation";
     }
     if (step === 7) {
@@ -197,12 +220,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       return;
     }
     if (data?.user) {
-      const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: data.user.id, role: "prestataire", accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
+      // Rôle, statut (« en attente ») et abonnement gratuit sont fixés par la base.
+      const profileErr = await completerProfil(data.user.id, {
+        accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(),
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
-        // `profiles` fait foi pour l'abonnement : il naît gratuit et n'est relevé que
-        // par le webhook Stripe, après paiement effectif.
-        plan_abonnement: "free",
         rib: ribIban.replace(/\s/g,"") || null,
       });
       if (profileErr) {
@@ -940,6 +961,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!email || !password) return "Email et mot de passe requis";
       if (password.length < 8) return "Mot de passe minimum 8 caractères";
       if (!cgpsAccepted)       return "Vous devez accepter les CGPS pour créer votre compte";
+      // IBAN facultatif pour un client, mais s'il est donné, il doit être juste.
+      if (rib.trim() && checkIban(rib) !== true) return "IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas)";
     }
     return null;
   };
@@ -964,7 +987,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         lieux_intervention: lieuxIntervention.filter(l=>l.adresse.trim()||l.ville.trim()),
         adresse: adresse||null, code_postal: codePostal||null, ville,
         volume_horaire: volumeHoraire,
-        rib: rib.replace(/\s/g,"") || null,
+        // Pas d'IBAN ici : user_metadata voyage dans chaque jeton (CLAUDE.md §1.1,
+        // RGPD art. 5.1.c). Il va dans `profiles.rib`, juste après.
       }},
     });
     if (signUpErr) {
@@ -975,10 +999,12 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       return;
     }
     if (data?.user) {
-      const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: data.user.id, role: "client", accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(), status: "approved",
+      // Rôle et statut (client validé d'office) sont fixés par la base.
+      const profileErr = await completerProfil(data.user.id, {
+        accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(),
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
+        rib: rib.replace(/\s/g,"") || null,
       });
       if (profileErr) {
         // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.
@@ -1437,9 +1463,8 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
       return;
     }
     if (data?.user) {
-      await supabase.from("profiles").upsert({
-        id: data.user.id, role, prenom: prenom.trim(), nom: nom.trim(), status: "pending",
-      });
+      const profilErr = await completerProfil(data.user.id, { prenom: prenom.trim(), nom: nom.trim() });
+      if (profilErr) console.error("[inscription] profil non complété :", profilErr.message);
       const _simpleToken = data.session?.access_token || "";
       const _simpleAuthH = { "Content-Type": "application/json", "Authorization": `Bearer ${_simpleToken}` };
       await posterInscription("notify_signup", _simpleAuthH, { prenom: prenom.trim(), nom: nom.trim(), email, role });

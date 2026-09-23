@@ -12,7 +12,7 @@ async function inscrire(page, email) {
 }
 
 async function profilDe(email) {
-  const [p] = await sql(`select p.role, p.status, p.prenom, length(u.raw_user_meta_data::text) meta
+  const [p] = await sql(`select p.role, p.status, p.prenom, p.ville, p.code_postal, length(u.raw_user_meta_data::text) meta
     from auth.users u left join profiles p on p.id = u.id where u.email = '${email}'`);
   return p;
 }
@@ -25,6 +25,9 @@ test.describe("inscription client", () => {
     expect(p, "le compte doit exister dans la base de recette").toBeTruthy();
     expect(p.role).toBe("client");
     expect(p.prenom).toBe("Camille");
+    // Perdus du 30/07 au 23/09/2026 : l'écriture du profil était refusée en bloc.
+    expect(p.ville, "la ville du formulaire est enregistrée").toBe("Paris");
+    expect(p.code_postal).toBe("75004");
     expect(p.meta, "user_metadata voyage dans chaque jeton : viser moins de 2 Ko (CLAUDE.md §1.1)").toBeLessThan(2048);
   });
 
