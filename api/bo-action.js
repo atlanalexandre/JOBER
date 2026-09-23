@@ -5,7 +5,7 @@ import { couplesADependance, SEUILS_PAR_DEFAUT, analyserContinuite } from "./_de
 import { sendWebPush } from "./_push.js";
 import { mandatsManquants, messageMandatsManquants } from "./_mandats.js";
 import { qualificationsPour } from "./_qualifications.js";
-import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour } from "./_documents.js";
+import { verificationPour, etatExpiration, VALIDITE_DOCUMENTS, docsRequisPour, DELAI_REGULARISATION, etatRegularisation, libelleDoc } from "./_documents.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
 /** Hôte lisible d'une adresse d'abonnement, sans exposer le jeton complet. */
@@ -420,7 +420,7 @@ export default async function handler(req, res) {
       if (enabled) {
         const dRes = await fetch(
           `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`
-            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at`,
+            + `&select=missions_enabled_at,mandat_facturation_at,mandat_encaissement_at,created_at`,
           { headers }
         );
         const dRows = dRes.ok ? await dRes.json().catch(() => []) : [];
@@ -484,6 +484,44 @@ export default async function handler(req, res) {
           console.error(`[enable_missions] ${profileId} : qualifications illisibles —`, e.message);
           return res.status(503).json({
             error: "Impossible de vérifier les qualifications de ce prestataire. Réessayez dans un instant.",
+          });
+        }
+
+        // ── Les pièces à régulariser, quand le délai est écoulé ─────────
+        //
+        // Sans ce contrôle, rouvrir l'accès à la main marcherait une journée :
+        // le balayage quotidien refermerait le lendemain, et personne ne
+        // comprendrait pourquoi. Autant le dire tout de suite, et dire quelle
+        // pièce manque.
+        try {
+          const types = Object.keys(DELAI_REGULARISATION);
+          const dr = await fetch(
+            `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`
+            + `&type=in.(${types.join(",")})&select=type,verified`,
+            { headers }
+          );
+          if (!dr.ok) throw new Error(`pièces illisibles (${dr.status})`);
+          const rows = await dr.json().catch(() => []);
+          const parType = Object.fromEntries((Array.isArray(rows) ? rows : []).map(d => [d.type, d]));
+
+          const echues = types
+            .map(t => ({ t, e: etatRegularisation(t, p0.created_at, parType[t], new Date()) }))
+            .filter(x => x.e.concerne && x.e.depasse)
+            .map(x => libelleDoc(x.t));
+
+          if (echues.length > 0) {
+            console.log(`[enable_missions] ${profileId} : délai de régularisation dépassé — ${echues.join(", ")}`);
+            return res.status(409).json({
+              error: `${echues.join(", ")} : le délai pour la fournir est dépassé. `
+                   + `L'accès ne peut être ouvert tant que la pièce n'est pas déposée et vérifiée.`,
+            });
+          }
+        } catch (e) {
+          // Même principe que pour les qualifications : à défaut de savoir,
+          // on n'ouvre pas.
+          console.error(`[enable_missions] ${profileId} : pièces à régulariser illisibles —`, e.message);
+          return res.status(503).json({
+            error: "Impossible de vérifier les pièces de ce prestataire. Réessayez dans un instant.",
           });
         }
 

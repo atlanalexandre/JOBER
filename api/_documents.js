@@ -126,6 +126,54 @@ export const VALIDITE_DOCUMENTS = {
 export const EXPIRATION_BLOQUANTE = new Set(["urssaf", "rc_pro", "cni", "titre_sejour", "diplomes"]);
 
 /**
+ * Les pièces qu'on peut fournir APRÈS l'inscription, et sous quel délai.
+ *
+ * L'attestation de vigilance ne s'obtient pas le jour où l'on s'immatricule :
+ * l'URSSAF envoie les identifiants du compte quatre à six semaines après, et
+ * l'attestation — fût-elle provisoire — suppose ce compte ouvert. Exiger la
+ * pièce à l'inscription revenait donc à fermer la plateforme à tout
+ * auto-entrepreneur qui vient de se déclarer, c'est-à-dire précisément à ceux
+ * que la promesse « zéro commission » attire.
+ *
+ * Le délai n'est pas une tolérance : c'est une échéance. Passé le terme sans
+ * pièce vérifiée, l'accès aux prestations se ferme, exactement comme pour une
+ * pièce périmée. La différence avec `EXPIRATION_BLOQUANTE` est qu'ici il n'y a
+ * AUCUN document à surveiller — le balayage doit donc partir des comptes, et
+ * non des pièces.
+ *
+ * Le client en est informé : son attestation de conformité distingue « en
+ * cours d'obtention, échéance le … » de « manquante ». Taire la différence
+ * serait mentir dans un sens comme dans l'autre.
+ */
+export const DELAI_REGULARISATION = {
+  urssaf: 60,   // jours à compter de l'inscription
+};
+
+/**
+ * Où en est un prestataire sur une pièce à régulariser.
+ *
+ * @param {string} type        le type de pièce
+ * @param {string} inscritLe   date d'inscription (profiles.created_at)
+ * @param {object|null} doc    la pièce déposée, s'il y en a une
+ * @param {Date}   maintenant  l'instant de référence
+ */
+export function etatRegularisation(type, inscritLe, doc, maintenant = new Date()) {
+  const jours = DELAI_REGULARISATION[type];
+  if (!jours || !inscritLe) return { concerne: false };
+  const fourni = !!(doc && doc.verified === true);
+  const echeance = new Date(new Date(inscritLe).getTime() + jours * 86400000);
+  const restants = Math.ceil((echeance.getTime() - maintenant.getTime()) / 86400000);
+  return {
+    concerne: true,
+    fourni,
+    echeance: echeance.toISOString().slice(0, 10),
+    jours_restants: restants,
+    // Dépassé ne vaut que si la pièce manque : une pièce fournie clôt le sujet.
+    depasse: !fourni && restants < 0,
+  };
+}
+
+/**
  * Les services OFFICIELS et GRATUITS de vérification.
  *
  * Aucune plateforme payante ne fait mieux : la plupart se contentent d'appeler

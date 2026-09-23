@@ -55,6 +55,7 @@ async function appelantMajeur(userId, supabaseUrl, headers) {
   }
 }
 import { messageSecteurFerme, secteurOuvert, etatSecteursAvecCache, secteursDuProfil } from "./_secteurs.js";
+import { etatRegularisation } from "./_documents.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
 
@@ -796,8 +797,10 @@ export default async function handler(req, res) {
       const docs = await dr.json().catch(() => []);
 
       // Le nom du prestataire, sans rien d'autre : ni adresse, ni téléphone.
+      // `created_at` sert au seul calcul du délai de régularisation.
       const pr = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom`,
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}`
+        + `&select=prenom,nom,created_at`,
         { headers }
       );
       const profil = (await pr.json().catch(() => []))[0] || {};
@@ -815,7 +818,19 @@ export default async function handler(req, res) {
         // Valide au jour de la prestation : vérifiée avant, et pas encore
         // expirée à cette date-là.
         const valide = !!verifieLe && verifieLe <= jour && (!expireLe || expireLe >= jour);
-        return { type, verifie_le: verifieLe, expire_le: expireLe, valide };
+        // Une pièce absente n'a pas toujours le même sens. L'attestation de
+        // vigilance ne s'obtient qu'une fois le compte URSSAF ouvert, quatre à
+        // six semaines après l'immatriculation : un prestataire encore dans ce
+        // délai n'est pas en défaut, il est en cours d'obtention. Écrire
+        // « manquante » dans les deux cas tromperait le client une fois sur
+        // deux — dans un sens, puis dans l'autre.
+        const reg = valide ? { concerne: false }
+                           : etatRegularisation(type, profil.created_at, d, new Date(jour + "T12:00:00Z"));
+        return {
+          type, verifie_le: verifieLe, expire_le: expireLe, valide,
+          en_cours_obtention: !!(reg.concerne && !reg.depasse && !valide),
+          echeance_depot: reg.concerne && !valide ? reg.echeance : null,
+        };
       });
 
       return res.status(200).json({
@@ -827,7 +842,10 @@ export default async function handler(req, res) {
         },
         prestataire: `${profil.prenom || ""} ${profil.nom || ""}`.trim() || "Prestataire",
         pieces: lignes,
+        // « Conforme » veut dire : toutes les pièces valides. Un délai en
+        // cours ne vaut pas conformité — il vaut explication.
         conforme: lignes.every(l => l.valide),
+        en_regularisation: lignes.some(l => l.en_cours_obtention),
         etabli_le: dateDuJourFr(),
       });
     }

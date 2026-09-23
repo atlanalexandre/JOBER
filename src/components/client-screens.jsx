@@ -6274,19 +6274,23 @@ export function AttestationConformite({ data, onFermer }) {
                 <td style={{ padding:"9px 0", textAlign:"right", color:"#5A6473", whiteSpace:"nowrap" }}>
                   {pc.verifie_le
                     ? <>vérifiée le {jourFr(pc.verifie_le)}{pc.expire_le ? <> · valide jusqu'au {jourFr(pc.expire_le)}</> : null}</>
-                    : "non vérifiée"}
+                    : pc.en_cours_obtention
+                      ? <>en cours d'obtention · à fournir avant le {jourFr(pc.echeance_depot)}</>
+                      : "non vérifiée"}
                 </td>
-                <td style={{ padding:"9px 0 9px 10px", textAlign:"right", fontWeight:700, color: pc.valide ? "#1F7A5A" : "#B4472F" }}>
-                  {pc.valide ? "✓" : "✕"}
+                <td style={{ padding:"9px 0 9px 10px", textAlign:"right", fontWeight:700, color: pc.valide ? "#1F7A5A" : pc.en_cours_obtention ? "#B8860B" : "#B4472F" }}>
+                  {pc.valide ? "✓" : pc.en_cours_obtention ? "⏳" : "✕"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div style={{ background: data.conforme ? "#EAF7F1" : "#FBF3F1", borderLeft:`3px solid ${data.conforme ? "#1F7A5A" : "#B4472F"}`, padding:"11px 13px", borderRadius:8, fontSize:12.5, lineHeight:1.55, marginBottom:14 }}>
+        <div style={{ background: data.conforme ? "#EAF7F1" : data.en_regularisation ? "#FDF6E3" : "#FBF3F1", borderLeft:`3px solid ${data.conforme ? "#1F7A5A" : data.en_regularisation ? "#B8860B" : "#B4472F"}`, padding:"11px 13px", borderRadius:8, fontSize:12.5, lineHeight:1.55, marginBottom:14 }}>
           {data.conforme
             ? <>Toutes les pièces exigées étaient <b>valides à la date de la prestation</b>. L'attestation de vigilance URSSAF est revérifiée tous les six mois ; un prestataire dont une pièce expire est automatiquement suspendu.</>
-            : <>Une ou plusieurs pièces n'étaient pas valides à cette date. Écrivez à direction@alane.fr : cette situation ne doit pas se produire.</>}
+            : data.en_regularisation
+              ? <>Une pièce était <b>en cours d'obtention</b> à cette date. L'attestation de vigilance ne s'obtient qu'une fois le compte URSSAF ouvert, quatre à six semaines après l'immatriculation : ALANE laisse un délai pour la fournir, et <b>ferme l'accès aux prestations à son terme</b> si elle ne l'est pas.</>
+              : <>Une ou plusieurs pièces n'étaient pas valides à cette date. Écrivez à direction@alane.fr : cette situation ne doit pas se produire.</>}
         </div>
         <p style={{ fontSize:10.5, color:"#5A6473", lineHeight:1.5, margin:"0 0 16px" }}>
           Établie le {jourFr(data.etabli_le)}. Ce document atteste des vérifications opérées par
