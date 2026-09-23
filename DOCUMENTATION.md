@@ -637,6 +637,31 @@ deux sont en lecture seule pour l'intéressé (RLS `SELECT` sur `auth.uid()`) ; 
 vérification, `expires_at` porte la fin de validité des attestations qui en ont une (RC Pro,
 URSSAF), `purged_at` marque la suppression du fichier.
 
+**Le client peut PROUVER les vérifications, pas seulement les croire** (23/09/2026). L'action
+`attestation_conformite` de `/api/missions` établit, à la demande du client et pour une
+prestation donnée, l'état des quatre pièces qui l'intéressent : attestation de vigilance
+URSSAF, immatriculation, RC Pro et pièce d'identité.
+
+Deux règles la gouvernent :
+
+- **La validité s'apprécie au jour de la prestation**, jamais au jour où l'attestation est
+  tirée. Une pièce expirée depuis n'efface pas une prestation qui s'est déroulée
+  régulièrement — et une pièce déposée après coup ne couvre pas rétroactivement.
+- **Aucune pièce ne circule.** Seuls partent la date de vérification, la date de fin de
+  validité et le constat. La pièce d'identité d'un prestataire n'a pas à se retrouver chez ses
+  clients ; ce que le client doit pouvoir justifier, c'est que la vérification a eu lieu.
+
+Seul le client de cette prestation y a accès (`403` sinon), et seulement si un prestataire est
+affecté. L'écran est accessible depuis l'historique, à côté de la facture.
+
+> **Pourquoi ce document existe.** L'article L8222-1 du Code du travail n'impose au donneur
+> d'ordre de vérifier l'attestation de vigilance qu'à partir de **5 000 € HT** par contrat,
+> puis tous les six mois. En dessous du seuil, le client n'a rien à vérifier — mais il reste
+> exposé à la solidarité financière de l'article L8222-2 s'il a fermé les yeux sur un travail
+> dissimulé. ALANE exige ces pièces de tout prestataire dès l'inscription, bien au-delà de ce
+> que la loi demande au client : l'attestation transforme cette exigence en argument
+> opposable.
+
 **La purge des pièces d'identité supprime le FICHIER, pas la LIGNE.** CNI, Kbis et
 justificatif de domicile partent du stockage 30 jours après la vérification, et au plus tard
 12 mois après le dépôt même sans vérification (CGPS art. 14.4, `api/_conservation.js`). La

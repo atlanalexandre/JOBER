@@ -743,6 +743,95 @@ export default async function handler(req, res) {
       return res.status(200).json(Array.isArray(missions) ? missions : []);
     }
 
+    // ── attestation_conformite ────────────────────────────────────────
+    //
+    // Ce que le client produit en cas de contrôle.
+    //
+    // L'article L8222-1 du Code du travail impose au donneur d'ordre, pour
+    // tout contrat d'au moins 5 000 € HT, d'obtenir l'attestation de vigilance
+    // de son cocontractant et de la renouveler tous les six mois. En dessous
+    // du seuil il n'y est pas tenu — mais il reste exposé à la solidarité
+    // financière de l'article L8222-2 s'il a fermé les yeux sur un travail
+    // dissimulé.
+    //
+    // ALANE collecte et revérifie ces pièces de toute façon. Rien, jusqu'ici,
+    // ne permettait au client de le PROUVER : il devait croire la plateforme
+    // sur parole, ce qui ne vaut rien devant un inspecteur.
+    //
+    // L'attestation ne transmet AUCUNE pièce : seulement la date de
+    // vérification, la date de fin de validité, et le constat de validité à la
+    // date de la prestation. Le fichier reste dans le bucket privé — la pièce
+    // d'identité d'un prestataire n'a pas à circuler chez ses clients.
+    if (action === "attestation_conformite") {
+      const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
+      if (!caller) return res.status(401).json({ error: "Non authentifié" });
+      const { mission_id } = req.body || {};
+      if (!mission_id) return res.status(400).json({ error: "mission_id manquant" });
+
+      const mr = await fetch(
+        `${SUPABASE_URL}/rest/v1/missions?id=eq.${encodeURIComponent(mission_id)}`
+        + `&select=id,client_id,prestataire_id,date,date_debut,metier,titre,ville,status`,
+        { headers }
+      );
+      if (!mr.ok) {
+        console.error(`[attestation] lecture de la prestation refusée (${mr.status})`);
+        return res.status(502).json({ error: "Prestation illisible" });
+      }
+      const mission = (await mr.json().catch(() => []))[0];
+      if (!mission) return res.status(404).json({ error: "Prestation introuvable" });
+      // Seul le client de CETTE prestation. Le prestataire n'a pas à tirer une
+      // attestation sur lui-même, et personne d'autre n'a à la voir.
+      if (mission.client_id !== caller.id) return res.status(403).json({ error: "Accès refusé" });
+      if (!mission.prestataire_id) return res.status(409).json({ error: "Aucun prestataire affecté" });
+
+      const dr = await fetch(
+        `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${encodeURIComponent(mission.prestataire_id)}`
+        + `&select=type,verified,verified_at,expires_at`,
+        { headers }
+      );
+      if (!dr.ok) {
+        console.error(`[attestation] lecture des pièces refusée (${dr.status})`);
+        return res.status(502).json({ error: "Pièces illisibles" });
+      }
+      const docs = await dr.json().catch(() => []);
+
+      // Le nom du prestataire, sans rien d'autre : ni adresse, ni téléphone.
+      const pr = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(mission.prestataire_id)}&select=prenom,nom`,
+        { headers }
+      );
+      const profil = (await pr.json().catch(() => []))[0] || {};
+
+      // La date qui fait foi est celle de la PRESTATION, pas celle du jour :
+      // l'attestation dit ce qui était vrai quand le prestataire est venu.
+      const dateRef = mission.date_debut || mission.date || null;
+      const jour = dateRef ? String(dateRef).slice(0, 10) : dateDuJourFr();
+
+      const PIECES = ["urssaf", "kbis", "rc_pro", "cni"];
+      const lignes = PIECES.map(type => {
+        const d = (Array.isArray(docs) ? docs : []).find(x => x.type === type);
+        const verifieLe = d?.verified && d.verified_at ? String(d.verified_at).slice(0, 10) : null;
+        const expireLe  = d?.expires_at ? String(d.expires_at).slice(0, 10) : null;
+        // Valide au jour de la prestation : vérifiée avant, et pas encore
+        // expirée à cette date-là.
+        const valide = !!verifieLe && verifieLe <= jour && (!expireLe || expireLe >= jour);
+        return { type, verifie_le: verifieLe, expire_le: expireLe, valide };
+      });
+
+      return res.status(200).json({
+        prestation: {
+          id: mission.id,
+          intitule: mission.titre || mission.metier || "Prestation",
+          date: jour,
+          ville: mission.ville || null,
+        },
+        prestataire: `${profil.prenom || ""} ${profil.nom || ""}`.trim() || "Prestataire",
+        pieces: lignes,
+        conforme: lignes.every(l => l.valide),
+        etabli_le: dateDuJourFr(),
+      });
+    }
+
     if (action === "list_client") {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
