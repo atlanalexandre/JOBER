@@ -90,12 +90,56 @@ function corpsJson(bloc) {
  * Le code n'en contient aucune, et un relevé incomplet vaut mieux qu'un
  * contrôle qui crie sur du code légitime — celui-là, on finit par l'ignorer.
  */
-const sansGabarits = (t) => t
-  // Commentaires d'abord : ils sont écrits en français, ponctués de
-  // deux-points, d'où des « colonnes » nommées `personne` ou `disciplinaire`.
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/\/\/[^\n]*/g, "")
-  .replace(/`(?:[^`\\]|\\.)*`|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/gs, "''");
+//
+// Lecture caractère par caractère, et non par expression régulière : un
+// gabarit peut en contenir un autre — `${cond ? `Part prestataire : …` : …}`.
+// L'expression régulière s'arrêtait au premier accent grave intérieur, et le
+// texte français qui suivait remontait comme une clé. C'est ainsi que
+// `support_tickets.prestataire` a été signalée le 23/09/2026 comme une colonne
+// absente, sur une écriture qui ne la mentionne pas.
+function sansGabarits(t) {
+  let out = "";
+  let i = 0;
+  const chaine = (q) => {
+    i++;
+    while (i < t.length && t[i] !== q && t[i] !== "\n") i += t[i] === "\\" ? 2 : 1;
+    i++;
+  };
+  // Code JavaScript à l'intérieur d'un `${ … }`, jusqu'à l'accolade fermante.
+  const expression = () => {
+    let prof = 1;
+    while (i < t.length) {
+      const c = t[i];
+      if (c === "`") { gabarit(); continue; }
+      if (c === "'" || c === '"') { chaine(c); continue; }
+      if (c === "{") prof++;
+      else if (c === "}" && --prof === 0) { i++; return; }
+      i++;
+    }
+  };
+  const gabarit = () => {
+    i++;
+    while (i < t.length) {
+      const c = t[i];
+      if (c === "\\") { i += 2; continue; }
+      if (c === "`") { i++; return; }
+      if (c === "$" && t[i + 1] === "{") { i += 2; expression(); continue; }
+      i++;
+    }
+  };
+  while (i < t.length) {
+    const c = t[i];
+    // Commentaires d'abord : ils sont écrits en français, ponctués de
+    // deux-points, d'où des « colonnes » nommées `personne` ou `disciplinaire`.
+    if (c === "/" && t[i + 1] === "*") { const e = t.indexOf("*/", i + 2); i = e < 0 ? t.length : e + 2; continue; }
+    if (c === "/" && t[i + 1] === "/") { const e = t.indexOf("\n", i); i = e < 0 ? t.length : e; continue; }
+    if (c === "`") { gabarit(); out += "''"; continue; }
+    if (c === "'" || c === '"') { chaine(c); out += "''"; continue; }
+    out += c;
+    i++;
+  }
+  return out;
+}
 
 function clesDePremierNiveau(corps) {
   const cles = [];
