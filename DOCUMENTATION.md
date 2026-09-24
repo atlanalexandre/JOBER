@@ -3363,7 +3363,17 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
   pas entièrement** (constaté le 23/09/2026) : le verrou SQL se lève d'un
   `set transaction read write`, et le jeton peut lire la liste des clés API du projet. Seul
   l'usage de l'endpoint `read-only` garantit qu'on n'écrit pas ;
-- `STRIPE_TEST_SECRET_KEY` — clé Stripe `sk_test_`.
+- `STRIPE_TEST_SECRET_KEY` — **inutilisable** (constaté le 24/09/2026) : c'est l'ancienne clé
+  `sk_test_…KGVj`, que Stripe refuse (« Invalid API Key »). La clé qui fonctionne dans
+  l'environnement Claude est `STRIPE_SECRET_KEY`, la clé restreinte `rk_test_` de la recette ;
+  elle vit sur le même compte Stripe que la production (qui encaisse en mode test), elle peut
+  donc **lire** les paiements de la production — à n'utiliser qu'en lecture ;
+- `VERCEL_AUTOMATION_BYPASS_SECRET` — ouvre la protection des Preview aux scénarios ;
+- `RECETTE_BO_PASSWORD` — mot de passe du back-office de recette. **Refusé par la Preview le
+  24/09/2026** (401) : il ne correspond plus à `BO_PASSWORD` (ligne Preview) dans Vercel. Tant
+  que les deux ne sont pas identiques, les scénarios 05 à 07 ne peuvent pas préparer de
+  prestataire (`bo()` dans `e2e/fabrique.js`) ;
+- `RECETTE_CRON_SECRET` — déclenche les tâches planifiées de la Preview.
 
 **La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
 un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à
