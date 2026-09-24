@@ -76,6 +76,18 @@ test("le parrainage est rattaché par la base, même sans session", async ({ pag
   expect(pp.referral_count).toBe(1);
 });
 
+test("avec session, le filet du navigateur ne compte pas le filleul deux fois", async ({ page }) => {
+  const parrain = await client();
+  await page.addInitScript((id) => { try { sessionStorage.setItem("alane_referrer", id); } catch { /* idem */ } }, parrain.id);
+  const email = emailTest("filleul-session");
+  await remplirInscriptionClient(page, { email });
+  await page.getByRole("button", { name: /Créer mon compte/ }).click();
+  await expect(page).not.toHaveURL(/\/auth\/signin/, { timeout: 30_000 });
+  expect((await profil(email)).referred_by).toBe(parrain.id);
+  const [pp] = await sql(`select referral_count from profiles where id = '${parrain.id}'`);
+  expect(pp.referral_count).toBe(1);
+});
+
 test("un parrain inexistant est ignoré, l'inscription aboutit", async ({ page }) => {
   await page.addInitScript(() => { try { sessionStorage.setItem("alane_referrer", "00000000-0000-4000-8000-000000000000"); } catch { /* idem */ } });
   const email = emailTest("filleul-orphelin");
@@ -99,6 +111,8 @@ test("l'IBAN saisi dans les Paramètres va dans le profil, jamais dans le jeton"
   await expect(page.getByText(/IBAN incorrect/)).toBeVisible({ timeout: 15_000 });
   expect((await sql(`select rib from profiles where id = '${p.id}'`))[0].rib).toBeNull();
 
+  // Nouvelle visite de l'écran pour la saisie valide.
+  await page.reload();
   await champ.fill("FR7630006000011234567890189");
   await page.getByRole("button", { name: /Enregistrer les modifications/ }).click();
   await expect(page.getByText(/Sauvegardé/)).toBeVisible({ timeout: 15_000 });
