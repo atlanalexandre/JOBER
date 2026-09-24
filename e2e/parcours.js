@@ -177,10 +177,21 @@ export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09
 /** Saisit une carte de test Stripe dans le Payment Element, renonce à la rétractation, paie. */
 export async function payerParCarte(page, { numero = "4242424242424242", titulaire = "Camille Recette" } = {}) {
   await page.getByPlaceholder("Jean Dupont").fill(titulaire);
-  const cadre = page.frameLocator('iframe[name^="__privateStripeFrame"]').first();
+  // Plusieurs cadres Stripe sur la page (Google Pay, Link, carte) : on prend celui qui
+  // contient le champ du numéro.
+  let cadre = null;
+  for (let essai = 0; essai < 30 && !cadre; essai++) {
+    for (const f of page.frames()) {
+      if (await f.locator('input[name="number"]').count().catch(() => 0)) { cadre = f; break; }
+    }
+    if (!cadre) await page.waitForTimeout(1000);
+  }
+  if (!cadre) throw new Error("formulaire de carte Stripe introuvable");
   await cadre.locator('input[name="number"]').fill(numero);
   await cadre.locator('input[name="expiry"]').fill("12 / 34");
   await cadre.locator('input[name="cvc"]').fill("123");
+  // Selon le pays, Stripe demande aussi un code postal.
+  if (await cadre.locator('input[name="postalCode"]').count()) await cadre.locator('input[name="postalCode"]').fill("75004");
   // Case de renonciation au droit de rétractation (obligatoire pour payer).
   await page.getByText("Vous disposez d'un droit de rétractation", { exact: false }).locator("xpath=ancestor::label[1]").locator('input[type="checkbox"]').check()
     .catch(async () => { await page.locator('input[type="checkbox"]').last().check(); });

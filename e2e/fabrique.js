@@ -36,6 +36,56 @@ async function anon() {
   throw new Error("[fabrique] clé anon introuvable dans le code déployé");
 }
 
+let clePublique;
+/** La clé publiable Stripe de la Preview, lue sur le code déployé. */
+async function pkStripe() {
+  if (clePublique) return clePublique;
+  const c = await http();
+  const h = { "x-vercel-protection-bypass": BYPASS };
+  const html = await avecReprise(async () => (await c.get(`${RECETTE_URL}/`, { headers: h })).text(), "accueil");
+  for (const s of html.match(/\/assets\/[\w.-]+\.js/g) || []) {
+    const code = await avecReprise(async () => (await c.get(`${RECETTE_URL}${s}`, { headers: h })).text(), s);
+    const m = code.match(/pk_test_[A-Za-z0-9]+/);
+    if (m) return (clePublique = m[0]);
+  }
+  throw new Error("[fabrique] clé publiable Stripe introuvable dans le code déployé");
+}
+
+/**
+ * Paie une prestation exactement comme l'écran de paiement, sans afficher le
+ * formulaire de carte (bloqué par le filtre réseau de l'environnement de test) :
+ *   1. /api/stripe-intent crée le paiement, montant revérifié par le serveur ;
+ *   2. Stripe le confirme avec une carte de test, par la clé PUBLIABLE — ce que
+ *      fait stripe.js dans le navigateur ;
+ *   3. /api/missions « assign_after_payment », comme App.jsx après un succès.
+ */
+export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240 }) {
+  const intent = await api("/api/stripe-intent",
+    { amount: montant, currency: "eur", mission_id: missionId, metadata: { prestataire: prestataireId } }, jetonClient);
+  if (!intent.json?.clientSecret) return { etape: "creation du paiement", statut: intent.statut, detail: intent.texte.slice(0, 300) };
+
+  const secret = intent.json.clientSecret;
+  const pi = secret.split("_secret_")[0];
+  const c = await http();
+  const pk = await pkStripe();
+  const conf = await avecReprise(() => c.post(`https://api.stripe.com/v1/payment_intents/${pi}/confirm`, {
+    headers: { Authorization: `Bearer ${pk}` },
+    form: { client_secret: secret, payment_method: carte, return_url: `${RECETTE_URL}/dashboard` },
+  }), "confirmation Stripe");
+  const pj = await conf.json();
+  if (pj.status !== "succeeded" && pj.status !== "requires_capture") {
+    return { etape: "confirmation Stripe", statut: conf.status(), detail: JSON.stringify(pj.error || pj.status).slice(0, 300), paymentIntent: pi };
+  }
+
+  const affectation = await api("/api/missions", {
+    action: "assign_after_payment", mission_id: missionId, prestataire_id: prestataireId,
+    acceptance_deadline: new Date(Date.now() + delaiMinutes * 60000).toISOString(),
+    stripe_payment_intent: pi, retractation_renoncee: true,
+  }, jetonClient);
+  return { etape: affectation.statut === 200 ? "ok" : "affectation", statut: affectation.statut, detail: affectation.texte.slice(0, 300),
+    paymentIntent: pi, statutStripe: pj.status, centimesPreleves: pj.amount };
+}
+
 /** Appel d'une fonction /api de la Preview. */
 export async function api(chemin, corps, jeton) {
   const c = await http();
@@ -135,4 +185,20 @@ export async function client() {
     role: "client", prenom: "Camille",
     metadonnees: { telephone: "0612345678", adresse: "10 rue de Rivoli", code_postal: "75004", ville: "Paris", type_compte: "particulier" },
   });
+}
+
+/**
+ * Déclenche une tâche planifiée de la Preview, comme le fait Vercel en production
+ * (Vercel ne lance pas les tâches planifiées sur les Preview). Secret : RECETTE_CRON_SECRET.
+ */
+export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=reminders") {
+  const secret = (process.env.RECETTE_CRON_SECRET || "").replace(/\s/g, "");
+  if (!secret) throw new Error("RECETTE_CRON_SECRET absent : impossible de déclencher les tâches planifiées de la recette.");
+  const c = await http();
+  const res = await avecReprise(() => c.get(`${RECETTE_URL}${chemin}`, {
+    headers: { "x-vercel-protection-bypass": BYPASS, Authorization: `Bearer ${secret}` },
+    timeout: 120_000,
+  }), chemin);
+  const texte = await res.text();
+  return { statut: res.status(), texte };
 }
