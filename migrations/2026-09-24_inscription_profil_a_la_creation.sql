@@ -44,7 +44,10 @@ AS $function$
   DECLARE
     meta       jsonb := COALESCE(NEW.raw_user_meta_data, '{}'::jsonb);
     v_role     text  := CASE WHEN meta->>'role' = 'prestataire' THEN 'prestataire' ELSE 'client' END;
-    v_comms    boolean := (meta->>'accepte_communications') = 'true';
+    -- COALESCE indispensable : sans la clé, la comparaison vaut NULL, et la
+    -- colonne est NOT NULL — l'inscription ENTIÈRE serait refusée. Constaté sur
+    -- la recette le 24/09/2026, avant toute mise en production.
+    v_comms    boolean := COALESCE((meta->>'accepte_communications') = 'true', false);
     v_parrain  uuid := NULL;
   BEGIN
     IF meta->>'parrain' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'

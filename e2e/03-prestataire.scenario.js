@@ -66,13 +66,6 @@ test.describe("inscription prestataire — refus attendus", () => {
     await expect(page.getByText("au moins 16 ans")).toBeVisible();
   });
 
-  // Un IBAN au bon format mais à la clé fausse (dernier chiffre modifié) : le
-  // virement au prestataire échouerait. Jusqu'au 23/09/2026, seul le format était contrôlé.
-  test("un IBAN à la clé de contrôle fausse est refusé", async ({ page }) => {
-    // Le parcours s'arrête à l'étape 5 : l'attente de l'étape 6 échoue, c'est voulu.
-    await remplirInscriptionPrestataire(page, { email: emailTest("iban-faux"), iban: "FR7630006000011234567890188" })
-      .catch(() => { /* bloqué à l'étape 5, vérifié ci-dessous */ });
-    await expect(page.getByText(/IBAN incorrect/).first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("ÉTAPE 5/7", { exact: false })).toBeVisible();
-  });
+  // La clé de contrôle de l'IBAN se vérifie désormais là où il se saisit, dans les
+  // Paramètres de l'espace prestataire : voir e2e/13.
 });
