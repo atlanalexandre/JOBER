@@ -765,7 +765,9 @@ côté serveur à deux endroits, et il faut les deux :
   06/08/2026 : un client pouvait créer sa prestation avec `montant_total = tarif × heures`, la
   régler depuis son portefeuille et ne payer aucun frais de service ;
 - `api/missions.js` (`assign_after_payment`) — le tarif horaire payé ne peut pas être
-  inférieur au `tarif_net` réellement annoncé par le prestataire affecté.
+  inférieur au `tarif_net` réellement annoncé par le prestataire affecté ;
+- `api/_paiement.js` — à l'affectation, le montant réellement encaissé par Stripe doit être
+  celui de la prestation (prix plein, ou réduit du cashback retenu).
 
 **`missions_creation_guard`** (migration `2026-07-30_secu_verrou_creation_prestation.sql`)
 double ces contrôles au niveau de la base, seul endroit qu'aucun chemin d'écriture ne peut
@@ -976,6 +978,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `stripe-intent.js` | PaymentIntent, SetupIntent, portail de facturation, suppression de carte. **L'identifiant client Stripe se lit dans `profiles.stripe_customer_id`, jamais dans le corps de la requête** — helper `clientStripeDuCompte()`, qui le crée et le persiste s'il manque. Le PaymentIntent porte toujours ce `customer` : sans lui, Stripe refuse toute confirmation avec une carte enregistrée |
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
+| `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1050,6 +1053,7 @@ toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener
 | Notification | `notify_prestataire` | Un compte pouvait notifier n'importe qui, avec un texte libre |
 | Clôture de mission + cashback | `complete` | Le client écrivait son propre solde ; taux de `plans.js` au lieu de la base, et lecture-écriture non atomique |
 | Refus après délai expiré | `acceptance_timeout` | Le serveur revérifie que `acceptance_deadline` est réellement dépassée |
+| Identifiant du paiement et délai de réponse du prestataire | `assign_after_payment`, `affecter_tiers` | Le paiement est relu chez Stripe ; le délai est calculé par le serveur. Le navigateur les fournissait jusqu'au 24/09/2026 (voir §6) |
 
 La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
 ne s'écrivent jamais depuis `src/`.**
@@ -1990,6 +1994,37 @@ récapitulatif une copie entière du formulaire de l'étape 1, second bouton « 
 compris. L'écran de paiement enchaînait donc : récapitulatif, formulaire de réservation,
 récapitulatif, paiement. Les deux copies de l'étape 2 étaient identiques ; celles de
 l'étape 3 avaient déjà divergé. Supprimé.
+
+**Le paiement annoncé n'était pas vérifié** (corrigé le 24/09/2026, constaté par le scénario
+de recette `e2e/07`). `assign_after_payment` et `affecter_tiers` écrivaient tels quels
+l'identifiant de paiement et le délai de réponse reçus du navigateur. Un client pouvait donc,
+en appelant la fonction directement :
+
+- faire proposer sa prestation au prestataire **sans rien payer**, ou avec un identifiant
+  inventé — le prestataire se déplaçait pour une prestation que personne n'avait réglée ;
+- fixer le délai de réponse du prestataire à un an ;
+- transmettre l'identifiant du paiement **d'un autre client** : les refus du « filet »
+  ci-dessus l'auraient remboursé à son insu.
+
+Désormais, **avant toute autre opération**, `api/_paiement.js` relit le paiement chez Stripe
+avec la clé secrète et exige : statut `succeeded`, devise EUR, aucun remboursement,
+`metadata[mission]` = cette prestation et `metadata[client]` = l'appelant (posés par
+`/api/stripe-intent`), pas de `metadata[type]` (complément d'heures, recharge), et un montant
+compris entre le prix réduit du cashback et le prix plein. Une prestation déjà rattachée à un
+autre paiement est refusée. Un identifiant `wallet_…` est refusé : le portefeuille n'existe
+plus. Si Stripe est injoignable ou la clé absente, la réservation est **refusée** (502/503)
+avec un message qui dit que le paiement est bien enregistré — mieux vaut un client qui
+réessaie qu'une prestation affectée sans preuve de paiement.
+
+Seul cas où le paiement est réel mais refusé : **un montant qui ne correspond pas** à la
+prestation. Il est alors remboursé intégralement (`rembourserRefusApresPaiement`), comme les
+autres refus.
+
+**Le délai de réponse du prestataire** (`acceptance_deadline`) est calculé par le serveur,
+avec la règle qu'appliquait le tunnel : **20 min** en urgence, **1 h** pour une prestation du
+jour même (jour français, pas UTC), **4 h** sinon. L'urgence n'a pas de colonne : elle se
+reconnaît aux frais de service encaissés, ceux du tarif `urgent`. `App.jsx` n'envoie plus ce
+délai, et le serveur ignore toute valeur reçue.
 
 ### Un secteur fermé ne montre plus rien
 

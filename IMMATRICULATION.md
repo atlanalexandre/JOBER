@@ -169,8 +169,11 @@ Le jour venu :
 6. **Préalable bloquant** : l'affectation d'une prestation après paiement
    (`assign_after_payment`, `affecter_tiers`) doit vérifier le paiement auprès de
    Stripe, et fixer elle-même le délai de réponse du prestataire. Constaté le
-   24/09/2026 par le scénario de recette `e2e/07` ; ne pas passer en `live` tant
-   que ce scénario n'est pas vert.
+   24/09/2026 par le scénario de recette `e2e/07` ; corrigé le même jour
+   (`api/_paiement.js`). Ne pas passer en `live` tant que ce scénario n'est pas
+   vert sur la version déployée, et le rejouer après la bascule sur la Preview :
+   la vérification relit le paiement avec `STRIPE_SECRET_KEY`, qui doit donc
+   pouvoir **lire** les PaymentIntents et les charges du compte qui encaisse.
 7. Redéployer : les variables ne sont lues qu'au déploiement.
 8. Vider les colonnes devenues fausses en base — voir §8.
 

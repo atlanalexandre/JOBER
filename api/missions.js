@@ -6,6 +6,7 @@ import { montantsDeCloture, nombreDeJours } from "./_cloture.js";
 import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
+import { verifierPaiementReservation, delaiReponseMinutes } from "./_paiement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
@@ -2251,14 +2252,35 @@ export default async function handler(req, res) {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
 
+      // `acceptance_deadline` envoyé par le navigateur n'est plus lu : le délai
+      // de réponse est calculé plus bas, sur la prestation (voir _paiement.js).
+      const { mission_id, prestataire_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+      if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id invalide" });
+
+      // Le paiement est relu chez Stripe AVANT toute autre opération : aucune
+      // affectation, et aucun remboursement, sur un identifiant qui n'est pas
+      // celui d'un paiement abouti de ce client pour cette prestation.
+      const paiement = await verifierPaiementReservation({
+        intentId: payload.stripe_payment_intent, missionId: mission_id, clientId: caller.id,
+        supabaseUrl: SUPABASE_URL, headers, contexte: "assign_after_payment",
+      });
+      if (!paiement.ok) {
+        // Paiement réel de cette prestation, mais d'un montant qui ne lui
+        // correspond pas : on ne l'affecte pas, et on ne garde pas l'argent.
+        if (paiement.raison.startsWith("montant_")) {
+          const r = await rembourserRefusApresPaiement(mission_id, String(payload.stripe_payment_intent), "montant incohérent", SUPABASE_URL, headers);
+          return res.status(paiement.code).json({ error: paiement.message + suffixeRemboursement(r) });
+        }
+        return res.status(paiement.code).json({ error: paiement.message });
+      }
+      const stripe_payment_intent = paiement.intentId;
+
       const majeur = await appelantMajeur(caller.id, SUPABASE_URL, headers);
       if (!majeur.ok) {
         console.error(`[assign_after_payment] commande refusée : ${caller.id} est mineur`);
         return res.status(403).json({ error: "L'accès à la Plateforme est réservé aux personnes majeures (CGPS art. 3)." });
       }
-      const { mission_id, prestataire_id, acceptance_deadline, stripe_payment_intent } = payload;
-      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
-      if (!prestataire_id || !isUuid(prestataire_id)) return res.status(400).json({ error: "prestataire_id invalide" });
 
       const mRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,prestataire_id`, { headers });
       const mData = await mRes.json().catch(() => []);
@@ -2359,9 +2381,13 @@ export default async function handler(req, res) {
         console.error("[assign_after_payment] contrôle du rayon impossible :", e.message);
       }
 
-      const patch = { prestataire_id, status: "pending_acceptance" };
-      if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
-      if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
+      const frais = await lireFraisService(SUPABASE_URL, headers);
+      const patch = {
+        prestataire_id,
+        status: "pending_acceptance",
+        acceptance_deadline: new Date(Date.now() + delaiReponseMinutes(paiement.mission, frais) * 60000).toISOString(),
+        stripe_payment_intent,
+      };
 
       // Renonciation au droit de rétractation (L.221-25 du Code de la
       // consommation). Elle n'est enregistrée que si le paiement a lieu : c'est
@@ -4354,13 +4380,30 @@ export default async function handler(req, res) {
       const caller = await verifyUser(req, SUPABASE_URL, SERVICE_ROLE_KEY);
       if (!caller) return res.status(401).json({ error: "Non authentifié" });
 
+      // Même règle que `assign_after_payment` : le paiement est relu chez Stripe
+      // avant toute autre opération, et le délai de réponse n'est pas lu dans
+      // la requête.
+      const { mission_id } = payload;
+      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
+
+      const paiement = await verifierPaiementReservation({
+        intentId: payload.stripe_payment_intent, missionId: mission_id, clientId: caller.id,
+        supabaseUrl: SUPABASE_URL, headers, contexte: "affecter_tiers",
+      });
+      if (!paiement.ok) {
+        if (paiement.raison.startsWith("montant_")) {
+          const r = await rembourserRefusApresPaiement(mission_id, String(payload.stripe_payment_intent), "montant incohérent", SUPABASE_URL, headers);
+          return res.status(paiement.code).json({ error: paiement.message + suffixeRemboursement(r) });
+        }
+        return res.status(paiement.code).json({ error: paiement.message });
+      }
+      const stripe_payment_intent = paiement.intentId;
+
       const majeur = await appelantMajeur(caller.id, SUPABASE_URL, headers);
       if (!majeur.ok) {
         console.error(`[affecter_tiers] commande refusée : ${caller.id} est mineur`);
         return res.status(403).json({ error: "L'accès à la Plateforme est réservé aux personnes majeures (CGPS art. 3)." });
       }
-      const { mission_id, acceptance_deadline, stripe_payment_intent } = payload;
-      if (!mission_id || !isUuid(mission_id)) return res.status(400).json({ error: "mission_id invalide" });
 
       const amRes = await fetch(
         `${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&select=client_id,status,metier,sector,date,heure_debut,ville,adresse,tarif_horaire,titre`,
@@ -4394,8 +4437,7 @@ export default async function handler(req, res) {
       }
 
       const candidats = await candidatsPourMission({ ...am, id: mission_id }, SUPABASE_URL, headers);
-      const patch = { status: "pending_acceptance" };
-      if (stripe_payment_intent) patch.stripe_payment_intent = stripe_payment_intent;
+      const patch = { status: "pending_acceptance", stripe_payment_intent };
 
       // Renonciation à la rétractation — même règle que dans
       // `assign_after_payment`. Ce second chemin de paiement l'oubliait, et
@@ -4422,7 +4464,8 @@ export default async function handler(req, res) {
       }
 
       patch.prestataire_id = candidats[0];
-      if (acceptance_deadline) patch.acceptance_deadline = acceptance_deadline;
+      const fraisT = await lireFraisService(SUPABASE_URL, headers);
+      patch.acceptance_deadline = new Date(Date.now() + delaiReponseMinutes(paiement.mission, fraisT) * 60000).toISOString();
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
         method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify(patch),
