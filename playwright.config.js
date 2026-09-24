@@ -7,6 +7,7 @@
 //   RECETTE_URL                      adresse de la Preview (défaut : alane-recette.vercel.app)
 //   VERCEL_AUTOMATION_BYPASS_SECRET  passe la protection des Preview Vercel
 //   SUPABASE_ACCESS_TOKEN            jeton du projet de recette (préparation et contrôle des données)
+//   RECETTE_BO_PASSWORD              mot de passe du backoffice de recette (scénarios 04 et suivants)
 //
 // Avant tout scénario, `e2e/garde-fou.js` vérifie que la Preview interroge la base de
 // recette et pas la production. S'il échoue, AUCUN scénario ne tourne : c'est voulu.
