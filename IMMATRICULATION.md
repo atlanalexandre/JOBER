@@ -166,8 +166,13 @@ Le jour venu :
    bascule, les variables **Production** passent sur les clés `live` du compte de la
    société ; les variables **Preview** restent en `test` — de préférence sur le mode
    test de ce nouveau compte, pour que l'ancien puisse être fermé.
-6. Redéployer : les variables ne sont lues qu'au déploiement.
-7. Vider les colonnes devenues fausses en base — voir §8.
+6. **Préalable bloquant** : l'affectation d'une prestation après paiement
+   (`assign_after_payment`, `affecter_tiers`) doit vérifier le paiement auprès de
+   Stripe, et fixer elle-même le délai de réponse du prestataire. Constaté le
+   24/09/2026 par le scénario de recette `e2e/07` ; ne pas passer en `live` tant
+   que ce scénario n'est pas vert.
+7. Redéployer : les variables ne sont lues qu'au déploiement.
+8. Vider les colonnes devenues fausses en base — voir §8.
 
 > **Taper les valeurs à la main, ne pas les coller.** Les variables Vercel de ce
 > projet ont déjà contenu des espaces invisibles collés depuis un iPad, et le
