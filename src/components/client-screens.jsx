@@ -3577,10 +3577,15 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
           </div>
           <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}`, borderRadius:r, padding:"12px 14px", marginBottom:18 }}>
             <div style={{ fontWeight:700, color:C.text, fontSize:12, marginBottom:8 }}>📋 Politique d'annulation</div>
+            {/* Reflète les CGPS art. 8.1 et 8.2 (src/constants/cgps.js), qui font foi.
+                La ligne « ≥ 24h avant : remboursement intégral » était fausse : les
+                frais de service sont retenus sur toute annulation du client, et c'est
+                ce que fait le serveur (cancel_client). Le client lisait 110,98 € et
+                recevait 104 €. */}
             {[
-              ["Annulation prestataire", "Remboursement intégral", "#10D98F"],
-              ["Annulation client < 24h", "Frais de service retenus uniquement", "#F0B429"],
-              ["Annulation client ≥ 24h avant", "Remboursement intégral", "#10D98F"],
+              ["Annulation par le prestataire", "Remboursement intégral, frais compris", "#10D98F"],
+              ["Annulation client ≥ 24h avant", "Prix remboursé, frais de service retenus", "#F0B429"],
+              ["Annulation client < 24h avant", "Prix remboursé, frais de service retenus", "#F0B429"],
             ].map(([cas, regle, col]) => (
               <div key={cas} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(255,255,255,0.05)` }}>
                 <span style={{ color:C.textSub, fontSize:11 }}>{cas}</span>

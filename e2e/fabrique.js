@@ -21,7 +21,7 @@ async function http() {
 }
 
 /** La clé publique (anon) de la recette, lue sur le code déployé — comme le ferait un navigateur. */
-async function anon() {
+export async function anon() {
   if (cleAnon) return cleAnon;
   const c = await http();
   const h = { "x-vercel-protection-bypass": BYPASS };
@@ -254,4 +254,23 @@ export async function paiementStripe(pi) {
     { headers: { Authorization: `Bearer ${cle}` } }), "lecture Stripe");
   const p = await r.json();
   return { statut: p.status, preleve: p.amount_received, rembourse: p.latest_charge?.amount_refunded || 0 };
+}
+
+/**
+ * Crée une prestation DIRECTEMENT, avec le jeton du client et la clé publique —
+ * exactement ce que peut faire n'importe qui depuis la console de son navigateur.
+ * Sert à vérifier ce que la base refuse, indépendamment de l'écran.
+ */
+export async function creerPrestationBrute(c, champs = {}) {
+  const h = await http();
+  const r = await avecReprise(async () => h.post(`${SUPABASE}/rest/v1/missions`, {
+    headers: { apikey: await anon(), Authorization: `Bearer ${c.jeton}`, Prefer: "return=minimal" },
+    data: {
+      id: crypto.randomUUID(), client_id: c.id, sector: "hotellerie", metier: "Femme/Valet de chambre",
+      date: new Date(Date.now() + 5 * 864e5).toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" }),
+      hours: 8, heure_debut: "09:00", tarif_horaire: 13, montant_total: 110.98,
+      adresse: "10 rue de Rivoli", ville: "Paris", status: "pending_acceptance", ...champs,
+    },
+  }), "création brute");
+  return { statut: r.status(), texte: (await r.text()).slice(0, 200) };
 }
