@@ -22,8 +22,8 @@ export async function cocherCgps(page) {
  * l'environnement cloud, constaté le 23/09/2026), on recharge UNE fois, en le disant :
  * un second échec est un vrai problème et fait échouer le scénario.
  */
-export async function ouvrir(page, chemin) {
-  const appli = page.getByText("Tarif transparent · Prix affiché = Prix réel").first();
+export async function ouvrir(page, chemin, repere = "Tarif transparent · Prix affiché = Prix réel") {
+  const appli = page.getByText(repere).first();
   await page.goto(chemin);
   try {
     await expect(appli).toBeVisible({ timeout: 20_000 });
@@ -128,3 +128,23 @@ export async function remplirInscriptionPrestataire(page, { email, motDePasse = 
   await page.getByPlaceholder(/min\. 8 caractères/).fill(motDePasse);
   await cocherCgps(page);
 }
+
+/** Connexion au backoffice de la recette. Le mot de passe vient de RECETTE_BO_PASSWORD. */
+export async function connexionBO(page, motDePasse = process.env.RECETTE_BO_PASSWORD) {
+  if (!motDePasse) throw new Error("RECETTE_BO_PASSWORD absent : impossible d'ouvrir le backoffice de recette.");
+  await ouvrir(page, "/admin", "Backoffice ALANE");
+  await fermerBandeauCookies(page);
+  await page.locator('input[type="password"]').fill(motDePasse);
+  await page.getByRole("button", { name: /Accéder au backoffice/ }).click();
+}
+
+/** Onglet Comptes du backoffice, filtré sur une adresse e-mail. */
+export async function ficheBO(page, email, filtre = "Tous") {
+  await page.getByRole("button", { name: /✅ Comptes/ }).first().click();
+  await page.getByRole("button", { name: filtre, exact: true }).first().click();
+  await page.getByPlaceholder(/Rechercher par email/).fill(email);
+  await expect(page.getByText(email)).toBeVisible();
+}
+
+/** Répond « Confirmer » à la fenêtre de confirmation du backoffice. */
+export const confirmer = (page) => page.getByRole("button", { name: "Confirmer", exact: true }).click();
