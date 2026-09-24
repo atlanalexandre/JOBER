@@ -1065,7 +1065,6 @@ export default function App() {
   const [chatClientId,setChatClientId]=useState(null);
   const [paymentAmount,setPaymentAmount]=useState(0);
   const [paymentHours,setPaymentHours]=useState(8);
-  const [paymentIsUrgent,setPaymentIsUrgent]=useState(false);
   const [paymentDate,setPaymentDate]=useState("");
   const [paymentDescription,setPaymentDescription]=useState("");
   const [paymentAdresse,setPaymentAdresse]=useState("");
@@ -1619,7 +1618,7 @@ export default function App() {
     if(to==="chat") setChatClientId(data?.clientId||null);
     if(to==="sector_detail") setSelectedSector(data);
     if(to==="booking") { setSelectedProvider(data); }
-    if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false); }
+    if(to==="stripe_pay") { if(data?.pendingMissionId) setSelectedMissionId(data.pendingMissionId); setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||""); setPaymentDescription(data?.description||""); setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); }
     // Le tableau de bord prestataire peut être ouvert sur un onglet précis :
     // `navigate("p_dashboard", { onglet:"docs" })`. Remis à null autrement, sans
     // quoi un retour ultérieur rouvrirait toujours le même onglet.
@@ -1813,7 +1812,7 @@ export default function App() {
         if(to!=="stripe_pay") { navigate(to,data); return; }
         setPaymentAmount(data?.amount||124); setPaymentHours(data?.hours||8); setPaymentDate(data?.date||"");
         setPaymentStartTime(data?.startTime||"08:00"); setPaymentDescription(data?.description||"");
-        setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||""); setPaymentIsUrgent(data?.isUrgent||false);
+        setPaymentAdresse(data?.adresse||""); setPaymentVille(data?.ville||"");
         // La prestation doit exister AVANT le paiement : /api/stripe-intent refuse
         // toute demande sans mission_id et recalcule le montant depuis la base,
         // pour ne jamais faire confiance au montant envoyé par le navigateur.
@@ -1899,7 +1898,8 @@ export default function App() {
             const today=new Date().toDateString();
             const mDay=paymentDate?new Date(paymentDate).toDateString():null;
             const isSameDay=!mDay||mDay===today;
-            const deadline=new Date(Date.now()+(paymentIsUrgent?20:isSameDay?60:240)*60000).toISOString();
+            // Le délai de réponse du prestataire est fixé par le serveur, sur la
+            // prestation (api/_paiement.js) : envoyé d'ici, il pouvait valoir un an.
             let missionId = selectedMissionId;
             if(missionId){
               // L'affectation passe par le serveur : le trigger
@@ -1914,8 +1914,8 @@ export default function App() {
                 method:"POST",
                 headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${sdA?.session?.access_token||""}` },
                 body: JSON.stringify(chezUnTiers
-                  ? { action:"affecter_tiers", mission_id:missionId, acceptance_deadline:deadline, stripe_payment_intent:intentId||null, retractation_renoncee:true }
-                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, acceptance_deadline:deadline, stripe_payment_intent:intentId||null, retractation_renoncee:true }),
+                  ? { action:"affecter_tiers", mission_id:missionId, stripe_payment_intent:intentId||null, retractation_renoncee:true }
+                  : { action:"assign_after_payment", mission_id:missionId, prestataire_id:selectedProvider.id, stripe_payment_intent:intentId||null, retractation_renoncee:true }),
               });
               if(!rA.ok){
                 const jA = await rA.json().catch(()=>({}));

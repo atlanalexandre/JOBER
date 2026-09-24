@@ -10,7 +10,7 @@
 //   4. puis on dépose le cookie qui ouvre la protection des Preview Vercel.
 import { chromium, request } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { RECETTE_URL, BYPASS, RECETTE_REF, PROD_REF, sql, optionsNavigateur } from "./outils.js";
+import { RECETTE_URL, BYPASS, RECETTE_REF, PROD_REF, sql, optionsNavigateur, avecReprise } from "./outils.js";
 
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 
@@ -24,18 +24,18 @@ export default async function gardeFou() {
 
   const ctx = await request.newContext({ proxy, extraHTTPHeaders: { "x-vercel-protection-bypass": BYPASS } });
   try {
-    const page = await ctx.get(RECETTE_URL + "/");
+    const page = await avecReprise(() => ctx.get(RECETTE_URL + "/"), "garde-fou : accueil");
     if (!page.ok()) refuser(`la Preview répond ${page.status()}.`);
     const html = await page.text();
     const scripts = [...new Set(html.match(/\/assets\/[\w.-]+\.js/g) || [])];
     let code = "";
-    for (const s of scripts) code += await (await ctx.get(RECETTE_URL + s)).text();
+    for (const s of scripts) code += await avecReprise(async () => (await ctx.get(RECETTE_URL + s)).text(), `garde-fou : ${s}`);
 
     if (code.includes(PROD_REF)) refuser("le code déployé cite la base de PRODUCTION.");
     if (!code.includes(RECETTE_REF)) refuser("le code déployé ne cite pas la base de recette.");
     if (/pk_live_/.test(code)) refuser("la clé Stripe du navigateur est une clé LIVE.");
 
-    const compte = await ctx.get(RECETTE_URL + "/api/prestataires?action=count");
+    const compte = await avecReprise(() => ctx.get(RECETTE_URL + "/api/prestataires?action=count"), "garde-fou : décompte");
     const { count } = await compte.json();
     const [{ n }] = await sql("select count(*)::int n from profiles where role='prestataire' and status='approved'");
     if (count !== n) {
@@ -51,7 +51,7 @@ export default async function gardeFou() {
   const navigateur = await chromium.launch(optionsNavigateur());
   const contexte = await navigateur.newContext();
   const onglet = await contexte.newPage();
-  await onglet.goto(`${RECETTE_URL}/?x-vercel-protection-bypass=${BYPASS}&x-vercel-set-bypass-cookie=samesitenone`);
+  await avecReprise(() => onglet.goto(`${RECETTE_URL}/?x-vercel-protection-bypass=${BYPASS}&x-vercel-set-bypass-cookie=samesitenone`), "garde-fou : cookie");
   await contexte.storageState({ path: "e2e-resultats/.acces-preview.json" });
   await navigateur.close();
 }

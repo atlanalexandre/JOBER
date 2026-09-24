@@ -148,3 +148,52 @@ export async function ficheBO(page, email, filtre = "Tous") {
 
 /** Répond « Confirmer » à la fenêtre de confirmation du backoffice. */
 export const confirmer = (page) => page.getByRole("button", { name: "Confirmer", exact: true }).click();
+
+/**
+ * Réservation d'un prestataire d'hôtellerie par un client connecté, jusqu'à l'écran
+ * de paiement. Renvoie la date réservée (AAAA-MM-JJ).
+ */
+export async function reserverJusquauPaiement(page, { dansJours = 5, heure = "09:00", description = "Scénario de recette" } = {}) {
+  await page.goto("/providers");
+  await page.getByText("Passer le tutoriel").click({ timeout: 3_000 }).catch(() => { /* tutoriel déjà passé */ });
+  await page.getByText("Voir tous les prestataires").first().click();
+  await page.getByText(/Voir \d+ →/).first().click();
+  await page.getByRole("button", { name: "📅 Réserver" }).first().click();
+  const date = new Date(Date.now() + dansJours * 864e5).toISOString().slice(0, 10);
+  await page.locator('input[type="date"]').fill(date);
+  await page.locator('input[type="time"]').fill(heure);
+  await page.locator("textarea").fill(description);
+  await page.getByRole("button", { name: /Continuer/ }).click();
+  // Contrat : seule la petite case est cliquable, pas la phrase (défaut d'accessibilité relevé).
+  await page.getByText("J'ai lu et j'accepte les termes de ce contrat").locator("xpath=preceding-sibling::div[1]").click();
+  await page.getByRole("button", { name: /Signer électroniquement/ }).click();
+  await page.getByRole("button", { name: /Même adresse qu'à l'inscription/ }).click();
+  await page.getByRole("button", { name: /Confirmer l'adresse/ }).click();
+  await page.getByRole("button", { name: /Confirmer & payer/ }).click();
+  await expect(page).toHaveURL(/\/booking\/payment/);
+  return date;
+}
+
+/** Saisit une carte de test Stripe dans le Payment Element, renonce à la rétractation, paie. */
+export async function payerParCarte(page, { numero = "4242424242424242", titulaire = "Camille Recette" } = {}) {
+  await page.getByPlaceholder("Jean Dupont").fill(titulaire);
+  // Plusieurs cadres Stripe sur la page (Google Pay, Link, carte) : on prend celui qui
+  // contient le champ du numéro.
+  let cadre = null;
+  for (let essai = 0; essai < 30 && !cadre; essai++) {
+    for (const f of page.frames()) {
+      if (await f.locator('input[name="number"]').count().catch(() => 0)) { cadre = f; break; }
+    }
+    if (!cadre) await page.waitForTimeout(1000);
+  }
+  if (!cadre) throw new Error("formulaire de carte Stripe introuvable");
+  await cadre.locator('input[name="number"]').fill(numero);
+  await cadre.locator('input[name="expiry"]').fill("12 / 34");
+  await cadre.locator('input[name="cvc"]').fill("123");
+  // Selon le pays, Stripe demande aussi un code postal.
+  if (await cadre.locator('input[name="postalCode"]').count()) await cadre.locator('input[name="postalCode"]').fill("75004");
+  // Case de renonciation au droit de rétractation (obligatoire pour payer).
+  await page.getByText("Vous disposez d'un droit de rétractation", { exact: false }).locator("xpath=ancestor::label[1]").locator('input[type="checkbox"]').check()
+    .catch(async () => { await page.locator('input[type="checkbox"]').last().check(); });
+  await page.getByRole("button", { name: /Payer .* en sécurité/ }).click();
+}
