@@ -3369,11 +3369,40 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
   elle vit sur le même compte Stripe que la production (qui encaisse en mode test), elle peut
   donc **lire** les paiements de la production — à n'utiliser qu'en lecture ;
 - `VERCEL_AUTOMATION_BYPASS_SECRET` — ouvre la protection des Preview aux scénarios ;
-- `RECETTE_BO_PASSWORD` — mot de passe du back-office de recette. **Refusé par la Preview le
-  24/09/2026** (401) : il ne correspond plus à `BO_PASSWORD` (ligne Preview) dans Vercel. Tant
-  que les deux ne sont pas identiques, les scénarios 05 à 07 ne peuvent pas préparer de
-  prestataire (`bo()` dans `e2e/fabrique.js`) ;
+- `RECETTE_BO_PASSWORD` — mot de passe du back-office de recette. Il doit être identique à
+  `BO_PASSWORD` (ligne **Preview**) dans Vercel, sans quoi `bo()` de `e2e/fabrique.js` ne peut
+  préparer aucun prestataire. Désynchronisé puis corrigé des deux côtés le 24/09/2026. **Piège :
+  un changement dans les réglages de l'environnement Claude ne vaut que pour les sessions
+  ouvertes APRÈS** ; et côté Vercel, il faut redéployer la Preview ;
 - `RECETTE_CRON_SECRET` — déclenche les tâches planifiées de la Preview.
+
+**Les scénarios** (`npm run e2e`, ou `npx playwright test e2e/08`) :
+
+| Fichier | Ce qui est éprouvé |
+|---|---|
+| `01` à `04` | accueil, inscription client et prestataire, back-office |
+| `05` | prestataire opérationnel : approbation, mandats, dossier, accès, compte de virement |
+| `06` | réservation et paiement par l'écran, montant du serveur, carte refusée |
+| `07` | affectation : paiement vérifié chez Stripe, identifiants inventés ou `wallet_` refusés, délai fixé par le serveur |
+| `08` | réponse du prestataire : acceptation, refus remboursé, délai dépassé (tâche planifiée et écran client) |
+| `09` | annulation client à plus et à moins de 24 h : prix remboursé, frais de service retenus, pas de double remboursement |
+| `10` | versement 48 h après la fin, bloqué par un litige, contestation refusée après 48 h |
+| `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
+
+**Le temps se simule en base, jamais en attendant.** On recule une date
+(`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
+déclenche la tâche planifiée par `tachePlanifiee()` (secret `RECETTE_CRON_SECRET`) — Vercel ne
+lance pas les tâches planifiées sur les Preview.
+
+**`reservationPayee()`** crée une prestation payée et affectée par les mêmes points d'entrée que
+l'application (insertion avec le jeton du client, paiement Stripe de test, affectation) sans
+rejouer le tunnel d'écran, déjà couvert par `06`. **`paiementStripe()`** lit le paiement chez
+Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
+
+**Rouge volontairement au 24/09/2026** : `11` — « un abonnement expiré repasse en gratuit, là où
+le quota est lu ». La remise à zéro mensuelle rétrograde `user_metadata.plan_abonnement` mais
+pas `profiles.plan_abonnement`, que lit le contrôle du quota — et elle efface
+`subscription_end_date`, seule trace de l'expiration. Décision en attente.
 
 **La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
 un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à

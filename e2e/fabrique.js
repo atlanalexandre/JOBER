@@ -8,6 +8,7 @@
 // ce que l'application sait écrire elle-même.
 import { expect, request } from "@playwright/test";
 import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE, avecReprise } from "./outils.js";
+import { calculerFrais } from "../api/_montant.js";
 
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 const SUPABASE = `https://${RECETTE_REF}.supabase.co`;
@@ -201,4 +202,56 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
   }), chemin);
   const texte = await res.text();
   return { statut: res.status(), texte };
+}
+
+/**
+ * Une réservation PAYÉE et affectée, par les mêmes points d'entrée que l'écran :
+ *   1. insertion de la prestation avec le jeton du client (ce que fait App.jsx —
+ *      la RLS et le verrou de création s'appliquent donc comme en vrai) ;
+ *   2. paiement par carte de test, puis affectation (payerPrestation).
+ * Le tunnel d'écran lui-même est éprouvé par 06 : le rejouer ici ajouterait une
+ * minute et des échecs sans rapport à chaque scénario.
+ *
+ * `dansJours` et `heure` fixent le début de la prestation, en heure de Paris.
+ */
+export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13 }) {
+  const id = crypto.randomUUID();
+  // `debutMs` (instant précis) l'emporte sur `dansJours` + `heure` : utile pour
+  // une prestation qui commence dans quelques heures.
+  const paris = { timeZone: "Europe/Paris" };
+  const date = new Date(debutMs ?? Date.now() + dansJours * 864e5).toLocaleDateString("fr-CA", paris);
+  if (debutMs) heure = new Date(debutMs).toLocaleTimeString("fr-FR", { ...paris, hour: "2-digit", minute: "2-digit" });
+  const [reglage] = await sql("select value from platform_settings where key = 'frais_service'");
+  const montant = Math.round((tarif * heures + calculerFrais("single", tarif * heures, 1, reglage?.value)) * 100) / 100;
+
+  const h = await http();
+  const ins = await avecReprise(async () => h.post(`${SUPABASE}/rest/v1/missions`, {
+    headers: { apikey: await anon(), Authorization: `Bearer ${c.jeton}`, Prefer: "return=minimal" },
+    data: {
+      id, client_id: c.id, prestataire_id: null,
+      sector: "hotellerie", metier: "Femme/Valet de chambre",
+      date, hours: heures, heure_debut: heure, tarif_horaire: tarif, montant_total: montant,
+      description: "Scénario de recette", adresse: "10 rue de Rivoli", ville: "Paris",
+      status: "pending_acceptance",
+    },
+  }), "création de la prestation");
+  expect(ins.ok(), `création de la prestation : ${ins.status()} ${(await ins.text()).slice(0, 200)}`).toBeTruthy();
+
+  const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant, prestataireId: prestataire.id });
+  expect(r.etape, `paiement et affectation : ${JSON.stringify(r)}`).toBe("ok");
+  return { id, date, montant, paymentIntent: r.paymentIntent };
+}
+
+/**
+ * Le paiement tel que Stripe le voit — seule preuve qu'un remboursement a eu lieu.
+ * Clé : STRIPE_SECRET_KEY (clé restreinte de la recette, lecture seule ici).
+ */
+export async function paiementStripe(pi) {
+  const cle = (process.env.STRIPE_SECRET_KEY || "").replace(/\s/g, "");
+  if (!cle) throw new Error("STRIPE_SECRET_KEY absente : impossible de lire le paiement chez Stripe.");
+  const h = await http();
+  const r = await avecReprise(() => h.get(`https://api.stripe.com/v1/payment_intents/${pi}?expand[]=latest_charge`,
+    { headers: { Authorization: `Bearer ${cle}` } }), "lecture Stripe");
+  const p = await r.json();
+  return { statut: p.status, preleve: p.amount_received, rembourse: p.latest_charge?.amount_refunded || 0 };
 }
