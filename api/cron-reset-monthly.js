@@ -8,6 +8,7 @@ import { aPurger, TYPES_A_PURGER } from "./_conservation.js";
 import { recapitulatifAnnuel, anneeARecapituler, recapitulatifDejaEnvoye, INFORMATION_FISCALE } from "./_fiscal.js";
 import crypto from "crypto";
 import { appUrl } from "./_url.js";
+import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { datesImmatriculation } from "./_sirene.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
@@ -2186,39 +2187,27 @@ ${(() => {
       return res.status(500).json({ error: "Erreur reset" });
     }
 
-    // Downgrade des abonnements expirés — traité par batch de 50, paginé sur tous les utilisateurs
+    // Rétrogradation des abonnements échus.
+    //
+    // Elle partait de `user_metadata` et n'écrivait que là : `profiles`, qui
+    // décide du quota, restait en Premium, et la date de fin était effacée —
+    // l'abonné gardait son quota payant sans payer (scénario de recette e2e/11,
+    // 24/09/2026). Elle part désormais de `profiles`, source du plan et de sa
+    // date de fin, et écrit les deux. Voir api/_abonnement.js.
     let downgrades = 0;
     try {
-      const allUsers = [];
-      let downgradePage = 1;
-      while (true) {
-        const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000&page=${downgradePage}`, { headers });
-        const usersData = await usersRes.json();
-        const batch = usersData.users || [];
-        allUsers.push(...batch);
-        if (batch.length < 1000) break;
-        downgradePage++;
+      const echusRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?plan_abonnement=neq.free&subscription_end_date=not.is.null`
+        + `&select=id,plan_abonnement,subscription_end_date&limit=5000`,
+        { headers }
+      );
+      if (!echusRes.ok) throw new Error(`lecture des abonnements refusée (${echusRes.status})`);
+      const candidats = await echusRes.json().catch(() => []);
+      const echus = (Array.isArray(candidats) ? candidats : []).filter(p => abonnementEchu(p));
+      for (const p of echus) {
+        if (await retrograderEnGratuit(p.id, SUPABASE_URL, headers, "cron/abonnements")) downgrades++;
       }
-      const now = new Date();
-      const toDowngrade = allUsers.filter(u => {
-        const meta = u.user_metadata || {};
-        return meta.plan_abonnement && meta.plan_abonnement !== "free" && meta.subscription_end_date
-          && new Date(meta.subscription_end_date) < now;
-      });
-      const BATCH_SIZE = 50;
-      for (let i = 0; i < toDowngrade.length; i += BATCH_SIZE) {
-        const batch = toDowngrade.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async u => {
-          const meta = u.user_metadata || {};
-          await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
-            method: "PUT", headers,
-            body: JSON.stringify({ user_metadata: { ...meta, plan_abonnement: "free", subscription_end_date: null } }),
-          }).catch(() => {});
-          downgrades++;
-        }));
-        if (i + BATCH_SIZE < toDowngrade.length) await new Promise(r => setTimeout(r, 500));
-      }
-    } catch (e) { console.error("cron downgrade error:", e); }
+    } catch (e) { console.error("[cron/abonnements] rétrogradation interrompue :", e.message); }
 
     console.log(`cron-reset-monthly: prestations reset, ${downgrades} abonnements expirés downgradés`);
     return res.status(200).json({ success: true, downgrades });
