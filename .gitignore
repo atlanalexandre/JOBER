@@ -31,3 +31,7 @@ business-plan.html
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Scénarios Playwright : rapports et traces locales
+e2e-resultats/
+e2e-rapport/

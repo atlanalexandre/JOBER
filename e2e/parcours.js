@@ -1,0 +1,150 @@
+// Parcours réutilisés par plusieurs scénarios : ils jouent l'application comme un
+// utilisateur, par l'écran, et ne touchent la base que pour CONTRÔLER.
+import { expect } from "@playwright/test";
+import { MOT_DE_PASSE } from "./outils.js";
+
+export async function fermerBandeauCookies(page) {
+  const bouton = page.getByText("J'ai compris");
+  if (await bouton.isVisible().catch(() => false)) await bouton.click();
+}
+
+/**
+ * La case des CGPS est un <div> cliquable, pas une vraie case à cocher : on vise le
+ * carré, à gauche. Cliquer le texte ouvrirait la fenêtre des CGPS (lien intégré).
+ */
+export async function cocherCgps(page) {
+  await page.getByText("J'ai lu et j'accepte les", { exact: false }).locator("xpath=..").click({ position: { x: 12, y: 14 } });
+}
+
+/**
+ * Ouvre une page et attend que l'application React ait remplacé la page statique de
+ * référencement. Si un fichier JavaScript n'arrive pas (502 ponctuel du proxy de
+ * l'environnement cloud, constaté le 23/09/2026), on recharge UNE fois, en le disant :
+ * un second échec est un vrai problème et fait échouer le scénario.
+ */
+export async function ouvrir(page, chemin, repere = "Tarif transparent · Prix affiché = Prix réel") {
+  const appli = page.getByText(repere).first();
+  await page.goto(chemin);
+  try {
+    await expect(appli).toBeVisible({ timeout: 20_000 });
+  } catch {
+    console.warn(`[e2e] l'application ne s'est pas chargée sur ${chemin} : second essai`);
+    await page.reload();
+    await expect(appli).toBeVisible({ timeout: 30_000 });
+  }
+}
+
+export const continuer = (page) => page.getByRole("button", { name: /Continuer/ }).click();
+
+/** Inscription client complète, par l'écran. S'arrête juste avant « Créer mon compte ». */
+export async function remplirInscriptionClient(page, { email, motDePasse = MOT_DE_PASSE, prenom = "Camille" } = {}) {
+  await ouvrir(page, "/auth/signin/client");
+  await fermerBandeauCookies(page);
+  await page.getByText("Inscription", { exact: true }).first().click();
+
+  // Étape 1 — identité
+  await page.getByPlaceholder("Jean").fill(prenom);
+  await page.getByPlaceholder("Dupont").fill("Recette");
+  await page.getByPlaceholder("06 12 34 56 78").fill("0612345678");
+  await continuer(page);
+
+  // Étape 2 — besoins
+  await expect(page.getByText("ÉTAPE 2/3", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: /Propreté/ }).click();
+  await page.getByRole("button", { name: /^⏱ Ponctuel/ }).click();
+  await page.getByPlaceholder("12 rue de la Paix").first().fill("10 rue de Rivoli");
+  await page.getByPlaceholder("75001").first().fill("75004");
+  await page.getByPlaceholder("Paris").first().fill("Paris");
+  await page.getByRole("button", { name: /Moins de 8h/ }).click();
+  await page.getByPlaceholder("12 rue de la Paix").nth(1).fill("10 rue de Rivoli");
+  await page.getByPlaceholder("75001").nth(1).fill("75004");
+  await page.getByPlaceholder("Paris").nth(1).fill("Paris");
+  await continuer(page);
+
+  // Étape 3 — compte
+  await expect(page.getByText("ÉTAPE 3/3", { exact: false })).toBeVisible();
+  await cocherCgps(page);
+  await page.locator('input[type="email"]').fill(email);
+  await page.getByPlaceholder(/min\. 8 caractères/).fill(motDePasse);
+}
+
+export async function connexion(page, { espace = "client", email, motDePasse = MOT_DE_PASSE }) {
+  await ouvrir(page, espace === "client" ? "/auth/signin/client" : "/auth/signin/provider");
+  await fermerBandeauCookies(page);
+  await page.locator('input[type="email"]').first().fill(email);
+  await page.locator('input[type="password"]').first().fill(motDePasse);
+  await page.getByRole("button", { name: /Se connecter/ }).click();
+}
+
+/** Inscription prestataire complète (7 étapes), par l'écran. S'arrête avant « Créer mon compte ». */
+export async function remplirInscriptionPrestataire(page, { email, motDePasse = MOT_DE_PASSE, prenom = "Sam", iban = "FR7630006000011234567890189" } = {}) {
+  await ouvrir(page, "/auth/signin/provider");
+  await fermerBandeauCookies(page);
+  await page.getByText("Inscription", { exact: true }).first().click();
+
+  // 1 — identité
+  await page.getByPlaceholder("Jean").fill(prenom);
+  await page.getByPlaceholder("Dupont").fill("Recette");
+  await page.getByPlaceholder("06 12 34 56 78").fill("0698765432");
+  await page.locator('input[type="date"]').fill("1990-05-15");
+  await page.getByPlaceholder("12 rue de la Paix").fill("5 rue de Lyon");
+  await page.getByPlaceholder("75001").fill("75012");
+  await page.getByPlaceholder("Paris").fill("Paris");
+  await continuer(page);
+
+  // 2 — métier
+  await expect(page.getByText("ÉTAPE 2/7", { exact: false })).toBeVisible();
+  await page.locator("select").nth(0).selectOption({ label: "Propreté" });
+  await page.locator("select").nth(1).selectOption({ label: "Agent de propreté" });
+  await page.getByRole("button", { name: /Ajouter ce métier/ }).click();
+  await expect(page.getByText("Vos métiers (1)")).toBeVisible();
+  await continuer(page);
+
+  // 3 — expérience (rien d'obligatoire)
+  await expect(page.getByText("ÉTAPE 3/7", { exact: false })).toBeVisible();
+  await continuer(page);
+
+  // 4 — disponibilités : matin et après-midi, tous les jours
+  await expect(page.getByText("ÉTAPE 4/7", { exact: false })).toBeVisible();
+  for (let i = 0; i < 7; i++) {
+    await page.getByRole("button", { name: "Matin", exact: true }).nth(i).click();
+    await page.getByRole("button", { name: "Après-midi", exact: true }).nth(i).click();
+  }
+  await continuer(page);
+
+  // 5 — statut et paiement
+  await expect(page.getByText("ÉTAPE 5/7", { exact: false })).toBeVisible();
+  await page.getByPlaceholder("FR76 3000 4028 0000 0000 0000 000").fill(iban);
+  await page.getByText("Je m'engage à disposer d'une assurance RC", { exact: false }).click();
+  await continuer(page);
+
+  // 6 — abonnement : Gratuit, présélectionné
+  await expect(page.getByText("ÉTAPE 6/7", { exact: false })).toBeVisible();
+  await continuer(page);
+
+  // 7 — récapitulatif et compte
+  await expect(page.getByText("ÉTAPE 7/7", { exact: false })).toBeVisible();
+  await page.locator('input[type="email"]').fill(email);
+  await page.getByPlaceholder(/min\. 8 caractères/).fill(motDePasse);
+  await cocherCgps(page);
+}
+
+/** Connexion au backoffice de la recette. Le mot de passe vient de RECETTE_BO_PASSWORD. */
+export async function connexionBO(page, motDePasse = process.env.RECETTE_BO_PASSWORD) {
+  if (!motDePasse) throw new Error("RECETTE_BO_PASSWORD absent : impossible d'ouvrir le backoffice de recette.");
+  await ouvrir(page, "/admin", "Backoffice ALANE");
+  await fermerBandeauCookies(page);
+  await page.locator('input[type="password"]').fill(motDePasse);
+  await page.getByRole("button", { name: /Accéder au backoffice/ }).click();
+}
+
+/** Onglet Comptes du backoffice, filtré sur une adresse e-mail. */
+export async function ficheBO(page, email, filtre = "Tous") {
+  await page.getByRole("button", { name: /✅ Comptes/ }).first().click();
+  await page.getByRole("button", { name: filtre, exact: true }).first().click();
+  await page.getByPlaceholder(/Rechercher par email/).fill(email);
+  await expect(page.getByText(email)).toBeVisible();
+}
+
+/** Répond « Confirmer » à la fenêtre de confirmation du backoffice. */
+export const confirmer = (page) => page.getByRole("button", { name: "Confirmer", exact: true }).click();

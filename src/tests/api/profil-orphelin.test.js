@@ -35,6 +35,14 @@ describe("profilDepuisMetadonnees()", () => {
     expect(p).not.toHaveProperty("stripe_account_id");
   });
 
+  // Même règle qu'à l'inscription (handle_new_user) : le client est validé d'office,
+  // seul le prestataire attend l'administration. Une reconstruction qui laissait un
+  // client « en attente » le bloquait sur un écran que personne ne viendrait lever.
+  it("valide d'office un client, jamais un prestataire", () => {
+    expect(profilDepuisMetadonnees({ id: "x", user_metadata: { role: "client" } }).status).toBe("approved");
+    expect(profilDepuisMetadonnees(CANDIDAT).status).toBe("pending");
+  });
+
   it("ne consent rien à la place de l'utilisateur", () => {
     const sansAccord = profilDepuisMetadonnees({ id: "x", user_metadata: { role: "client" } });
     expect(sansAccord.accepte_communications).toBe(false);
@@ -48,7 +56,7 @@ describe("profilDepuisMetadonnees()", () => {
     const p = profilDepuisMetadonnees({ id: "x" });
     expect(p.role).toBe("client");
     expect(p.prenom).toBeNull();
-    expect(p.status).toBe("pending");
+    expect(p.status).toBe("approved");
   });
 });
 

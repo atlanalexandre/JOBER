@@ -19,7 +19,9 @@
     "colonnes": "node scripts/verifier-colonnes.mjs",
     "ecritures": "node scripts/verifier-ecritures.mjs",
     "contraintes": "node scripts/verifier-contraintes.mjs",
-    "rls": "cat scripts/verifier-rls.sql"
+    "rls": "cat scripts/verifier-rls.sql",
+    "recette": "node scripts/recette.mjs",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@sentry/react": "^10.62.0",
@@ -30,6 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.56.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

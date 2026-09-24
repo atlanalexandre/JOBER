@@ -155,6 +155,12 @@ BEGIN
 END;
 $$;
 
+-- Ajouté le 23/09/2026 : le DROP ci-dessus avait emporté le verrou S-02, et la
+-- fonction recréée était redevenue appelable par tous. Voir
+-- 2026-09-23_secu_fermer_increment_cashback.sql.
+REVOKE EXECUTE ON FUNCTION public.increment_cashback(uuid, numeric, integer)
+  FROM PUBLIC, anon, authenticated;
+
 -- ── Relecture ───────────────────────────────────────────────────────────────
 -- Les comptes dont les deux compteurs diffèrent : ce sont ceux que l'ancienne
 -- colonne trompait.

@@ -777,6 +777,13 @@ et les rôles d'administration sont exemptés. Il pose une **borne basse** sur l
 le calcul exact du tarif : reproduire la grille tarifaire en base finirait par diverger du
 tunnel de réservation et bloquerait des réservations légitimes.
 
+> **⚠️ Non actif en production au 23/09/2026.** La fonction existe, mais le déclencheur
+> `missions_creation_guard` (BEFORE INSERT sur `missions`) **n'est pas posé** : `missions` ne
+> porte que `missions_field_tamper_guard` (UPDATE). Retrait volontaire (le retour arrière
+> prévu par la migration) ou oubli : rien dans le dépôt ne le dit. Tant qu'il manque, seuls
+> les deux contrôles applicatifs ci-dessus protègent la création. La recette reproduit
+> fidèlement cet état.
+
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
 recharge soit créditée deux fois. Lisible par le seul service role. Avant elle, l'argent
@@ -786,7 +793,12 @@ justifié, ni rapproché des encaissements Stripe.
 Trois procédures stockées sont appelées depuis le code, et n'existent donc que dans la base :
 
 - `check_prestataire_slot` — vérifie la disponibilité d'un prestataire sur un créneau.
-- `increment_cashback` — crédite le cashback de façon atomique.
+- `increment_cashback` — crédite le cashback de façon atomique. **Appelable par `service_role`
+  uniquement** : elle ne vérifie pas son appelant. Le 27/08/2026 une migration l'a supprimée
+  puis recréée, et le verrou a disparu avec elle (un `DROP FUNCTION` perd les droits, un
+  `CREATE OR REPLACE` les conserve) : n'importe qui pouvait créditer n'importe quel compte
+  jusqu'au 23/09/2026. Toute migration qui recrée une fonction `SECURITY DEFINER` refait
+  son `REVOKE` — voir `2026-09-23_secu_fermer_increment_cashback.sql`.
 - `crediter_portefeuille` — enregistre une recharge et incrémente le solde dans une seule
   transaction ; renvoie `NULL` si la recharge avait déjà été traitée. Le webhook sait
   fonctionner sans elle (repli sur l'ancien crédit, non protégé, signalé dans les journaux).
@@ -1332,6 +1344,28 @@ Backoffice → validation → status "approved" → email de confirmation
 Autrement dit : **seuls les prestataires passent par une validation manuelle.** Un client
 créé à l'instant peut réserver immédiatement.
 
+**C'est la base qui fixe ce statut, pas le navigateur.** `handle_new_user` crée le profil
+`approved` pour un client, `pending` pour un prestataire ; le verrou `profiles_privileges_guard`
+interdit ensuite toute modification de statut depuis le navigateur. Du 30/07 au 23/09/2026,
+le déclencheur ne fixait aucun statut : le client naissait `pending`, le navigateur tentait de
+le passer `approved`, le verrou refusait — et chaque client inscrit restait bloqué sur
+« Compte en attente » (cinq en production). Trouvé par les scénarios Playwright ; corrigé par
+la migration `2026-09-23_inscription_client_validee_d_office.sql`. Les comptes bloqués se
+rattrapent depuis le backoffice, onglet Comptes : « Valider les clients en attente et les
+prévenir » (action `valider_clients_en_attente`, qui envoie un e-mail annonçant l'ouverture
+prochaine de la plateforme).
+
+**Le navigateur complète le profil, il ne le crée pas** (`completerProfil`, auth.jsx). La ligne
+naît dans la base (`handle_new_user`) ; le navigateur n'y ajoute que des colonnes qu'il a le
+droit de modifier, et vérifie qu'une ligne a été écrite. Jusqu'au 23/09/2026, il faisait un
+`upsert` renvoyant aussi `role`, `status` et `plan_abonnement` : PostgreSQL refusait toute
+l'écriture, et adresse, ville, SIRET, IBAN et consentement étaient perdus sans un mot. En
+production, 87 des 88 prestataires inscrits depuis le 30/07 n'avaient aucun IBAN. Les champs
+encore présents dans `user_metadata` sont recopiés par
+`2026-09-23_rattrapage_profils_depuis_inscription.sql` ; l'IBAN des prestataires, lui, n'a
+été écrit nulle part ailleurs : il se retrouve sur la pièce « RIB » du dossier. La clé de
+contrôle de l'IBAN (MOD-97) est désormais vérifiée à la saisie.
+
 **L'IBAN vit dans `profiles.rib`, jamais dans `user_metadata`.** Il y était stocké, donc
 encodé dans le jeton d'authentification, transmis en en-tête HTTP à chaque requête et
 conservé dans le navigateur. Ce n'est pas un problème de taille — 27 caractères — mais
@@ -1375,7 +1409,11 @@ prestataire. Le contrôle est posé à l'ouverture de l'accès **et non au verse
 l'accès n'immobilise l'argent de personne, alors que bloquer un virement retiendrait une somme
 due à quelqu'un qui a déjà travaillé. Le prestataire signe depuis son espace, onglet Revenus.
 
-Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. Le dernier est
+Quatre statuts existent : `pending`, `approved`, `rejected`, `suspended`. **Jusqu'au
+23/09/2026, la contrainte `profiles_status_check` ignorait `suspended`** : la suspension du
+backoffice était refusée par la base sans que personne ne le voie, et l'intéressé recevait
+l'e-mail de suspension en gardant tous ses accès. `api/bo-action.js` vérifie désormais
+l'écriture avant d'envoyer l'e-mail. Le dernier est
 traité à la connexion (`auth.jsx:1175`) et au démarrage (`App.jsx:1391`) : la session est
 fermée et l'utilisateur renvoyé à l'écran de choix de rôle.
 
@@ -3187,6 +3225,46 @@ ajoute le schéma s'il manque, retire la barre finale, et **journalise quand ell
 parce qu'une variable mal renseignée doit être réparée à la source. Éprouvée par
 `src/tests/api/url.test.js`.
 
+**La production encaisse en mode TEST de Stripe — c'est voulu** (confirmé par Alexandre le
+23/09/2026). Le compte Stripe ne peut être validé pour Stripe Connect qu'au nom de la société,
+qui n'est pas encore immatriculée. D'ici là, `VITE_STRIPE_PUBLIC_KEY` et `STRIPE_SECRET_KEY`
+de production sont des clés `pk_test_` / `sk_test_` : **aucun paiement réel n'est encaissé**.
+La bascule en clés `live` fait partie de la bascule du compte Stripe décrite dans
+[IMMATRICULATION.md](IMMATRICULATION.md) §7. Ne jamais passer une seule des deux clés en
+`live` : clé publique et clé secrète doivent être du même mode, sinon le paiement échoue.
+
+**Production et Preview n'ont pas les mêmes valeurs** (réglé le 23/09/2026). Chaque variable
+sensible existe en deux lignes dans Vercel : l'une cochée **Production** seule, l'autre
+**Preview** seule. Avant ce réglage, les Preview recevaient la vraie clé Stripe (un essai
+pouvait débiter une vraie carte) mais aucune variable Supabase.
+
+| Variable | En Preview |
+|---|---|
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | projet de **recette** (voir §9) |
+| `VITE_STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY` | clés Stripe **de test** |
+| `APP_URL` | `https://alane-recette.vercel.app` |
+| `BO_PASSWORD`, `BO_SESSION_SECRET`, `CRON_SECRET` | valeurs propres à la recette — un secret de session partagé rendrait une session de recette valable en production |
+| `RESEND_API_KEY`, `BREVO_API_KEY` | **absentes** : aucun e-mail ni SMS ne part vers les faux comptes |
+| `BO_ALLOWED_IPS`, `UPSTASH_*`, `VITE_SENTRY_DSN` | **absentes** |
+| `STRIPE_WEBHOOK_SECRET`, prix d'abonnement | **à poser** : webhook et produits de test pas encore créés |
+
+Pour modifier une variable sans toucher l'autre environnement : décocher l'environnement sur
+l'ancienne ligne, puis « Add New » sur l'autre. Vercel refuse deux lignes du même nom sur un
+même environnement. Piège constaté : une variable `VITE_` enregistrée en type « Secret » ne
+peut plus être modifiée — il faut la supprimer et la recréer en type « Config ».
+
+**`CRON_SECRET` : Vercel refuse de construire si la valeur porte une espace.** Le 23/09/2026,
+deux constructions de Preview ont échoué en deux secondes (« contains leading or trailing
+whitespace, which is not allowed in HTTP header values ») : la valeur avait été collée depuis
+un iPhone avec un retour à la ligne final. Le nettoyage du code (`.replace(/\s/g, "")`) n'y
+peut rien, le contrôle a lieu avant. Le même jour, la ligne de production de `CRON_SECRET` a
+été supprimée par erreur au lieu d'être décochée : les tâches planifiées de production auraient
+été refusées dès la mise en ligne suivante. Elle a été recréée avec une valeur neuve.
+
+`alane-recette.vercel.app` est rattaché à une branche Preview (Settings → Domains), et
+protégé par la connexion Vercel. Les tests automatiques passent avec l'en-tête
+`x-vercel-protection-bypass` (secret « Protection Bypass for Automation »).
+
 Les variables préfixées `VITE_` sont **embarquées dans le code envoyé au navigateur** : elles
 sont publiques par construction. N'y mettre aucun secret. Les autres ne sont lisibles que
 depuis `/api`.
@@ -3215,3 +3293,43 @@ Les fonctions `/api` ne s'exécutent pas avec `npm run dev` — elles n'existent
 déployées sur Vercel, ou via la commande `vercel dev`.
 
 Tout push sur `main` déclenche un déploiement en production.
+
+### La recette
+
+Une seconde base Supabase sert aux essais, pour ne plus jamais tester sur la production.
+
+| | Production | Recette |
+|---|---|---|
+| Projet | `dezxefweqesurqbqxsta` (West EU, Irlande) | `qoizrysxwjmhqwuteajj` « Alane recette » (West EU, Paris) |
+| Organisation | celle d'Alexandre | « Alane Recette », offre gratuite |
+| Données | réelles | aucune : structure et réglages seulement |
+
+**Copiée le 23/09/2026** avec `node scripts/recette.mjs copier` : tables, contraintes, index,
+fonctions, déclencheurs (dont `on_auth_user_created` sur `auth.users`), RLS et ses 29 règles,
+droits des tables, des colonnes et des fonctions, bucket privé `Documents` (sans fichiers),
+publication realtime (`missions`, `notifications`), et les douze clés de `platform_settings` —
+`invoice_sequence` remise à 0 pour que les factures d'essai ne suivent pas la numérotation
+réelle.
+
+**`node scripts/recette.mjs comparer`** confronte les deux bases, rubrique par rubrique. À
+passer après chaque migration : une migration jouée en production doit l'être aussi en
+recette, sinon les essais portent sur une base qui n'existe plus. Le script ne lit la
+production que par l'endpoint `read-only`, et refuse de viser la production en écriture.
+
+**Réglages Auth reportés** : `mailer_autoconfirm` à `true`, comme en production (voir plus
+bas). Liste des redirections autorisées : `https://*.vercel.app/**` et
+`http://localhost:5173/**`. `site_url` : `https://alane-recette.vercel.app`. Les modèles
+d'e-mail n'ont **pas** pu être copiés — l'offre gratuite l'interdit sans SMTP personnalisé —
+mais ceux de la production ne sont que les modèles anglais d'origine de Supabase.
+
+**Les jetons** (variables de l'environnement Claude Code, pas de Vercel) :
+- `SUPABASE_ACCESS_TOKEN` — limité au projet de recette, lecture et écriture ;
+- `SUPABASE_PROD_READ_TOKEN` — limité à la production, dit « lecture seule ». **Il ne l'est
+  pas entièrement** (constaté le 23/09/2026) : le verrou SQL se lève d'un
+  `set transaction read write`, et le jeton peut lire la liste des clés API du projet. Seul
+  l'usage de l'endpoint `read-only` garantit qu'on n'écrit pas ;
+- `STRIPE_TEST_SECRET_KEY` — clé Stripe `sk_test_`.
+
+**La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
+un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à
+connaître — le texte ci-dessus sur `signUp()` évoque le cas où elle serait active.
