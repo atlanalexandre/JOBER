@@ -31,9 +31,10 @@ test("changement de mois : les compteurs repartent de zéro", async () => {
 
 test("changement de mois : un abonnement expiré repasse en gratuit, là où le quota est lu", async () => {
   const p = await prestataireOperationnel();
-  // Abonnement Premium échu hier. `profiles.plan_abonnement` est la source que lit
-  // le contrôle du quota (respond_mission) ; `user_metadata` n'en est qu'une copie.
-  await sql(`update profiles set plan_abonnement = 'premium' where id = '${p.id}'`);
+  // Abonnement Premium échu hier, écrit comme le fait le webhook Stripe : dans
+  // `profiles` (plan et date de fin, la source que lit le contrôle du quota) et
+  // dans sa copie `user_metadata`.
+  await sql(`update profiles set plan_abonnement = 'premium', subscription_end_date = now() - interval '1 day' where id = '${p.id}'`);
   await sql(`update auth.users set raw_user_meta_data = raw_user_meta_data
       || jsonb_build_object('plan_abonnement', 'premium', 'subscription_end_date', (now() - interval '1 day')::text)
       where id = '${p.id}'`);
@@ -41,12 +42,26 @@ test("changement de mois : un abonnement expiré repasse en gratuit, là où le 
   const t = await tachePlanifiee("/api/cron-reset-monthly");
   expect(t.statut, t.texte.slice(0, 200)).toBe(200);
 
-  const [etat] = await sql(`select p.plan_abonnement profil, u.raw_user_meta_data->>'plan_abonnement' jeton,
+  const [etat] = await sql(`select p.plan_abonnement profil, p.subscription_end_date fin_profil, u.raw_user_meta_data->>'plan_abonnement' jeton,
       u.raw_user_meta_data->>'subscription_end_date' fin
     from profiles p join auth.users u on u.id = p.id where p.id = '${p.id}'`);
   console.log("[11] abonnement expiré :", JSON.stringify(etat));
   expect(etat.jeton, "copie dans user_metadata").toBe("free");
   expect(etat.profil, "profiles.plan_abonnement — la valeur qui décide du quota").toBe("free");
+});
+
+test("un abonnement en cours, même prolongé dans profiles seul, n'est pas rétrogradé", async () => {
+  const p = await prestataireOperationnel();
+  // Le parrainage prolonge l'abonnement dans `profiles` seulement : la copie garde
+  // l'ancienne date, échue. C'est `profiles` qui fait foi.
+  await sql(`update profiles set plan_abonnement = 'premium', subscription_end_date = now() + interval '20 days' where id = '${p.id}'`);
+  await sql(`update auth.users set raw_user_meta_data = raw_user_meta_data
+      || jsonb_build_object('plan_abonnement', 'premium', 'subscription_end_date', (now() - interval '3 days')::text)
+      where id = '${p.id}'`);
+  const t = await tachePlanifiee("/api/cron-reset-monthly");
+  expect(t.statut, t.texte.slice(0, 200)).toBe(200);
+  const [etat] = await sql(`select plan_abonnement from profiles where id = '${p.id}'`);
+  expect(etat.plan_abonnement, "abonnement payé jusqu'à dans 20 jours").toBe("premium");
 });
 
 /** Prestataire opérationnel SANS attestation URSSAF vérifiée, inscrit il y a `jours` jours. */
