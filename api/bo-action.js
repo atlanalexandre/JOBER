@@ -3098,7 +3098,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Documents de démonstration — RECETTE UNIQUEMENT.
+    //
+    // Sept pièces fictives, marquées vérifiées : c'est ce qui ouvre l'accès aux
+    // prestations. Utile à la recette, où les scénarios s'en servent pour
+    // préparer un prestataire. En production, un clic suffisait à rendre
+    // opérationnel un VRAI prestataire sans aucun vrai document — la seule
+    // barrière était de ne pas cliquer. Vercel pose VERCEL_ENV=production sur
+    // le déploiement de production seul.
     if (action === "seed_docs") {
+      if ((process.env.VERCEL_ENV || "").trim() === "production") {
+        console.error(`[seed_docs] refusé en production (profil ${profileId || "?"})`);
+        return res.status(403).json({ error: "Documents de démonstration indisponibles en production." });
+      }
       if (!profileId) return res.status(400).json({ error: "profileId requis" });
       const DEMO_DOCS = [
         { type:"photo",    storage_path:`demo/${profileId}/photo_profil.jpg` },

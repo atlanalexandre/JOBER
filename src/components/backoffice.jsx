@@ -5,6 +5,12 @@ import { origineApp } from "../constants/premiere-visite.js";
 import { etatExpiration, libelleDoc, EXPIRATION_BLOQUANTE } from "../../api/_documents.js";
 import { Btn, Badge, SectionHeader, Card, DonutChart, showToast, showConfirm, showPrompt } from "./ui.jsx";
 
+// La recette tourne sur les adresses Vercel (*.vercel.app) ou en local ; la
+// production sur alane.fr. Sert à masquer les outils réservés aux essais —
+// le serveur, lui, les refuse en production quoi qu'affiche l'écran.
+const estRecette = typeof window !== "undefined"
+  && (/\.vercel\.app$/.test(window.location.hostname) || ["localhost", "127.0.0.1"].includes(window.location.hostname));
+
 // Libellés des types de documents. Déclarés une seule fois : deux copies locales
 // coexistaient dans le rendu, et celle de la liste des comptes avait oublié `tva`,
 // qui s'affichait donc en brut.
@@ -1370,13 +1376,14 @@ function BOComptes() {
                   <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, marginTop:2 }}>{docModal.name}</div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={async()=>{
+                  {/* Recette uniquement : le serveur refuse en production (bo-action seed_docs). */}
+                  {estRecette && <button onClick={async()=>{
                     if(!await showConfirm("Insérer 7 documents de démo (validés) pour ce profil ?")) return;
                     const r = await boFetch({ action:"seed_docs", profileId:docModal.profileId });
                     const j = await r.json();
                     if(j.ok){ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); showToast("7 documents de démo insérés ✅"); }
                     else showToast("Erreur : " + (j.error||"?"), "error");
-                  }} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.3)", color:"rgba(124,111,224,0.9)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:11, fontFamily:"inherit", fontWeight:700 }}>🌱 Seed démo</button>
+                  }} style={{ background:"rgba(124,111,224,0.15)", border:"1px solid rgba(124,111,224,0.3)", color:"rgba(124,111,224,0.9)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:11, fontFamily:"inherit", fontWeight:700 }}>🌱 Seed démo</button>}
                   <button onClick={()=>{ setDocs(d=>({...d,[docModal.profileId]:undefined})); loadDocs(docModal.profileId); }} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:"rgba(255,255,255,0.6)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>🔄</button>
                   <button onClick={()=>setDocModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:14, fontFamily:"inherit", fontWeight:700 }}>✕</button>
                 </div>
