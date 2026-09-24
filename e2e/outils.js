@@ -27,6 +27,25 @@ export function optionsNavigateur() {
   return { proxy, args: [`--ignore-certificate-errors-spki-list=${empreinte}`] };
 }
 
+/**
+ * Rejoue une requête UNE ou DEUX fois si elle échoue au niveau du RÉSEAU (connexion
+ * coupée, poignée de main TLS interrompue) — coupures ponctuelles du proxy de
+ * l'environnement cloud, constatées le 24/09/2026. Une réponse HTTP, même en erreur,
+ * n'est jamais rejouée : c'est un résultat de l'application, que le test doit voir.
+ */
+export async function avecReprise(appel, libelle = "requête") {
+  for (let essai = 1; ; essai++) {
+    try {
+      return await appel();
+    } catch (e) {
+      const reseau = /socket|ECONNRESET|TLS|Timeout|EPIPE|ETIMEDOUT|network/i.test(e.message);
+      if (!reseau || essai >= 3) throw e;
+      console.warn(`[e2e] ${libelle} : coupure réseau (${e.message.slice(0, 80)}), essai ${essai + 1}/3`);
+      await new Promise((r) => setTimeout(r, 1500 * essai));
+    }
+  }
+}
+
 let contexte;
 async function api() {
   if (!contexte) contexte = await request.newContext({ proxy });
@@ -36,10 +55,10 @@ async function api() {
 /** Exécute une requête SQL sur la base de RECETTE et renvoie les lignes. */
 export async function sql(requete) {
   if (!JETON) throw new Error("SUPABASE_ACCESS_TOKEN absent : impossible de préparer la recette.");
-  const res = await (await api()).post(
+  const res = await avecReprise(async () => (await api()).post(
     `https://api.supabase.com/v1/projects/${RECETTE_REF}/database/query`,
     { headers: { Authorization: `Bearer ${JETON}` }, data: { query: requete } },
-  );
+  ), "sql recette");
   const corps = await res.json().catch(() => null);
   if (!res.ok() || !Array.isArray(corps)) {
     throw new Error(`[sql recette] ${res.status()} ${JSON.stringify(corps).slice(0, 300)}`);

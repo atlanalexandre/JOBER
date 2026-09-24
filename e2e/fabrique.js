@@ -7,7 +7,7 @@
 // Supabase, /api/bo-action, /api/missions — sans jamais écrire directement en base
 // ce que l'application sait écrire elle-même.
 import { expect, request } from "@playwright/test";
-import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE } from "./outils.js";
+import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE, avecReprise } from "./outils.js";
 
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 const SUPABASE = `https://${RECETTE_REF}.supabase.co`;
@@ -24,9 +24,9 @@ async function anon() {
   if (cleAnon) return cleAnon;
   const c = await http();
   const h = { "x-vercel-protection-bypass": BYPASS };
-  const html = await (await c.get(`${RECETTE_URL}/`, { headers: h })).text();
+  const html = await avecReprise(async () => (await c.get(`${RECETTE_URL}/`, { headers: h })).text(), "page d'accueil");
   for (const s of html.match(/\/assets\/[\w.-]+\.js/g) || []) {
-    const code = await (await c.get(`${RECETTE_URL}${s}`, { headers: h })).text();
+    const code = await avecReprise(async () => (await c.get(`${RECETTE_URL}${s}`, { headers: h })).text(), s);
     const m = code.match(/eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+/g)?.find((j) => {
       try { return JSON.parse(Buffer.from(j.split(".")[1], "base64url").toString()).role === "anon"; }
       catch { return false; } // un autre jeton du code : on continue la recherche
@@ -39,10 +39,10 @@ async function anon() {
 /** Appel d'une fonction /api de la Preview. */
 export async function api(chemin, corps, jeton) {
   const c = await http();
-  const res = await c.post(`${RECETTE_URL}${chemin}`, {
+  const res = await avecReprise(() => c.post(`${RECETTE_URL}${chemin}`, {
     headers: { "x-vercel-protection-bypass": BYPASS, ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}) },
     data: corps,
-  });
+  }), chemin);
   const texte = await res.text();
   let json = null;
   try { json = JSON.parse(texte); } catch { /* réponse non JSON : on garde le texte */ }
@@ -52,10 +52,10 @@ export async function api(chemin, corps, jeton) {
 /** Crée un compte comme le fait l'écran d'inscription (même `signUp`, mêmes métadonnées). */
 export async function inscrire({ role, prenom, metadonnees = {}, email = emailTest(role) }) {
   const c = await http();
-  const res = await c.post(`${SUPABASE}/auth/v1/signup`, {
+  const res = await avecReprise(async () => c.post(`${SUPABASE}/auth/v1/signup`, {
     headers: { apikey: await anon() },
     data: { email, password: MOT_DE_PASSE, data: { role, prenom, nom: "Recette", ...metadonnees } },
-  });
+  }), "inscription");
   const j = await res.json();
   expect(res.ok(), `inscription ${role} : ${JSON.stringify(j).slice(0, 200)}`).toBeTruthy();
   return { email, id: j.user?.id, jeton: j.access_token };
@@ -64,10 +64,11 @@ export async function inscrire({ role, prenom, metadonnees = {}, email = emailTe
 /** Reconnexion (le jeton d'inscription expire au bout d'une heure). */
 export async function jetonDe(email) {
   const c = await http();
-  const res = await c.post(`${SUPABASE}/auth/v1/token?grant_type=password`, {
-    headers: { apikey: await anon() },
+  const cle = await anon();
+  const res = await avecReprise(() => c.post(`${SUPABASE}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: cle },
     data: { email, password: MOT_DE_PASSE },
-  });
+  }), "connexion");
   const j = await res.json();
   expect(res.ok(), `connexion ${email} : ${JSON.stringify(j).slice(0, 200)}`).toBeTruthy();
   return j.access_token;
@@ -90,15 +91,23 @@ export async function bo(action, champs = {}) {
  * son résultat est vérifié : si l'une échoue, c'est un défaut à signaler, pas un
  * détail de préparation.
  */
-export async function prestataireOperationnel({ metier = "Agent de propreté", secteur = "proprete", tarif = 15 } = {}) {
+export async function prestataireOperationnel({ metier = "Femme/Valet de chambre", secteur = "hotellerie", tarif = 13 } = {}) {
+  // Hôtellerie : c'est le seul secteur ouvert aux clients tant qu'un secteur n'a pas
+  // 20 prestataires (réglages `forced_open_sectors` et `sector_min_prestataires`).
+  const metiers = [{ sector: secteur, metier, niveau: "Confirmé", experienceAns: 3, tarifNet: tarif, certifs: "" }];
+  const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+  const creneaux = Object.fromEntries(jours.map((j) => [j, ["Matin (6h-13h)", "Après-midi (13h-20h)", "Soir/Nuit (20h-6h)"]]));
   const p = await inscrire({
     role: "prestataire", prenom: "Sam",
+    // Mêmes clés que le signUp de l'écran d'inscription (auth.jsx).
     metadonnees: {
-      telephone: "0698765432", adresse: "5 rue de Lyon", code_postal: "75012", ville: "Paris", zone_km: 50,
+      telephone: "0698765432", date_naissance: "1990-05-15",
+      adresse: "5 rue de Lyon", code_postal: "75012", ville: "Paris", zone_km: 50,
+      secteur, metier, tarif_net: tarif, metiers_list: metiers,
+      niveau: "Confirmé", experience_ans: 3, competences: [], langues: ["Français"],
+      dispon_jours: jours, dispon_jours_creneaux: creneaux, dispo_immediat: true,
       statut_pro: "auto-entrepreneur", siret: null,
-      metiers_list: [{ sector: secteur, metier, niveau: "Confirmé", experienceAns: 3, tarifNet: tarif }],
-      secteurs: [secteur], metiers: [metier], tarif_net: tarif,
-      disponibilites: Object.fromEntries(["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"].map((j) => [j, ["matin", "apres_midi", "soir"]])),
+      plan_souhaite: "free", plan_abonnement: "free",
     },
   });
   // L'écran complète le profil juste après le signUp (completerProfil).
