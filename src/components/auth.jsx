@@ -254,6 +254,10 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    if (data?.user) {
+      try { sessionStorage.removeItem("alane_referrer"); }
+      catch { /* navigation privée : rien n'avait été mémorisé */ }
+    }
     // Confirmation de l'adresse e-mail exigée : compte créé, AUCUNE session.
     // Tout ce que le formulaire contient d'utile a été enregistré par la base à
     // la création du compte ; il n'y a rien d'autre à écrire depuis ici.
@@ -298,15 +302,9 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" });
       await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "prestataire" });
-      let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
-      if (referrerUUID && referrerUUID !== data.user.id) {
-        await fetch("/api/support", {
-          method: "POST",
-          headers: _authH,
-          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
-        }).catch(() => {});
-        try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}
-      }
+      // Le parrainage est rattaché par la base à la création du compte
+      // (handle_new_user), qui vérifie que le parrain existe — ce que l'ancien
+      // appel à track_referral ne faisait pas. Plus rien à envoyer d'ici.
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
@@ -1047,6 +1045,10 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    if (data?.user) {
+      try { sessionStorage.removeItem("alane_referrer"); }
+      catch { /* navigation privée : rien n'avait été mémorisé */ }
+    }
     // Confirmation de l'adresse e-mail exigée : compte créé, AUCUNE session.
     // La base a enregistré les renseignements du formulaire à la création.
     if (data?.user && !data.session) {
@@ -1091,15 +1093,9 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       const _authH = { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` };
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "client" });
       await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "client" });
-      let referrerUUID; try { referrerUUID = sessionStorage.getItem("alane_referrer"); } catch(e) {}
-      if (referrerUUID && referrerUUID !== data.user.id) {
-        await fetch("/api/support", {
-          method: "POST",
-          headers: _authH,
-          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID }),
-        }).catch(() => {});
-        try { sessionStorage.removeItem("alane_referrer"); } catch(e) {}
-      }
+      // Le parrainage est rattaché par la base à la création du compte
+      // (handle_new_user), qui vérifie que le parrain existe — ce que l'ancien
+      // appel à track_referral ne faisait pas. Plus rien à envoyer d'ici.
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
