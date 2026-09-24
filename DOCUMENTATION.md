@@ -1196,6 +1196,15 @@ Sept ne le faisaient pas : `approve`/`reject`, `verify_doc`, `reject_doc`,
 `list_missions_export`, `seed_docs`. La validation des pièces d'identité et la modification
 des réglages — frais de service, cashback, seuils de vigilance — ne laissaient aucune trace.
 
+**Documents de démonstration (`seed_docs`, bouton « 🌱 Seed démo ») — recette uniquement**
+(24/09/2026). L'action insère sept pièces fictives **marquées vérifiées**, ce qui suffit à
+ouvrir l'accès aux prestations. Utile à la recette, où `e2e/fabrique.js` s'en sert pour
+préparer un prestataire ; en production, un clic rendait opérationnel un vrai prestataire
+sans aucun vrai document. Le serveur la refuse désormais quand `VERCEL_ENV` vaut
+`production` (variable posée par Vercel lui-même), et le bouton ne s'affiche que sur une
+adresse `*.vercel.app` ou en local. Vérifié le même jour : aucune pièce de démonstration
+n'existait en production.
+
 ### Carte
 
 Leaflet est chargé dynamiquement par `loadLeaflet()` (`client-screens.jsx`). Il tente d'abord
