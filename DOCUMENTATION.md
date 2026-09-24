@@ -3241,7 +3241,7 @@ pouvait débiter une vraie carte) mais aucune variable Supabase.
 | Variable | En Preview |
 |---|---|
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | projet de **recette** (voir §9) |
-| `VITE_STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY` | clés Stripe **de test** |
+| `VITE_STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY` | clés Stripe **de test**. La clé secrète est une **clé restreinte** `rk_test_…` nommée `recette-alane` (modèles « paiements ponctuels », « abonnements » et « plateformes »), créée le 24/09/2026 : la production encaissant en mode test sur le même compte, une clé propre à la recette se supprime sans toucher la production. L'ancienne clé `…KGVj` était refusée par Stripe |
 | `APP_URL` | `https://alane-recette.vercel.app` |
 | `BO_PASSWORD`, `BO_SESSION_SECRET`, `CRON_SECRET` | valeurs propres à la recette — un secret de session partagé rendrait une session de recette valable en production |
 | `RESEND_API_KEY`, `BREVO_API_KEY` | **absentes** : aucun e-mail ni SMS ne part vers les faux comptes |
