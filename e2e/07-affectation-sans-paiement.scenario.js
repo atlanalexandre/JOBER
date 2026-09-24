@@ -73,14 +73,17 @@ test("payée pour de vrai, le délai de réponse reste celui du serveur, même s
   expect(heures, "délai de réponse raisonnable (≤ 48 h)").toBeLessThanOrEqual(4);
 });
 
-test("le paiement d'une autre prestation ne vaut pas pour celle-ci, et n'est pas remboursé", async ({ page }) => {
+test("le paiement d'une autre prestation ne vaut pas pour celle-ci, et n'est pas remboursé", async ({ page, context }) => {
   const { p, c, missionId: payee } = await missionImpayee(page);
   const [{ montant_total }] = await sql(`select montant_total from missions where id = '${payee}'`);
   const r = await payerPrestation({ jetonClient: c.jeton, missionId: payee, montant: Number(montant_total), prestataireId: p.id });
   expect(r.etape, `paiement : ${JSON.stringify(r)}`).toBe("ok");
 
   // Seconde réservation du même client, jamais payée : il présente le paiement de la première.
-  await reserverJusquauPaiement(page);
+  // Nouvel onglet (même session) : l'onglet du premier paiement garde l'écran du secteur.
+  const onglet = await context.newPage();
+  await onglet.goto("/dashboard");
+  await reserverJusquauPaiement(onglet);
   const [autre] = await sql(`select id from missions where client_id = '${c.id}' and id <> '${payee}' order by created_at desc limit 1`);
   const r2 = await api("/api/missions", { action: "assign_after_payment", mission_id: autre.id, prestataire_id: p.id, stripe_payment_intent: r.paymentIntent }, c.jeton);
   const m = await etat(autre.id);
