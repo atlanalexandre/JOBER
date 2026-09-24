@@ -99,6 +99,8 @@ test("l'IBAN saisi dans les Paramètres va dans le profil, jamais dans le jeton"
   await expect(page.getByText(/IBAN incorrect/)).toBeVisible({ timeout: 15_000 });
   expect((await sql(`select rib from profiles where id = '${p.id}'`))[0].rib).toBeNull();
 
+  // Nouvelle visite de l'écran pour la saisie valide.
+  await page.reload();
   await champ.fill("FR7630006000011234567890189");
   await page.getByRole("button", { name: /Enregistrer les modifications/ }).click();
   await expect(page.getByText(/Sauvegardé/)).toBeVisible({ timeout: 15_000 });
