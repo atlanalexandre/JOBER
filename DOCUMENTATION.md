@@ -779,12 +779,21 @@ et les rôles d'administration sont exemptés. Il pose une **borne basse** sur l
 le calcul exact du tarif : reproduire la grille tarifaire en base finirait par diverger du
 tunnel de réservation et bloquerait des réservations légitimes.
 
-> **⚠️ Non actif en production au 23/09/2026.** La fonction existe, mais le déclencheur
-> `missions_creation_guard` (BEFORE INSERT sur `missions`) **n'est pas posé** : `missions` ne
-> porte que `missions_field_tamper_guard` (UPDATE). Retrait volontaire (le retour arrière
-> prévu par la migration) ou oubli : rien dans le dépôt ne le dit. Tant qu'il manque, seuls
-> les deux contrôles applicatifs ci-dessus protègent la création. La recette reproduit
-> fidèlement cet état.
+> **⚠️ Il ne bloquait RIEN, et n'était posé nulle part** (constaté le 24/09/2026). Le
+> déclencheur manquait en production comme en recette ; et une fois posé sur la recette, un
+> client créait sans peine une prestation déjà affectée, une autre à 1 € pour 104 € de
+> travail, une troisième avec un faux paiement. La fonction est `SECURITY DEFINER`,
+> propriété de `postgres` : `current_user` y vaut toujours `postgres`, et sa première ligne
+> exemptait `postgres`. La migration `2026-09-24_secu_verrou_creation_prestation_effectif`
+> juge désormais sur le rôle du **jeton** (`auth.role()` : `authenticated` ou `anon` sont
+> contrôlés, `service_role` et l'éditeur SQL passent) et pose le déclencheur. **Appliquée en
+> recette le 24/09/2026** — scénario `e2e/12` : sept fraudes refusées, les deux créations de
+> l'application acceptées, scénarios 06 à 09 verts. **En production : à appliquer** (le jeton
+> de production de Claude est en lecture seule). Tant que ce n'est pas fait,
+> `npm run recette comparer` signale l'écart.
+>
+> Le verrou des modifications, `prevent_missions_field_tampering`, n'a pas ce défaut : il
+> exempte sur `auth.uid() IS NULL`, ce qui ne dépend pas du propriétaire de la fonction.
 
 **`wallet_topups`** — le registre des recharges de portefeuille. La clé primaire est
 l'identifiant du paiement Stripe : c'est la base, et non le code, qui empêche qu'une même
@@ -3388,6 +3397,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `09` | annulation client à plus et à moins de 24 h : prix remboursé, frais de service retenus, pas de double remboursement |
 | `10` | versement 48 h après la fin, bloqué par un litige, contestation refusée après 48 h |
 | `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
+| `12` | ce que la base refuse à la création d'une prestation (`missions_creation_guard`) : sept fraudes, et les deux créations légitimes |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
