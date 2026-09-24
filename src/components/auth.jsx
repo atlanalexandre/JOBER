@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
-import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement, checkIban } from "./ui.jsx";
+import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
 //
@@ -51,6 +51,43 @@ async function completerProfil(userId, champs) {
 
 import { CGPS } from "../constants/cgps.js";
 
+// Adresse vers laquelle le lien de confirmation ramène : l'environnement même
+// où l'on s'est inscrit (recette ou production), pas une adresse figée.
+const retourConfirmation = () => (typeof window !== "undefined" ? `${window.location.origin}/` : undefined);
+
+// Parrain mémorisé au clic sur un lien de parrainage (?ref=…). Transmis à
+// l'inscription : la base le rattache elle-même à la création du compte, ce qui
+// marche aussi quand l'adresse e-mail doit d'abord être confirmée — le lien de
+// confirmation s'ouvre souvent dans un autre onglet, où ce stockage n'existe plus.
+function parrainMemorise() {
+  try { return sessionStorage.getItem("alane_referrer") || null; }
+  catch { return null; } // navigation privée : pas de stockage, pas de parrain à transmettre
+}
+
+// Affiché quand Supabase exige la confirmation de l'adresse e-mail : `signUp`
+// crée le compte mais ne rend AUCUNE session. Le navigateur ne peut alors rien
+// écrire — c'est pourquoi la base enregistre elle-même les renseignements du
+// formulaire à la création du compte (migration 2026-09-24_inscription_profil_a_la_creation).
+function ConfirmationEmail({ email, role, onBack, accentColor }) {
+
+  return (
+    <div style={{ minHeight:"100%", background:"linear-gradient(160deg,#050E20,#0A1628,#162547)", display:"flex", flexDirection:"column", justifyContent:"center", padding:"48px 24px" }}>
+      <div style={{ fontSize:48, textAlign:"center", marginBottom:16 }}>📬</div>
+      <h2 style={{ color:C.text, fontSize:24, fontWeight:700, textAlign:"center", margin:"0 0 12px", fontFamily:font.display }}>Vérifiez votre boîte mail</h2>
+      <p style={{ color:C.textSub, fontSize:14, lineHeight:1.6, textAlign:"center", margin:"0 0 20px" }}>
+        Nous venons d'envoyer un lien de confirmation à <strong style={{ color:C.text }}>{email}</strong>.
+        Cliquez dessus pour activer votre compte. Pensez à regarder dans les courriers indésirables.
+      </p>
+      {role === "prestataire" && (
+        <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, color:C.textSub, fontSize:13, lineHeight:1.6 }}>
+          🏦 Une fois connecté, renseignez votre <strong style={{ color:C.text }}>IBAN</strong> dans votre espace (Paramètres) : il est indispensable pour recevoir vos paiements.
+        </div>
+      )}
+      <Btn full onClick={onBack} style={{ background:accentColor }}>Retour à l'accueil</Btn>
+    </div>
+  );
+}
+
 export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   // L'offre de lancement est annoncée SI ET SEULEMENT SI le serveur l'applique.
   //
@@ -94,7 +131,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
   const [langues, setLangues] = useState(["Français"]);
   const [dispos, setDispos] = useState({});
   const [dispoImmediat, setDispoImmediat] = useState(true);
-  const [ribIban, setRibIban] = useState("");
+  const [confirmationEnvoyee, setConfirmationEnvoyee] = useState(false);
   const [statutPro, setStatutPro] = useState("auto-entrepreneur");
   const [planChoisi, setPlanChoisi] = useState("free");
   const [email, setEmail] = useState("");
@@ -158,12 +195,6 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
     if (step === 5) {
       const siretClean = siretNum.replace(/[\s.]/g,"");
       if (siretClean && !/^\d{9}(\d{5})?$/.test(siretClean)) return "SIRET invalide — 9 chiffres (SIREN) ou 14 chiffres (SIRET)";
-      if (!ribIban.trim()) return "L'IBAN est obligatoire pour recevoir vos paiements";
-      const ibanClean = ribIban.replace(/[\s\-]/g,"").toUpperCase();
-      if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) return "Format IBAN invalide (ex: FR76 3000 4028 0000 0000 0000 000)";
-      // Le format seul laissait passer une faute de frappe : le virement échouait
-      // ensuite, au moment de payer le prestataire. La clé de contrôle la détecte.
-      if (checkIban(ibanClean) !== true) return "IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas)";
       if (!rcProConfirmed) return "Vous devez vous engager à souscrire une RC Pro avant votre première prestation";
     }
     if (step === 7) {
@@ -201,7 +232,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         // L'IBAN n'est plus écrit ici : user_metadata est encodé dans le jeton
         // d'authentification, transmis en en-tête à chaque requête et conservé dans le
         // navigateur. Une coordonnée bancaire n'a rien à y faire — elle va dans
-        // `profiles.rib`, lu par le seul backoffice en service role.
+        // `profiles.rib`, saisie depuis l'espace prestataire une fois le compte activé.
         statut_pro: statutPro, siret: siretNum.replace(/[\s.]/g,"") || null,
         // Le plan sélectionné ici n'est qu'une intention : il est conservé pour
         // proposer le paiement ensuite, jamais comme abonnement acquis. Il était
@@ -210,7 +241,11 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         // webhook Stripe accorde un plan payant.
         plan_souhaite: planChoisi,
         plan_abonnement: "free",
-      }},
+        // Lus par la base à la création du compte (handle_new_user), qui les
+        // enregistre dans `profiles` même sans session.
+        accepte_communications: accepteComms,
+        parrain: parrainMemorise(),
+      }, emailRedirectTo: retourConfirmation() },
     });
     if (signUpErr) {
       setLoading(false);
@@ -219,12 +254,19 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    // Confirmation de l'adresse e-mail exigée : compte créé, AUCUNE session.
+    // Tout ce que le formulaire contient d'utile a été enregistré par la base à
+    // la création du compte ; il n'y a rien d'autre à écrire depuis ici.
+    if (data?.user && !data.session) {
+      setLoading(false);
+      setConfirmationEnvoyee(true);
+      return;
+    }
     if (data?.user) {
       // Rôle, statut (« en attente ») et abonnement gratuit sont fixés par la base.
       const profileErr = await completerProfil(data.user.id, {
         accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(),
         adresse: adresseRue.trim()||null, code_postal: codePostal.trim()||null, ville: villeBase.trim()||null,
-        rib: ribIban.replace(/\s/g,"") || null,
       });
       if (profileErr) {
         // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.
@@ -305,6 +347,8 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
 
   const STEP_TITLES = ["Votre identité","Vos métiers","Expérience","Disponibilités","Statut & Paiement","Votre abonnement","Récapitulatif"];
   const STEP_ICONS  = ["👤","🏗️","⭐","📅","💶","💎","✅"];
+
+  if (confirmationEnvoyee) return <ConfirmationEmail email={email} role="prestataire" onBack={onBack} accentColor={accentColor} />;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
@@ -669,8 +713,12 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
           <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:14, paddingLeft:4, lineHeight:1.4 }}>
             Si vous venez de créer votre statut, vous pourrez fournir votre SIRET avec vos documents lors de la validation de votre compte.
           </div>
-          <IbanInput label="IBAN / RIB *" placeholder="FR76 3000 4028 0000 0000 0000 000" value={ribIban} onChange={e=>setRibIban(e.target.value.toUpperCase())} />
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:12, paddingLeft:4 }}>Requis pour recevoir le paiement de vos prestations</div>
+          {/* L'IBAN ne se saisit plus ici (24/09/2026) : quand l'adresse e-mail doit
+              être confirmée, le navigateur n'a pas encore de session et ne pourrait
+              pas l'enregistrer. Il se renseigne depuis l'espace prestataire. */}
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginBottom:14, paddingLeft:4, lineHeight:1.5 }}>
+            🏦 Votre IBAN, indispensable pour recevoir vos paiements, se renseigne depuis votre espace une fois votre compte activé.
+          </div>
 
           {/* Guichet unique — obligatoire depuis le 1er janvier 2023.
               L'ancien portail URSSAF informe encore mais n'immatricule plus :
@@ -915,7 +963,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
   const [ville, setVille] = useState("");
   const [lieuxIntervention, setLieuxIntervention] = useState([{ adresse:"", codePostal:"", ville:"" }]);
   const [volumeHoraire, setVolumeHoraire] = useState("");
-  const [rib, setRib] = useState("");
+  const [confirmationEnvoyee, setConfirmationEnvoyee] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -961,8 +1009,6 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       if (!email || !password) return "Email et mot de passe requis";
       if (password.length < 8) return "Mot de passe minimum 8 caractères";
       if (!cgpsAccepted)       return "Vous devez accepter les CGPS pour créer votre compte";
-      // IBAN facultatif pour un client, mais s'il est donné, il doit être juste.
-      if (rib.trim() && checkIban(rib) !== true) return "IBAN incorrect : vérifiez les chiffres (la clé de contrôle ne correspond pas)";
     }
     return null;
   };
@@ -988,8 +1034,11 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         adresse: adresse||null, code_postal: codePostal||null, ville,
         volume_horaire: volumeHoraire,
         // Pas d'IBAN ici : user_metadata voyage dans chaque jeton (CLAUDE.md §1.1,
-        // RGPD art. 5.1.c). Il va dans `profiles.rib`, juste après.
-      }},
+        // RGPD art. 5.1.c). Il se renseigne depuis le profil, une fois connecté.
+        // Lus par la base à la création du compte (handle_new_user) :
+        accepte_communications: accepteComms,
+        parrain: parrainMemorise(),
+      }, emailRedirectTo: retourConfirmation() },
     });
     if (signUpErr) {
       setLoading(false);
@@ -998,13 +1047,19 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    // Confirmation de l'adresse e-mail exigée : compte créé, AUCUNE session.
+    // La base a enregistré les renseignements du formulaire à la création.
+    if (data?.user && !data.session) {
+      setLoading(false);
+      setConfirmationEnvoyee(true);
+      return;
+    }
     if (data?.user) {
       // Rôle et statut (client validé d'office) sont fixés par la base.
       const profileErr = await completerProfil(data.user.id, {
         accepte_communications: accepteComms, accepte_communications_at: accepteComms ? new Date().toISOString() : null, prenom: prenom.trim(), nom: nom.trim(),
         adresse: adresse||null, code_postal: codePostal||null, ville: ville||null,
         societe_nom: societeNom||null, siret: kbisNum||null,
-        rib: rib.replace(/\s/g,"") || null,
       });
       if (profileErr) {
         // Ne pas s'arrêter là : le compte d'authentification EXISTE désormais.
@@ -1054,6 +1109,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
 
   const STEP_TITLES = ["Votre identité","Vos besoins","Votre compte"];
   const STEP_ICONS  = ["👤","🎯","🔐"];
+
+  if (confirmationEnvoyee) return <ConfirmationEmail email={email} role="client" onBack={onBack} accentColor={accentColor} />;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,#050E20,#0A1628,#162547)`, display:"flex", flexDirection:"column" }}>
@@ -1217,14 +1274,8 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>{showPass?"Cacher":"Voir"}</button>
           </div>
           <PasswordStrength password={password} />
-          <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, marginTop:8, display:"flex", gap:10 }}>
-            <span style={{ fontSize:18 }}>🏦</span>
-            <div>
-              <div style={{ fontWeight:700, color:C.text, fontSize:13, marginBottom:3 }}>IBAN / RIB (optionnel)</div>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.5, margin:0 }}>Utilisé uniquement pour les remboursements cashback. Le paiement des prestations se fait par carte via Stripe.</p>
-            </div>
-          </div>
-          <IbanInput label="IBAN / RIB" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
+          {/* L'IBAN, facultatif pour un client (remboursement du cashback), ne se
+              saisit plus à l'inscription : il se renseigne depuis le profil. */}
         </>}
       </div>
 
