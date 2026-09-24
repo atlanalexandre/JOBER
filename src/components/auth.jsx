@@ -254,6 +254,7 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    const parrainEnvoye = parrainMemorise();
     if (data?.user) {
       try { sessionStorage.removeItem("alane_referrer"); }
       catch { /* navigation privée : rien n'avait été mémorisé */ }
@@ -303,8 +304,17 @@ export function PrestaRegisterFlow({ onRegister, onBack, accentColor }) {
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "prestataire" });
       await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "prestataire" });
       // Le parrainage est rattaché par la base à la création du compte
-      // (handle_new_user), qui vérifie que le parrain existe — ce que l'ancien
-      // appel à track_referral ne faisait pas. Plus rien à envoyer d'ici.
+      // (handle_new_user). L'appel ci-dessous n'est qu'un filet, tant que la
+      // migration 2026-09-24_inscription_profil_a_la_creation n'est pas passée
+      // partout : le serveur répond « déjà rattaché » sans erreur si la base
+      // l'a fait. Sans session (confirmation d'e-mail), seule la base agit.
+      if (parrainEnvoye && parrainEnvoye !== data.user.id) {
+        await fetch("/api/support", {
+          method: "POST", headers: _authH,
+          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID: parrainEnvoye }),
+        }).then(r => { if (!r.ok) console.error("[inscription] parrainage non rattaché :", r.status); })
+          .catch(e => console.error("[inscription] parrainage injoignable :", e.message));
+      }
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }
@@ -1045,6 +1055,7 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
         : signUpErr.message);
       return;
     }
+    const parrainEnvoye = parrainMemorise();
     if (data?.user) {
       try { sessionStorage.removeItem("alane_referrer"); }
       catch { /* navigation privée : rien n'avait été mémorisé */ }
@@ -1094,8 +1105,17 @@ export function ClientRegisterFlow({ onRegister, onBack, accentColor }) {
       await posterInscription("notify_signup", _authH, { prenom: prenom.trim(), nom: nom.trim(), email, role: "client" });
       await posterInscription("welcome", _authH, { email, prenom: prenom.trim(), nom: nom.trim(), role: "client" });
       // Le parrainage est rattaché par la base à la création du compte
-      // (handle_new_user), qui vérifie que le parrain existe — ce que l'ancien
-      // appel à track_referral ne faisait pas. Plus rien à envoyer d'ici.
+      // (handle_new_user). L'appel ci-dessous n'est qu'un filet, tant que la
+      // migration 2026-09-24_inscription_profil_a_la_creation n'est pas passée
+      // partout : le serveur répond « déjà rattaché » sans erreur si la base
+      // l'a fait. Sans session (confirmation d'e-mail), seule la base agit.
+      if (parrainEnvoye && parrainEnvoye !== data.user.id) {
+        await fetch("/api/support", {
+          method: "POST", headers: _authH,
+          body: JSON.stringify({ action: "track_referral", newUserId: data.user.id, referrerUUID: parrainEnvoye }),
+        }).then(r => { if (!r.ok) console.error("[inscription] parrainage non rattaché :", r.status); })
+          .catch(e => console.error("[inscription] parrainage injoignable :", e.message));
+      }
       // Ne pas signOut : garder la session pour que le polling PendingApprovalScreen fonctionne
       try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
     }

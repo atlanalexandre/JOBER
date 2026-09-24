@@ -1385,9 +1385,10 @@ société, SIRET (`siret` du prestataire, `kbis` du client), consentement aux co
 et le parrain (`parrain`), qu'il ne retient que s'il désigne un compte existant autre que soi ;
 il recalcule alors `referral_count` du parrain. C'est ce qui rend l'inscription possible quand
 la confirmation d'adresse e-mail est active : `signUp` ne rend alors aucune session, et
-l'écran affiche « Vérifiez votre boîte mail ». Le navigateur n'appelle plus `track_referral`
-(qui ne vérifiait pas que le parrain existe) ; l'action reste en place dans `api/support.js`,
-sans appelant. **Piège constaté sur la recette avant mise en production** : un consentement
+l'écran affiche « Vérifiez votre boîte mail ». Le navigateur appelle encore `track_referral` quand il a une session,
+comme filet tant que la migration n'est pas passée partout : l'action vérifie désormais que le
+parrain existe (elle rattachait n'importe quel uuid), et répond « déjà rattaché » sans erreur
+quand la base l'a fait. **Piège constaté sur la recette avant mise en production** : un consentement
 absent de `user_metadata` donnait `NULL`, refusé par la colonne `NOT NULL`, et faisait échouer
 l'inscription entière — d'où le `COALESCE(…, false)`. Toute erreur dans ce déclencheur bloque
 TOUTES les inscriptions (« Database error saving new user »).
