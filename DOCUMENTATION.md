@@ -979,6 +979,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
 | `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
+| `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1388,6 +1389,15 @@ user_metadata existait, il suffisait de sélectionner Elite en créant son compt
 
 Seuls trois chemins accordent un plan payant : le webhook Stripe, la vérification directe de
 l'abonnement dans `refresh_plan`, et le forçage manuel depuis le backoffice.
+
+**La date de fin aussi se lit dans `profiles`** (`subscription_end_date`, corrigé le
+24/09/2026). Elle était lue dans la copie `user_metadata` : la remise à zéro mensuelle
+rétrogradait la copie, laissait `profiles` en Premium et effaçait la date — l'abonné échu
+gardait son quota payant (scénario `e2e/11`). Et la prolongation d'un mois offerte par le
+parrainage, écrite dans `profiles` seul, était défaite par le contrôle du quota qui lisait
+l'ancienne date. `api/_abonnement.js` porte la règle : un abonnement vaut jusqu'à la fin de son
+dernier jour (heure de Paris) ; les deux contrôles de quota et la tâche mensuelle rétrogradent
+`profiles` **et** sa copie.
 
 `status` et `missions_enabled` sont deux choses différentes : un prestataire peut avoir un
 compte validé tout en n'ayant pas encore accès aux prestations, tant que son dossier
@@ -3369,11 +3379,35 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
   elle vit sur le même compte Stripe que la production (qui encaisse en mode test), elle peut
   donc **lire** les paiements de la production — à n'utiliser qu'en lecture ;
 - `VERCEL_AUTOMATION_BYPASS_SECRET` — ouvre la protection des Preview aux scénarios ;
-- `RECETTE_BO_PASSWORD` — mot de passe du back-office de recette. **Refusé par la Preview le
-  24/09/2026** (401) : il ne correspond plus à `BO_PASSWORD` (ligne Preview) dans Vercel. Tant
-  que les deux ne sont pas identiques, les scénarios 05 à 07 ne peuvent pas préparer de
-  prestataire (`bo()` dans `e2e/fabrique.js`) ;
+- `RECETTE_BO_PASSWORD` — mot de passe du back-office de recette. Il doit être identique à
+  `BO_PASSWORD` (ligne **Preview**) dans Vercel, sans quoi `bo()` de `e2e/fabrique.js` ne peut
+  préparer aucun prestataire. Désynchronisé puis corrigé des deux côtés le 24/09/2026. **Piège :
+  un changement dans les réglages de l'environnement Claude ne vaut que pour les sessions
+  ouvertes APRÈS** ; et côté Vercel, il faut redéployer la Preview ;
 - `RECETTE_CRON_SECRET` — déclenche les tâches planifiées de la Preview.
+
+**Les scénarios** (`npm run e2e`, ou `npx playwright test e2e/08`) :
+
+| Fichier | Ce qui est éprouvé |
+|---|---|
+| `01` à `04` | accueil, inscription client et prestataire, back-office |
+| `05` | prestataire opérationnel : approbation, mandats, dossier, accès, compte de virement |
+| `06` | réservation et paiement par l'écran, montant du serveur, carte refusée |
+| `07` | affectation : paiement vérifié chez Stripe, identifiants inventés ou `wallet_` refusés, délai fixé par le serveur |
+| `08` | réponse du prestataire : acceptation, refus remboursé, délai dépassé (tâche planifiée et écran client) |
+| `09` | annulation client à plus et à moins de 24 h : prix remboursé, frais de service retenus, pas de double remboursement |
+| `10` | versement 48 h après la fin, bloqué par un litige, contestation refusée après 48 h |
+| `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
+
+**Le temps se simule en base, jamais en attendant.** On recule une date
+(`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
+déclenche la tâche planifiée par `tachePlanifiee()` (secret `RECETTE_CRON_SECRET`) — Vercel ne
+lance pas les tâches planifiées sur les Preview.
+
+**`reservationPayee()`** crée une prestation payée et affectée par les mêmes points d'entrée que
+l'application (insertion avec le jeton du client, paiement Stripe de test, affectation) sans
+rejouer le tunnel d'écran, déjà couvert par `06`. **`paiementStripe()`** lit le paiement chez
+Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 
 **La confirmation d'adresse e-mail est désactivée en production** (`mailer_autoconfirm`) :
 un compte est utilisable dès l'inscription, sans cliquer de lien. C'est un choix à

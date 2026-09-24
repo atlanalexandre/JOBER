@@ -7,6 +7,7 @@ import { declencherOffreLancement, offreActive } from "./_offre.js";
 import { INFORMATION_FISCALE } from "./_fiscal.js";
 import { calculerFrais, lireFraisService } from "./_montant.js";
 import { verifierPaiementReservation, delaiReponseMinutes } from "./_paiement.js";
+import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { prixHeuresSupp, tarifSuppValide, TARIF_SUPP_MIN, TARIF_SUPP_MAX } from "./_heures_supp.js";
 
 // Version du texte de rétractation présenté au client avant paiement. Elle est
@@ -1197,11 +1198,7 @@ export default async function handler(req, res) {
       if (verified_prestataire_id && isUuid(verified_prestataire_id)) {
         const limitOk = await (async () => {
           try {
-            const [urRes, prRes] = await Promise.all([
-              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { headers }),
-              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
-            ]);
-            const urData = await urRes.json();
+            const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}&select=missions_completed_month,trial_exhausted,plan_abonnement,subscription_end_date`, { headers });
             const prData = await prRes.json();
             const prDataProfile = Array.isArray(prData) && prData[0];
             // profiles.plan_abonnement prioritaire — écrit en premier par le webhook Stripe
@@ -1212,12 +1209,10 @@ export default async function handler(req, res) {
             // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
             // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
             let plan = prDataProfile?.plan_abonnement || "free";
-            const endDate = urData.user_metadata?.subscription_end_date;
-            const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
-            if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
+            // Date de fin lue dans `profiles`, comme le plan — voir api/_abonnement.js.
+            if (abonnementEchu(prDataProfile)) {
               plan = "free";
-              await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${verified_prestataire_id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${verified_prestataire_id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
+              await retrograderEnGratuit(verified_prestataire_id, SUPABASE_URL, headers, "quota");
             }
 
             const trialExhausted = Array.isArray(prData) && prData[0]?.trial_exhausted === true;
@@ -4796,11 +4791,7 @@ export default async function handler(req, res) {
       if (response === "accept") {
         const quotaResult = await (async () => {
           try {
-            const [urRes, prRes] = await Promise.all([
-              fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { headers }),
-              fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement`, { headers }),
-            ]);
-            const urData = await urRes.json();
+            const prRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=missions_completed_month,trial_exhausted,plan_abonnement,subscription_end_date`, { headers });
             const prData = await prRes.json();
             const prProfile = Array.isArray(prData) && prData[0];
             // Le plan vient de `profiles`, jamais de user_metadata. À l'inscription,
@@ -4810,12 +4801,10 @@ export default async function handler(req, res) {
             // lieu, le repli sur user_metadata accordait le quota Elite (999 prestations)
             // à qui ne l'avait jamais payé. Seul le webhook Stripe renseigne `profiles`.
             let plan = prProfile?.plan_abonnement || "free";
-            const endDate = urData.user_metadata?.subscription_end_date;
-            const endDateMs = endDate ? new Date(endDate).getTime() : NaN;
-            if (!isNaN(endDateMs) && plan !== "free" && endDateMs < Date.now()) {
+            // Date de fin lue dans `profiles`, comme le plan — voir api/_abonnement.js.
+            if (abonnementEchu(prProfile)) {
               plan = "free";
-              await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, { method:"PUT", headers, body: JSON.stringify({ user_metadata: { plan_abonnement:"free", subscription_end_date:null } }) }).catch(()=>{});
-              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}`, { method:"PATCH", headers:{ ...headers, "Prefer":"return=minimal" }, body: JSON.stringify({ plan_abonnement:"free" }) }).catch(()=>{});
+              await retrograderEnGratuit(caller.id, SUPABASE_URL, headers, "quota");
             }
             const trialExhausted = prProfile?.trial_exhausted === true;
             const basePlanLimit = await limitePlanMensuelle(plan, caller.id, SUPABASE_URL, headers);
