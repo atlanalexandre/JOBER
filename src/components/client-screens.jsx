@@ -8840,7 +8840,8 @@ export function DocUploadScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
-    const allowedImages = ["image/jpeg","image/png","image/webp"];
+    // Formats du bucket `Documents` : le WebP y est refusé.
+    const allowedImages = ["image/jpeg","image/png"];
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
@@ -9017,7 +9018,7 @@ export function ClientProDocScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
-    const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
+    const allowedAll = ["application/pdf","image/jpeg","image/png"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     if(file.size > 10*1024*1024){ showToast("Fichier trop lourd (max 10 Mo)."); e.target.value=""; return; }
 
