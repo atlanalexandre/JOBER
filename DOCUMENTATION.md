@@ -1904,6 +1904,15 @@ Le candidat suivant reçoit **le même délai de réponse** que le premier (`del
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
 25/09/2026, la cascade l'affectait sans aucune notification.
 
+**La cascade ne vaut que pour une prestation affectée par la plateforme** —
+`affecteeParLaPlateforme()` de `api/missions.js`. Elle se déclenchait sur la seule présence de
+`tiers_declaration`, or un client professionnel qui réserve **dans ses propres locaux** y
+enregistre aussi une réponse, `{ lieu: "etablissement_propre" }` (gardée pour repérer les
+clients multi-sites). Sa réservation passait donc pour une affectation de la plateforme : le
+prestataire qu'il avait **choisi** refusait, et un autre lui était imposé au lieu du
+remboursement. Constaté en recette le 25/09/2026 (`e2e/15`), corrigé le même jour : il est
+remboursé, comme un particulier.
+
 **Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
 conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
 pas le pénal, qui reste personnel), et fondement contractuel des mécanismes de détection avec
@@ -3545,6 +3554,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `12` | ce que la base refuse à la création d'une prestation (`missions_creation_guard`) : sept fraudes, et les deux créations légitimes |
 | `13` | inscription sans session (confirmation d'e-mail) : écran « vérifiez votre boîte mail », profil complet en base, parrainage ; IBAN saisi dans les Paramètres, rangé dans `profiles.rib` |
 | `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente |
+| `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on

@@ -642,6 +642,21 @@ async function prevenirNouvelleDemande(missionId, supabaseUrl, headers) {
   }
 }
 
+// La prestation a-t-elle été affectée par la PLATEFORME (intervention chez un
+// tiers, CGPS art. 5.2) — et non choisie par le client ?
+//
+// `tiers_declaration` ne suffit pas à le dire : un client professionnel qui
+// réserve dans SES locaux y enregistre aussi une réponse,
+// `{ lieu: "etablissement_propre" }`, conservée pour la détection des clients
+// multi-sites. Le seul test de la colonne faisait donc passer sa réservation
+// pour une affectation de la plateforme : le prestataire qu'il avait CHOISI
+// refusait, et un autre lui était imposé au lieu du remboursement (constaté en
+// recette le 25/09/2026, e2e/15).
+function affecteeParLaPlateforme(mission) {
+  const d = mission?.tiers_declaration;
+  return !!d && d.lieu !== "etablissement_propre";
+}
+
 // Passe au candidat suivant après un refus ou une absence de réponse, pour les
 // prestations affectées par la plateforme (CGPS art. 5.2).
 //
@@ -2613,7 +2628,7 @@ export default async function handler(req, res) {
       // commande tient toujours — la rembourser reviendrait à l'annuler pour une
       // indisponibilité qui ne le concerne pas.
       let cascadeTimeout = null;
-      if (mission.tiers_declaration) {
+      if (affecteeParLaPlateforme(mission)) {
         cascadeTimeout = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
         console.log(`[acceptance_timeout] délai dépassé sur prestation affectée ${mission_id} → ${cascadeTimeout.mode}`);
         return res.status(200).json({ success: true, cascade: cascadeTimeout.mode });
@@ -5047,7 +5062,7 @@ export default async function handler(req, res) {
       // tient toujours. À défaut de candidat, la prestation part en diffusion.
       let rembRefus = { ok: true, mode: "sans_objet" };
       let cascade = null;
-      if (response !== "accept" && mission.tiers_declaration) {
+      if (response !== "accept" && affecteeParLaPlateforme(mission)) {
         cascade = await affecterCandidatSuivant(mission, SUPABASE_URL, headers);
         console.log(`[respond_mission] refus sur prestation affectée ${mission_id} → ${cascade.mode}`);
       } else if (response !== "accept") {
