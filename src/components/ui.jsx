@@ -494,6 +494,12 @@ export function ConfirmModal() {
     return () => { _confirmRef.fn = null; };
   }, []);
   if (!state) return null;
+  // « Envoyer » rend la saisie, MÊME VIDE ; seuls « Annuler », Échap et un clic
+  // hors de la fenêtre rendent null. Une saisie vide était confondue avec une
+  // annulation : « Laissez vide si le document n'en porte pas » annulait la
+  // validation d'une attestation, et « Motif d'annulation (optionnel) » laissé
+  // vide n'annulait rien — sans un mot (constaté en recette le 25/09/2026).
+  // Chaque appelant traite lui-même la saisie vide (motif obligatoire, etc.).
   const choose = (v) => { setState(null); resolveRef.current?.(v); };
   return (
     <div onClick={() => choose(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -523,6 +529,12 @@ export function PromptModal() {
     return () => { _promptRef.fn = null; };
   }, []);
   if (!state) return null;
+  // « Envoyer » rend la saisie, MÊME VIDE ; seuls « Annuler », Échap et un clic
+  // hors de la fenêtre rendent null. Une saisie vide était confondue avec une
+  // annulation : « Laissez vide si le document n'en porte pas » annulait la
+  // validation d'une attestation, et « Motif d'annulation (optionnel) » laissé
+  // vide n'annulait rien — sans un mot (constaté en recette le 25/09/2026).
+  // Chaque appelant traite lui-même la saisie vide (motif obligatoire, etc.).
   const choose = (v) => { setState(null); resolveRef.current?.(v); };
   return (
     <div onClick={() => choose(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -531,13 +543,13 @@ export function PromptModal() {
         <input
           type="text" value={val} onChange={e => setVal(e.target.value)}
           placeholder={state.placeholder || ""}
-          onKeyDown={e => { if (e.key==="Enter") choose(val||null); if (e.key==="Escape") choose(null); }}
+          onKeyDown={e => { if (e.key==="Enter") choose(val); if (e.key==="Escape") choose(null); }}
           autoFocus
           style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:"1px solid rgba(124,111,224,0.3)", background:"#162547", color:"#F0F0F5", fontSize:14, fontFamily:"inherit", boxSizing:"border-box", marginBottom:16, outline:"none" }}
         />
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={() => choose(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#9BA0BA", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Annuler</button>
-          <button onClick={() => choose(val||null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Envoyer</button>
+          <button onClick={() => choose(val)} style={{ flex:1, padding:"12px", borderRadius:12, border:"none", background:"#7C6FE0", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>Envoyer</button>
         </div>
       </div>
     </div>
