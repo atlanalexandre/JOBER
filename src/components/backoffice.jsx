@@ -18,14 +18,14 @@ const estRecette = typeof window !== "undefined"
 const DOC_LABELS = {
   kbis:"KBIS / SIRET", urssaf:"Attestation URSSAF", cni:"Pièce d'identité", rib:"RIB / IBAN",
   tva:"Attestation TVA", rc_pro:"RC Pro", rcpro:"RC Pro", photo:"Photo profil",
-  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document",
+  domicile:"Justif. domicile", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
 };
 
 // Icônes des types de documents — même raison que DOC_LABELS ci-dessus : trois
 // copies divergentes coexistaient, dont deux sans `tva`.
 const DOC_ICONS = {
   kbis:"🏢", urssaf:"🏛️", cni:"🪪", rib:"💳", tva:"📋", rc_pro:"🛡️", rcpro:"🛡️",
-  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄",
+  photo:"📸", domicile:"🏠", diplomes:"🎓", autre:"📄", titre_sejour:"🛂",
 };
 
 // Helper centralisé pour tous les appels BO — injecte automatiquement le token signé
@@ -2015,7 +2015,8 @@ export function BOVersements() {
 // Documents dont la validité est datée : sans cette date, rien ne suit
 // l'expiration et l'article 19.1 des CGPS — renouvellement annuel de la RC Pro,
 // suspension trente jours après l'échéance — reste une promesse sans effet.
-const DOCS_A_ECHEANCE = ["rc_pro", "urssaf"];
+// Le titre de séjour aussi : son expiration retire l'accès (EXPIRATION_BLOQUANTE).
+const DOCS_A_ECHEANCE = ["rc_pro", "urssaf", "titre_sejour"];
 
 async function demanderValidite(type) {
   if (!DOCS_A_ECHEANCE.includes(type)) return { ok: true };

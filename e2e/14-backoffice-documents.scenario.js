@@ -6,7 +6,7 @@
 // enregistré, et chez le prestataire ce qu'il en apprend.
 import { test, expect, request } from "@playwright/test";
 import { sql, RECETTE_REF } from "./outils.js";
-import { inscrire, anon, bo, api } from "./fabrique.js";
+import { inscrire, anon, bo, api, prestataireOperationnel } from "./fabrique.js";
 import { connexionBO, ficheBO } from "./parcours.js";
 
 test.describe.configure({ timeout: 180_000 });
@@ -145,4 +145,42 @@ test("un refus sans motif n'est pas envoyé", async ({ page }) => {
   await page.getByRole("button", { name: "Envoyer", exact: true }).click();
   await page.waitForTimeout(2_000);
   expect((await doc(p.id, "kbis"))?.verified, "la pièce est toujours là, en attente").toBe(false);
+});
+
+test("un fichier validé, écrasé directement dans le bucket, repasse en attente", async () => {
+  // Sans passer par l'application : le stockage seul, avec le jeton du prestataire.
+  const p = await prestataireAvecPieces(["rc_pro"]);
+  const [{ id }] = await sql(`select id from documents where prestataire_id = '${p.id}' and type = 'rc_pro'`);
+  const v = await bo("verify_doc", { profileId: p.id, docId: id, expiresAt: "2027-06-30" });
+  expect(v.statut, v.texte.slice(0, 200)).toBe(200);
+  expect((await doc(p.id, "rc_pro")).verified).toBe(true);
+
+  const c = await request.newContext({ proxy });
+  const r = await c.post(`${SUPABASE}/storage/v1/object/Documents/${p.id}/rc_pro`, {
+    headers: { Authorization: `Bearer ${p.jeton}`, apikey: await anon(), "x-upsert": "true", "Content-Type": "application/pdf" },
+    data: Buffer.from("%PDF-1.4\n% autre fichier\n"),
+  });
+  await c.dispose();
+  expect(r.ok(), `remplacement du fichier : ${r.status()}`).toBeTruthy();
+  const apres = await doc(p.id, "rc_pro");
+  expect(apres.verified, "un fichier que personne n'a vu n'est pas vérifié").toBe(false);
+  expect(apres.expires_at).toBeNull();
+});
+
+test("hors Union européenne : le titre de séjour s'enregistre, et l'accès n'ouvre qu'une fois vérifié", async () => {
+  // Réclamé depuis le 11/09/2026, il était refusé par la base (documents_type_check).
+  const p = await prestataireOperationnel({ nationalite: "Hors Union européenne" });
+  expect(p.ouverture.statut, `accès sans titre : ${p.ouverture.texte.slice(0, 200)}`).toBe(409);
+  expect(p.ouverture.texte).toContain("titre de séjour");
+
+  await deposer(p, "titre_sejour");
+  expect((await doc(p.id, "titre_sejour"))?.verified, "le titre est enregistré, en attente").toBe(false);
+  const encore = await bo("enable_missions", { profileId: p.id });
+  expect(encore.statut, "déposé mais pas vérifié : toujours fermé").toBe(409);
+
+  const [{ id }] = await sql(`select id from documents where prestataire_id = '${p.id}' and type = 'titre_sejour'`);
+  const v = await bo("verify_doc", { profileId: p.id, docId: id, expiresAt: "2027-12-31" });
+  expect(v.statut, v.texte.slice(0, 200)).toBe(200);
+  const ouvert = await bo("enable_missions", { profileId: p.id });
+  expect(ouvert.statut, ouvert.texte.slice(0, 200)).toBe(200);
 });
