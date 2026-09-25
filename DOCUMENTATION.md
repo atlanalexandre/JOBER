@@ -2098,6 +2098,13 @@ jour même (jour français, pas UTC), **4 h** sinon. L'urgence n'a pas de colonn
 reconnaît aux frais de service encaissés, ceux du tarif `urgent`. `App.jsx` n'envoie plus ce
 délai, et le serveur ignore toute valeur reçue.
 
+**Ce délai est aussi celui qu'on annonce au prestataire.** L'e-mail « Nouvelle demande de
+prestation » disait « valable 24 h », et la notification déduisait « 1 heure » ou « 4 heures »
+d'un indicateur `same_day` envoyé par le navigateur, sans jamais connaître l'urgence. Depuis le
+25/09/2026, `notify_prestataire` relit `acceptance_deadline` et en tire la phrase
+(`texteDelaiReponse()` de `api/_temps.js`, heure de Paris) ; les boutons Accepter / Refuser de
+l'e-mail expirent à la même échéance. `same_day` n'est plus lu.
+
 ### Un secteur fermé ne montre plus rien
 
 **Corrigé le 16/08/2026.** Le contrôle du secteur existait sur le paiement, pas sur la
