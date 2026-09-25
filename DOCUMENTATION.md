@@ -2187,6 +2187,12 @@ l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du m
 prestataire à 18 €/h dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif. Le
 serveur ne l'aurait pas vu — le verrou de création ne pose qu'une borne basse.
 
+**La liste des métiers suit** (25/09/2026, reliquat constaté par `e2e/16`) : elle partait encore
+du tarif par défaut du métier — 17,50 € annoncés en urgence, 18,00 € facturés. Elle part des
+tarifs réels des prestataires du métier, « dès » le plus bas s'ils diffèrent. Et le surcoût
+n'est plus supposé à 2 € le temps de lire le réglage : l'envoi et « Continuer » attendent la
+lecture (2 € journalisés si le réglage est illisible).
+
 **Une réservation urgente part à un seul prestataire** : le premier *disponible* de la liste.
 L'écran annonçait une diffusion — « tous les prestataires disponibles reçoivent votre demande,
 le premier qui accepte assure la prestation » — qui n'existe pas ; il prenait en outre le premier
