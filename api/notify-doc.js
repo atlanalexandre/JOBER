@@ -14,11 +14,12 @@ const DOC_LABELS = {
   tva:      "Attestation TVA",
   diplomes: "Diplômes",
   autre:    "Autre document",
+  titre_sejour: "Titre de séjour",
 };
 
 // Types acceptés — ceux de la contrainte CHECK de `documents.type`. Un type hors
 // de cette liste serait refusé par la base : on le refuse ici, avec un message.
-const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre"];
+const TYPES_ENREGISTRABLES = ["photo", "kbis", "urssaf", "cni", "domicile", "rib", "rc_pro", "diplomes", "tva", "autre", "titre_sejour"];
 
 // ── Enregistrer le document en base ─────────────────────────────────────────
 //

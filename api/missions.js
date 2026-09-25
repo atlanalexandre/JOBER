@@ -4625,10 +4625,20 @@ export default async function handler(req, res) {
         // Personne ne correspond : la prestation part en diffusion plutôt que de
         // rester bloquée. Un prestataire pourra l'accepter de lui-même — ce qui rend
         // son autonomie visible, et n'enferme pas le client dans une impasse.
-        await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
-          method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" },
+        // Le paiement est encaissé : cette écriture doit être vérifiée (CLAUDE.md,
+        // « Écriture après un paiement »). Elle ne l'était pas — un refus de la
+        // base laissait une prestation payée, sans statut de diffusion ni trace
+        // du paiement, et le client lisait « diffusion » quand même.
+        const diffRes = await fetch(`${SUPABASE_URL}/rest/v1/missions?id=eq.${mission_id}&status=in.(open,pending_acceptance)`, {
+          method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
           body: JSON.stringify({ ...patch, status: "open", prestataire_id: null }),
         });
+        const diffRows = await diffRes.json().catch(() => null);
+        if (!diffRes.ok || !Array.isArray(diffRows) || diffRows.length === 0) {
+          console.error(`[affecter_tiers] diffusion NON enregistrée pour ${mission_id} (paiement ${stripe_payment_intent}) : `
+            + `${diffRes.status} ${JSON.stringify(diffRows || {}).slice(0, 200)}`);
+          return res.status(500).json({ error: "Votre paiement est bien reçu, mais la prestation n'a pas pu être diffusée. Contactez-nous : nous la traitons à la main." });
+        }
         console.log(`[affecter_tiers] aucun candidat pour ${mission_id} — diffusion`);
         return res.status(200).json({ success: true, mode: "diffusion", mission_id });
       }

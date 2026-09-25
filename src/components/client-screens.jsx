@@ -1865,10 +1865,19 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const [showFilters, setShowFilters] = useState(false);
   const [jobSearch, setJobSearch] = useState("");
   const [missionDate, setMissionDate] = useState("");
-  const [surcharge, setSurcharge] = useState(2);
+  // Surcoût urgence réglé dans le back-office. `null` tant qu'il n'est pas lu :
+  // l'écran affichait 2 € (valeur par défaut) le temps de la lecture, et un
+  // client rapide réservait sur ce prix-là. À défaut de réglage lisible, 2 €,
+  // la valeur documentée — en le disant dans la console.
+  const [surcharge, setSurcharge] = useState(null);
   useEffect(() => {
     supabase.from("platform_settings").select("value").eq("key","urgency_surcharge").single()
-      .then(({ data }) => { if (data?.value != null) setSurcharge(Number(data.value)); });
+      .then(({ data, error }) => {
+        const v = Number(data?.value);
+        if (data?.value != null && Number.isFinite(v)) { setSurcharge(v); return; }
+        console.error("[urgence] surcoût illisible, 2 € par défaut :", error?.message || "réglage absent");
+        setSurcharge(2);
+      });
   }, []);
   const DAY_NAMES = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
   const selectedDay = missionDate ? DAY_NAMES[new Date(missionDate).getDay()] : null;
@@ -1894,10 +1903,16 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
       && (filterVille === "all" || cleVille(p.ville) === filterVille));
     const count = dansLeMetier.length;
     const availCount = dansLeMetier.filter(p => p.available).length;
+    // Le prix du métier part des tarifs RÉELS de ses prestataires — le plus bas,
+    // « dès » s'ils diffèrent. Il partait du tarif par défaut du métier : la liste
+    // annonçait 17,50 € en urgence, l'écran suivant et la réservation facturaient
+    // 18,00 €, le tarif du prestataire. À défaut de prestataire, le tarif par défaut.
     const tarif = METIERS_TARIFS[s.id]?.[name];
-    const base = tarif ? prixClient(tarif.default, s.id) : 12;
-    const price = urgentMode ? base + surcharge : base;
-    return { name, rate:`${price.toFixed(2).replace(".",",")} € HT/h`, count, availCount, base, price };
+    const tarifsReels = dansLeMetier.map(p => Number(p.rateNum)).filter(n => n > 0);
+    const base = tarifsReels.length ? Math.min(...tarifsReels) : (tarif ? prixClient(tarif.default, s.id) : 12);
+    const des = tarifsReels.length > 1 && Math.max(...tarifsReels) > base;
+    const price = urgentMode ? base + (surcharge ?? 0) : base;
+    return { name, rate:`${des ? "dès " : ""}${formatMontant(price)} HT/h`, count, availCount, base, price };
   });
 
   // Point de référence : la position du client si elle est connue, sinon son
@@ -1962,7 +1977,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   // disponibilité, alors que l'écran parlait des prestataires disponibles.
   const prestaUrgence = filteredProviders.find(p => p.available) || filteredProviders[0];
   const tarifStandardUrgence = prestaUrgence?.rateNum || basePrice;
-  const urgentPrice = tarifStandardUrgence + surcharge;
+  const urgentPrice = tarifStandardUrgence + (surcharge ?? 0);
 
   // Bouton urgence réutilisable
   const UrgentToggle = ({ showBeforeJob=false }) => (
@@ -1983,7 +1998,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
             background: urgentMode ? "rgba(255,255,255,0.25)" : `${C.accent}18`,
             color: urgentMode ? C.white : C.accent,
             borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:700,
-          }}>+{surcharge},00 € HT/h</span>
+          }}>{surcharge == null ? "…" : `+${formatMontant(surcharge)} HT/h`}</span>
         </div>
         <div style={{ fontSize:12, color:urgentMode?"rgba(255,255,255,0.75)":C.gray, marginTop:2 }}>
           {urgentMode
@@ -2051,7 +2066,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{svc.name}</div>
                 <div style={{ display:"flex", gap:8, marginTop:3, alignItems:"center", flexWrap:"wrap" }}>
                   <span style={{ color:urgentMode?C.accent:C.violet, fontWeight:700, fontSize:12 }}>{svc.rate}</span>
-                  {urgentMode && <span style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{`${svc.base.toFixed(2).replace(".",",")} €`}</span>}
+                  {urgentMode && <span style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{formatMontant(svc.base)}</span>}
                   <span style={{ color:C.textSub, fontSize:11 }}>· {svc.count} prestataire{svc.count>1?"s":""} ({svc.availCount} dispo)</span>
                 </div>
               </div>
@@ -2166,13 +2181,13 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 {urgentMode && <Badge color={C.accent} small>🚨 Urgence</Badge>}
               </div>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{(urgentMode ? urgentPrice : basePrice).toFixed(2).replace(".",",")} € HT/h</div>
-                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h</div>}
+                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{formatMontant(urgentMode ? urgentPrice : basePrice)} HT/h</div>
+                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{formatMontant(tarifStandardUrgence)} HT/h</div>}
               </div>
             </div>
             {urgentMode && (
               <div style={{ background:`${C.accent}15`, borderRadius:8, padding:"8px 10px", fontSize:12, color:C.text, lineHeight:1.5 }}>
-                🚀 <strong>Surcoût urgence : +{surcharge},00 € HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
+                🚀 <strong>Surcoût urgence : +{formatMontant(surcharge ?? 0)} HT/h</strong> — visible et accepté lors du récapitulatif de réservation avant paiement.
               </div>
             )}
           </div>
@@ -2193,9 +2208,9 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
               <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:20, textAlign:"left" }}>
                 <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:6 }}>💶 Détail du tarif urgence</div>
                 {[
-                  ["Tarif standard", `${tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h`],
-                  ["Surcoût urgence", `+${surcharge},00 € HT/h`],
-                  ["Tarif urgence total", `${urgentPrice.toFixed(2).replace(".",",")} € HT/h`],
+                  ["Tarif standard", `${formatMontant(tarifStandardUrgence)} HT/h`],
+                  ["Surcoût urgence", `+${formatMontant(surcharge ?? 0)} HT/h`],
+                  ["Tarif urgence total", `${formatMontant(urgentPrice)} HT/h`],
                 ].map(([l,v],i)=>(
                   <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:i<2?`1px solid ${C.grayLight}`:"none" }}>
                     <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
@@ -2205,7 +2220,7 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontSize:11, color:C.textSub, marginTop:6 }}>Le surcoût sera affiché et confirmé avant le paiement.</div>
               </div>
 
-              <Btn full disabled={!prestaUrgence} onClick={()=>onNavigate("booking", { ...prestaUrgence, urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
+              <Btn full disabled={!prestaUrgence || surcharge == null} onClick={()=>onNavigate("booking", { ...prestaUrgence, urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
                 {prestaUrgence ? "🚀 Envoyer la prestation maintenant" : "Aucun prestataire pour ce métier"}
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
@@ -3012,7 +3027,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
   // Surcoût urgence réglé dans le back-office (2 € HT/h par défaut).
-  const [surcoutUrgence, setSurcoutUrgence] = useState(2);
+  // `null` tant que le réglage n'est pas lu — même raison que l'écran d'urgence.
+  const [surcoutUrgence, setSurcoutUrgence] = useState(null);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -3026,7 +3042,12 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseBooking(Boolean(data.value)); });
     supabase.from("platform_settings").select("value").eq("key","urgency_surcharge").single()
-      .then(({ data }) => { if (data?.value != null && Number.isFinite(Number(data.value))) setSurcoutUrgence(Number(data.value)); });
+      .then(({ data, error }) => {
+        const v = Number(data?.value);
+        if (data?.value != null && Number.isFinite(v)) { setSurcoutUrgence(v); return; }
+        console.error("[réservation] surcoût urgence illisible, 2 € par défaut :", error?.message || "réglage absent");
+        setSurcoutUrgence(2);
+      });
   }, []);
 
 
@@ -3034,7 +3055,10 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   // Le tarif urgent part du tarif DE CE PRESTATAIRE. Il partait du tarif par
   // défaut du métier, transmis par l'écran d'urgence : un prestataire à 18 €/h
   // dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif.
-  const tarifHoraire = isUrgent ? baseRate + surcoutUrgence : baseRate;
+  const tarifHoraire = isUrgent ? baseRate + (surcoutUrgence ?? 0) : baseRate;
+  // En urgence, rien ne part tant que le surcoût n'est pas connu : la prestation
+  // enregistrerait un tarif faux.
+  const surcoutEnAttente = isUrgent && surcoutUrgence == null;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -3386,7 +3410,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </div>
             {isUrgent && (
               <div style={{ marginTop:10, background:`${C.accentGold}15`, borderRadius:8, padding:"8px 10px", fontSize:11, color:C.text }}>
-                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif du prestataire + {formatMontant(surcoutUrgence)} de surcoût urgence)
+                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif du prestataire + {formatMontant(surcoutUrgence ?? 0)} de surcoût urgence)
               </div>
             )}
           </div>
@@ -3469,7 +3493,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             } else {
               setStep(2);
             }
-          }} style={{ fontSize:15, padding:"16px" }}>Continuer →</Btn>
+          }} disabled={surcoutEnAttente} style={{ fontSize:15, padding:"16px" }}>{surcoutEnAttente ? "Calcul du tarif urgence…" : "Continuer →"}</Btn>
         </>}
 
         {/* Les blocs « étape 2 » et « étape 3 » existaient EN DOUBLE dans ce
@@ -8840,7 +8864,8 @@ export function DocUploadScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
-    const allowedImages = ["image/jpeg","image/png","image/webp"];
+    // Formats du bucket `Documents` : le WebP y est refusé.
+    const allowedImages = ["image/jpeg","image/png"];
     const allowedAll = ["application/pdf",...allowedImages];
     const allowed = docId === "photo" ? allowedImages : allowedAll;
     if(!allowed.includes(file.type)){ showToast(docId==="photo" ? "Format invalide. Utilisez JPG ou PNG." : "Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
@@ -9017,7 +9042,7 @@ export function ClientProDocScreen({ onBack }) {
 
   const handleFileChange = async (docId, e) => {
     const file = e.target.files?.[0]; if(!file||!userId) return;
-    const allowedAll = ["application/pdf","image/jpeg","image/png","image/webp"];
+    const allowedAll = ["application/pdf","image/jpeg","image/png"];
     if(!allowedAll.includes(file.type)){ showToast("Format invalide. Utilisez PDF, JPG ou PNG."); e.target.value=""; return; }
     if(file.size > 10*1024*1024){ showToast("Fichier trop lourd (max 10 Mo)."); e.target.value=""; return; }
 

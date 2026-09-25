@@ -736,7 +736,14 @@ l'accès aux propositions est suspendu 30 jours après (`missions_enabled = fals
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
 terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
-`autre`. **Un seul document par prestataire et par type** (contrainte unique).
+`autre`, `titre_sejour`. **Un seul document par prestataire et par type** (contrainte unique).
+
+**`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
+25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`) : le titre de séjour, réclamé aux
+ressortissants hors UE depuis le 11/09, ne pouvait pas être déposé. Et l'ouverture de l'accès
+aux prestations (`enable_missions`) ne l'exigeait pas — l'exigence ne vivait que dans l'écran.
+Elle exige désormais, pour un prestataire dont `user_metadata.nationalite` contient « hors »,
+un titre de séjour **déposé et vérifié**, comme la carte professionnelle d'un métier réglementé.
 
 **`candidatures`** — les prestataires qui postulent à une mission ouverte.
 
@@ -1098,11 +1105,13 @@ et sans corps, que le stockage refuse — et la réponse n'était pas lue. La li
 fichier restait. Il est désormais supprimé par liste (`prefixes`), comme la purge de conservation,
 et un échec annule le refus au lieu de le taire.
 
-**Reste ouvert** : le fichier lui-même peut toujours être écrasé depuis le navigateur, dans le
-bucket, sans passer par le serveur (règle `docs_update_own_folder` de `storage.objects`) — la
-ligne resterait alors « vérifiée » sur un fichier que personne n'a vu. Et le titre de séjour
-(`titre_sejour`, `src/constants/data.js`) est absent de la contrainte `CHECK` de
-`documents.type` : il ne peut pas être enregistré. Les deux demandent une migration.
+**Un fichier remplacé directement dans le bucket repasse aussi en attente** (migration
+`2026-09-25_secu_fichier_remplace_remis_en_attente`). Le prestataire peut écraser son propre
+fichier sans passer par l'application (règle `docs_update_own_folder`, nécessaire au
+remplacement) : la ligne restait « vérifiée » sur un fichier que personne n'avait vu. Le
+déclencheur `documents_fichier_remplace` sur `storage.objects` (fonction `SECURITY DEFINER`,
+exécutable par personne en direct) remet la pièce en attente à chaque remplacement. Éprouvé
+par `e2e/14`, rouge sans le déclencheur.
 
 La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
 ne s'écrivent jamais depuis `src/`.**
@@ -2177,6 +2186,12 @@ plateforme qui choisit — on tentait de prévenir le prestataire de l'écran au
 l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du métier** : un
 prestataire à 18 €/h dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif. Le
 serveur ne l'aurait pas vu — le verrou de création ne pose qu'une borne basse.
+
+**La liste des métiers suit** (25/09/2026, reliquat constaté par `e2e/16`) : elle partait encore
+du tarif par défaut du métier — 17,50 € annoncés en urgence, 18,00 € facturés. Elle part des
+tarifs réels des prestataires du métier, « dès » le plus bas s'ils diffèrent. Et le surcoût
+n'est plus supposé à 2 € le temps de lire le réglage : l'envoi et « Continuer » attendent la
+lecture (2 € journalisés si le réglage est illisible).
 
 **Une réservation urgente part à un seul prestataire** : le premier *disponible* de la liste.
 L'écran annonçait une diffusion — « tous les prestataires disponibles reçoivent votre demande,
@@ -3553,8 +3568,13 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
 | `12` | ce que la base refuse à la création d'une prestation (`missions_creation_guard`) : sept fraudes, et les deux créations légitimes |
 | `13` | inscription sans session (confirmation d'e-mail) : écran « vérifiez votre boîte mail », profil complet en base, parrainage ; IBAN saisi dans les Paramètres, rangé dans `profiles.rib` |
-| `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente |
+| `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente — y compris un fichier écrasé directement dans le bucket |
 | `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
+| `16` | à l'écran : prix urgent = tarif du prestataire + `urgency_surcharge`, identique sur l'écran d'urgence, la réservation et en base, 20 min pour répondre ; suivi « Prestation confirmée » puis « En route vers vous » à la première position ; abonnement annuel au centime (« soit 287,90 € facturés une fois par an ») |
+
+**Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
+l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.
+`sansTutoriel()` de `e2e/16` les déclare vus et les ferme s'ils apparaissent (`addLocatorHandler`).
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on
