@@ -1,5 +1,5 @@
 import { notifier } from "./_push.js";
-import { resendBody } from "./_email.js";
+import { resendBody, euros } from "./_email.js";
 import { debiterCashback } from "./_cashback.js";
 export const config = { api: { bodyParser: false } };
 
@@ -452,7 +452,7 @@ export default async function handler(req, res) {
               user_id: parrainId, type: "system",
               title: "🎁 1 mois offert — parrainage",
               body: `Trois de vos filleuls sont désormais abonnés. Votre abonnement ${planParrain === "elite" ? "Elite" : "Premium"} est prolongé d'un mois, jusqu'au ${new Date(nouvelleFin).toLocaleDateString("fr-FR")}.`,
-            }, SUPABASE_URL, hdrs).catch(() => {});
+            }, SUPABASE_URL, hdrs).catch(e => console.error("[stripe-webhook] échec ignoré :", e?.message));
           console.log(`[parrainage] mois offert à ${parrainId} — ${abonnes} filleuls abonnés, ${duesTotal} récompense(s) au total`);
         } catch (e) {
           console.error("[parrainage] évaluation impossible :", e.message);
@@ -669,7 +669,7 @@ export default async function handler(req, res) {
               user_id: m.client_id, type: "mission",
               title: "Paiement échoué ⚠️",
               body: `Le paiement pour « ${label} » a échoué. Veuillez réessayer depuis l'application.`,
-            }, SUPABASE_URL, headers).catch(() => {});
+            }, SUPABASE_URL, headers).catch(e => console.error("[stripe-webhook] échec ignoré :", e?.message));
         }
       } catch (e) { console.error("[stripe-webhook] notification d'échec de paiement non envoyée :", e.message); }
       console.log("[payment_intent.payment_failed] mission remise en open:", missionId);
@@ -700,7 +700,7 @@ export default async function handler(req, res) {
             type: "system",
             title: "⚠️ Paiement de renouvellement échoué",
             body: "Le renouvellement de votre abonnement ALANE a échoué. Mettez à jour votre moyen de paiement dans votre espace pour conserver votre accès Premium.",
-          }, SUPABASE_URL, hdrs).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(e => console.error("[stripe-webhook] échec ignoré :", e?.message));
         console.warn(`[invoice.payment_failed] Renewal failed for user ${userId} — customer ${customerId}`);
       }
     }
@@ -743,7 +743,7 @@ export default async function handler(req, res) {
               subject: `Rejet bancaire — ${amount} — prestation ${missionLitige.id}`,
               message: `Contestation Stripe reçue (motif : ${reason}).\n`
                 + `Prestation : ${missionLitige.metier || missionLitige.sector || "?"} du ${missionLitige.date || "?"}, `
-                + `statut ${missionLitige.status}, montant ${missionLitige.montant_total ?? "?"} €.\n`
+                + `statut ${missionLitige.status}, montant ${missionLitige.montant_total != null ? euros(missionLitige.montant_total) : "?"}.\n`
                 + `Prestataire : ${missionLitige.prestataire_id || "aucun"}.\n`
                 + `Répondre depuis le tableau de bord Stripe dans les délais impartis.`,
               user_id: missionLitige.client_id,

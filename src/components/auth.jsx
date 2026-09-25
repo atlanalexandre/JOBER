@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, JOURS, PLAGES, NIVEAUX, LANGUES_LIST, niveauGlobal, experienceGlobale } from "../constants/data.js";
-import { Btn, Input, IbanInput, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
+import { Btn, Input, PasswordStrength, EmailInput, Select, AddressAutocomplete, formatPhone, fetchOffreLancement } from "./ui.jsx";
 
 // Un appel d'inscription qui échoue doit se voir.
 //
@@ -50,10 +50,12 @@ async function completerProfil(userId, champs) {
 }
 
 import { CGPS } from "../constants/cgps.js";
+import { adresseRetourConfirmation } from "../lib/confirmation.js";
 
 // Adresse vers laquelle le lien de confirmation ramène : l'environnement même
-// où l'on s'est inscrit (recette ou production), pas une adresse figée.
-const retourConfirmation = () => (typeof window !== "undefined" ? `${window.location.origin}/` : undefined);
+// où l'on s'est inscrit (recette ou production), pas une adresse figée. Le
+// marqueur permet à App.jsx de reconnaître ce retour (voir src/lib/confirmation.js).
+const retourConfirmation = () => (typeof window !== "undefined" ? adresseRetourConfirmation(window.location.origin) : undefined);
 
 // Parrain mémorisé au clic sur un lien de parrainage (?ref=…). Transmis à
 // l'inscription : la base le rattache elle-même à la création du compte, ce qui
@@ -1388,13 +1390,6 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
-  const [prenom, setPrenom] = useState("");
-  const [nom, setNom] = useState("");
-  const [typeCompte, setTypeCompte] = useState("particulier");
-  const [societeNom, setSocieteNom] = useState("");
-  const [kbisNum, setKbisNum] = useState("");
-  const [rib, setRib] = useState("");
-  const [telephone, setTelephone] = useState("");
 
   const isClient = role === "client";
   const accentColor = isClient ? C.violet : C.accentGold;
@@ -1504,44 +1499,6 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
     }
   };
 
-  const handleRegister = async () => {
-    if (!email || !password) { setError("Email et mot de passe requis"); return; }
-    if (password.length < 8) { setError("Mot de passe minimum 8 caractères"); return; }
-    if (!prenom.trim() || !nom.trim()) { setError("Prénom et nom obligatoires"); return; }
-    const telClean = telephone.replace(/[\s.\-]/g,"");
-    if (!telClean || telClean.length < 10) { setError("Numéro de téléphone obligatoire"); return; }
-    if (isClient && typeCompte === "professionnel") {
-      if (!societeNom.trim()) { setError("Nom de société obligatoire"); return; }
-      if (!kbisNum.trim()) { setError("Numéro KBIS obligatoire"); return; }
-    }
-    const ribClean = rib.replace(/\s/g,"");
-    setLoading(true); setError("");
-    const { data, error: err } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { role, prenom, nom, telephone: telClean, type_compte: isClient ? typeCompte : null, societe_nom: societeNom||null, kbis: kbisNum||null, rib: ribClean||null } },
-    });
-    if (err) {
-      setLoading(false);
-      if (err.message.includes("already") || err.message.includes("registered")) {
-        setError("Un compte existe déjà avec cet email. Connectez-vous à la place.");
-      } else {
-        setError(err.message);
-      }
-      return;
-    }
-    if (data?.user) {
-      const profilErr = await completerProfil(data.user.id, { prenom: prenom.trim(), nom: nom.trim() });
-      if (profilErr) console.error("[inscription] profil non complété :", profilErr.message);
-      const _simpleToken = data.session?.access_token || "";
-      const _simpleAuthH = { "Content-Type": "application/json", "Authorization": `Bearer ${_simpleToken}` };
-      await posterInscription("notify_signup", _simpleAuthH, { prenom: prenom.trim(), nom: nom.trim(), email, role });
-      await posterInscription("welcome", _simpleAuthH, { email, prenom: prenom.trim(), nom: nom.trim(), role });
-      try { sessionStorage.setItem("alane_session_active", "1"); } catch(e) {}
-    }
-    setLoading(false);
-    onRegister();
-  };
-
   if (mode === "register") {
     if (isClient) return <ClientRegisterFlow onRegister={onRegister} onBack={onBack} accentColor={accentColor} />;
     return <PrestaRegisterFlow onRegister={onRegister} onBack={onBack} accentColor={accentColor} />;
@@ -1607,9 +1564,8 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
 
       {/* Form */}
       <div style={{ padding:"0 24px 40px", flex:1 }}>
-        {mode === "login" ? (
-          /* ── CONNEXION ── */
-          <>
+        {/* Connexion — l'inscription a ses propres parcours, voir plus haut. */}
+        <>
             <Input label="Adresse email" type="email" placeholder="votre@email.fr" icon="✉️" value={email} onChange={e=>setEmail(e.target.value)} />
             <div style={{ position:"relative" }}>
               <Input label="Mot de passe" type={showPass?"text":"password"} placeholder="••••••••" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
@@ -1680,80 +1636,7 @@ export function AuthScreen({ role, onLogin, onRegister, onBack }) {
                 S'inscrire
               </button>
             </p>
-          </>
-        ) : (
-          /* ── INSCRIPTION ── */
-          <>
-            <div style={{ background:`${accentColor}12`, border:`1px solid ${accentColor}30`, borderRadius:r, padding:"13px 15px", marginBottom:20, display:"flex", gap:10, alignItems:"center" }}>
-              <span style={{ fontSize:18 }}>ℹ️</span>
-              <p style={{ color:C.textSub, fontSize:12, lineHeight:1.6, margin:0 }}>
-                Vous allez créer un compte <strong style={{ color:C.text }}>{roleLabel} ALANE</strong>.
-                {isClient
-                  ? " Renseignez vos informations et commencez à réserver en quelques minutes."
-                  : " Vous serez guidé à travers les étapes de validation de votre dossier."
-                }
-              </p>
-            </div>
-
-            {/* Prénom / Nom */}
-            <div style={{ display:"flex", gap:10 }}>
-              <div style={{ flex:1 }}><Input label="Prénom *" placeholder="Jean" icon="👤" value={prenom} onChange={e=>setPrenom(e.target.value)} /></div>
-              <div style={{ flex:1 }}><Input label="Nom *" placeholder="Dupont" icon="👤" value={nom} onChange={e=>setNom(e.target.value)} /></div>
-            </div>
-
-            <Input label="Téléphone *" type="tel" placeholder="06 12 34 56 78" icon="📱" value={telephone} onChange={e=>setTelephone(formatPhone(e.target.value))} />
-
-            {/* Type de compte — client seulement */}
-            {isClient && (
-              <div style={{ marginBottom:16 }}>
-                <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:0.8 }}>Type de compte *</label>
-                <div style={{ display:"flex", gap:8 }}>
-                  {[{id:"particulier",label:"👤 Particulier"},{id:"professionnel",label:"🏢 Professionnel"}].map(t=>(
-                    <button key={t.id} onClick={()=>setTypeCompte(t.id)} style={{ flex:1, padding:"11px", borderRadius:r, border:`2px solid ${typeCompte===t.id?accentColor:C.border}`, background:typeCompte===t.id?`${accentColor}20`:"transparent", color:typeCompte===t.id?accentColor:C.textSub, fontWeight:typeCompte===t.id?700:500, fontSize:13, cursor:"pointer", fontFamily:"inherit", transition:"all 0.2s" }}>{t.label}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Champs professionnel */}
-            {isClient && typeCompte === "professionnel" && (
-              <>
-                <Input label="Nom de société *" placeholder="ACME SARL" icon="🏢" value={societeNom} onChange={e=>setSocieteNom(e.target.value)} />
-                <Input label="N° KBIS / SIRET *" placeholder="123 456 789 00010" icon="📄" value={kbisNum} onChange={e=>setKbisNum(e.target.value)} inputMode="numeric" />
-              </>
-            )}
-
-            <IbanInput label="IBAN / RIB (optionnel)" placeholder="FR76 3000 4028 0000 0000 0000 000" value={rib} onChange={e=>setRib(e.target.value.toUpperCase())} />
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.6)", marginTop:-10, marginBottom:14, paddingLeft:4 }}>Requis pour passer des commandes ou accepter des prestations</div>
-
-            <EmailInput label="Adresse email *" value={email} onChange={e=>setEmail(e.target.value)} />
-            <div style={{ position:"relative" }}>
-              <Input label="Mot de passe *" type={showPass?"text":"password"} placeholder="••••••••  (min. 8 caractères)" icon="🔒" value={password} onChange={e=>setPassword(e.target.value)} />
-              <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:14, top:34, background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>
-                {showPass?"Cacher":"Voir"}
-              </button>
-            </div>
-            <PasswordStrength password={password} />
-
-            {error && <div style={{ background:"#F25E5E22", border:"1px solid #F25E5E55", borderRadius:r, padding:"10px 14px", marginBottom:14, color:"#F25E5E", fontSize:13 }}>{error}</div>}
-            <Btn full onClick={handleRegister} disabled={loading} style={{ fontSize:15, padding:"16px", background:accentColor, boxShadow:`0 8px 24px ${accentColor}44`, marginBottom:14 }}>
-              {loading ? "Création…" : "Créer mon compte →"}
-            </Btn>
-
-            <p style={{ color:C.textMuted, fontSize:12, textAlign:"center", lineHeight:1.6 }}>
-              En créant un compte vous acceptez nos{" "}
-              <span style={{ color:accentColor, cursor:"pointer" }}>CGU</span>{" "}et notre{" "}
-              <span style={{ color:accentColor, cursor:"pointer" }}>Politique de confidentialité</span>
-            </p>
-
-            <p style={{ textAlign:"center", color:C.textSub, fontSize:13, marginTop:20 }}>
-              Déjà un compte ?{" "}
-              <button onClick={()=>setMode("login")} style={{ background:"none", border:"none", color:accentColor, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
-                Se connecter
-              </button>
-            </p>
-          </>
-        )}
+        </>
       </div>
     </div>
   );

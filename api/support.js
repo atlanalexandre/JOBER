@@ -91,7 +91,7 @@ export default async function handler(req, res) {
                 method: "PATCH",
                 headers: { ...svcHeaders, "Prefer": "return=minimal" },
                 body: JSON.stringify({ trial_exhausted: true }),
-              }).catch(() => {});
+              }).catch(e => console.error("[support/welcome] échec ignoré :", e?.message));
               console.log("[welcome] Compte blacklisté détecté à l'inscription — trial_exhausted=true");
             }
           }

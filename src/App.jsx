@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, Component } from "react";
 import { supabase } from "./lib/supabase.js";
 import { pathForScreen, screenForPath, NEEDS_DATA, PUBLIC_SCREENS, AUTH_SCREENS } from "./lib/routes.js";
 import { C, font, r } from "./constants/colors.js";
-import { isLaunchPhase, getCashbackTier, tauxCashback } from "./constants/plans.js";
+import { isLaunchPhase, getCashbackTier, tauxCashback, formatMontant } from "./constants/plans.js";
 import { CGU } from "./constants/cgu.js";
 import { SECTORS, METIERS } from "./constants/data.js";
 import { effacerPremiereVisite } from "./constants/premiere-visite.js";
 import { nouvelleVersionDisponible, rechargerVersion } from "./lib/version.js";
+import { lireRetourConfirmation, messageConfirmationSansSession } from "./lib/confirmation.js";
 import { useResponsive } from "./hooks/useResponsive.js";
 import { Badge, Btn, ToastContainer, ConfirmModal, PromptModal, showConfirm, fetchOffreLancement } from "./components/ui.jsx";
 import { AuthScreen } from "./components/auth.jsx";
@@ -267,7 +268,7 @@ function SplashScreen({ onNext, onMentions }) {
   );
 }
 
-function RoleScreen({ onSelect, onBack, notice }) {
+function RoleScreen({ onSelect, onBack, notice, info }) {
   const [hov,setHov]=useState(null);
   const [showCGU,setShowCGU]=useState(false);
   const [placesLeft,setPlacesLeft]=useState(null);
@@ -297,6 +298,12 @@ function RoleScreen({ onSelect, onBack, notice }) {
 
       {/* Une déconnexion ne doit jamais être muette : l'utilisateur se retrouvait
           ici sans savoir pourquoi, et le support n'avait aucune piste. */}
+      {info && (
+        <div style={{ background: info.positif ? "rgba(46,204,113,0.12)" : "rgba(242,94,94,0.12)", border: `1px solid ${info.positif ? "rgba(46,204,113,0.45)" : "rgba(242,94,94,0.45)"}`, borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
+          <div style={{ color: info.positif ? "#2ECC71" : "#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>{info.titre}</div>
+          <div style={{ color:C.textSub, fontSize:12, lineHeight:1.5 }}>{info.texte}</div>
+        </div>
+      )}
       {notice && (
         <div style={{ background:"rgba(242,94,94,0.12)", border:"1px solid rgba(242,94,94,0.45)", borderRadius:12, padding:"12px 14px", marginBottom:20 }}>
           <div style={{ color:"#F25E5E", fontWeight:700, fontSize:13, marginBottom:4 }}>Vous avez été déconnecté</div>
@@ -1050,6 +1057,8 @@ export default function App() {
   const [authReady,setAuthReady]=useState(false);
   // Raison de la dernière déconnexion involontaire, affichée sur l'écran de choix.
   const [authNotice,setAuthNotice]=useState(null);
+  // Message non alarmant sur l'écran de choix : « adresse confirmée, connectez-vous ».
+  const [authInfo,setAuthInfo]=useState(null);
   // undefined = profil pas encore résolu (aucune décision à prendre) ; une chaîne = résolu.
   const [profileStatus,setProfileStatus]=useState(undefined);
   const [role,setRole]=useState(null);
@@ -1116,6 +1125,10 @@ export default function App() {
   const initSessionRef = useRef(undefined); // cache INITIAL_SESSION pour éviter getSession() réseau au clic "Commencer"
   const initProfileRef = useRef(undefined); // cache profil préchargé dès INITIAL_SESSION
   const isRecoveryRef  = useRef(false);     // true dès que PASSWORD_RECOVERY event est reçu
+  // Retour du lien de confirmation d'e-mail, lu une fois au chargement : l'URL
+  // est réécrite ensuite (voir src/lib/confirmation.js).
+  const [retourConfirmation] = useState(()=>{ try { return lireRetourConfirmation(window.location.search, window.location.hash); } catch { return null; } });
+  const confirmationTraiteeRef = useRef(false);
   const [resetToken]   = useState(()=>{ try { return new URLSearchParams(window.location.search).get("reset_token")||null; } catch{ return null; } });
 
   // Relance du tutoriel demandée depuis le back-office (?tutoriel=reset).
@@ -1552,6 +1565,27 @@ export default function App() {
     setScreen("role");
   };
 
+  // Retour du lien de confirmation d'e-mail. On attend que Supabase ait tenté
+  // l'échange du `?code=` (INITIAL_SESSION), puis :
+  //  - session ouverte → l'utilisateur vient de prouver son adresse DANS CET
+  //    onglet : on pose la marque de session, sans quoi handleSplashNext la
+  //    fermerait au motif de « Rester connecté », et on l'emmène chez lui ;
+  //  - pas de session (lien ouvert sur un autre appareil ou dans le navigateur
+  //    de Gmail) → l'adresse est confirmée quand même : on le dit, et on
+  //    l'invite à se connecter au lieu de le laisser sur l'accueil sans un mot.
+  useEffect(()=>{
+    if(!authReady || !retourConfirmation || confirmationTraiteeRef.current) return;
+    confirmationTraiteeRef.current = true;
+    try { window.history.replaceState({}, "", window.location.pathname); } catch { /* historique verrouillé */ }
+    if(initSessionRef.current && !retourConfirmation.erreur){
+      try { sessionStorage.setItem("alane_session_active", "1"); } catch { /* stockage indisponible (navigation privée) : handleSplashNext l'expliquera */ }
+      handleSplashNext();
+      return;
+    }
+    setAuthInfo(messageConfirmationSansSession(retourConfirmation));
+    setScreen("role");
+  },[authReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const PRESTA_SCREENS=["p_home","p_missions","p_dashboard","calendar","abonnement_presta","doc_upload","presta_profile_edit","micro_entreprise"];
   const CLIENT_SCREENS=["home","catalogue","search_filters","dashboard","sector_detail","profile","cv","booking","stripe_pay","tracking","validation","cancellation","team_booking","mission_history","favorites","cashback","mission_request","mission_broadcast","mission_pending"];
 
@@ -1678,7 +1712,7 @@ export default function App() {
             </div>
             <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {bookingDraftBanner.prestataireName
-                ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${bookingDraftBanner.montant} €` : ""}`
+                ? `${bookingDraftBanner.prestataireName}${bookingDraftBanner.montant ? ` · ${formatMontant(bookingDraftBanner.montant)}` : ""}`
                 : "Reprenez là où vous en étiez"}
             </div>
           </div>
@@ -1781,7 +1815,7 @@ export default function App() {
       {screen==="contact_support"   && <ContactSupportScreen onBack={()=>setScreen("settings")} />}
       {screen==="faq"               && <FAQScreen onBack={()=>setScreen("settings")} role={role} />}
       {screen==="splash"            && <SplashScreen onNext={handleSplashNext} onMentions={()=>navigate("mentions_legales")} />}
-      {screen==="role"              && <RoleScreen notice={authNotice} onSelect={r=>{ if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
+      {screen==="role"              && <RoleScreen notice={authNotice} info={authInfo} onSelect={r=>{ setAuthInfo(null); if(r==="contact"){ setScreen("public_contact"); return; } setRole(r); setScreen(r==="prestataire"?"auth_presta":"auth_client"); }} onBack={()=>setScreen("splash")} />}
       {screen==="public_contact"    && <PublicContactScreen onBack={()=>setScreen("role")} />}
 
       {/* Auth — connexion ou inscription pour les deux rôles */}
@@ -1835,7 +1869,11 @@ export default function App() {
             date: data?.date || null,
             hours: data?.hours || 8,
             heure_debut: data?.startTime || null,
-            tarif_horaire: selectedProvider?.rateNum || null,
+            // Le tarif RÉELLEMENT facturé, celui qui a servi au total. En urgence il
+            // est majoré : enregistrer le tarif de base du prestataire rendait le
+            // montant incohérent aux yeux du serveur (frais apparents trop élevés),
+            // et TOUTE réservation urgente était refusée au paiement (25/09/2026).
+            tarif_horaire: Number(data?.tarifHoraire) || selectedProvider?.rateNum || null,
             montant_total: data?.amount || null,
             description: data?.description || null,
             adresse: data?.adresse || null,
@@ -1895,9 +1933,6 @@ export default function App() {
           const userId = ud?.user?.id;
           if(!userId) throw new Error("Session expirée, veuillez vous reconnecter.");
           if(selectedProvider?.id){
-            const today=new Date().toDateString();
-            const mDay=paymentDate?new Date(paymentDate).toDateString():null;
-            const isSameDay=!mDay||mDay===today;
             // Le délai de réponse du prestataire est fixé par le serveur, sur la
             // prestation (api/_paiement.js) : envoyé d'ici, il pouvait valoir un an.
             let missionId = selectedMissionId;
@@ -1936,14 +1971,11 @@ export default function App() {
               throw new Error("Paiement encaissé mais la prestation est introuvable. "
                 + "Ne renouvelez pas le paiement : contactez-nous, le montant vous sera remboursé.");
             }
-            // La notification in-app est désormais insérée par /api/missions
-            // (action notify_prestataire), en service role et après vérification
-            // que l'appelant est bien le client de la mission — voir S-06.
+            // Le prestataire est prévenu par le serveur au moment de l'affectation
+            // (prevenirNouvelleDemande dans /api/missions), avec les données de la
+            // base : tarif réellement facturé, vrai délai de réponse, et le bon
+            // destinataire quand c'est la plateforme qui l'a choisi.
             const { data:sessionData } = await supabase.auth.getSession();
-            fetch("/api/missions", {
-              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null, same_day:isSameDay }),
-            }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
               body: JSON.stringify({
@@ -2057,7 +2089,7 @@ export default function App() {
                   </Badge>
                 </div>
                 <div style={{ color:C.textSub, fontSize:12 }}>
-                  <strong style={{ color:C.success }}>{clientCashback ? clientCashback.cashback_balance.toFixed(2) : "0,00"} €</strong> · {tauxCashback(getCashbackTier(clientCashback?.commandes_mois||0))} sur chaque prestation
+                  <strong style={{ color:C.success }}>{formatMontant(clientCashback?.cashback_balance || 0)}</strong> · {tauxCashback(getCashbackTier(clientCashback?.commandes_mois||0))} sur chaque prestation
                 </div>
               </div>
               <span style={{ color:C.violet, fontSize:18 }}>›</span>

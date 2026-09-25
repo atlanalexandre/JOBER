@@ -113,7 +113,7 @@ export default async function handler(req) {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ prestataire_id: userId, type: docType, storage_path: storagePath, verified: false }),
-    }).catch(() => {});
+    }).catch(e => console.error("[upload-document] échec ignoré :", e?.message));
 
     return new Response(JSON.stringify({ signedUrl, storagePath }), {
       status: 200,

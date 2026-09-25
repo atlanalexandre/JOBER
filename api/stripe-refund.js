@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { messageErreurStripe } from "./_stripe_erreur.js";
 
 function verifyBoToken(token, secret) {
   if (!token) return false;
@@ -83,7 +84,7 @@ export default async function handler(req, res) {
 
     const refundData = await stripeRes.json();
     if (!stripeRes.ok) {
-      return res.status(400).json({ error: refundData.error?.message || "Erreur Stripe" });
+      return res.status(400).json({ error: messageErreurStripe(refundData.error, "stripe-refund") });
     }
 
     // Reverse the Connect transfer to the prestataire if one was made

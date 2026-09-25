@@ -549,6 +549,15 @@ prélèvement récurrent, la réclamation n'arrive qu'au premier relevé bancair
 « Comparer avec les tarifs Stripe » dans les réglages du back-office, et un passage automatique
 dans le balayage quotidien, qui alerte par courriel.
 
+**L'abonnement annuel vaut le prix mensuel × 12, moins 20 %** (règle confirmée le 25/09/2026) :
+Premium 287,90 €/an (soit 23,99 €/mois), Elite 767,90 €/an (63,99 €/mois) pour 29,99 € et
+79,99 € par mois. `prixAnnuel()` de `src/constants/plans.js` porte la règle. L'écran affiche
+le prix annuel **réglé dans le back-office** (`subscription_prices.<formule>.yearly`, celui que ce
+contrôle compare à Stripe), ramené au mois et suivi de « facturés une fois par an » ; à défaut
+de réglage, la règle. Il affichait `Math.round(mensuel × 0,8)` — « 24 € » —, arrondi à l'euro et
+sans dire que le prélèvement est annuel. Le back-office rappelle sous chaque champ annuel le
+montant qu'impose la règle.
+
 **Il ne corrige rien, et c'est délibéré** : baisser le prélèvement léserait l'entreprise,
 relever l'affichage léserait le prestataire. C'est un arbitrage, pas une réparation — un test
 interdit d'ailleurs toute écriture depuis ce module.
@@ -788,9 +797,9 @@ tunnel de réservation et bloquerait des réservations légitimes.
 > juge désormais sur le rôle du **jeton** (`auth.role()` : `authenticated` ou `anon` sont
 > contrôlés, `service_role` et l'éditeur SQL passent) et pose le déclencheur. **Appliquée en
 > recette le 24/09/2026** — scénario `e2e/12` : sept fraudes refusées, les deux créations de
-> l'application acceptées, scénarios 06 à 09 verts. **En production : à appliquer** (le jeton
-> de production de Claude est en lecture seule). Tant que ce n'est pas fait,
-> `npm run recette comparer` signale l'écart.
+> l'application acceptées, scénarios 06 à 09 verts. **Appliquée en production le 25/09/2026**
+> par Alexandre (éditeur SQL), vérifiée le même jour en lecture seule : deux déclencheurs sur
+> `missions`, exemption par `auth.role()`.
 >
 > Le verrou des modifications, `prevent_missions_field_tampering`, n'a pas ce défaut : il
 > exempte sur `auth.uid() IS NULL`, ce qui ne dépend pas du propriétaire de la fonction.
@@ -989,6 +998,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
 | `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
+| `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
 | `_temps.js` | Conversion des horaires de prestation — `heure_debut` est une heure **locale française**, Vercel tourne en **UTC**. Toute comparaison à `Date.now()` passe par `debutPrestationMs` / `finPrestationMs` / `retardMinutes`. Ne jamais recopier la formule : trois copies manuelles sur quatre étaient fausses (voir l'en-tête du fichier) |
 | `_sirene.js` | Date d'immatriculation d'une entreprise — `dateImmatriculation()`, `datesImmatriculation()`. Lit `date_creation` sur `recherche-entreprises.api.gouv.fr` (public, gratuit, sans clé). **Renvoie `null` dès que la date n'est pas lisible avec certitude** : l'appelant doit traiter `null` comme « on ne sait pas », jamais comme « pas d'immatriculation ». Sert au délai de dépôt de l'attestation URSSAF |
@@ -1060,7 +1070,7 @@ toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener
 
 | Écriture | Action serveur | Pourquoi |
 |---|---|---|
-| Notification | `notify_prestataire` | Un compte pouvait notifier n'importe qui, avec un texte libre |
+| Notification | `prevenirNouvelleDemande()`, appelée à l'affectation | Un compte pouvait notifier n'importe qui, avec un texte libre. Depuis le 25/09/2026, plus aucune notification de nouvelle demande ne part du navigateur : `notify_prestataire` ne fait plus rien (gardée pour les onglets d'une version antérieure) |
 | Clôture de mission + cashback | `complete` | Le client écrivait son propre solde ; taux de `plans.js` au lieu de la base, et lecture-écriture non atomique |
 | Refus après délai expiré | `acceptance_timeout` | Le serveur revérifie que `acceptance_deadline` est réellement dépassée |
 | Identifiant du paiement et délai de réponse du prestataire | `assign_after_payment`, `affecter_tiers` | Le paiement est relu chez Stripe ; le délai est calculé par le serveur. Le navigateur les fournissait jusqu'au 24/09/2026 (voir §6) |
@@ -1392,6 +1402,23 @@ quand la base l'a fait. **Piège constaté sur la recette avant mise en producti
 absent de `user_metadata` donnait `NULL`, refusé par la colonne `NOT NULL`, et faisait échouer
 l'inscription entière — d'où le `COALESCE(…, false)`. Toute erreur dans ce déclencheur bloque
 TOUTES les inscriptions (« Database error saving new user »).
+
+**Le retour du lien de confirmation** (25/09/2026, `src/lib/confirmation.js`). L'inscription
+passe `emailRedirectTo: <origine>/?confirmation=1`, et Supabase y ajoute `code=` (ou
+`error_code=` si le lien a expiré ou déjà servi). Le client Supabase étant en flux **PKCE**
+(`src/lib/supabase.js`), ce `code` ne s'échange contre une session **que dans le navigateur qui
+a servi à l'inscription** : c'est lui qui garde la clé (`…-code-verifier`). Le premier essai
+en production l'a montré : lien ouvert sur iPhone depuis Gmail, adresse bien confirmée, mais
+retour sur l'accueil déconnecté, sans un mot. `App.jsx` attend donc `INITIAL_SESSION`, puis :
+- **session ouverte** (même navigateur) → pose `alane_session_active` dans l'onglet — le lien
+  s'ouvre dans un nouvel onglet, où cette marque manquait, et la session était aussitôt fermée
+  au motif de « Rester connecté » — puis emmène l'utilisateur chez lui ;
+- **pas de session** (autre appareil, navigateur intégré d'une messagerie) → écran de choix
+  avec « Adresse e-mail confirmée — connectez-vous » ; lien expiré → message distinct avec le
+  code d'erreur.
+L'adresse de retour avec `?confirmation=1` n'est acceptée que si elle entre dans les
+**Redirect URLs** de Supabase (`https://www.alane.fr/**`, `https://alane.fr/**`) ; sinon
+Supabase renvoie vers la Site URL, sans le marqueur, et l'utilisateur retombe sur l'accueil.
 
 **Le navigateur complète le profil, il ne le crée pas** (`completerProfil`, auth.jsx). La ligne
 naît dans la base (`handle_new_user`) ; le navigateur n'y ajoute que des colonnes qu'il a le
@@ -1835,6 +1862,10 @@ personne, sa commande tient. À court de candidats, la prestation bascule en `op
 diffusion : c'est alors le prestataire qui se propose, ce qui rend son autonomie visible et
 horodatée.
 
+Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
+il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
+25/09/2026, la cascade l'affectait sans aucune notification.
+
 **Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
 conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
 pas le pénal, qui reste personnel), et fondement contractuel des mécanismes de détection avec
@@ -2079,6 +2110,32 @@ avec la règle qu'appliquait le tunnel : **20 min** en urgence, **1 h** pour une
 jour même (jour français, pas UTC), **4 h** sinon. L'urgence n'a pas de colonne : elle se
 reconnaît aux frais de service encaissés, ceux du tarif `urgent`. `App.jsx` n'envoie plus ce
 délai, et le serveur ignore toute valeur reçue.
+
+**Ce délai est aussi celui qu'on annonce au prestataire.** L'e-mail « Nouvelle demande de
+prestation » disait « valable 24 h », et la notification déduisait « 1 heure » ou « 4 heures »
+d'un indicateur `same_day` envoyé par le navigateur, sans jamais connaître l'urgence. Depuis le
+25/09/2026, la phrase est tirée d'`acceptance_deadline` (`texteDelaiReponse()` de
+`api/_temps.js`, heure de Paris) ; les boutons Accepter / Refuser de l'e-mail expirent à la même
+échéance.
+
+**Le prestataire est prévenu par le serveur, à l'affectation** — `prevenirNouvelleDemande()` de
+`api/missions.js`, appelée par `assign_after_payment`, `affecter_tiers` et la cascade. Elle relit
+tout dans la base : notification (dans l'application et push), e-mail avec réponse en un clic,
+SMS. C'était le navigateur qui déclenchait l'envoi, avec ses propres données : le tarif affiché
+était le tarif de base même en urgence, et sur une prestation chez un tiers — où c'est la
+plateforme qui choisit — on tentait de prévenir le prestataire de l'écran au lieu du vrai.
+
+**Le tarif urgent part du tarif du prestataire réservé** : son tarif + `urgency_surcharge`
+(`platform_settings`, 2 € HT/h par défaut), calculé par `BookingScreen`. Jusqu'au 25/09/2026,
+l'écran d'urgence transmettait un prix calculé sur le tarif **par défaut du métier** : un
+prestataire à 18 €/h dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif. Le
+serveur ne l'aurait pas vu — le verrou de création ne pose qu'une borne basse.
+
+**Une réservation urgente part à un seul prestataire** : le premier *disponible* de la liste.
+L'écran annonçait une diffusion — « tous les prestataires disponibles reçoivent votre demande,
+le premier qui accepte assure la prestation » — qui n'existe pas ; il prenait en outre le premier
+de la liste sans regarder sa disponibilité. Corrigé le 25/09/2026 : l'écran nomme le prestataire
+sollicité et son délai de 20 minutes.
 
 ### Un secteur fermé ne montre plus rien
 
@@ -3199,6 +3256,11 @@ Deux principes :
 | `needs_replacement` | Remplaçant recherché |
 | `completed`, `closed` | Terminée |
 | `cancelled` | Annulée |
+
+**L'écran de suivi n'affiche « En route » que sur une position reçue** (25/09/2026). Il
+l'affichait dès l'acceptation, même pour une prestation dans trois jours. Avant le premier
+partage de position — que le serveur n'accepte que dans la fenêtre de la prestation, et qui
+déclenche aussi la notification « en route » — l'écran dit « Prestation confirmée ».
 | `disputed` | Litige en cours |
 | `refused`, `rejected` | Refusée |
 
@@ -3455,13 +3517,21 @@ l'application (insertion avec le jeton du client, paiement Stripe de test, affec
 rejouer le tunnel d'écran, déjà couvert par `06`. **`paiementStripe()`** lit le paiement chez
 Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 
+**Le modèle de l'e-mail de confirmation** vit dans Supabase (Authentication → Emails →
+Templates → *Confirm signup*), pas dans le code. Sa référence est
+`emails/supabase-confirmer-inscription.html`, au même habillage que les e-mails de `/api`
+(`emailHtml` de `api/_email.js`) : le recoller depuis ce fichier après toute modification, et
+modifier ce fichier d'abord.
+
 **La confirmation d'adresse e-mail** (`mailer_autoconfirm`) était désactivée en production :
 on pouvait s'inscrire avec l'adresse de quelqu'un d'autre. Décidé le 24/09/2026 : l'activer.
 L'application y est prête (voir « La base enregistre le profil complet à la création du
-compte »), à condition d'avoir d'abord : appliqué la migration
-`2026-09-24_inscription_profil_a_la_creation.sql`, branché un **SMTP** (Resend) dans Supabase
-— le service intégré n'envoie que quelques messages par heure, et qu'aux membres de
-l'organisation — et ajouté l'adresse de production aux redirections autorisées. **La recette
+compte »). La migration `2026-09-24_inscription_profil_a_la_creation.sql` est **appliquée en
+production depuis le 25/09/2026** (vérifié en lecture seule). **La confirmation est active en
+production depuis le 25/09/2026**, avec le SMTP Resend branché dans Supabase — le service
+intégré n'envoie que quelques messages par heure, et qu'aux membres de l'organisation — et les
+adresses de production dans les redirections autorisées : le premier e-mail « Confirmez votre
+adresse e-mail — ALANE » est arrivé et a confirmé le compte. **La recette
 la garde désactivée** : ses comptes d'essai (`@recette.alane.test`) n'ont pas de boîte mail.
 Le cas « sans session » y est reproduit par `e2e/13`, qui retire la session de la réponse
 d'inscription exactement comme le fait Supabase quand la confirmation est active.

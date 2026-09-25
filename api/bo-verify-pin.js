@@ -51,13 +51,13 @@ export default async function handler(req, res) {
         method: "PATCH",
         headers: { ...rlHeaders, "Prefer": "return=minimal" },
         body: JSON.stringify({ attempts }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-verify-pin] échec ignoré :", e?.message));
     } else {
       await fetch(`${SUPABASE_URL}/rest/v1/bo_rate_limits`, {
         method: "POST",
         headers: { ...rlHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify({ ip, attempts: 1, reset_at: new Date(now + 300_000).toISOString() }),
-      }).catch(() => {});
+      }).catch(e => console.error("[bo-verify-pin] échec ignoré :", e?.message));
       attempts = 1;
     }
   } catch { /* DB indisponible — on continue sans bloquer */ }
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
   fetch(`${SUPABASE_URL}/rest/v1/bo_rate_limits?ip=eq.${encodeURIComponent(ip)}`, {
     method: "DELETE",
     headers: { ...rlHeaders, "Prefer": "return=minimal" },
-  }).catch(() => {});
+  }).catch(e => console.error("[bo-verify-pin] échec ignoré :", e?.message));
 
   const token = genToken(BO_SECRET);
   return res.status(200).json({ ok: true, token, ...(usingTempPassword && { needsSetup: true }) });

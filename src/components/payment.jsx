@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
 import { C, font, r } from "../constants/colors.js";
 import { Btn, Stars } from "./ui.jsx";
+import { formatMontant } from "../constants/plans.js";
 import { reductionCashback } from "../../api/_cashback.js";
 
 // ── useProviders hook (needed by MissionPendingScreen and CancellationScreen) ──
@@ -163,7 +164,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
             </div>
           </div>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>{amount} €</div>
+            <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>{formatMontant(amount)}</div>
             <div style={{ color:C.textMuted, fontSize:11, marginTop:2 }}>{hours}h</div>
           </div>
         </div>
@@ -224,7 +225,7 @@ export function MissionPendingScreen({ provider, amount, hours, missionId, onAcc
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
             <span style={{ color:C.textSub, fontSize:13 }}>Total</span>
-            <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>{amount} €</span>
+            <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>{formatMontant(amount)}</span>
           </div>
         </div>
         <Btn full variant="success" onClick={onAccepted} style={{ fontSize:15, padding:"17px" }}>

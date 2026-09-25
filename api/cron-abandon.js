@@ -83,14 +83,14 @@ export default async function handler(req, res) {
             type: "mission",
             title: `Retard de ${retard} min ⏰`,
             body: `Votre prestation « ${label} »${m.ville ? " à " + m.ville : ""} devait commencer à ${String(m.heure_debut).replace(":","h")}. Signalez votre arrivée dans l'application : le client est informé du retard.`,
-          }, SUPABASE_URL, hdrs).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(e => console.error("[cron-abandon] échec ignoré :", e?.message));
         // Le client est informé aussi : il attendait jusqu'ici sans rien savoir.
         await notifier({
             user_id: m.client_id,
             type: "mission",
             title: "Prestataire en retard ⏰",
             body: `Votre prestataire n'a pas encore signalé son arrivée pour « ${label} », prévue à ${String(m.heure_debut).replace(":","h")}. Vous pouvez le contacter depuis l'application.`,
-          }, SUPABASE_URL, hdrs).catch(() => {});
+          }, SUPABASE_URL, hdrs).catch(e => console.error("[cron-abandon] échec ignoré :", e?.message));
       } catch (e) { console.error(`[cron-abandon] relance retard ${m.id} :`, e.message); }
     }
   } catch (e) {
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
                 <p style="margin-top:20px;font-size:12px;color:#888">Si vous ne souhaitez plus faire cette demande, ignorez simplement cet email. · <a href="https://www.alane.fr" style="color:#7C6FE0;text-decoration:none;">ALANE</a></p>
               </div>`,
             }),
-          }).catch(() => {});
+          }).catch(e => console.error("[cron-abandon] échec ignoré :", e?.message));
         }
       } catch (e) {
         console.error("[cron-abandon] email error:", e.message);
@@ -216,7 +216,7 @@ export default async function handler(req, res) {
       method: "PATCH",
       headers: { ...hdrs, "Prefer": "return=minimal" },
       body: JSON.stringify({ notified_at: new Date().toISOString() }),
-    }).catch(() => {});
+    }).catch(e => console.error("[cron-abandon] échec ignoré :", e?.message));
 
     notified++;
   }

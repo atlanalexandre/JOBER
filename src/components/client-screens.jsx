@@ -4,7 +4,7 @@ import { supabase, getRawSession } from "../lib/supabase.js";
 import { C, font, r, shadow } from "../constants/colors.js";
 import { calculerFrais } from "../../api/_montant.js";
 import { libelleStatut, couleurStatut, ONGLETS_PRESTATIONS } from "../lib/statuts.js";
-import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER } from "../constants/plans.js";
+import { CASHBACK_TIERS, getCashbackTier, tauxCashback, calcCashback, ABONNEMENTS_PRESTA, prixClient, formatE, formatMontant, isLaunchPhase, FRAIS_MER, prixAnnuel, REMISE_ANNUELLE } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, FR_CITY_COORDS, PROVIDERS_CACHE_TTL, cpToCoords, DOCS_REQUIS_CLIENT_PRO, correspondRecherche, metiersDuProfil, cleVille } from "../constants/data.js";
 import { CONTRAT_CADRE_PRO, VERSION_CONTRAT_CADRE } from "../constants/contrat-cadre-pro.js";
 import { CGPS } from "../constants/cgps.js";
@@ -1954,7 +1954,14 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
   const basePrice = selectedJob
     ? (() => { const t = METIERS_TARIFS[s.id]?.[selectedJob]; return t ? prixClient(t.default, s.id) : 12; })()
     : 0;
-  const urgentPrice = basePrice + surcharge;
+  // En urgence, c'est le premier prestataire de la liste qui est réservé : le
+  // prix affiché part de SON tarif, comme celui que calcule l'écran de réservation.
+  // En urgence, la demande part à UN prestataire : le premier disponible de la
+  // liste (et à défaut le premier tout court). Il était pris sans regarder sa
+  // disponibilité, alors que l'écran parlait des prestataires disponibles.
+  const prestaUrgence = filteredProviders.find(p => p.available) || filteredProviders[0];
+  const tarifStandardUrgence = prestaUrgence?.rateNum || basePrice;
+  const urgentPrice = tarifStandardUrgence + surcharge;
 
   // Bouton urgence réutilisable
   const UrgentToggle = ({ showBeforeJob=false }) => (
@@ -2158,8 +2165,8 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 {urgentMode && <Badge color={C.accent} small>🚨 Urgence</Badge>}
               </div>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{urgentPrice.toFixed(2).replace(".",",")} € HT/h</div>
-                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{basePrice.toFixed(2).replace(".",",")} € HT/h</div>}
+                <div style={{ fontWeight:800, color:urgentMode?C.accent:C.violet, fontSize:14 }}>{(urgentMode ? urgentPrice : basePrice).toFixed(2).replace(".",",")} € HT/h</div>
+                {urgentMode && <div style={{ color:C.textSub, fontSize:11, textDecoration:"line-through" }}>{tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h</div>}
               </div>
             </div>
             {urgentMode && (
@@ -2173,16 +2180,19 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
           {urgentMode ? (
             <div style={{ background:"#0D1B3E", borderRadius:18, padding:"28px 20px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.5)", border:`2px solid ${C.accent}33` }}>
               <div style={{ fontSize:52, marginBottom:12 }}>🚀</div>
-              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Prestation envoyée à tous les prestataires</h3>
+              <h3 style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 8px" }}>Réservation urgente</h3>
               <p style={{ color:C.textSub, fontSize:14, lineHeight:1.7, margin:"0 auto 20px", maxWidth:280 }}>
-                Tous les <strong style={{ color:C.text }}>{filteredProviders.filter(p=>p.available).length} prestataires disponibles</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong> reçoivent votre demande simultanément. <strong style={{ color:C.accent }}>Le premier qui accepte assure la prestation.</strong>
+                {/* L'écran annonçait une diffusion à tous les prestataires, « le premier
+                    qui accepte assure la prestation ». Ce n'est pas ce qui se passe : la
+                    demande part à un seul prestataire, qui a 20 minutes pour répondre. */}
+                Votre demande part à <strong style={{ color:C.text }}>{prestaUrgence?.name || "un prestataire disponible"}</strong> en <strong style={{ color:C.text }}>{selectedJob}</strong>, qui a <strong style={{ color:C.accent }}>20 minutes pour accepter</strong>. Sans réponse, elle est proposée à un autre prestataire ou intégralement remboursée.
               </p>
 
               {/* Détail surcoût */}
               <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:12, padding:"12px 14px", marginBottom:20, textAlign:"left" }}>
                 <div style={{ fontWeight:800, color:C.text, fontSize:13, marginBottom:6 }}>💶 Détail du tarif urgence</div>
                 {[
-                  ["Tarif standard", `${basePrice.toFixed(2).replace(".",",")} € HT/h`],
+                  ["Tarif standard", `${tarifStandardUrgence.toFixed(2).replace(".",",")} € HT/h`],
                   ["Surcoût urgence", `+${surcharge},00 € HT/h`],
                   ["Tarif urgence total", `${urgentPrice.toFixed(2).replace(".",",")} € HT/h`],
                 ].map(([l,v],i)=>(
@@ -2194,8 +2204,8 @@ export function SectorDetailScreen({ sector, onNavigate, clientCoords }) {
                 <div style={{ fontSize:11, color:C.textSub, marginTop:6 }}>Le surcoût sera affiché et confirmé avant le paiement.</div>
               </div>
 
-              <Btn full onClick={()=>onNavigate("booking", { ...filteredProviders[0], urgentMode:true, urgentPrice, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
-                🚀 Envoyer la prestation maintenant
+              <Btn full disabled={!prestaUrgence} onClick={()=>onNavigate("booking", { ...prestaUrgence, urgentMode:true, jobTitle:selectedJob })} style={{ fontSize:15, padding:"16px", marginBottom:10 }}>
+                {prestaUrgence ? "🚀 Envoyer la prestation maintenant" : "Aucun prestataire pour ce métier"}
               </Btn>
               <button onClick={()=>setUrgentMode(false)} style={{ background:"none", border:"none", color:C.textSub, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                 Annuler — choisir un prestataire manuellement
@@ -2891,7 +2901,6 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [localUrgent, setLocalUrgent] = useState(false);
   if (!p) return null;
   const isUrgent = p.urgentMode || localUrgent || false;
-  const urgentPrice = p.urgentPrice || null;
   const [step,setStep]=useState(1);
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
@@ -3001,6 +3010,8 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
        && ["beneficiaire","service_vendu","perimetre","livrable","organisateur"].every(k => tiersDecl[k].trim()));
   const [fraisSettings, setFraisSettings] = useState(FRAIS_MER);
   const [launchPhaseBooking, setLaunchPhaseBooking] = useState(isLaunchPhase());
+  // Surcoût urgence réglé dans le back-office (2 € HT/h par défaut).
+  const [surcoutUrgence, setSurcoutUrgence] = useState(2);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data?.user) return;
@@ -3013,11 +3024,16 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
       .then(({ data }) => { if (data?.value) setFraisSettings(data.value); });
     supabase.from("platform_settings").select("value").eq("key","launch_phase").single()
       .then(({ data }) => { if (data?.value != null) setLaunchPhaseBooking(Boolean(data.value)); });
+    supabase.from("platform_settings").select("value").eq("key","urgency_surcharge").single()
+      .then(({ data }) => { if (data?.value != null && Number.isFinite(Number(data.value))) setSurcoutUrgence(Number(data.value)); });
   }, []);
 
 
   const baseRate = p?.rateNum || prixClient(p?.tarifNet||14, p?.sector||'divers');
-  const tarifHoraire = isUrgent ? (urgentPrice || (baseRate + 2)) : baseRate;
+  // Le tarif urgent part du tarif DE CE PRESTATAIRE. Il partait du tarif par
+  // défaut du métier, transmis par l'écran d'urgence : un prestataire à 18 €/h
+  // dans un métier à 14 €/h était réservé à 16 €/h, sous son propre tarif.
+  const tarifHoraire = isUrgent ? baseRate + surcoutUrgence : baseRate;
 
   // Calcul du nombre de jours et total
   const nbJours = (() => {
@@ -3049,7 +3065,7 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
     return () => { vivant = false; };
   }, [adresse, ville, p?.ville, p?.zone_km]);
 
-  const totalParJour = (tarifHoraire * hours).toFixed(0);
+  const totalParJour = tarifHoraire * hours;
   const totalHT = tarifHoraire * hours * nbJours;
   // La formule vit dans api/_montant.js, appelée aussi par le contrôle serveur.
   // Une grille recopiée des deux côtés finit toujours par diverger, et c'est
@@ -3355,7 +3371,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontSize:22, fontWeight:800, color:C.violet }}>{hours}h{missionType==="range"?" / jour":""}</span>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{totalParJour} € HT{missionType==="range"?"/jour":""}</div>
+                <div style={{ fontWeight:800, color:isUrgent?C.accent:C.violet, fontSize:16 }}>{formatMontant(totalParJour)} HT{missionType==="range"?"/jour":""}</div>
                 <div style={{ color:C.textMuted, fontSize:11, marginTop:1 }}>+ {formatMontant(fraisMission)} frais = <span style={{ color:C.accentGold, fontWeight:700 }}>{totalGlobal} € total</span></div>
                 {missionType==="range" && nbJours > 1 && (
                   <div style={{ color:C.accentGold, fontSize:12, fontWeight:700 }}>Total : {totalGlobal} € ({nbJours}j)</div>
@@ -3369,7 +3385,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </div>
             {isUrgent && (
               <div style={{ marginTop:10, background:`${C.accentGold}15`, borderRadius:8, padding:"8px 10px", fontSize:11, color:C.text }}>
-                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif standard + 2,00 € surcoût urgence)
+                💶 Tarif urgence : <strong>{formatMontant(tarifHoraire)} HT/h</strong> (tarif du prestataire + {formatMontant(surcoutUrgence)} de surcoût urgence)
               </div>
             )}
           </div>
@@ -3530,7 +3546,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${formatMontant(tarifHoraire)}${isUrgent?" (urgence)":""}`],
-              ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
+              // Écart réel entre le tarif facturé et le tarif du prestataire. Le
+              // libellé était figé à « +2,00 € » quel que soit le surcoût appliqué.
+              ...(isUrgent && tarifHoraire > baseRate ? [["dont surcoût urgence",`+${formatMontant(tarifHoraire - baseRate)} HT/h`]] : []),
               ["Lieu", [adresse, cp, ville].filter(Boolean).join(", ")||"—"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -3570,7 +3588,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                       <div style={{ fontSize:10, color:C.textMuted }}>Palier {tier.icon} {tier.label} · {tauxCashback(tier)} du total</div>
                     </div>
                   </div>
-                  <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>+{earned.toFixed(2)} €</span>
+                  <span style={{ fontWeight:800, color:C.success, fontSize:15 }}>+{formatMontant(earned)}</span>
                 </div>
               );
             })()}
@@ -3744,7 +3762,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -3760,7 +3778,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 <div style={{ background:`${C.success}12`, border:`1px solid ${C.success}30`, borderRadius:r, padding:"16px", marginBottom:20, display:"flex", gap:12, alignItems:"center" }}>
                   <div style={{ width:44, height:44, borderRadius:12, background:`${C.success}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>💰</div>
                   <div style={{ flex:1, textAlign:"left" }}>
-                    <div style={{ fontWeight:700, color:C.success, fontSize:14, marginBottom:2 }}>+{earned.toFixed(2)} € de cashback gagné !</div>
+                    <div style={{ fontWeight:700, color:C.success, fontSize:14, marginBottom:2 }}>+{formatMontant(earned)} de cashback gagné !</div>
                     <div style={{ color:C.textSub, fontSize:12 }}>Crédit dans 24h · Palier {tier.icon} {tier.label} ({tauxCashback(tier)})</div>
                   </div>
                 </div>
@@ -3772,7 +3790,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
             </h3>
             <p style={{ color:C.textSub, fontSize:14, marginBottom:24, lineHeight:1.7 }}>
               {isUrgent
-                ? <>Votre prestation a été envoyée à tous les prestataires disponibles. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
+                ? <>Votre demande a été envoyée à {p.name || "votre prestataire"}, qui a 20 minutes pour l'accepter. Le paiement de <strong style={{ color:C.accent }}>{totalGlobal} €</strong> est sécurisé via Stripe.</>
                 : <>Le paiement de <strong style={{ color:C.violet }}>{totalGlobal} €</strong> est sécurisé via Stripe et sera versé au prestataire 48 h après la fin de la prestation.</>
               }
             </p>
@@ -3911,7 +3929,13 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
     return () => { supabase.removeChannel(channel); };
   }, [resolvedMissionId]);
 
-  const statusLabels = ["En route vers vous","Arrivé sur place","Prestation en cours","Prestation terminée"];
+  // « En route » s'affichait dès l'acceptation, même pour une prestation dans
+  // trois jours. Le seul signe réel d'un départ est la position que partage le
+  // prestataire — et le serveur ne la rend que dans la fenêtre de la prestation.
+  // Tant qu'elle n'arrive pas, la prestation est seulement confirmée.
+  const enRoute = step === 0 && !!gpsPosition;
+  const statusLabels = [enRoute ? "En route vers vous" : "Prestation confirmée","Arrivé sur place","Prestation en cours","Prestation terminée"];
+  const etapeFrise = timelineStatus === "enroute" && step === 0 && !enRoute ? "signed" : timelineStatus;
 
   return (
     <div style={{ minHeight:"100%", background:`linear-gradient(180deg, #0A1628 0%, #0D1B3E 100%)`, paddingBottom:80 }}>
@@ -3949,7 +3973,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
               </div>
             )}
             <div style={{ position:"absolute", bottom:12, right:12, background:C.violet, borderRadius:20, padding:"5px 12px", color:C.white, fontSize:11, fontWeight:700 }}>
-              {providerName || p?.name || "Prestataire"} {step===0 && eta!=null && eta>0 ? `· ~${eta} min` : step===0 ? "· En route" : "· Sur place"}
+              {providerName || p?.name || "Prestataire"} {enRoute && eta!=null && eta>0 ? `· ~${eta} min` : enRoute ? "· En route" : step===0 ? "· Confirmée" : "· Sur place"}
             </div>
           </div>
           <div style={{ padding:"13px 16px", display:"flex", gap:12, alignItems:"center", borderTop:`1px solid ${C.border}` }}>
@@ -3969,7 +3993,7 @@ export function TrackingScreen({ provider, missionId, onNavigate, clientCoords: 
         {/* Timeline */}
         <div style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"18px", marginBottom:16 }}>
           <div style={{ fontWeight:700, color:C.text, fontSize:14, marginBottom:4 }}>Progression de la prestation</div>
-          <MissionTimeline status={timelineStatus} />
+          <MissionTimeline status={etapeFrise} />
         </div>
 
         {/* Bouton voir le contrat */}
@@ -4206,8 +4230,8 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
   const [paid,setPaid]=useState(false);
 
   const bothValidated = clientValidated && prestaValidated;
-  const totalClientPrice = (p.rateNum * hoursActual).toFixed(0);
-  const totalNetPresta   = (p.tarifNet * hoursActual).toFixed(0);
+  const totalClientPrice = p.rateNum * hoursActual;
+  const totalNetPresta   = p.tarifNet * hoursActual;
 
   const persistValidation = async (side, rating, comment) => {
     if (!missionId) return;
@@ -4259,7 +4283,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
     <div style={{ minHeight:"100%", background:`linear-gradient(160deg,${C.success},#1e8449)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center" }}>
       <div style={{ fontSize:80, marginBottom:20 }}>💶</div>
       <h2 style={{ color:C.white, fontSize:28, fontWeight:800, margin:"0 0 12px", fontFamily:font.display }}>Paiement libéré !</h2>
-      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{totalNetPresta} €</strong> ont été virés sur le compte de {p.name}.</p>
+      <p style={{ color:"rgba(255,255,255,0.8)", fontSize:15, lineHeight:1.8, maxWidth:280, margin:"0 auto 12px" }}>Les <strong>{formatMontant(totalNetPresta)}</strong> ont été virés sur le compte de {p.name}.</p>
       <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:18, padding:"18px", marginBottom:28, width:"100%", maxWidth:280 }}>
         {["✅ Prestation validée par les deux parties","💶 Virement initié vers le prestataire","🧾 Facture générée automatiquement","⭐ Avis publiés sur les deux profils"].map((s,i)=>(
           <div key={i} style={{ color:"rgba(255,255,255,0.85)", fontSize:13, padding:"6px 0", borderBottom:i<3?`1px solid rgba(255,255,255,0.2)`:"none", textAlign:"left" }}>{s}</div>
@@ -4285,7 +4309,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <input type="range" min={1} max={missionHours} value={hoursActual} onChange={e=>setHoursActual(+e.target.value)} style={{ width:"100%", accentColor:C.violet }} />
           </div>
           <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text }}>
-            💳 Montant client : <strong>{totalClientPrice} €</strong>
+            💳 Montant client : <strong>{formatMontant(totalClientPrice)}</strong>
           </div>
         </div>
 
@@ -4353,7 +4377,7 @@ export function ValidationScreen({ provider, role, missionId, onNavigate }) {
             <div>
               <div style={{ fontSize:32, marginBottom:8 }}>🚀</div>
               <div style={{ fontWeight:800, color:C.success, fontSize:15 }}>Les deux parties ont validé !</div>
-              <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {totalNetPresta} € en cours vers {p.name}…</div>
+              <div style={{ color:C.textSub, fontSize:13, marginTop:4 }}>Virement de {formatMontant(totalNetPresta)} en cours vers {p.name}…</div>
             </div>
           ) : (
             <div>
@@ -5252,7 +5276,7 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:11, color:C.textSub }}>Estimation {hours}h</div>
-                  <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{totalTeam.toFixed(0)} €</div>
+                  <div style={{ fontWeight:800, color:C.violet, fontSize:18 }}>{formatMontant(totalTeam)}</div>
                 </div>
               </div>
               <Btn full onClick={()=>setStep("configure")} style={{ padding:"13px", fontSize:14 }}>
@@ -5298,18 +5322,18 @@ export function TeamBookingScreen({ onNavigate, onBack }) {
             {basket.map(p => (
               <div key={p.id} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ color:C.textSub, fontSize:13 }}>{p.name} ({hours}h)</span>
-                <span style={{ fontWeight:700, color:C.text, fontSize:13 }}>{(p.rateNum*hours).toFixed(0)} €</span>
+                <span style={{ fontWeight:700, color:C.text, fontSize:13 }}>{formatMontant(p.rateNum*hours)}</span>
               </div>
             ))}
             <div style={{ display:"flex", justifyContent:"space-between", paddingTop:10 }}>
               <span style={{ fontWeight:800, color:C.text, fontSize:15 }}>Total équipe</span>
-              <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{totalTeam.toFixed(0)} €</span>
+              <span style={{ fontWeight:800, color:C.violet, fontSize:20 }}>{formatMontant(totalTeam)}</span>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:C.textSub }}>🔒 Sécurisé via Stripe jusqu'à validation de chaque prestataire</div>
           </div>
 
           <Btn full onClick={()=>setStep("payment")} disabled={!date||!timeStart} style={{ fontSize:15, padding:"16px" }}>
-            💳 Procéder au paiement {totalTeam.toFixed(0)} €
+            💳 Procéder au paiement {formatMontant(totalTeam)}
           </Btn>
         </>}
       </div>
@@ -5401,7 +5425,7 @@ export function HowItWorksScreen({ role, onNext, onBack }) {
                     <div style={{ fontSize:18, marginBottom:4 }}>{plan.icon}</div>
                     <div style={{ fontWeight:700, color:plan.color, fontSize:12 }}>{plan.label}</div>
                     <div style={{ color:C.text, fontSize:13, fontWeight:800, marginTop:2 }}>
-                      {plan.price===0 ? "Gratuit" : `${plan.price}€`}
+                      {plan.price===0 ? "Gratuit" : formatMontant(plan.price)}
                     </div>
                     {plan.price>0 && <div style={{ color:C.textSub, fontSize:10 }}>/mois</div>}
                     <div style={{ color:C.textSub, fontSize:10, marginTop:4 }}>
@@ -5615,7 +5639,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
   const missionDate = date || today;
   const missionHours = hours || 8;
   const totalAmount = (typeof amount === 'object' ? amount?.amount : amount) || 124;
-  const prestaNet = (p.tarifNet * missionHours).toFixed(2);
+  const prestaNet = formatMontant(p.tarifNet * missionHours);
 
   useEffect(()=>{
     if(!bothSigned) return;
@@ -5678,7 +5702,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
     },
     {
       title:"Article 3 — Rémunération et paiement",
-      content:`Taux horaire net prestataire : ${p.tarifNet ? p.tarifNet.toFixed(2) : "14,00"} €/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet} €\nMontant total facturé au Client : ${totalAmount} € (incluant les frais de service)\n\nLe paiement est encaissé dès la réservation et conservé jusqu'à la fermeture du délai de réclamation de 48 heures ouvert au Client, qui court à compter de la fin effective de la prestation. Le virement au Prestataire est émis à l'expiration de ce délai, sous réserve qu'aucune réclamation ni retenue au titre de l'article 7.4 des CGPS ne soit en cours. La validation de la prestation la clôture ; elle ne libère pas les fonds.\n\nEn cas de réclamation, ALANE formule sous 72 heures ouvrées une proposition de résolution amiable. Cette proposition n'a aucun caractère contraignant : elle ne tranche pas le litige et ne constitue ni un arbitrage ni une médiation au sens juridique. Les parties restent libres de l'accepter, de la refuser, et de saisir le médiateur ou la juridiction compétente.`
+      content:`Taux horaire net prestataire : ${formatMontant(p.tarifNet || 14)}/h\nDurée : ${missionHours}h\nMontant net dû au Prestataire : ${prestaNet}\nMontant total facturé au Client : ${formatMontant(totalAmount)} (incluant les frais de service)\n\nLe paiement est encaissé dès la réservation et conservé jusqu'à la fermeture du délai de réclamation de 48 heures ouvert au Client, qui court à compter de la fin effective de la prestation. Le virement au Prestataire est émis à l'expiration de ce délai, sous réserve qu'aucune réclamation ni retenue au titre de l'article 7.4 des CGPS ne soit en cours. La validation de la prestation la clôture ; elle ne libère pas les fonds.\n\nEn cas de réclamation, ALANE formule sous 72 heures ouvrées une proposition de résolution amiable. Cette proposition n'a aucun caractère contraignant : elle ne tranche pas le litige et ne constitue ni un arbitrage ni une médiation au sens juridique. Les parties restent libres de l'accepter, de la refuser, et de saisir le médiateur ou la juridiction compétente.`
     },
     {
       title:"Article 4 — Obligations du prestataire",
@@ -5761,8 +5785,8 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   ["Type de prestation", p.role],
                   ["Date", missionDate],
                   ["Durée", `${missionHours} heures`],
-                  ["Montant client total", `${totalAmount} €`],
-                  ["Montant net prestataire", `${prestaNet} €`],
+                  ["Montant client total", formatMontant(totalAmount)],
+                  ["Montant net prestataire", prestaNet],
                 ].map(([l,v])=>(
                   <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}` }}>
                     <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
@@ -5831,7 +5855,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                   On n'affirme plus que ce qui est vrai : les pièces sont vérifiées à
                   l'inscription, et l'attestation RC Pro est désormais suivie jusqu'à son
                   échéance (l'accès est suspendu 30 jours après expiration, CGPS art. 19.1). */}
-              {[["Statut","Auto-entrepreneur immatriculé"],["Justificatifs","SIRET, URSSAF et RC Pro vérifiés par ALANE"],["Assurance RC Pro","Attestation suivie jusqu'à son échéance"],["SIRET","Porté sur la facture du prestataire"],["Taux horaire net",`${p.tarifNet?p.tarifNet.toFixed(2):"14,00"} €/h`]].map(([l,v])=>(
+              {[["Statut","Auto-entrepreneur immatriculé"],["Justificatifs","SIRET, URSSAF et RC Pro vérifiés par ALANE"],["Assurance RC Pro","Attestation suivie jusqu'à son échéance"],["SIRET","Porté sur la facture du prestataire"],["Taux horaire net",`${formatMontant(p.tarifNet||14)}/h`]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontSize:12, color:C.textSub }}>{l}</span>
                   <span style={{ fontSize:12, fontWeight:600, color:C.text }}>{v}</span>
@@ -5850,7 +5874,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
                 </div>
               </div>
               <div style={{ background:`${C.accentGold}15`, borderRadius:10, padding:"10px 12px", fontSize:12, color:C.text, lineHeight:1.6 }}>
-                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{totalAmount} €</strong> sont sécurisés via Stripe et versés au prestataire 48 h après la fin de la prestation.
+                💡 ALANE agit en qualité d'intermédiaire. Les fonds de <strong>{formatMontant(totalAmount)}</strong> sont sécurisés via Stripe et versés au prestataire 48 h après la fin de la prestation.
               </div>
             </div>
           </div>
@@ -5945,7 +5969,7 @@ export function ContractScreen({ provider, amount, hours, date, missionId, onSig
 
             {/* Info paiement sécurisé */}
             <div style={{ background:`${C.accentGold}15`, border:`1px solid ${C.accentGold}44`, borderRadius:r, padding:"14px 16px", marginTop:14, fontSize:12, color:C.text, lineHeight:1.6 }}>
-              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{totalAmount} €</strong> sont actuellement sécurisés via Stripe. La part revenant à {p.name} (<strong>{prestaNet} €</strong>) lui sera versée 48 heures après la fin de la prestation, délai pendant lequel vous pouvez signaler un problème.
+              🔒 <strong>Paiement sécurisé :</strong> Les <strong>{formatMontant(totalAmount)}</strong> sont actuellement sécurisés via Stripe. La part revenant à {p.name} (<strong>{prestaNet}</strong>) lui sera versée 48 heures après la fin de la prestation, délai pendant lequel vous pouvez signaler un problème.
             </div>
           </div>
         )}
@@ -6129,7 +6153,7 @@ export function PayslipScreen({ provider, prestation, onBack }) {
             {[
               ["Taux horaire net",`${formatMontant(m.tarifNet)}/h`],
               ["Nombre d’heures",`${billedHours}h`],
-              ["Montant net total",`${brut.toFixed(2)} €`],
+              ["Montant net total",formatMontant(brut)],
               ["Statut","✅ Virement effectué"],
             ].map(([l,v],i)=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:i<3?`1px solid ${C.success}22`:"none" }}>
@@ -6152,8 +6176,8 @@ export function PayslipScreen({ provider, prestation, onBack }) {
             <div style={{ height:"100%", width:`${caReel!==null?Math.min(Math.round((caReel/caPlafond)*100),100):0}%`, background:`linear-gradient(90deg,${C.success},${C.accentGold})`, borderRadius:4, transition:"width 1s" }} />
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:C.textSub }}>
-            <span>CA réalisé : <strong style={{ color:C.success }}>{caReel!==null?caReel.toLocaleString("fr-FR")+"€":"—"}</strong></span>
-            <span>Restant : <strong style={{ color:C.text }}>{caReel!==null?(caPlafond-caReel).toLocaleString("fr-FR")+"€":"—"}</strong></span>
+            <span>CA réalisé : <strong style={{ color:C.success }}>{caReel!==null?formatMontant(caReel):"—"}</strong></span>
+            <span>Restant : <strong style={{ color:C.text }}>{caReel!==null?formatMontant(caPlafond-caReel):"—"}</strong></span>
           </div>
         </div>
 
@@ -7129,7 +7153,7 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:800, color:C.text, fontSize:16 }}>{prestaName}</div>
-                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}{selected.tarif_horaire > 0 ? ` · ${selected.tarif_horaire} €/h` : ""}</div>
+                  <div style={{ color:C.textSub, fontSize:12, marginTop:2 }}>{selected.metier || sector?.label}{selected.tarif_horaire > 0 ? ` · ${formatMontant(selected.tarif_horaire)}/h` : ""}</div>
                   {prestaDetails.avgRating > 0 && (
                     <div style={{ color:C.accentGold, fontSize:12, fontWeight:700, marginTop:3 }}>
                       {"⭐".repeat(Math.round(prestaDetails.avgRating))} {prestaDetails.avgRating}/5
@@ -8356,7 +8380,7 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
         {/* Stats rapides */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
           {[
-            { label:"Solde wallet",  value:`${Number(w.balance).toFixed(2)} €`,        color:C.success, icon:"💰" },
+            { label:"Solde wallet",  value:formatMontant(w.balance),        color:C.success, icon:"💰" },
             { label:"Ce mois",       value:`${w.missionsThisMonth} prestation${w.missionsThisMonth>1?"s":""}`, color:C.violet, icon:"📋" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0D1B3E", border:`1px solid ${C.border}`, borderRadius:r, padding:"14px", display:"flex", gap:10, alignItems:"center" }}>
@@ -8421,11 +8445,11 @@ export function CashbackWalletScreen({ onBack, onNavigate }) {
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:600, color:C.text, fontSize:13, marginBottom:2 }}>{h.prestation}</div>
-              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {h.amount} €</div>
+              <div style={{ color:C.textMuted, fontSize:11 }}>{h.date} · Prestation {formatMontant(h.amount)}</div>
             </div>
             <div style={{ textAlign:"right", flexShrink:0 }}>
               <div style={{ fontWeight:700, color:h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted, fontSize:14 }}>
-                +{h.cashback.toFixed(2)} €
+                +{formatMontant(h.cashback)}
               </div>
               <Badge color={h.status==="disponible"?C.success:h.status==="utilisé"?C.violet:C.textMuted} small>
                 {h.status}
@@ -9207,6 +9231,12 @@ export function AbonnementPrestaScreen({ onBack }) {
   const effectivePlans = ABONNEMENTS_PRESTA.map(p => {
     const limit = planLimits?.[p.id];
     const monthlyPrice = subPrices?.[p.id]?.monthly;
+    // Le prix annuel est celui réglé dans le back-office — c'est lui que le
+    // contrôle compare au tarif Stripe réellement prélevé. À défaut, la règle
+    // du prix mensuel moins 20 %.
+    const prixMensuel = monthlyPrice != null ? Number(monthlyPrice) : p.price;
+    const reglageAnnuel = Number(subPrices?.[p.id]?.yearly);
+    const yearlyPrice = p.price === 0 ? 0 : (reglageAnnuel > 0 ? reglageAnnuel : prixAnnuel(prixMensuel));
     const features = [...p.features];
     if (limit != null) {
       if (p.id === "elite") {
@@ -9220,6 +9250,7 @@ export function AbonnementPrestaScreen({ onBack }) {
       ...p,
       ...(limit != null ? { prestations: limit } : {}),
       ...(monthlyPrice != null ? { price: monthlyPrice } : {}),
+      yearlyPrice,
       features,
     };
   });
@@ -9358,7 +9389,7 @@ export function AbonnementPrestaScreen({ onBack }) {
         )}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
           <div style={{ display:"flex", background:"rgba(255,255,255,0.05)", borderRadius:12, padding:4 }}>
-            {[{id:"monthly",label:"Mensuel"},{id:"yearly",label:"Annuel -20%"}].map(b=>(
+            {[{id:"monthly",label:"Mensuel"},{id:"yearly",label:`Annuel −${Math.round(REMISE_ANNUELLE*100)} %`}].map(b=>(
               <button key={b.id} onClick={()=>setBilling(b.id)} style={{ padding:"9px 18px", border:"none", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:billing===b.id?700:500, background:billing===b.id?C.violet:"transparent", color:billing===b.id?C.white:C.textSub }}>
                 {b.label}
               </button>
@@ -9366,7 +9397,9 @@ export function AbonnementPrestaScreen({ onBack }) {
           </div>
         </div>
         {effectivePlans.map(plan=>{
-          const price=billing==="yearly"?Math.round(plan.price*0.8):plan.price;
+          // En annuel : l'équivalent mensuel, au centime, et le montant réellement
+          // prélevé chaque année, affiché juste en dessous.
+          const price=billing==="yearly"?Math.round(plan.yearlyPrice/12*100)/100:plan.price;
           const active=current===plan.id;
           return (
             <div key={plan.id} style={{ background:active?plan.color+"15":"#0D1B3E", border:`2px solid ${active?plan.color:C.border}`, borderRadius:r+4, padding:"16px", marginBottom:12, position:"relative" }}>
@@ -9375,7 +9408,8 @@ export function AbonnementPrestaScreen({ onBack }) {
                 <div style={{ width:42, height:42, borderRadius:12, background:plan.color+"20", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{plan.icon}</div>
                 <div>
                   <div style={{ fontWeight:700, color:C.text, fontSize:15 }}>{plan.label}</div>
-                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":price+" €"}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
+                  <div style={{ fontWeight:800, color:plan.color, fontSize:20 }}>{price===0?"Gratuit":formatMontant(price)}{price>0&&<span style={{ fontSize:12, color:C.textSub, fontWeight:400 }}>/mois</span>}</div>
+                  {price>0&&billing==="yearly"&&<div style={{ fontSize:11, color:C.textSub }}>soit {formatMontant(plan.yearlyPrice)} facturés une fois par an</div>}
                 </div>
               </div>
               {plan.features.map((f,i)=>(
@@ -9397,7 +9431,7 @@ export function AbonnementPrestaScreen({ onBack }) {
                           décimales, et la virgule française. */}
                       {(() => {
                         const benefice = (Math.round((96 - price) * 100) / 100).toFixed(2).replace(".", ",");
-                        const socle = `1 prestation ≈ 96 € net · Abonnement = ${price} € · Bénéfice net dès prestation 1 : +${benefice} €`;
+                        const socle = `1 prestation ≈ 96 € net · Abonnement = ${formatMontant(price)} · Bénéfice net dès prestation 1 : +${benefice} €`;
                         return plan.id === "premium" ? socle : `${socle} · Position #1 + Accompagnement dédié`;
                       })()}
                     </span>

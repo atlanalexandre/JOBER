@@ -36,7 +36,7 @@ export default async function handler(req, res) {
         created_at:      new Date().toISOString(),
         notified_at:     null,
       }),
-    }).catch(() => {});
+    }).catch(e => console.error("[booking-draft/save] échec ignoré :", e?.message));
     return res.status(200).json({ ok: true });
   }
 
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     await fetch(`${SUPABASE_URL}/rest/v1/booking_drafts?client_id=eq.${user.id}`, {
       method: "DELETE",
       headers: { ...hdrs, "Prefer": "return=minimal" },
-    }).catch(() => {});
+    }).catch(e => console.error("[booking-draft/clear] échec ignoré :", e?.message));
     return res.status(200).json({ ok: true });
   }
 

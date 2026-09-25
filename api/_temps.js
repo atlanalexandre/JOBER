@@ -288,3 +288,24 @@ export function fenetreHeuresSupp(finMs, nowMs = Date.now()) {
   const ferme = finMs + DELAI_HEURES_SUPP_MS;
   return { ouverte: nowMs <= ferme, ferme, horaireInconnu: false };
 }
+
+/**
+ * Phrase annonçant au prestataire le temps qu'il lui reste pour répondre à une
+ * demande, à partir de l'échéance réellement fixée par le serveur
+ * (`missions.acceptance_deadline`).
+ *
+ * L'heure est donnée à l'heure de Paris : Vercel tourne en UTC.
+ *
+ * @param {number|null} echeanceMs  instant de l'échéance ; null si inconnue
+ * @returns {{ phrase: string }}
+ */
+export function texteDelaiReponse(echeanceMs, nowMs = Date.now()) {
+  if (!Number.isFinite(echeanceMs)) return { phrase: "Répondez au plus vite : la demande expire si vous ne répondez pas." };
+  const minutes = Math.max(0, Math.round((echeanceMs - nowMs) / 60000));
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  const duree = h === 0 ? `${m} minute${m > 1 ? "s" : ""}`
+    : m === 0 ? `${h} heure${h > 1 ? "s" : ""}`
+    : `${h} h ${String(m).padStart(2, "0")}`;
+  const heure = new Date(echeanceMs).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" }).replace(":", " h ");
+  return { phrase: `Vous avez ${duree} pour accepter ou refuser, soit jusqu'à ${heure}.` };
+}
