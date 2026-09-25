@@ -1933,9 +1933,6 @@ export default function App() {
           const userId = ud?.user?.id;
           if(!userId) throw new Error("Session expirée, veuillez vous reconnecter.");
           if(selectedProvider?.id){
-            const today=new Date().toDateString();
-            const mDay=paymentDate?new Date(paymentDate).toDateString():null;
-            const isSameDay=!mDay||mDay===today;
             // Le délai de réponse du prestataire est fixé par le serveur, sur la
             // prestation (api/_paiement.js) : envoyé d'ici, il pouvait valoir un an.
             let missionId = selectedMissionId;
@@ -1974,14 +1971,11 @@ export default function App() {
               throw new Error("Paiement encaissé mais la prestation est introuvable. "
                 + "Ne renouvelez pas le paiement : contactez-nous, le montant vous sera remboursé.");
             }
-            // La notification in-app est désormais insérée par /api/missions
-            // (action notify_prestataire), en service role et après vérification
-            // que l'appelant est bien le client de la mission — voir S-06.
+            // Le prestataire est prévenu par le serveur au moment de l'affectation
+            // (prevenirNouvelleDemande dans /api/missions), avec les données de la
+            // base : tarif réellement facturé, vrai délai de réponse, et le bon
+            // destinataire quand c'est la plateforme qui l'a choisi.
             const { data:sessionData } = await supabase.auth.getSession();
-            fetch("/api/missions", {
-              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
-              body: JSON.stringify({ action:"notify_prestataire", prestataire_id:selectedProvider.id, mission_label:selectedProvider.jobTitle||selectedProvider.role||null, date:paymentDate||null, ville:paymentVille||null, hours:paymentHours||null, heure_debut:paymentStartTime||null, adresse:paymentAdresse||null, tarif_horaire:selectedProvider.rateNum||null, same_day:isSameDay }),
-            }).catch(()=>{});
             fetch("/api/support", {
               method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${sessionData?.session?.access_token||""}`},
               body: JSON.stringify({
