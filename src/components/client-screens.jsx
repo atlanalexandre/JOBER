@@ -3530,7 +3530,9 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               ...(missionType==="range" && nbJours>1 ? [["Durée totale", `${nbJours} jours × ${hours}h = ${hours*nbJours}h`]] : [["Durée", `${hours}h`]]),
               ...(!isUrgent && breakMin>0 ? [["Temps effectif", `${Math.floor((hours*60-breakMin)/60)}h${(hours*60-breakMin)%60>0?` ${(hours*60-breakMin)%60}min`:""}`]] : []),
               ["Tarif HT/h", `${formatMontant(tarifHoraire)}${isUrgent?" (urgence)":""}`],
-              ...(isUrgent ? [["dont surcoût urgence","+2,00 € HT/h"]] : []),
+              // Écart réel entre le tarif facturé et le tarif du prestataire. Le
+              // libellé était figé à « +2,00 € » quel que soit le surcoût appliqué.
+              ...(isUrgent && tarifHoraire > baseRate ? [["dont surcoût urgence",`+${formatMontant(tarifHoraire - baseRate)} HT/h`]] : []),
               ["Lieu", [adresse, cp, ville].filter(Boolean).join(", ")||"—"],
             ].map(([l,v])=>(
               <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
@@ -3744,7 +3746,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
