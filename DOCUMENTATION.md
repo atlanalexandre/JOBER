@@ -1394,6 +1394,23 @@ absent de `user_metadata` donnait `NULL`, refusé par la colonne `NOT NULL`, et 
 l'inscription entière — d'où le `COALESCE(…, false)`. Toute erreur dans ce déclencheur bloque
 TOUTES les inscriptions (« Database error saving new user »).
 
+**Le retour du lien de confirmation** (25/09/2026, `src/lib/confirmation.js`). L'inscription
+passe `emailRedirectTo: <origine>/?confirmation=1`, et Supabase y ajoute `code=` (ou
+`error_code=` si le lien a expiré ou déjà servi). Le client Supabase étant en flux **PKCE**
+(`src/lib/supabase.js`), ce `code` ne s'échange contre une session **que dans le navigateur qui
+a servi à l'inscription** : c'est lui qui garde la clé (`…-code-verifier`). Le premier essai
+en production l'a montré : lien ouvert sur iPhone depuis Gmail, adresse bien confirmée, mais
+retour sur l'accueil déconnecté, sans un mot. `App.jsx` attend donc `INITIAL_SESSION`, puis :
+- **session ouverte** (même navigateur) → pose `alane_session_active` dans l'onglet — le lien
+  s'ouvre dans un nouvel onglet, où cette marque manquait, et la session était aussitôt fermée
+  au motif de « Rester connecté » — puis emmène l'utilisateur chez lui ;
+- **pas de session** (autre appareil, navigateur intégré d'une messagerie) → écran de choix
+  avec « Adresse e-mail confirmée — connectez-vous » ; lien expiré → message distinct avec le
+  code d'erreur.
+L'adresse de retour avec `?confirmation=1` n'est acceptée que si elle entre dans les
+**Redirect URLs** de Supabase (`https://www.alane.fr/**`, `https://alane.fr/**`) ; sinon
+Supabase renvoie vers la Site URL, sans le marqueur, et l'utilisateur retombe sur l'accueil.
+
 **Le navigateur complète le profil, il ne le crée pas** (`completerProfil`, auth.jsx). La ligne
 naît dans la base (`handle_new_user`) ; le navigateur n'y ajoute que des colonnes qu'il a le
 droit de modifier, et vérifie qu'une ligne a été écrite. Jusqu'au 23/09/2026, il faisait un
@@ -3460,10 +3477,11 @@ Stripe : un remboursement se vérifie là, au centime, pas seulement en base.
 on pouvait s'inscrire avec l'adresse de quelqu'un d'autre. Décidé le 24/09/2026 : l'activer.
 L'application y est prête (voir « La base enregistre le profil complet à la création du
 compte »). La migration `2026-09-24_inscription_profil_a_la_creation.sql` est **appliquée en
-production depuis le 25/09/2026** (vérifié en lecture seule). Reste, avant d'activer la
-confirmation : brancher un **SMTP** (Resend) dans Supabase
-— le service intégré n'envoie que quelques messages par heure, et qu'aux membres de
-l'organisation — et ajouté l'adresse de production aux redirections autorisées. **La recette
+production depuis le 25/09/2026** (vérifié en lecture seule). **La confirmation est active en
+production depuis le 25/09/2026**, avec le SMTP Resend branché dans Supabase — le service
+intégré n'envoie que quelques messages par heure, et qu'aux membres de l'organisation — et les
+adresses de production dans les redirections autorisées : le premier e-mail « Confirmez votre
+adresse e-mail — ALANE » est arrivé et a confirmé le compte. **La recette
 la garde désactivée** : ses comptes d'essai (`@recette.alane.test`) n'ont pas de boîte mail.
 Le cas « sans session » y est reproduit par `e2e/13`, qui retire la session de la réponse
 d'inscription exactement comme le fait Supabase quand la confirmation est active.
