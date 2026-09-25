@@ -463,6 +463,32 @@ export default async function handler(req, res) {
           const uqData = uq.ok ? await uq.json().catch(() => null) : null;
           const attendues = qualificationsPour(uqData?.user_metadata?.metiers_list);
 
+          // ── Hors Union européenne : un titre de séjour PRODUIT ET VÉRIFIÉ ──
+          //
+          // Même règle que la carte professionnelle ci-dessous, pour la même
+          // raison : l'exigence ne vivait que dans l'écran du prestataire
+          // (`docsRequisPour()`), et le titre ne pouvait de toute façon pas
+          // être enregistré (contrainte `documents_type_check`, corrigée le
+          // 25/09/2026). Un ressortissant hors UE sans titre l'autorisant à
+          // exercer une activité non salariée ne peut pas être mis en relation.
+          if (String(uqData?.user_metadata?.nationalite || "").toLowerCase().includes("hors")) {
+            const dt = await fetch(
+              `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`
+              + `&type=eq.titre_sejour&select=verified&limit=1`,
+              { headers }
+            );
+            if (!dt.ok) throw new Error(`titre de séjour illisible (${dt.status})`);
+            const titre = (await dt.json().catch(() => []))[0] || null;
+            if (!titre || titre.verified !== true) {
+              console.log(`[enable_missions] ${profileId} : titre de séjour ${titre ? "déposé mais non vérifié" : "absent"} — accès non ouvert.`);
+              return res.status(409).json({
+                error: titre
+                  ? "Le titre de séjour est déposé mais pas encore vérifié. Ouvrez-le et validez-le avant d'ouvrir l'accès."
+                  : "Ce prestataire est ressortissant hors Union européenne et n'a pas produit son titre de séjour.",
+              });
+            }
+          }
+
           if (attendues.length > 0) {
             const dq = await fetch(
               `${SUPABASE_URL}/rest/v1/documents?prestataire_id=eq.${profileId}`
@@ -1714,7 +1740,7 @@ export default async function handler(req, res) {
       const LABELS = {
         kbis:"KBIS / SIRET", rib:"RIB / IBAN", cni:"Pièce d'identité", photo:"Photo de profil",
         urssaf:"Attestation URSSAF", domicile:"Justificatif de domicile", rc_pro:"RC Professionnelle",
-        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document",
+        rcpro:"RC Professionnelle", tva:"Attestation TVA", diplomes:"Diplômes", autre:"Autre document", titre_sejour:"Titre de séjour",
       };
       const label = LABELS[doc.type] || doc.type;
       await notifier({

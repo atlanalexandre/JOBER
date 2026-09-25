@@ -736,7 +736,14 @@ l'accès aux propositions est suspendu 30 jours après (`missions_enabled = fals
 l'écrit l'article 19.1. La suspension ne dépend pas de l'envoi de la relance : elle tombe au
 terme de la tolérance, que l'e-mail soit parti ou non.
 Types : `photo`, `kbis`, `urssaf`, `cni`, `domicile`, `rib`, `rc_pro`, `diplomes`, `tva`,
-`autre`. **Un seul document par prestataire et par type** (contrainte unique).
+`autre`, `titre_sejour`. **Un seul document par prestataire et par type** (contrainte unique).
+
+**`titre_sejour` n'était pas accepté par la contrainte `documents_type_check`** jusqu'au
+25/09/2026 (migration `2026-09-25_documents_titre_de_sejour`) : le titre de séjour, réclamé aux
+ressortissants hors UE depuis le 11/09, ne pouvait pas être déposé. Et l'ouverture de l'accès
+aux prestations (`enable_missions`) ne l'exigeait pas — l'exigence ne vivait que dans l'écran.
+Elle exige désormais, pour un prestataire dont `user_metadata.nationalite` contient « hors »,
+un titre de séjour **déposé et vérifié**, comme la carte professionnelle d'un métier réglementé.
 
 **`candidatures`** — les prestataires qui postulent à une mission ouverte.
 
@@ -1100,9 +1107,7 @@ et un échec annule le refus au lieu de le taire.
 
 **Reste ouvert** : le fichier lui-même peut toujours être écrasé depuis le navigateur, dans le
 bucket, sans passer par le serveur (règle `docs_update_own_folder` de `storage.objects`) — la
-ligne resterait alors « vérifiée » sur un fichier que personne n'a vu. Et le titre de séjour
-(`titre_sejour`, `src/constants/data.js`) est absent de la contrainte `CHECK` de
-`documents.type` : il ne peut pas être enregistré. Les deux demandent une migration.
+ligne resterait alors « vérifiée » sur un fichier que personne n'a vu. Il demande une migration.
 
 La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
 ne s'écrivent jamais depuis `src/`.**
