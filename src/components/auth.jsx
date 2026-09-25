@@ -50,10 +50,12 @@ async function completerProfil(userId, champs) {
 }
 
 import { CGPS } from "../constants/cgps.js";
+import { adresseRetourConfirmation } from "../lib/confirmation.js";
 
 // Adresse vers laquelle le lien de confirmation ramène : l'environnement même
-// où l'on s'est inscrit (recette ou production), pas une adresse figée.
-const retourConfirmation = () => (typeof window !== "undefined" ? `${window.location.origin}/` : undefined);
+// où l'on s'est inscrit (recette ou production), pas une adresse figée. Le
+// marqueur permet à App.jsx de reconnaître ce retour (voir src/lib/confirmation.js).
+const retourConfirmation = () => (typeof window !== "undefined" ? adresseRetourConfirmation(window.location.origin) : undefined);
 
 // Parrain mémorisé au clic sur un lien de parrainage (?ref=…). Transmis à
 // l'inscription : la base le rattache elle-même à la création du compte, ce qui
