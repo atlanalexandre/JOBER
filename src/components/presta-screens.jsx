@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase.js";
+import { enregistrerDocument } from "../lib/documents.js";
 import { C, font, r } from "../constants/colors.js";
 import { ABONNEMENTS_PRESTA, isLaunchPhase, prixClient, formatE, prixPlan, formatMontant } from "../constants/plans.js";
 import { SECTORS, METIERS, METIERS_TARIFS, DOCS_REQUIS, docsRequisPour, JOURS, PLAGES, LANGUES_LIST, NIVEAUX, COMPETENCES_PAR_SECTEUR, COMPETENCES_PAR_METIER, niveauGlobal, experienceGlobale, qualificationRequise, noteMetier } from "../constants/data.js";
@@ -148,19 +149,6 @@ async function dimensionsImage(file) {
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-async function notifyDocUpload(docType, isRenewal = false) {
-  try {
-    const { data: sd } = await supabase.auth.getSession();
-    const token = sd?.session?.access_token;
-    if (!token) return;
-    fetch("/api/notify-doc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ docType, isRenewal }),
-    }).catch(() => {});
-  } catch { /* ignore */ }
 }
 
 function ContractModal({ title, contractText, onSign, onClose }) {
@@ -378,18 +366,19 @@ function DocRowItem({ doc, isSent, isVerified, onUploaded }) {
         throw new Error("Erreur upload: " + (err.message || err.error || upRes.status));
       }
 
-      // Upsert sur (prestataire_id, type) — met à jour la ligne existante
-      const { error: dbErr } = await supabase.from("documents").upsert({ prestataire_id: userId, type: doc.id, storage_path: storagePath, verified: false }, { onConflict: "prestataire_id,type" });
-      if (dbErr) {
+      // La ligne en base est écrite par le serveur (voir src/lib/documents.js) :
+      // l'upsert du navigateur était refusé par la base à chaque dépôt.
+      try {
+        await enregistrerDocument(doc.id, { renouvellement: true });
+      } catch (e) {
+        // Réessayé à la prochaine ouverture de l'espace, si c'est le réseau qui a lâché.
         try {
           const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
           pending.push({ uid: userId, type: doc.id, sp: storagePath });
           localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending));
         } catch { /* localStorage indisponible (Safari privé) → pas de réessai, l'erreur ci-dessous suffit */ }
-        throw new Error("Erreur sauvegarde: " + (dbErr.message || dbErr.hint || dbErr.code));
+        throw e;
       }
-
-      notifyDocUpload(doc.id, true);
       setRenewed(true);
       onUploaded?.(doc.id);
     } catch (err) {
@@ -787,9 +776,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
               setDocs(prev=>({...prev,[doc.id]:path}));
-              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }, { onConflict:"prestataire_id,type" });
-              if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
-              notifyDocUpload(doc.id, false);
+              await enregistrerDocument(doc.id);
             }} required />
           ))}
           <p style={{ fontWeight:800, color:C.text, fontSize:13, margin:"18px 0 10px" }}>Documents optionnels</p>
@@ -803,9 +790,7 @@ export function PrestaOnboarding({ onComplete, onBack }) {
               const { error } = await supabase.storage.from("Documents").upload(path, file, { upsert:true });
               if(error) throw new Error("Erreur d'envoi : " + (error.message || "inconnue"));
               setDocs(prev=>({...prev,[doc.id]:path}));
-              const { error:dbErr } = await supabase.from("documents").upsert({ prestataire_id:user.id, type:doc.id, storage_path:path }, { onConflict:"prestataire_id,type" });
-              if(dbErr) throw new Error("Document envoyé mais non enregistré — réessayez.");
-              notifyDocUpload(doc.id, false);
+              await enregistrerDocument(doc.id);
             }} required={false} />
           ))}
         </>}
@@ -3866,18 +3851,11 @@ export function PrestaDashboard({ onNavigate, activeScreen, docsRefreshKey=0, no
         const pending = JSON.parse(localStorage.getItem(PENDING_DOCS_KEY)||'[]');
         const mine = pending.filter(e=>e.uid===u.id && !uploaded.includes(e.type));
         if (mine.length) {
-          const { data: pd } = await supabase.auth.getSession().catch(() => ({ data: {} }));
-          const pAt = pd?.session?.access_token || "";
-          const SB_URL_P = import.meta.env.VITE_SUPABASE_URL;
-          const SB_KEY_P = import.meta.env.VITE_SUPABASE_ANON_KEY;
           const done = [];
-          await Promise.all(mine.map(e =>
-            fetch(`${SB_URL_P}/rest/v1/documents?on_conflict=prestataire_id,type`, {
-              method:"POST",
-              headers:{"Authorization":`Bearer ${pAt}`,"apikey":SB_KEY_P,"Content-Type":"application/json","Prefer":"return=minimal,resolution=merge-duplicates"},
-              body:JSON.stringify({ prestataire_id:e.uid, type:e.type, storage_path:e.sp, verified:false }),
-            }).then(r=>{ if(r.ok){ done.push(e.sp); uploaded.push(e.type); } }).catch(()=>{})
-          ));
+          for (const e of mine) {
+            try { await enregistrerDocument(e.type); done.push(e.sp); uploaded.push(e.type); }
+            catch (err) { console.error(`[documents] réessai de ${e.type} sans succès :`, err.message); }
+          }
           if (done.length) {
             localStorage.setItem(PENDING_DOCS_KEY, JSON.stringify(pending.filter(e=>!done.includes(e.sp))));
           }

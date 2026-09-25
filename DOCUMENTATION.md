@@ -989,7 +989,7 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `bo-action.js` | Toutes les actions du backoffice |
 | `prestataires.js` | Catalogue des prestataires |
 | `stripe-*.js` | Paiement, remboursement, abonnement, portefeuille, webhook |
-| `upload-document.js`, `save-document.js`, `get-documents.js` | Documents |
+| `notify-doc.js` | **Enregistre un document déposé** (ligne de `documents`), après avoir vérifié que le fichier est dans le dossier de l'appelant, puis prévient l'administration par e-mail. Seul chemin d'écriture de `documents` depuis l'application — voir « Ce que le front n'a plus le droit d'écrire ». `save-document.js` et `get-documents.js` ont été supprimés le 11/09/2026 ; `upload-document.js` est en sursis (plus aucun écran ne l'appelle) |
 | `support.js` | Tickets, emails, suppression de compte |
 | `cron-*.js` | Tâches planifiées (remise à zéro mensuelle, relances) |
 | `_auth.js`, `_email.js` | Fonctions partagées — `verifyUser`, envoi d'emails, hachage |
@@ -1074,6 +1074,35 @@ toutes par `/api/missions` depuis le 29/07/2026, et **rien ne doit les y ramener
 | Clôture de mission + cashback | `complete` | Le client écrivait son propre solde ; taux de `plans.js` au lieu de la base, et lecture-écriture non atomique |
 | Refus après délai expiré | `acceptance_timeout` | Le serveur revérifie que `acceptance_deadline` est réellement dépassée |
 | Identifiant du paiement et délai de réponse du prestataire | `assign_after_payment`, `affecter_tiers` | Le paiement est relu chez Stripe ; le délai est calculé par le serveur. Le navigateur les fournissait jusqu'au 24/09/2026 (voir §6) |
+| Ligne d'un document déposé (`documents`) | `/api/notify-doc`, par `enregistrerDocument()` de `src/lib/documents.js` | Voir ci-dessous |
+
+**Le dépôt d'un document était refusé par la base, sur tous les écrans** (constaté en recette le
+25/09/2026, scénario `e2e/14` ; la production n'a pas été relue). Les cinq écrans de dépôt écrivaient la ligne par un `upsert`
+(« insérer, ou mettre à jour si la pièce existe »). Un upsert réclame le droit de **modifier**
+toutes les colonnes envoyées — `prestataire_id`, et parfois `verified` — droits retirés au
+navigateur le 17/08/2026 par la migration `colonnes_non_modifiables`, pour qu'un prestataire ne
+puisse plus se déclarer lui-même « vérifié ». Résultat : « permission denied for table
+documents » à chaque dépôt. Le fichier arrivait dans le bucket, la ligne jamais, et le
+back-office ne voyait rien. L'écran « Mes documents » (`DocUploadScreen`) ne regardait même pas
+la réponse et affichait « Envoyé ».
+
+Les droits étaient justes : c'est l'écriture qui n'avait rien à faire dans le navigateur. Le
+serveur l'écrit désormais, et **un dépôt remet la pièce en attente** — `verified`,
+`verified_at`, `expires_at` et `relance_expiration_at` remis à zéro : un document remplacé n'a
+été vu par personne, il n'hérite ni de la validation ni de la date de validité du précédent.
+Jusque-là, un remplacement qui aurait abouti gardait l'une et l'autre.
+
+**Le refus d'une pièce laissait le fichier dans le bucket** (même jour, même scénario) :
+`reject_doc` appelait la suppression d'un objet unique avec un en-tête `Content-Type: application/json`
+et sans corps, que le stockage refuse — et la réponse n'était pas lue. La ligne disparaissait, le
+fichier restait. Il est désormais supprimé par liste (`prefixes`), comme la purge de conservation,
+et un échec annule le refus au lieu de le taire.
+
+**Reste ouvert** : le fichier lui-même peut toujours être écrasé depuis le navigateur, dans le
+bucket, sans passer par le serveur (règle `docs_update_own_folder` de `storage.objects`) — la
+ligne resterait alors « vérifiée » sur un fichier que personne n'a vu. Et le titre de séjour
+(`titre_sejour`, `src/constants/data.js`) est absent de la contrainte `CHECK` de
+`documents.type` : il ne peut pas être enregistré. Les deux demandent une migration.
 
 La règle générale reste celle de `CLAUDE.md` §3.3 : **argent, statut de mission et cashback
 ne s'écrivent jamais depuis `src/`.**
@@ -1223,6 +1252,15 @@ sans aucun vrai document. Le serveur la refuse désormais quand `VERCEL_ENV` vau
 `production` (variable posée par Vercel lui-même), et le bouton ne s'affiche que sur une
 adresse `*.vercel.app` ou en local. Vérifié le même jour : aucune pièce de démonstration
 n'existait en production.
+
+
+**Une saisie vide n'est pas une annulation** (corrigé le 25/09/2026). La fenêtre de saisie du
+back-office (`showPrompt`, `PromptModal` de `ui.jsx`) rendait `null` — « annulé » — dès que le
+champ était vide. Deux gestes étaient ainsi impossibles, sans message : valider une attestation
+URSSAF ou RC Pro sans date de validité (la fenêtre dit pourtant « laissez vide si le document
+n'en porte pas »), et annuler une prestation sans motif (« Motif d'annulation (optionnel) »).
+« Envoyer » rend désormais la saisie, même vide ; seuls « Annuler », Échap et un clic hors de la
+fenêtre annulent. Chaque appelant traite la saisie vide (motif obligatoire, etc.) — relu un par un.
 
 ### Carte
 
@@ -1865,6 +1903,15 @@ horodatée.
 Le candidat suivant reçoit **le même délai de réponse** que le premier (`delaiReponseMinutes`) :
 il valait 4 h en dur, y compris pour une prestation urgente. Et il est **prévenu** : jusqu'au
 25/09/2026, la cascade l'affectait sans aucune notification.
+
+**La cascade ne vaut que pour une prestation affectée par la plateforme** —
+`affecteeParLaPlateforme()` de `api/missions.js`. Elle se déclenchait sur la seule présence de
+`tiers_declaration`, or un client professionnel qui réserve **dans ses propres locaux** y
+enregistre aussi une réponse, `{ lieu: "etablissement_propre" }` (gardée pour repérer les
+clients multi-sites). Sa réservation passait donc pour une affectation de la plateforme : le
+prestataire qu'il avait **choisi** refusait, et un autre lui était imposé au lieu du
+remboursement. Constaté en recette le 25/09/2026 (`e2e/15`), corrigé le même jour : il est
+remboursé, comme un particulier.
 
 **Articles 10B.5 à 10B.8** — garanties du client professionnel, droit d'audit sur le contrat
 conclu avec le bénéficiaire final, clause d'indemnisation (civile uniquement : elle ne couvre
@@ -3506,6 +3553,8 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `11` | changement de mois (compteurs, abonnements expirés), délai URSSAF de 60 jours et délai minimal de 15 jours |
 | `12` | ce que la base refuse à la création d'une prestation (`missions_creation_guard`) : sept fraudes, et les deux créations légitimes |
 | `13` | inscription sans session (confirmation d'e-mail) : écran « vérifiez votre boîte mail », profil complet en base, parrainage ; IBAN saisi dans les Paramètres, rangé dans `profiles.rib` |
+| `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente |
+| `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
 
 **Le temps se simule en base, jamais en attendant.** On recule une date
 (`acceptance_deadline`, `date`, `payout_due_at`, `profiles.created_at`) par `sql()`, puis on

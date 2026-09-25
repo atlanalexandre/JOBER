@@ -9,6 +9,7 @@
 import { expect, request } from "@playwright/test";
 import { RECETTE_REF, RECETTE_URL, BYPASS, sql, emailTest, MOT_DE_PASSE, avecReprise } from "./outils.js";
 import { calculerFrais } from "../api/_montant.js";
+import { VERSION_CONTRAT_CADRE } from "../src/constants/contrat-cadre-pro.js";
 
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 const SUPABASE = `https://${RECETTE_REF}.supabase.co`;
@@ -60,7 +61,7 @@ async function pkStripe() {
  *      fait stripe.js dans le navigateur ;
  *   3. /api/missions « assign_after_payment », comme App.jsx après un succès.
  */
-export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240 }) {
+export async function payerPrestation({ jetonClient, missionId, montant, prestataireId, carte = "pm_card_visa", delaiMinutes = 240, chezUnTiers = false }) {
   const intent = await api("/api/stripe-intent",
     { amount: montant, currency: "eur", mission_id: missionId, metadata: { prestataire: prestataireId } }, jetonClient);
   if (!intent.json?.clientSecret) return { etape: "creation du paiement", statut: intent.statut, detail: intent.texte.slice(0, 300) };
@@ -78,12 +79,16 @@ export async function payerPrestation({ jetonClient, missionId, montant, prestat
     return { etape: "confirmation Stripe", statut: conf.status(), detail: JSON.stringify(pj.error || pj.status).slice(0, 300), paymentIntent: pi };
   }
 
-  const affectation = await api("/api/missions", {
-    action: "assign_after_payment", mission_id: missionId, prestataire_id: prestataireId,
-    acceptance_deadline: new Date(Date.now() + delaiMinutes * 60000).toISOString(),
-    stripe_payment_intent: pi, retractation_renoncee: true,
-  }, jetonClient);
-  return { etape: affectation.statut === 200 ? "ok" : "affectation", statut: affectation.statut, detail: affectation.texte.slice(0, 300),
+  // Même aiguillage que App.jsx : chez un tiers, la plateforme choisit le
+  // prestataire (CGPS art. 5.2) et aucun n'est transmis.
+  const affectation = await api("/api/missions", chezUnTiers
+    ? { action: "affecter_tiers", mission_id: missionId, stripe_payment_intent: pi, retractation_renoncee: true }
+    : {
+      action: "assign_after_payment", mission_id: missionId, prestataire_id: prestataireId,
+      acceptance_deadline: new Date(Date.now() + delaiMinutes * 60000).toISOString(),
+      stripe_payment_intent: pi, retractation_renoncee: true,
+    }, jetonClient);
+  return { etape: affectation.statut === 200 ? "ok" : "affectation", statut: affectation.statut, detail: affectation.texte.slice(0, 300), mode: affectation.json?.mode,
     paymentIntent: pi, statutStripe: pj.status, centimesPreleves: pj.amount };
 }
 
@@ -180,12 +185,21 @@ export async function prestataireOperationnel({ metier = "Femme/Valet de chambre
   return p;
 }
 
-/** Un client inscrit (validé d'office depuis le 23/09/2026). */
-export async function client() {
-  return inscrire({
+/**
+ * Un client inscrit (validé d'office depuis le 23/09/2026). `professionnel` : compte
+ * d'entreprise, contrat-cadre accepté par le même appel que l'écran de réservation.
+ */
+export async function client({ professionnel = false } = {}) {
+  const c = await inscrire({
     role: "client", prenom: "Camille",
-    metadonnees: { telephone: "0612345678", adresse: "10 rue de Rivoli", code_postal: "75004", ville: "Paris", type_compte: "particulier" },
+    metadonnees: { telephone: "0612345678", adresse: "10 rue de Rivoli", code_postal: "75004", ville: "Paris",
+      type_compte: professionnel ? "professionnel" : "particulier" },
   });
+  if (professionnel) {
+    const r = await api("/api/missions", { action: "accepter_contrat_cadre", version: VERSION_CONTRAT_CADRE, signataire: "Camille Recette", qualite: "Gérante" }, c.jeton);
+    expect(r.statut, `contrat-cadre : ${r.texte.slice(0, 200)}`).toBe(200);
+  }
+  return c;
 }
 
 /**
@@ -214,7 +228,7 @@ export async function tachePlanifiee(chemin = "/api/cron-reset-monthly?action=re
  *
  * `dansJours` et `heure` fixent le début de la prestation, en heure de Paris.
  */
-export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13 }) {
+export async function reservationPayee({ prestataire, client: c, dansJours = 5, heure = "09:00", debutMs = null, heures = 8, tarif = 13, urgent = false, declaration = null }) {
   const id = crypto.randomUUID();
   // `debutMs` (instant précis) l'emporte sur `dansJours` + `heure` : utile pour
   // une prestation qui commence dans quelques heures.
@@ -222,7 +236,7 @@ export async function reservationPayee({ prestataire, client: c, dansJours = 5, 
   const date = new Date(debutMs ?? Date.now() + dansJours * 864e5).toLocaleDateString("fr-CA", paris);
   if (debutMs) heure = new Date(debutMs).toLocaleTimeString("fr-FR", { ...paris, hour: "2-digit", minute: "2-digit" });
   const [reglage] = await sql("select value from platform_settings where key = 'frais_service'");
-  const montant = Math.round((tarif * heures + calculerFrais("single", tarif * heures, 1, reglage?.value)) * 100) / 100;
+  const montant = Math.round((tarif * heures + calculerFrais(urgent ? "urgent" : "single", tarif * heures, 1, reglage?.value)) * 100) / 100;
 
   const h = await http();
   const ins = await avecReprise(async () => h.post(`${SUPABASE}/rest/v1/missions`, {
@@ -237,9 +251,17 @@ export async function reservationPayee({ prestataire, client: c, dansJours = 5, 
   }), "création de la prestation");
   expect(ins.ok(), `création de la prestation : ${ins.status()} ${(await ins.text()).slice(0, 200)}`).toBeTruthy();
 
-  const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant, prestataireId: prestataire.id });
+  // Client professionnel : déclaration du lieu, comme App.jsx juste après la création —
+  // `{ lieu: "etablissement_propre" }` (dans ses locaux) ou les cinq champs d'un tiers.
+  if (declaration) {
+    const d = await api("/api/missions", { action: "declarer_tiers", mission_id: id, declaration }, c.jeton);
+    expect(d.statut, `déclaration du lieu : ${d.texte.slice(0, 200)}`).toBe(200);
+  }
+  const chezUnTiers = !!declaration && declaration.lieu !== "etablissement_propre";
+
+  const r = await payerPrestation({ jetonClient: c.jeton, missionId: id, montant, prestataireId: prestataire?.id, chezUnTiers });
   expect(r.etape, `paiement et affectation : ${JSON.stringify(r)}`).toBe("ok");
-  return { id, date, montant, paymentIntent: r.paymentIntent };
+  return { id, date, montant, paymentIntent: r.paymentIntent, mode: r.mode };
 }
 
 /**
