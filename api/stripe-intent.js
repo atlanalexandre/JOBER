@@ -5,6 +5,7 @@ import { prixHeuresSupp } from "./_heures_supp.js";
 import { nombreDeJours } from "./_cloture.js";
 import { reductionCashback } from "./_cashback.js";
 import { appUrl } from "./_url.js";
+import { messageErreurStripe } from "./_stripe_erreur.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -96,7 +97,7 @@ export default async function handler(req, res) {
         body: new URLSearchParams({ customer: customerId, "payment_method_types[]": "card" }),
       });
       const si = await sir.json();
-      if (si.error) return res.status(400).json({ error: si.error.message });
+      if (si.error) return res.status(400).json({ error: messageErreurStripe(si.error, "stripe-intent/carte") });
       return res.status(200).json({ clientSecret: si.client_secret, customerId });
     } catch (e) {
       return res.status(500).json({ error: "Erreur Stripe setup" });
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
     try {
       const r = await fetch(`https://api.stripe.com/v1/payment_methods/${pmId}`, { headers: stripeHeaders });
       const pm = await r.json();
-      if (pm.error) return res.status(400).json({ error: pm.error.message });
+      if (pm.error) return res.status(400).json({ error: messageErreurStripe(pm.error, "stripe-intent/moyen-de-paiement") });
 
       // L'appelant était authentifié, mais rien ne vérifiait que le moyen de
       // paiement lui appartenait : n'importe quel compte connecté pouvait lire
@@ -235,7 +236,7 @@ export default async function handler(req, res) {
     try {
       const r = await fetch(`https://api.stripe.com/v1/payment_methods/${pmToDetach}`, { headers: stripeHeaders });
       const pm = await r.json();
-      if (pm.error) return res.status(400).json({ error: pm.error.message });
+      if (pm.error) return res.status(400).json({ error: messageErreurStripe(pm.error, "stripe-intent/moyen-de-paiement") });
 
       // Même contrôle d'appartenance que get_pm : on ne détache que sa propre carte.
       const hdrsDt = { "apikey": SERVICE_ROLE_DT, "Authorization": `Bearer ${SERVICE_ROLE_DT}` };
@@ -281,7 +282,7 @@ export default async function handler(req, res) {
         body: new URLSearchParams({ customer: customerId, return_url: `${origin}/` }).toString(),
       });
       const portal = await portalR.json();
-      if (portal.error) return res.status(400).json({ error: portal.error.message });
+      if (portal.error) return res.status(400).json({ error: messageErreurStripe(portal.error, "stripe-intent/portail") });
       return res.status(200).json({ url: portal.url });
     } catch (e) {
       console.error("billing_portal error:", e);
@@ -407,8 +408,7 @@ export default async function handler(req, res) {
       });
       const intentS = await rs.json();
       if (intentS.error) {
-        console.error(`[supplement] Stripe a refusé pour ${intentMissionId} :`, intentS.error.message);
-        return res.status(400).json({ error: intentS.error.message });
+        return res.status(400).json({ error: messageErreurStripe(intentS.error, `supplement/${intentMissionId}`) });
       }
       return res.status(200).json({
         clientSecret: intentS.client_secret,
@@ -613,7 +613,7 @@ export default async function handler(req, res) {
       body: new URLSearchParams(params),
     });
     const intent = await r.json();
-    if (intent.error) return res.status(400).json({ error: intent.error.message });
+    if (intent.error) return res.status(400).json({ error: messageErreurStripe(intent.error, `stripe-intent/paiement/${missionMetaId}`) });
     return res.status(200).json({
       clientSecret: intent.client_secret,
       intentId: intent.id,

@@ -1,4 +1,5 @@
 import { appUrl } from "./_url.js";
+import { messageErreurStripe } from "./_stripe_erreur.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -131,7 +132,7 @@ export default async function handler(req, res) {
       const d = await annul.json().catch(() => ({}));
       if (!annul.ok) {
         console.error(`[abonnement] résiliation refusée pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
-        return res.status(502).json({ error: `Stripe a refusé la résiliation : ${d?.error?.message || "erreur inconnue"}` });
+        return res.status(502).json({ error: messageErreurStripe(d?.error, "stripe-subscription/résiliation") });
       }
       const fin = d.current_period_end ? new Date(d.current_period_end * 1000) : null;
       console.log(`[abonnement] ${abonnementActuel} résilié en fin de période pour ${userId}.`);
@@ -170,7 +171,7 @@ export default async function handler(req, res) {
         const d = await maj.json().catch(() => ({}));
         if (!maj.ok) {
           console.error(`[abonnement] montée refusée pour ${abonnementActuel} :`, JSON.stringify(d).slice(0, 300));
-          return res.status(502).json({ error: `Stripe a refusé le changement : ${d?.error?.message || "erreur inconnue"}` });
+          return res.status(502).json({ error: messageErreurStripe(d?.error, "stripe-subscription/changement") });
         }
         console.log(`[abonnement] ${userId} : ${planActuel} → ${plan} (montée), abonnement ${abonnementActuel} modifié.`);
         return res.status(200).json({
@@ -206,7 +207,7 @@ export default async function handler(req, res) {
         const cd = await cr.json().catch(() => ({}));
         if (!cr.ok || !cd.id) {
           console.error(`[abonnement] calendrier non créé pour ${abonnementActuel} :`, JSON.stringify(cd).slice(0, 300));
-          return res.status(502).json({ error: `Stripe a refusé la programmation : ${cd?.error?.message || "erreur inconnue"}` });
+          return res.status(502).json({ error: messageErreurStripe(cd?.error, "stripe-subscription/programmation") });
         }
         calendrierId = cd.id;
         phaseEnCours = cd.phases?.[0] || null;
@@ -253,7 +254,7 @@ export default async function handler(req, res) {
       const pd = await prog.json().catch(() => ({}));
       if (!prog.ok) {
         console.error(`[abonnement] programmation refusée sur ${calendrierId} :`, JSON.stringify(pd).slice(0, 300));
-        return res.status(502).json({ error: `Stripe a refusé la programmation : ${pd?.error?.message || "erreur inconnue"}` });
+        return res.status(502).json({ error: messageErreurStripe(pd?.error, "stripe-subscription/programmation") });
       }
 
       const bascule = phaseEnCours.end_date ? new Date(phaseEnCours.end_date * 1000) : null;
@@ -305,7 +306,7 @@ export default async function handler(req, res) {
     });
 
     const session = await r.json();
-    if (session.error) return res.status(400).json({ error: session.error.message });
+    if (session.error) return res.status(400).json({ error: messageErreurStripe(session.error, "stripe-subscription") });
     return res.status(200).json({ url: session.url });
   } catch (e) {
     console.error("stripe-subscription error:", e);
