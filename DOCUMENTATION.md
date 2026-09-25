@@ -1004,6 +1004,8 @@ Les 44 fichiers de `/api` — 21 points d'entrée et 23 modules partagés préfi
 | `_dependance.js` | Détection de la dépendance économique et de l'intégration durable (CGPS art. 10D) — `couplesADependance()`. Seuils réglables par `platform_settings.seuils_dependance`. Exposé au backoffice par l'action `signaux_dependance` |
 | `_cashback.js` | Le cashback en réduction du paiement — `reductionCashback()`, `debiterCashback()`, `restituerCashback()`, `plafonnerRemboursement()`. Importé aussi par `payment.jsx` : le tunnel AFFICHE la réduction avec la même fonction que celle qui la calcule côté serveur |
 | `_paiement.js` | Vérification d'un paiement de réservation — `verifierPaiementReservation()`, `controlerPaiement()`, `delaiReponseMinutes()`. Appelé par `assign_after_payment` et `affecter_tiers` **avant toute autre opération** : le paiement est relu chez Stripe (abouti, en euros, non remboursé, `metadata[mission]` et `metadata[client]` égaux à la prestation et à l'appelant, montant de la prestation). Refuse tout identifiant `wallet_…`. Calcule aussi le délai de réponse du prestataire. Voir §6 « Réserver : ce qui est vérifié, et quand » |
+| `_recurrence.js` | Séries hebdomadaires — `programmerOccurrenceSuivante()` crée, débite et propose la semaine suivante ; `dateSuivante()`, `montantOccurrence()`. Appelé par `complete` et la validation automatique. Voir §6 « Réserver chaque semaine » |
+| `_nouvelle_demande.js` | `prevenirNouvelleDemande()` — notification, e-mail avec réponse en un clic, SMS au prestataire désigné. Partagé par `missions.js` et `_recurrence.js` |
 | `_abonnement.js` | Échéance d'un abonnement — `abonnementEchu()`, `retrograderEnGratuit()`. Date de fin lue dans `profiles.subscription_end_date`, jamais dans `user_metadata`. Appelé par les deux contrôles de quota de `missions.js` et la remise à zéro mensuelle |
 | `_stripe_erreur.js` | `messageErreurStripe()` — ce que voit l'utilisateur quand Stripe refuse : une phrase en français, jamais le message brut, qui avait affiché le 25/09/2026 « Invalid API Key provided: sk_test_…KGVj » sur l'écran de paiement. Le message complet part dans le journal Vercel. Utilisé par `stripe-intent`, `stripe-refund`, `stripe-subscription` |
 | `_montant.js` | Cohérence du montant encaissé — `verifierMontant()`. Appelé par `stripe-intent.js`, seul chemin d'encaissement depuis la suppression de `wallet.js` (23/09/2026). Comparaison en centimes entiers : en euros flottants, un écart d'exactement un centime sortait de la tolérance et refusait un montant juste |
@@ -2528,6 +2530,40 @@ Le comptage des non-lus, lui, cherche toujours l'identifiant de l'utilisateur **
 dans la clé**. Cela fonctionne, mais c'est le symptôme du même défaut de modèle : une
 appartenance qui se prouve par une sous-chaîne. À reprendre avec la refonte.
 
+### Réserver chaque semaine : chaque prestation payée à son tour
+
+**Mis en place le 25/09/2026**, décision d'Alexandre : « chaque semaine payée au fur et à
+mesure, avec le délai des 48 h ». Le client ne paie jamais la série d'avance.
+
+| Étape | Qui | Ce qui se passe |
+|---|---|---|
+| Réservation | client, écran de réservation | Case « 🔁 Répéter chaque semaine » (date unique, hors urgence, jamais chez un tiers : la plateforme y choisit le prestataire, CGPS art. 5.2). La prestation porte `recurrence = 'weekly'` |
+| Paiement de la 1re semaine | client, tunnel | Accord exprès obligatoire (case décochée, paiement bloqué sans elle) pour les prélèvements suivants. `stripe-intent` rattache la carte au client (`setup_future_usage = off_session`) **d'office**, quoi qu'envoie le navigateur |
+| Validation d'une semaine | client (`complete`) **ou** tâche planifiée (validation automatique après 24 h) | `programmerOccurrenceSuivante()` de `api/_recurrence.js` : crée la semaine suivante (J + 7, même prestataire, même tarif, frais d'une prestation simple), la **débite seule** sur la carte de la première (`off_session`, clé d'idempotence `serie-{id}`), puis la propose au prestataire (`prevenirNouvelleDemande()`, `api/_nouvelle_demande.js`) avec le délai de réponse ordinaire |
+| Réponse du prestataire | prestataire | Comme toute réservation : accepte, ou refuse → remboursement intégral de cette semaine, et la série s'arrête (plus de semaine validée) |
+| Versement | tâche planifiée | Règle commune : 48 h après la fin de **chaque** prestation |
+| Arrêt | client, « Arrêter la série » dans ses prestations | Action `arreter_serie` : `recurrence` remise à `null` sur la prestation et ses suivantes. Les semaines déjà payées restent prévues et s'annulent par l'annulation ordinaire |
+
+**Paiement refusé** (carte expirée, fonds insuffisants, authentification exigée par la
+banque) : rien n'est débité, la semaine créée passe en `cancelled`, la série s'arrête, et le
+client reçoit « Série hebdomadaire interrompue » avec la marche à suivre.
+
+**Le webhook Stripe ignore ces paiements** (`metadata[type] = serie`) : il aurait passé la
+semaine en `assigned` sans que le prestataire l'ait acceptée. Le serveur crée, débite et
+affecte dans le même appel.
+
+**Ce qui a été remplacé.** La semaine suivante naissait `open`, sans prestataire, sans paiement
+ni montant, dans une place de marché où personne ne peut postuler (voir « Quatre droits
+ouverts » : pas de bouton « postuler ») — et le client lisait « programmée pour le
+2026-10-01 ». L'option n'existait que dans la demande diffusée, où elle est retirée : une
+demande diffusée n'a ni prestataire ni paiement. Constaté en recette le 25/09/2026, éprouvé
+par `e2e/17`.
+
+**Reste à trancher** : la renonciation au délai de rétractation (CGPS) est recueillie à la
+réservation de la première semaine ; les semaines suivantes n'en portent pas
+(`retractation_renonciation_at` vide). Juridiquement, l'accord de série vaut-il renonciation
+pour chacune ? Décision à prendre avec un conseil.
+
 ### Prestations récurrentes : un paiement calculé sur un seul jour
 
 **Trouvé le 17/08/2026** en auditant les calculs multi-jours. Le paiement d'une **candidature
@@ -3571,6 +3607,7 @@ mais ceux de la production ne sont que les modèles anglais d'origine de Supabas
 | `14` | back-office, documents : dépôt par le prestataire, validation (avec et sans date de validité), refus motivé (ligne, fichier, notification), auto-validation refusée, remplacement remis en attente — y compris un fichier écrasé directement dans le bucket |
 | `15` | le prestataire est prévenu par le serveur, une fois, avec le vrai délai (4 h, 20 min en urgence) ; chez un tiers, le choisi puis le suivant de la cascade, délai urgent repris ; client pro dans ses locaux : refus et délai dépassé remboursés |
 | `16` | à l'écran : prix urgent = tarif du prestataire + `urgency_surcharge`, identique sur l'écran d'urgence, la réservation et en base, 20 min pour répondre ; suivi « Prestation confirmée » puis « En route vers vous » à la première position ; abonnement annuel au centime (« soit 287,90 € facturés une fois par an ») |
+| `17` | série hebdomadaire : case à l'écran et accord exprès ; semaine suivante créée, débitée seule (Stripe), proposée au même prestataire, après validation par le client ou automatique ; refus remboursé et fin de série ; arrêt par le client |
 
 **Les tutoriels de l'accueil client** s'ouvrent au premier passage, avec un temps de retard, par-dessus
 l'écran : un clic prévu dessous échoue au bout de quatre minutes, sans rapport avec ce qu'on teste.

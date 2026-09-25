@@ -2920,6 +2920,9 @@ export function BookingScreen({ provider, onNavigate, onBack }) {
   const [step,setStep]=useState(1);
   const [hours,setHours]=useState(isUrgent ? 4 : 8);
   const [missionType, setMissionType] = useState("single");
+  // Série hebdomadaire : chaque semaine est payée à son tour, sur la carte
+  // enregistrée, et proposée au même prestataire (api/_recurrence.js).
+  const [chaqueSemaine, setChaqueSemaine] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [startTime, setStartTime] = useState("08:00");
@@ -3318,6 +3321,24 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
                 ))}
               </div>
             </div>
+
+            {/* Chaque semaine : une date unique seulement, et jamais chez un tiers
+                — la plateforme y choisit le prestataire (CGPS art. 5.2), alors
+                qu'une série revient au même. */}
+            {missionType === "single" && !chezTiers && (
+              <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer", marginBottom:16, padding:"12px 14px", borderRadius:12, background: chaqueSemaine ? `${C.violet}18` : "rgba(255,255,255,0.03)", border:`1px solid ${chaqueSemaine ? C.violet : C.border}` }}>
+                <input type="checkbox" checked={chaqueSemaine} onChange={e=>setChaqueSemaine(e.target.checked)}
+                  style={{ width:17, height:17, marginTop:2, accentColor:C.violet, flexShrink:0, cursor:"pointer" }} />
+                <span style={{ fontSize:13, color:C.text, lineHeight:1.5 }}>
+                  <strong>🔁 Répéter chaque semaine</strong>, même jour, même heure, même prestataire.
+                  <span style={{ display:"block", fontSize:11, color:C.textSub, marginTop:3 }}>
+                    Vous ne payez que cette semaine. Chaque semaine suivante est débitée sur votre carte
+                    une fois la précédente validée, puis proposée à {p?.name || "votre prestataire"}.
+                    Arrêt à tout moment depuis vos prestations.
+                  </span>
+                </span>
+              </label>
+            )}
 
             {missionType === "single" ? (
               /* ── Date unique ── */
@@ -3787,7 +3808,7 @@ Signé électroniquement le ${new Date().toLocaleDateString("fr-FR")}`}
               </div>
             );
           })()}
-          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
+          <Btn full disabled={!!horsZone || !declarationComplete} onClick={()=>{ onNavigate("stripe_pay",{ amount: totalGlobalNum, tarifHoraire, hours, date: startDate||"", startTime: isUrgent ? urgentStartTime : (startTime||"08:00"), isUrgent: isUrgent||false, description: description.trim()||undefined, adresse: adresse.trim()||undefined, ville: ville.trim()||undefined, cp: cp.trim()||undefined, tiersDeclaration: chezTiers ? tiersDecl : undefined, lieuDeclare: estPro ? (chezTiers ? "tiers" : "etablissement_propre") : undefined, recurrence: (chaqueSemaine && !isUrgent && missionType === "single" && !chezTiers) ? "weekly" : undefined }); }} style={{ background: isUrgent?C.accent:undefined }}>
             {isUrgent?"🚀":"✅"} Confirmer & payer {totalGlobal} €
           </Btn>
         </>}
@@ -8229,8 +8250,32 @@ export function MissionHistoryScreen({ onNavigate, onBack, openMissionId }) {
 
                   {/* Récurrence */}
                   {m.recurrence && (
-                    <div style={{ color:C.violet, fontSize:11, fontWeight:600, marginTop:3 }}>
-                      🔄 {m.recurrence==="weekly"?"Hebdomadaire":m.recurrence==="biweekly"?"Bi-mensuel":"Mensuel"}
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:3, flexWrap:"wrap" }}>
+                      <span style={{ color:C.violet, fontSize:11, fontWeight:600 }}>
+                        🔄 {m.recurrence==="weekly"?"Chaque semaine":m.recurrence==="biweekly"?"Toutes les deux semaines":"Chaque mois"}
+                      </span>
+                      {/* Arrêter la série : plus aucune semaine suivante n'est créée
+                          ni débitée. Celles déjà payées s'annulent à part. */}
+                      <button onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!await showConfirm("Arrêter la série ?", "Plus aucune prestation ne sera réservée ni débitée après celle-ci. Les prestations déjà payées restent prévues : vous pouvez les annuler séparément.")) return;
+                        try {
+                          const { data: sd } = await supabase.auth.getSession();
+                          const r = await fetch("/api/missions", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sd?.session?.access_token || ""}` },
+                            body: JSON.stringify({ action: "arreter_serie", mission_id: m.id }),
+                          });
+                          const j = await r.json().catch(() => ({}));
+                          if (!r.ok) { showToast(j.error || `Erreur ${r.status}`, "error"); return; }
+                          setMissions(ms => ms.map(x => x.id === m.id || x.parent_mission_id === m.id ? { ...x, recurrence: null } : x));
+                          showToast("Série arrêtée : plus aucune prestation ne sera débitée.", "success");
+                        } catch (err) {
+                          showToast(err?.message || "Erreur réseau", "error");
+                        }
+                      }} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.textSub, fontSize:11, fontWeight:600, padding:"3px 8px", cursor:"pointer", fontFamily:"inherit" }}>
+                        Arrêter la série
+                      </button>
                     </div>
                   )}
                 </div>
@@ -9480,7 +9525,6 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
   const [description, setDesc]    = useState("");
   const [adresse, setAdresse]     = useState("");
   const [ville, setVille]         = useState("");
-  const [recurrence, setRecurrence] = useState(null);
   const [sending, setSending]     = useState(false);
   const isValid = date && adresse && ville;
   const { providers:allProviders } = useProviders();
@@ -9488,7 +9532,7 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
 
   const handleSend = async () => {
     setSending(true);
-    const prestation = { sector:s, metier, date, hours, description, adresse, ville, recurrence };
+    const prestation = { sector:s, metier, date, hours, description, adresse, ville };
     try {
       const { data:_ud2 } = await supabase.auth.getUser();
       const user = _ud2?.user;
@@ -9497,7 +9541,6 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           client_id: user.id, sector: s.id, metier, date, hours,
           ville, adresse, description, status: "open",
           heure_debut: startTime || null,
-          recurrence: recurrence || null,
         }).select().single();
         // L'échec était avalé : la demande continuait avec une prestation qui
         // n'existait qu'en mémoire, aucun prestataire ne pouvait donc la voir et
@@ -9577,23 +9620,9 @@ export function MissionRequestScreen({ sector, onSubmit, onBack }) {
           </div>
         </div>
 
-        <div style={{ marginBottom:16 }}>
-          <label style={{ display:"block", fontSize:12, color:C.textSub, fontWeight:600, marginBottom:8 }}>Récurrence <span style={{ fontWeight:400 }}>(optionnel)</span></label>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            {[
-              { value: null, label: "Unique" },
-              { value: "weekly", label: "Hebdomadaire" },
-              { value: "biweekly", label: "Bi-mensuelle" },
-              { value: "monthly", label: "Mensuelle" },
-            ].map(opt => (
-              <button key={String(opt.value)} onClick={() => setRecurrence(opt.value)}
-                style={{ padding:"9px 18px", borderRadius:20, border:"none", cursor:"pointer", background:recurrence===opt.value?C.violet:C.grayLight, color:recurrence===opt.value?C.white:C.text, fontWeight:700, fontSize:13, fontFamily:"inherit" }}>
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        {/* La récurrence se choisit à la réservation d'un prestataire, pas ici :
+            une demande diffusée n'a ni prestataire ni paiement, et sa « semaine
+            suivante » naissait sans personne pour la prendre (recette du 25/09/2026). */}
         <AddressAutocomplete label="Adresse de la prestation *" value={adresse} onChange={v=>setAdresse(v)} onSelect={s=>{setAdresse(s.rue);setVille(s.ville);}} />
         <Input label="Ville *" placeholder="Paris" value={ville} onChange={e=>setVille(e.target.value)} />
 

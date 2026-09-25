@@ -370,7 +370,7 @@ function BlocRetractation({ coche, onChange }) {
 // PAS celui passé en `amount` — il est recalculé par le serveur depuis la
 // proposition du prestataire enregistrée en base. Le navigateur ne choisit pas
 // ce qu'il paie, il paie ce qui a été chiffré.
-export function StripePaymentScreen({ amount, provider, description, missionId, teamMode, teamProviders, mode, onSuccess, onBack }) {
+export function StripePaymentScreen({ amount, provider, description, missionId, teamMode, teamProviders, mode, onSuccess, onBack, recurrence = null }) {
   const [cardName, setCardName] = useState("");
   const [cardNameError, setCardNameError] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -389,6 +389,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
   const [applePayAvailable, setApplePayAvailable] = useState(false);
   // Renonciation au droit de rétractation — voir BlocRetractation, plus bas.
   const [retractationOk, setRetractationOk] = useState(false);
+  // Série hebdomadaire : accord exprès pour les prélèvements des semaines
+  // suivantes, sur cette carte. Jamais présumé : case décochée, paiement bloqué.
+  const [accordSerie, setAccordSerie] = useState(false);
   const applePayBtnRef    = useRef(null);
   const paymentRequestRef = useRef(null);
   const applePayStripeRef = useRef(null);
@@ -685,7 +688,9 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
           payment_method_id: (useStored && savedCard?.origine === "prestation") ? savedCard.pmId : undefined,
           // Ne vaut que pour une carte saisie : une carte déjà mémorisée n'a
           // pas à l'être une seconde fois.
-          memoriser: (!useStored && memoriserCarte) || undefined,
+          // En série, le serveur enregistre la carte de lui-même : c'est elle qui
+          // paiera les semaines suivantes.
+          memoriser: (!useStored && (memoriserCarte || !!recurrence)) || undefined,
           metadata: { prestataire: providers[0]?.id || "", description: description || "" },
         }),
       });
@@ -724,7 +729,7 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
         // La carte vient d'être rattachée par Stripe : on garde son identifiant
         // pour la proposer au paiement suivant. Un échec ici ne remet rien en
         // cause — le paiement a eu lieu, la carte sera simplement redemandée.
-        if (!useStored && memoriserCarte && paymentIntent.payment_method) {
+        if (!useStored && (memoriserCarte || recurrence) && paymentIntent.payment_method) {
           try {
             const rp = await fetch("/api/stripe-intent", {
               method: "POST",
@@ -928,7 +933,18 @@ export function StripePaymentScreen({ amount, provider, description, missionId, 
               ))}
             </div>
             <BlocRetractation coche={retractationOk} onChange={setRetractationOk} />
-            <Btn full onClick={handlePay} disabled={processing || !retractationOk}
+            {recurrence && (
+              <label style={{ display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer", margin:"10px 0", padding:"10px 12px", borderRadius:11, background:"rgba(255,255,255,0.03)", border:`1px solid ${C.border}` }}>
+                <input type="checkbox" checked={accordSerie} onChange={e => setAccordSerie(e.target.checked)}
+                  style={{ width:17, height:17, marginTop:1, accentColor:C.violet, flexShrink:0, cursor:"pointer" }} />
+                <span style={{ fontSize:12, color:C.textSub, lineHeight:1.55 }}>
+                  <strong style={{ color:C.text }}>Chaque semaine</strong> : j'autorise ALANE à débiter cette carte du prix
+                  de chaque prestation suivante, une fois la précédente validée — au même tarif, pour la même durée.
+                  Ma carte est conservée par Stripe, jamais par ALANE. J'arrête la série quand je veux, depuis mes prestations.
+                </span>
+              </label>
+            )}
+            <Btn full onClick={handlePay} disabled={processing || !retractationOk || (!!recurrence && !accordSerie)}
               style={{ fontSize:16, padding:"18px", position:"relative" }}>
               {processing ? "⏳ Traitement en cours…" : `🔒 Payer ${eur(aPayer)} € en sécurité`}
             </Btn>

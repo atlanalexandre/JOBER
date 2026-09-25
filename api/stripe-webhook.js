@@ -157,6 +157,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ received: true });
     }
 
+    // Semaine suivante d'une série (api/_recurrence.js) : le serveur crée,
+    // prélève ET affecte lui-même, dans le même appel. Ce chemin-ci passerait la
+    // prestation en « assigned » sans que le prestataire ait accepté — et
+    // `programmerOccurrenceSuivante` ne pourrait plus la lui proposer.
+    if (intent.metadata?.type === "serie") {
+      console.log(`[stripe-webhook] paiement de série ${intent.id} — traité par le serveur, ignoré ici.`);
+      return res.status(200).json({ received: true });
+    }
+
     const missionId     = intent.metadata?.mission;
     const candidatureId = intent.metadata?.candidature_id;
     const prestataireId = intent.metadata?.prestataire_id;
