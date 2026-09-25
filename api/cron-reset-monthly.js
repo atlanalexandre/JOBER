@@ -11,6 +11,7 @@ import { appUrl } from "./_url.js";
 import { abonnementEchu, retrograderEnGratuit } from "./_abonnement.js";
 import { EXPIRATION_BLOQUANTE, etatExpiration, libelleDoc, DELAI_REGULARISATION, etatRegularisation } from "./_documents.js";
 import { datesImmatriculation } from "./_sirene.js";
+import { programmerOccurrenceSuivante } from "./_recurrence.js";
 import { comparerPrix, resumeEcart } from "./_prix.js";
 
 function verifyBoToken(token, secret) {
@@ -1923,7 +1924,7 @@ ${(() => {
         // On récupère toutes les missions assignées (peu importe validation_prestataire)
         // dont la date est <= hier (filtre large — on affine en JS avec heure_debut + hours)
         const avRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees`,
+          `${SUPABASE_URL}/rest/v1/missions?status=eq.assigned&date=lte.${yesterdayStr}&select=id,client_id,prestataire_id,hours,actual_hours,tarif_horaire,metier,sector,date,date_debut,date_fin,heure_debut,started_at,montant_total,delay_status,arrival_delay_minutes,validation_prestataire,cashback_credited,extra_hours_tarif,extra_hours_appliquees,recurrence`,
           { headers }
         );
         const autoMissionsRaw = await avRes.json();
@@ -2040,6 +2041,14 @@ ${(() => {
                 })(),
               ]);
               autoValidated++;
+              // Série hebdomadaire : même suite que la validation par le client
+              // (`complete`). Sans elle, une semaine validée automatiquement
+              // arrêtait la série sans que personne le sache.
+              if (m.recurrence) {
+                const serie = await programmerOccurrenceSuivante(m.id, SUPABASE_URL, headers)
+                  .catch(e => { console.error(`[cron] série de ${m.id} :`, e.message); return { mode: "echec" }; });
+                console.log(`[cron] série de ${m.id} → ${serie.mode}`);
+              }
             } catch (e) { console.error(`cron auto-validate mission ${m.id} error:`, e); }
           }
         }
